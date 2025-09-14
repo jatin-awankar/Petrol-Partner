@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
 import { Card } from "../ui/card";
 import { CheckCircle, HandHeart, Users } from "lucide-react";
@@ -13,6 +13,8 @@ import RideOfferCard from "./RideOfferCard";
 import { cn } from "@/lib/utils";
 import SearchAndAction from "./SearchAndAction";
 import { useProfile } from "@/hooks/useProfile";
+import { usePagination } from "./usePagination";
+import { PaginationControls } from "./PaginationControls";
 
 // --- Empty State Component ---
 const EmptyState = ({
@@ -37,6 +39,8 @@ const EmptyState = ({
 const DisplayAllRides = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState("offers");
+
+  // --- Data Fetching Hooks ---
   const { rides, loading: ridesLoading, bookRide } = useRideOffers();
   const { bookedRides, loading: bookedRidesLoading } = useRideBookings();
   const { rideRequests, loading: requestsLoading } = useRideRequests();
@@ -82,6 +86,39 @@ const DisplayAllRides = () => {
     [bookedRides, searchQuery]
   );
 
+  // --- Pagination Hooks ---
+
+  const offersPagination = usePagination(filteredRidesOffers);
+  const requestsPagination = usePagination(filteredRideRequests);
+
+  // Filter first
+  const passengerBookings = useMemo(
+    () =>
+      filteredRideBookings.filter(
+        (b) =>
+          b.passenger_id === profile?.id ||
+          b.ride_request?.passenger?.id === profile?.id
+      ),
+    [filteredRideBookings, profile]
+  );
+
+  const driverBookings = useMemo(
+    () =>
+      filteredRideBookings.filter((b) => b.ride?.driver?.id === profile?.id),
+    [filteredRideBookings, profile]
+  );
+
+  // Paginate separately
+  const passengerPagination = usePagination(passengerBookings);
+  const driverPagination = usePagination(driverBookings);
+
+  useEffect(() => {
+    offersPagination.resetPage();
+    requestsPagination.resetPage();
+    passengerPagination.resetPage();
+    driverPagination.resetPage();
+  }, [searchQuery]);
+
   return (
     <div className="space-y-6">
       {/* 🔍 Search + Actions */}
@@ -98,12 +135,7 @@ const DisplayAllRides = () => {
         <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger
             value="offers"
-            className={cn(
-              "cursor-pointer",
-              activeTab === "offers"
-                ? "bg-primary-foreground! text-primary-foreground"
-                : ""
-            )}
+            className="cursor-pointer  data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
           >
             Ride Offers ({filteredRidesOffers.length})
           </TabsTrigger>
@@ -112,7 +144,7 @@ const DisplayAllRides = () => {
             className={cn(
               "cursor-pointer",
               activeTab === "requests"
-                ? "bg-primary-foreground! text-primary-foreground"
+                ? "!bg-primary-foreground text-primary-foreground"
                 : ""
             )}
           >
@@ -123,7 +155,7 @@ const DisplayAllRides = () => {
             className={cn(
               "cursor-pointer",
               activeTab === "booked"
-                ? "bg-primary-foreground! text-primary-foreground"
+                ? "!bg-primary-foreground text-primary-foreground"
                 : ""
             )}
           >
@@ -137,14 +169,14 @@ const DisplayAllRides = () => {
             <p className="text-center text-muted-foreground">
               Loading rides...
             </p>
-          ) : filteredRidesOffers.length === 0 ? (
+          ) : offersPagination.paginatedItems.length === 0 ? (
             <EmptyState
               icon={Users}
               title="No rides available"
               description="Be the first to offer a ride!"
             />
           ) : (
-            filteredRidesOffers.map((ride) => (
+            offersPagination.paginatedItems.map((ride) => (
               <RideOfferCard
                 key={ride.id}
                 ride={ride}
@@ -152,6 +184,12 @@ const DisplayAllRides = () => {
               />
             ))
           )}
+          <PaginationControls
+            page={offersPagination.page}
+            totalPages={offersPagination.totalPages}
+            onPrev={offersPagination.prevPage}
+            onNext={offersPagination.nextPage}
+          />
         </TabsContent>
 
         {/* Requested Rides */}
@@ -160,14 +198,14 @@ const DisplayAllRides = () => {
             <p className="text-center text-muted-foreground">
               Loading ride requests...
             </p>
-          ) : filteredRideRequests.length === 0 ? (
+          ) : requestsPagination.paginatedItems.length === 0 ? (
             <EmptyState
               icon={HandHeart}
               title="No ride requests"
               description="Be the first to request a ride!"
             />
           ) : (
-            filteredRideRequests.map((req) => (
+            requestsPagination.paginatedItems.map((req) => (
               <RideRequestCard
                 key={req.id}
                 request={req}
@@ -175,6 +213,12 @@ const DisplayAllRides = () => {
               />
             ))
           )}
+          <PaginationControls
+            page={requestsPagination.page}
+            totalPages={requestsPagination.totalPages}
+            onPrev={requestsPagination.prevPage}
+            onNext={requestsPagination.nextPage}
+          />
         </TabsContent>
 
         {/* Booked Rides */}
@@ -183,7 +227,8 @@ const DisplayAllRides = () => {
             <p className="text-center text-muted-foreground">
               Loading booked rides...
             </p>
-          ) : bookedRides.length === 0 ? (
+          ) : passengerPagination.paginatedItems.length === 0 &&
+            driverPagination.paginatedItems.length === 0 ? (
             <EmptyState
               icon={CheckCircle}
               title="No booked rides"
@@ -194,39 +239,43 @@ const DisplayAllRides = () => {
               {/* As Passenger */}
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold mb-3">As Passenger</h3>
-                {filteredRideBookings
-                  .filter(
-                    (b) =>
-                      b.passenger_id === profile?.id ||
-                      b.ride_request?.passenger?.id === profile?.id
-                  )
-                  .map((b) => (
-                    <RideBookedCard
-                      key={b.id}
-                      booking={b}
-                      onMessage={() => redirect("/chat")}
-                      onTrack={() => {}}
-                      onRate={() => {}}
-                      onDetails={() => {}}
-                    />
-                  ))}
+                {passengerPagination.paginatedItems.map((b) => (
+                  <RideBookedCard
+                    key={b.id}
+                    booking={b}
+                    onMessage={() => {}}
+                    onTrack={() => {}}
+                    onRate={() => {}}
+                    onDetails={() => {}}
+                  />
+                ))}
+                <PaginationControls
+                  page={passengerPagination.page}
+                  totalPages={passengerPagination.totalPages}
+                  onPrev={passengerPagination.prevPage}
+                  onNext={passengerPagination.nextPage}
+                />
               </div>
 
               {/* As Driver */}
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold mb-3">As Driver</h3>
-                {filteredRideBookings
-                  .filter((b) => b.ride?.driver?.id === profile?.id)
-                  .map((b) => (
-                      <RideBookedCard
-                        key={b.id}
-                        booking={b}
-                        onMessage={() => redirect("/chat")}
-                        onTrack={() => {}}
-                        onRate={() => {}}
-                        onDetails={() => {}}
-                      />
-                  ))}
+                {driverPagination.paginatedItems.map((b) => (
+                  <RideBookedCard
+                    key={b.id}
+                    booking={b}
+                    onMessage={() => redirect("/chat")}
+                    onTrack={() => {}}
+                    onRate={() => {}}
+                    onDetails={() => {}}
+                  />
+                ))}
+                <PaginationControls
+                  page={driverPagination.page}
+                  totalPages={driverPagination.totalPages}
+                  onPrev={driverPagination.prevPage}
+                  onNext={driverPagination.nextPage}
+                />
               </div>
             </>
           )}
