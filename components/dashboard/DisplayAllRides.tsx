@@ -37,7 +37,7 @@ const EmptyState = ({
 const DisplayAllRides = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState("offers");
-  const { rides, loading: ridesLoading, bookRide } = useRideOffers();
+  const { rides, loading: ridesLoading } = useRideOffers();
   const { bookedRides, loading: bookedRidesLoading } = useRideBookings();
   const { rideRequests, loading: requestsLoading } = useRideRequests();
   const { profile } = useProfile();
@@ -148,7 +148,6 @@ const DisplayAllRides = () => {
               <RideOfferCard
                 key={ride.id}
                 ride={ride}
-                onBook={() => bookRide(ride.id, 1)}
               />
             ))
           )}
@@ -171,7 +170,6 @@ const DisplayAllRides = () => {
               <RideRequestCard
                 key={req.id}
                 request={req}
-                onRespond={() => {}}
               />
             ))
           )}

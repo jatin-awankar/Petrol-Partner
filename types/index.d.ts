@@ -296,3 +296,11 @@ interface RatingWithProfile extends Rating {
       avatar_url?: string;
     };
 }
+
+// - Book Offer Dialog props
+interface BookOfferDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  ride: Ride;
+  onBook: (rideId: string, seats: number) => Promise<void>;
+}

@@ -295,4 +295,21 @@
   .dock-top {
     top: 0;
   }
+
+  .card-profile {
+    width: 3rem;
+    height: 3rem;
+    border-radius: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    color: white;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all;
+  }
+  .card-profile:hover {
+    transform: scale(1.1);
+    box-shadow: 0 0 8px hsl(204 94% 62% / 0.6);
+  }
 }

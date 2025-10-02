@@ -23,7 +23,7 @@ const RideBookedCard = ({
   onRate,
   onDetails,
 }: {
-  booking: any;
+  booking: RideBooking;
   currentUserId: string | undefined;
   onMessage: () => void;
   onTrack: () => void;
@@ -31,7 +31,7 @@ const RideBookedCard = ({
   onDetails: () => void;
 }) => {
   // 🔹 Helper to normalize booking data
-  const getBookingDetails = (booking: any, currentUserId: any) => {
+  const getBookingDetails = (booking: RideBooking, currentUserId: string) => {
     const ride = booking?.ride || null;
     const rideRequest = booking?.ride_request || null;
 
@@ -74,7 +74,7 @@ const RideBookedCard = ({
     departureTime,
     status,
     description,
-  } = getBookingDetails(booking, currentUserId);
+  } = getBookingDetails(booking, currentUserId || "");
 
   return (
     <motion.div
@@ -86,12 +86,11 @@ const RideBookedCard = ({
       <Card className="hover:shadow-soft transition-all duration-300">
         <CardContent className="p-4">
           {/* Person info (Driver or Passenger) */}
-          <div className="flex items-start justify-between mb-3">
+          <div className="flex items-start justify-between mb-3 cursor-pointer" onClick={() => redirect(`/profile/${person?.id}`)}>
             <div className="flex items-center space-x-3">
-              <Avatar className="w-12 h-12 cursor-pointer">
+              <Avatar className="bg-gradient-primary card-profile">
                 <AvatarImage
                   src={person?.avatar_url}
-                  onClick={() => redirect(`/profile/${person?.id}`)}
                 />
                 <AvatarFallback className="bg-gradient-primary text-white text-2xl">
                   {person?.full_name

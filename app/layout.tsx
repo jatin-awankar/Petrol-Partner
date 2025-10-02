@@ -3,6 +3,7 @@ import { Poppins } from "next/font/google";
 import "./globals.css";
 import { ClerkProvider } from "@clerk/nextjs";
 import Navbar from "@/components/Navbar";
+import { Toaster } from "@/components/ui/sonner";
 
 const poppins = Poppins({
   subsets: ["latin"], // add more if needed
@@ -28,6 +29,7 @@ export default function RootLayout({
         <body>
           <Navbar />
           {children}
+          <Toaster />
         </body>
       </ClerkProvider>
     </html>
