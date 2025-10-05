@@ -205,6 +205,17 @@ CREATE TABLE IF NOT EXISTS public.messages (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS public.sos_logs (
+  id uuid primary key default gen_random_uuid(),
+  user_profile_id uuid references user_profiles(id),
+  ride_offer_id uuid references ride_offers(id),
+  location_lat decimal,
+  location_lng decimal,
+  message text,
+  created_at timestamptz default now()
+);
+
+
 /* ===============================
    13. INDEXES
    =============================== */
