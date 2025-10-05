@@ -12,13 +12,14 @@ import { Card, CardContent } from "@/components/ui/card";
 import { useDashboardStats } from "@/hooks/dashboard-stats/useDashboardStats";
 import { motion } from "framer-motion";
 
+export const safeValue = (val: number | undefined, isMoney = false) => {
+  if (val == null || isNaN(val)) return isMoney ? "0.00" : "0";
+  return isMoney ? val.toFixed(2) : val.toString();
+};
+
 const DashboardStats = () => {
   const { stats, loading: statsLoading } = useDashboardStats();
 
-  const safeValue = (val: number | undefined, isMoney = false) => {
-    if (val == null || isNaN(val)) return isMoney ? "0.00" : "0";
-    return isMoney ? val.toFixed(2) : val.toString();
-  };
 
   const cards = [
     {
@@ -74,7 +75,7 @@ const DashboardStats = () => {
 
   return (
     <motion.div
-      className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
+      className="grid grid-cols-1 gap-4"
       initial="hidden"
       animate="visible"
       variants={{

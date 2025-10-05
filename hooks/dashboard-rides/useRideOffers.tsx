@@ -29,7 +29,7 @@ export function useRideOffers() {
           description,
           created_at,
           updated_at,
-          driver:profiles(id, full_name, avatar_url, college, avg_rating, phone)
+          driver:profiles(id, full_name, avatar_url, college, avg_rating, phone, is_verified)
         `)
         .order("departure_time", { ascending: false });
 

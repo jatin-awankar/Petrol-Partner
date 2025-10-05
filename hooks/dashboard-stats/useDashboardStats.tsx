@@ -6,43 +6,47 @@ import { useEffect, useState } from "react";
 export const useDashboardStats = () => {
   const { getToken } = useAuth();
   const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
+    let isMounted = true;
+
     const fetchStats = async (showLoading = false) => {
       try {
-        if (showLoading) setLoading(true);
+        if (showLoading) setIsLoading(true);
 
         // ✅ Get Clerk JWT
         const token = await getToken();
         if (!token) throw new Error("No Clerk token found");
 
         const res = await fetch("/api/dashboard/stats", {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+          headers: { Authorization: `Bearer ${token}` },
         });
 
         if (!res.ok) throw new Error(`Failed to fetch stats: ${res.status}`);
+
         const data: DashboardStats = await res.json();
-        setStats(data);
+        if (isMounted) setStats(data);
       } catch (err) {
-        console.error("Error fetching stats:", err);
-        setError(err as Error);
+        console.error("[useDashboardStats] Error fetching stats:", err);
+        if (isMounted) setError(err as Error);
       } finally {
-        if (showLoading) setLoading(false);
+        if (showLoading && isMounted) setIsLoading(false);
       }
     };
 
-    //initial load with loading state
+    // Initial fetch with loading
     fetchStats(true);
 
-    //refresh every 100s without blinking loading
+    // Refresh every 100 seconds without loading animation
     const interval = setInterval(() => fetchStats(false), 100_000);
 
-    return () => clearInterval(interval);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
   }, [getToken]);
 
-  return { stats, loading, error };
+  return { stats, isLoading, error };
 };

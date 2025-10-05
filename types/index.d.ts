@@ -146,6 +146,7 @@ interface Ride {
       college: string;
       phone: string;
       avg_rating: number;
+      is_verified: boolean;
     };
     isAvailable?: boolean;
 }
