@@ -43,10 +43,16 @@ export default function WelcomeCard() {
         .from("user_profiles")
         .select("id, full_name, college, avatar_url, is_verified")
         .eq("clerk_id", user?.id)
-        .single();
+        .maybeSingle();
 
       if (error) {
-        console.error("Error fetching profile:", error);
+        console.error("Error fetching profile:", {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+          fullError: error
+        });
       } else if (isMounted && data) {
         setProfile(data);
       }

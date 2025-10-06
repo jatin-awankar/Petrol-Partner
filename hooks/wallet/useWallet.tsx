@@ -20,7 +20,7 @@ export function useWallet() {
     };
     getProfileId();
     console.log('Fetching profile ID...', profileId);
-  }, []);
+  }, [profileId]);
 
   // Fetch wallet
   const fetchWallet = async () => {
@@ -38,9 +38,9 @@ export function useWallet() {
       if (error) throw error;
       setWallet(data as UserWallet);
       console.log('Wallet data:', data);
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast.error('Error fetching wallet', {
-        description: error.message || 'Something went wrong fetching wallet.',
+        description: error instanceof Error ? error.message : 'Something went wrong fetching wallet.',
       });
       console.error('Error fetching wallet:', error);
     } finally {

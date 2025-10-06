@@ -16,7 +16,7 @@ export async function GET() {
 
     // ✅ Total registered users
     const { count: totalUsers, error: usersErr } = await supabase
-      .from("profiles")
+      .from("user_profiles")
       .select("*", { count: "exact", head: true });
     if (usersErr) {
       console.error("profiles count error:", usersErr);
@@ -36,7 +36,7 @@ export async function GET() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const { count: dailyRides, error: dailyErr } = await supabase
-      .from("rides")
+      .from("ride_offers")
       .select("*", { count: "exact", head: true })
       .gte("created_at", today.toISOString());
     if (dailyErr) {
@@ -46,9 +46,9 @@ export async function GET() {
 
     // ✅ Active rides
     const { count: totalActiveRides, error: activeErr } = await supabase
-      .from("rides")
+      .from("ride_offers")
       .select("*", { count: "exact", head: true })
-      .eq("status", "active");
+      .eq("ride_offer_status", "active");
     if (activeErr) {
       console.error("rides active count error:", activeErr);
       throw activeErr;
@@ -66,14 +66,14 @@ export async function GET() {
 
     // ✅ Ride offers (rides created by drivers)
     const { count: totalRideOffers } = await supabase
-    .from("rides")
+    .from("ride_offers")
     .select("*", { count: "exact", head: true });
 
     // ✅ Revenue
     const { data: revenueData, error: revenueErr } = await supabase
       .from("bookings")
       .select("total_price")
-      .eq("status", "confirmed");
+      .eq("booking_status", "confirmed");
     if (revenueErr) {
       console.error("revenue error:", revenueErr);
       throw revenueErr;
@@ -94,10 +94,10 @@ export async function GET() {
       totalRideOffers,
       totalRevenue,
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("Stats API Fatal Error:", err);
     return NextResponse.json(
-      { error: err?.message || "Internal Server Error" },
+      { error: err instanceof Error ? err.message : "Internal Server Error" },
       { status: 500 }
     );
   }

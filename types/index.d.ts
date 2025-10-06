@@ -62,102 +62,98 @@ interface RatingsSectionProps {
 // - Ride Booking type (used in ride bookings list and ride details)
 interface RideBooking {
     id: string;
-    ride_id?: string;
+    ride_offer_id?: string;
     ride_request_id?: string;
-    driver_id: string;
-    passenger_id: string;
+    rider_id: string;
     seats_booked: number;
     total_price: number;
-    status: string;
+    booking_status: string;
+    can_review: boolean;
+    pickup_address?: string;
     created_at: string;
-    ride?: {
+    updated_at: string;
+    ride_offer?: {
       id: string;
       driver_id: string;
-      from_location: string;
-      to_location: string;
+      origin_address: string;
+      destination_address: string;
       departure_time: string;
       price_per_seat: number;
-      description?: string;
-      status: string;
+      ride_offer_description?: string;
+      ride_offer_status: string;
       driver?: {
         id: string;
         full_name: string;
         avatar_url?: string;
         college: string;
-        phone: string;
         avg_rating?: number;
       };
     };
     ride_request?: {
       id: string;
       passenger_id: string;
-      from_location: string;
-      to_location: string;
-      preferred_departure_time: string;
-      requested_seats: number;
-      price_per_seat: number;
-      description?: string;
-      status: string;
+      origin_address: string;
+      destination_address: string;
+      departure_time: string;
+      seats_needed: number;
+      price_offer: number;
+      ride_request_description?: string;
+      ride_request_status: string;
       passenger?: {
         id: string;
         full_name: string;
         avatar_url?: string;
         college: string;
-        phone: string;
         avg_rating?: number;
       };
     };
-    driver?: {
+    rider?: {
       id: string;
       full_name: string;
       avatar_url?: string;
       college: string;
-      phone: string;
-      avg_rating?: number;
-    };
-  
-    passenger?: {
-      id: string;
-      full_name: string;
-      avatar_url?: string;
-      college: string;
-      phone: string;
       avg_rating?: number;
     };
   }
 
 // - Ride type (used in ride listings and ride details)
-interface Ride {
+interface RideOffer {
     id: string;
     driver_id: string;
-    from_location: string;
-    to_location: string;
+    vehicle_id?: string;
+    origin_lat?: number;
+    origin_lng?: number;
+    origin_address?: string;
+    destination_lat?: number;
+    destination_lng?: number;
+    destination_address?: string;
     departure_time: string;
     available_seats: number;
     price_per_seat: number;
-    description?: string;
-    status: "active" | "completed" | "cancelled";
+    total_distance_km?: number;
+    estimated_duration_minutes?: number;
+    ride_offer_description?: string;
+    ride_offer_status: "scheduled" | "active" | "completed" | "cancelled";
     created_at: string;
     updated_at: string;
     driver?: {
       id: string;
       full_name: string;
-      avatar_url: string;
+      avatar_url?: string;
       college: string;
-      phone: string;
-      avg_rating: number;
-      is_verified: boolean;
+      avg_rating?: number;
+      is_verified?: boolean;
     };
     isAvailable?: boolean;
 }
 
 interface CreateRideData {
-    from_location: string;
-    to_location: string;
+    origin_address: string;
+    destination_address: string;
     departure_time: string;
-    total_seats: number;
+    available_seats: number;
     price_per_seat: number;
-    description?: string;
+    ride_offer_description?: string;
   }
 
 // - Create Ride Request form data
@@ -184,13 +180,19 @@ interface RideForRequests {
 interface RideRequest {
     id: string;
     passenger_id: string;
-    from_location: string;
-    to_location: string;
-    preferred_departure_time: string;
-    requested_seats: number;
-    price_per_seat: number;
-    description?: string;
-    status: string;
+    origin_lat?: number;
+    origin_lng?: number;
+    origin_address?: string;
+    destination_lat?: number;
+    destination_lng?: number;
+    destination_address?: string;
+    departure_time: string;
+    seats_needed: number;
+    price_offer: number;
+    total_distance_km?: number;
+    estimated_duration_minutes?: number;
+    ride_request_description?: string;
+    ride_request_status: string;
     created_at: string;
     updated_at: string;
     passenger?: {
@@ -198,20 +200,18 @@ interface RideRequest {
       full_name: string;
       avatar_url?: string;
       college: string;
-      phone: string;
       avg_rating?: number;
     };
-    ride?: RideForRequests;
     seatsAvailable?: boolean;
 }
   
 interface CreateRideRequestData {
-    from_location: string;
-    to_location: string;
-    preferred_departure_time: string;
-    requested_seats: number;
-    price_per_seat: number;
-    description?: string;
+    origin_address: string;
+    destination_address: string;
+    departure_time: string;
+    seats_needed: number;
+    price_offer: number;
+    ride_request_description?: string;
 }
 
 // - Dashboard stats type
@@ -245,18 +245,18 @@ interface UserWallet {
 }
 
 // Type for Profile based on profile page
-interface Profile {
-    id: string;
-    full_name: string;
-    email?: string;
-    college?: string;
-    phone?: string;
-    bio?: string;
-    created_at: string;
-    verification_status?: 'verified' | 'pending' | 'rejected';
-    avg_rating?: number;
-    avatar_url?: string;
-  }
+// interface Profile {
+//     id: string;
+//     full_name: string;
+//     email?: string;
+//     college?: string;
+//     phone?: string;
+//     bio?: string;
+//     created_at: string;
+//     is_verified?: boolean;
+//     avg_rating?: number;
+//     avatar_url?: string;
+//   }
 
 // - User profile types
 interface UserProfile {

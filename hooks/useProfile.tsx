@@ -17,17 +17,18 @@ export function useProfile() {
     try {
       setLoading(true);
       const { data: profileData, error } = await supabaseClient
-        .from('profiles')
+        .from('user_profiles')
         .select("*")
         .eq('clerk_id', user.id) // ✅ using clerk_id
-        .single();
+        .maybeSingle();
       
       if (error) throw error;
       setProfile(profileData as UserProfile);
 
-    } catch (error: any) {
+    } catch (error: unknown) {
+      console.error('Error fetching profile:', error);
       toast.error('Error fetching profile', {
-        description: error.message,
+        description: error instanceof Error ? error.message : 'Unknown error occurred',
       });
     } finally {
       setLoading(false);
@@ -46,7 +47,7 @@ export function useProfile() {
     try {
       setLoading(true);
       const { data, error } = await supabaseClient
-        .from('profiles')
+        .from('user_profiles')
         .update({
           ...updateData,
           updated_at: new Date().toISOString(),
@@ -63,9 +64,9 @@ export function useProfile() {
       });
 
       return { data, error: null };
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast.error('Failed to update profile', {
-        description: error.message,
+        description: error instanceof Error ? error.message : 'Unknown error occurred',
       });
       return { error };
     } finally {
@@ -81,8 +82,8 @@ export function useProfile() {
       // setLoading(true);
 
       const [driverRides, passengerBookings] = await Promise.all([
-        supabaseClient.from('rides').select('id, status').eq('driver_id', profile.id),
-        supabaseClient.from('bookings').select('id, status').eq('passenger_id', profile.id),
+        supabaseClient.from('ride_offers').select('id, ride_offer_status').eq('driver_id', profile.id),
+        supabaseClient.from('bookings').select('id, booking_status').eq('passenger_id', profile.id),
       ]);
 
       const totalRides =
@@ -90,8 +91,8 @@ export function useProfile() {
         (passengerBookings.data?.length || 0);
 
       const completedRides =
-        (driverRides.data?.filter((r) => r.status === 'completed').length || 0) +
-        (passengerBookings.data?.filter((b) => b.status === 'completed').length || 0);
+        (driverRides.data?.filter((r) => r.ride_offer_status === 'completed').length || 0) +
+        (passengerBookings.data?.filter((b) => b.booking_status === 'completed').length || 0);
 
       return {
         totalRides,

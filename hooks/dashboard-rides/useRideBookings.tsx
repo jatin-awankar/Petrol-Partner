@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { supabaseClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { useUser } from "@clerk/nextjs";
@@ -10,7 +10,7 @@ export function useRideBookings() {
   const [loading, setLoading] = useState(true);
   const { user } = useUser();
 
-  const fetchBookedRides = async () => {
+  const fetchBookedRides = useCallback(async () => {
     if (!user) return setLoading(false);
 
     try {
@@ -18,55 +18,47 @@ export function useRideBookings() {
 
       // 1️⃣ Get user's profile ID
       const { data: profile, error: profileError } = await supabaseClient
-        .from("profiles")
+        .from("user_profiles")
         .select("id")
         .eq("clerk_id", user.id)
-        .single();
-      if (profileError || !profile) throw new Error("Profile not found");
+        .maybeSingle();
+      if (profileError) throw new Error("Profile not found");
+      if (!profile) return setBookedRides([]);
 
-      // 2️⃣ Fetch bookings + rides + ride_requests + driver/passenger
+      // 2️⃣ Fetch bookings + ride_offers + ride_requests + driver/passenger
       const { data, error } = await supabaseClient
         .from("bookings")
         .select(
           `
           *,
-          ride:rides (
+          ride_offer:ride_offers (
             id,
-            from_location,
-            to_location,
+            origin_address,
+            destination_address,
             departure_time,
-            description,
-            status,
-            driver:profiles(id, full_name, avatar_url, college, phone, avg_rating)
+            ride_offer_description,
+            ride_offer_status,
+            driver:user_profiles!ride_offers_driver_id_fkey(id, full_name, avatar_url, college, avg_rating)
           ),
           ride_request:ride_requests (
             id,
-            from_location,
-            to_location,
-            preferred_departure_time,
-            description,
-            status,
-            passenger:profiles(id, full_name, avatar_url, college, phone, avg_rating)
+            origin_address,
+            destination_address,
+            departure_time,
+            ride_request_description,
+            ride_request_status,
+            passenger:user_profiles!ride_requests_passenger_id_fkey(id, full_name, avatar_url, college, avg_rating)
           ),
-          driver:profiles!bookings_driver_id_fkey(
+          rider:user_profiles!bookings_rider_id_fkey(
             id,
             full_name,
             avatar_url,
             college,
-            phone,
-            avg_rating
-          ),
-          passenger:profiles!bookings_passenger_id_fkey1(
-            id,
-            full_name,
-            avatar_url,
-            college,
-            phone,
             avg_rating
           )
         `
         )
-        .or(`passenger_id.eq.${profile.id},driver_id.eq.${profile.id}`)
+        .eq("rider_id", profile.id)
         .order("created_at", { ascending: false });
 
       if (error) {
@@ -74,24 +66,29 @@ export function useRideBookings() {
         throw error;
       }
       setBookedRides(data || []);
-    } catch (err: any) {
-      toast.error(`Error fetching booked rides: ${err.message}`);
+    } catch (err: unknown) {
+      console.error("Error fetching booked rides:", err);
+      toast.error(
+        `Error fetching booked rides: ${
+          err instanceof Error ? err.message : "Unknown error"
+        }`
+      );
       setBookedRides([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, [user]);
 
   const checkIfRated = async (bookingId: string, ratedId: string) => {
     if (!user) return false;
     try {
       const { data, error } = await supabaseClient
-        .from("ratings")
+        .from("ride_reviews")
         .select("id")
-        .eq("rater_id", user.id)
-        .eq("rated_id", ratedId)
+        .eq("reviewer_id", user.id)
+        .eq("reviewee_id", ratedId)
         .eq("booking_id", bookingId)
-        .single();
+        .maybeSingle();
       if (error && error.code !== "PGRST116") throw error;
       return !!data;
     } catch {
@@ -104,17 +101,25 @@ export function useRideBookings() {
     try {
       const unrated: RideBooking[] = [];
       for (const booking of bookedRides) {
-        if (booking.ride && booking.ride.status === "completed") {
-          const rated = await checkIfRated(booking.id, booking.ride.driver_id);
+        if (
+          booking.ride_offer &&
+          booking.ride_offer.ride_offer_status === "completed" &&
+          booking.ride_offer.driver
+        ) {
+          const rated = await checkIfRated(
+            booking.id,
+            booking.ride_offer.driver.id
+          );
           if (!rated) unrated.push(booking);
         }
         if (
           booking.ride_request &&
-          booking.ride_request.status === "completed"
+          booking.ride_request.ride_request_status === "completed" &&
+          booking.ride_request.passenger
         ) {
           const rated = await checkIfRated(
             booking.id,
-            booking.ride_request.passenger_id
+            booking.ride_request.passenger.id
           );
           if (!rated) unrated.push(booking);
         }
@@ -128,7 +133,7 @@ export function useRideBookings() {
 
   useEffect(() => {
     fetchBookedRides();
-  }, [user]);
+  }, [fetchBookedRides, user]);
 
   return {
     bookedRides,

@@ -18,7 +18,7 @@ export const safeValue = (val: number | undefined, isMoney = false) => {
 };
 
 const DashboardStats = () => {
-  const { stats, loading: statsLoading } = useDashboardStats();
+  const { stats, isLoading: statsLoading } = useDashboardStats();
 
 
   const cards = [
