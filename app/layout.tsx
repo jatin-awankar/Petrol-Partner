@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import { Poppins } from "next/font/google";
 import "./globals.css";
-import { ClerkProvider } from "@clerk/nextjs";
-import Navbar from "@/components/Navbar";
-import { Toaster } from "@/components/ui/sonner";
+// import { ClerkProvider } from "@clerk/nextjs";
+// import Navbar from "@/components/Navbar";
+// import { Toaster } from "@/components/ui/sonner";
+import { Providers } from "./provider";
+import React from "react";
 
 const poppins = Poppins({
   subsets: ["latin"], // add more if needed
@@ -25,13 +27,13 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${poppins.variable} font-sans antialiased`}>
-      <ClerkProvider>
+      <Providers>
         <body>
-          <Navbar />
+          {/* <Navbar /> */}
           {children}
-          <Toaster />
+          {/* <Toaster /> */}
         </body>
-      </ClerkProvider>
+      </Providers>
     </html>
   );
 }
