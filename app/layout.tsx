@@ -1,39 +1,39 @@
+// app/layout.tsx
 import type { Metadata } from "next";
 import { Poppins } from "next/font/google";
 import "./globals.css";
-// import { ClerkProvider } from "@clerk/nextjs";
-// import Navbar from "@/components/Navbar";
-// import { Toaster } from "@/components/ui/sonner";
-import { Providers } from "./provider";
+import { Toaster } from "@/components/ui/sonner";
+// import { Providers } from "./provider";
 import React from "react";
+import AuthenticatedNavbars from "@/components/AuthenticatedNavbars";
 
 const poppins = Poppins({
-  subsets: ["latin"], // add more if needed
-  weight: ["100", "200", "300", "400", "500", "600", "700", "800", "900"], // all weights
-  style: ["normal", "italic"], // supports both
-  display: "swap", // improves performance
-  variable: "--font-poppins", // creates a CSS variable
+  subsets: ["latin"],
+  weight: ["100", "200", "300", "400", "500", "600", "700", "800", "900"],
+  style: ["normal", "italic"],
+  display: "swap",
+  variable: "--font-poppins",
 });
 
 export const metadata: Metadata = {
-  title: "Petrol Partner",
-  description: "College-centric ride sharing",
+  title: "Ride Partner",
+  description: "College-centric ride sharing platform",
 };
 
 export default function RootLayout({
   children,
-}: Readonly<{
+}: {
   children: React.ReactNode;
-}>) {
+}) {
   return (
-    <html lang="en" className={`${poppins.variable} font-sans antialiased`}>
-      <Providers>
+    // <Providers>
+      <html lang="en" className={`${poppins.variable} font-sans antialiased`}>
         <body>
-          {/* <Navbar /> */}
+          <AuthenticatedNavbars />
           {children}
-          {/* <Toaster /> */}
+          <Toaster />
         </body>
-      </Providers>
-    </html>
+      </html>
+    // </Providers>
   );
 }

@@ -22,6 +22,10 @@ BEGIN
     CREATE TYPE public.ride_offer_status AS ENUM ('scheduled', 'active', 'completed', 'cancelled');
   END IF;
 
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'ride_request_status') THEN
+    CREATE TYPE public.ride_request_status AS ENUM ('scheduled', 'active', 'completed', 'cancelled');
+  END IF;
+
   IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'payment_status') THEN
     CREATE TYPE public.payment_status AS ENUM ('pending', 'completed', 'failed');
   END IF;
@@ -35,7 +39,7 @@ $$ LANGUAGE plpgsql;
    =============================== */
 CREATE TABLE IF NOT EXISTS public.user_profiles (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    clerk_id TEXT UNIQUE, -- Clerk user id string like "user_xxx..."
+    password TEXT,
     full_name TEXT NOT NULL,
     email TEXT UNIQUE NOT NULL,
     college TEXT,
@@ -324,9 +328,9 @@ EXECUTE FUNCTION public.enable_reviews_after_completion();
 
 DROP TRIGGER IF EXISTS trg_enable_reviews_ride_request ON public.ride_requests;
 CREATE TRIGGER trg_enable_reviews_ride_request
-AFTER UPDATE OF ride_offer_status ON public.ride_requests
+AFTER UPDATE OF ride_request_status ON public.ride_requests
 FOR EACH ROW
-WHEN (NEW.ride_offer_status = 'completed')
+WHEN (NEW.ride_request_status = 'completed')
 EXECUTE FUNCTION public.enable_reviews_after_completion();
 
 /* ===============================
