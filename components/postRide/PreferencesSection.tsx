@@ -1,6 +1,12 @@
 import React from "react";
 import Icon from "../AppIcon";
-import { Select } from "../ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select";
 import { Label } from "../ui/label";
 import { Input } from "../ui/input";
 import { Button } from "../ui/button";
@@ -26,10 +32,10 @@ const PreferencesSection: React.FC<PreferencesSectionProps> = ({
     });
   };
 
-  const handleRuleToggle = (rule) => {
+  const handleRuleToggle = (rule: string) => {
     const rules = formData?.preferences?.rules?.includes(rule)
-      ? formData?.preferences?.rules?.filter((r) => r !== rule)
-      : [...formData?.preferences?.rules, rule];
+      ? formData?.preferences?.rules?.filter((r: string) => r !== rule)
+      : [...(formData?.preferences?.rules || []), rule];
     handlePreferenceChange("rules", rules);
   };
 
@@ -73,54 +79,82 @@ const PreferencesSection: React.FC<PreferencesSectionProps> = ({
 
       {/* Passenger Preferences */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Left Column */}
         <div className="space-y-4">
-          <Label>Gender Preference</Label>
-          <Select
-            // @ts-expect-error: 'label' prop is custom for our Input component
-            options={genderOptions}
-            value={formData?.preferences?.gender}
-            onChange={(value: string) =>
-              handlePreferenceChange("gender", value)
-            }
-            description="Who can book your ride"
-          />
+          <div className="space-y-2">
+            <Label>Gender Preference</Label>
+            <Select
+              value={formData?.preferences?.gender || ""}
+              onValueChange={(value) => handlePreferenceChange("gender", value)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select Gender" />
+              </SelectTrigger>
+              <SelectContent>
+                {genderOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-          <Label>Conversation Level</Label>
-          <Select
-            // @ts-expect-error: 'label' prop is custom for our Input component
-            options={conversationOptions}
-            value={formData?.preferences?.conversation}
-            onChange={(value: string) =>
-              handlePreferenceChange("conversation", value)
-            }
-            description="Your preferred interaction style"
-          />
+          <div className="space-y-2">
+            <Label>Conversation Level</Label>
+            <Select
+              value={formData?.preferences?.conversation || ""}
+              onValueChange={(value) =>
+                handlePreferenceChange("conversation", value)
+              }
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select Conversation Preference" />
+              </SelectTrigger>
+              <SelectContent>
+                {conversationOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
+        {/* Right Column */}
         <div className="space-y-4">
-          <Label>Music Preference</Label>
-          <Select
-            // @ts-expect-error: 'label' prop is custom for our Input component
-            options={musicOptions}
-            value={formData?.preferences?.music}
-            onChange={(value: string) => handlePreferenceChange("music", value)}
-            description="What music you'll play"
-          />
+          <div className="space-y-2">
+            <Label>Music Preference</Label>
+            <Select
+              value={formData?.preferences?.music || ""}
+              onValueChange={(value) => handlePreferenceChange("music", value)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select Music Preference" />
+              </SelectTrigger>
+              <SelectContent>
+                {musicOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
           {/* Age Range */}
           <div className="space-y-2">
-            <Label className="block text-sm font-medium text-foreground">
-              Age Range (Optional)
-            </Label>
+            <Label>Age Range (Optional)</Label>
             <div className="flex items-center space-x-3">
               <Input
                 type="number"
                 min={18}
                 max={30}
-                value={formData?.preferences?.ageRange?.[0]}
+                value={formData?.preferences?.ageRange?.[0] || ""}
                 onChange={(e) => {
                   const min = parseInt(e.target.value);
-                  const max = formData?.preferences?.ageRange?.[1];
+                  const max = formData?.preferences?.ageRange?.[1] || min;
                   handlePreferenceChange("ageRange", [Math.min(min, max), max]);
                 }}
                 className="flex-1"
@@ -130,10 +164,10 @@ const PreferencesSection: React.FC<PreferencesSectionProps> = ({
                 type="number"
                 min={18}
                 max={30}
-                value={formData?.preferences?.ageRange?.[1]}
+                value={formData?.preferences?.ageRange?.[1] || ""}
                 onChange={(e) => {
                   const max = parseInt(e.target.value);
-                  const min = formData?.preferences?.ageRange?.[0];
+                  const min = formData?.preferences?.ageRange?.[0] || max;
                   handlePreferenceChange("ageRange", [min, Math.max(min, max)]);
                 }}
                 className="flex-1"
@@ -145,24 +179,24 @@ const PreferencesSection: React.FC<PreferencesSectionProps> = ({
 
       {/* Ride Rules */}
       <div>
-        <label className="block text-sm font-medium text-foreground mb-3">
+        <Label className="block text-sm font-medium text-foreground mb-3">
           Ride Rules & Requirements
-        </label>
+        </Label>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {rideRules?.map((rule) => (
+          {rideRules.map((rule) => (
             <Button
-              key={rule?.id}
+              key={rule.id}
               variant={
-                formData?.preferences?.rules?.includes(rule?.id)
+                formData?.preferences?.rules?.includes(rule.id)
                   ? "default"
                   : "outline"
               }
               size="sm"
-              onClick={() => handleRuleToggle(rule?.id)}
+              onClick={() => handleRuleToggle(rule.id)}
               className="justify-start"
             >
-              <Icon name={rule?.icon} size={20} />
-              {rule?.label}
+              <Icon name={rule.icon} size={20} className="mr-2" />
+              {rule.label}
             </Button>
           ))}
         </div>
@@ -170,18 +204,18 @@ const PreferencesSection: React.FC<PreferencesSectionProps> = ({
 
       {/* Additional Notes */}
       <div>
-        <label className="block text-sm font-medium text-foreground mb-2">
+        <Label className="block text-sm font-medium text-foreground mb-3">
           Additional Notes (Optional)
-        </label>
+        </Label>
         <textarea
-          value={formData?.preferences?.notes}
+          value={formData?.preferences?.notes || ""}
           onChange={(e) => handlePreferenceChange("notes", e.target.value)}
           placeholder="Any specific instructions or preferences for passengers..."
           className="w-full px-3 py-2 border border-border rounded-lg bg-input text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent resize-none h-24"
           maxLength={200}
         />
         <p className="text-xs text-muted-foreground mt-1">
-          {formData?.preferences?.notes?.length}/200 characters
+          {formData?.preferences?.notes?.length || 0}/200 characters
         </p>
       </div>
 

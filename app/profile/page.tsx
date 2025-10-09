@@ -1,313 +1,263 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  ArrowLeft,
-  Edit3,
-  Star,
-  Camera,
-  Phone,
-  Mail,
-  Shield
-} from 'lucide-react';
-import { useProfile } from '@/hooks/useProfile';
-import { useUser } from '@clerk/nextjs';
-import Link from 'next/link';
-import { RatingsSection } from '@/components/RatingsSection';
-import { useRatings } from '@/hooks/useRatings';
+import React, { useState, useEffect, Suspense } from "react";
+import dynamic from "next/dynamic";
+import Skeleton from "react-loading-skeleton";
 
-const Profile = () => {
-  const [isEditing, setIsEditing] = useState(false);
-  const [editedProfile, setEditedProfile] = useState<Profile | null>(null);
-  const [userStats, setUserStats] = useState({
-    totalRides: 0,
-    completedRides: 0,
-    cancelledRides: 0,
+// Lazy load large components to improve page load time
+const ProfileHeader = dynamic(() => import("@/components/profile/ProfileHeader"), {
+  ssr: false,
+  loading: () => <Skeleton height={120} />,
+});
+// const PersonalInfoSection = dynamic(
+//   () => import("./components/PersonalInfoSection"),
+//   { ssr: false, loading: () => <Skeleton height={300} /> }
+// );
+// const VehicleInfoSection = dynamic(
+//   () => import("./components/VehicleInfoSection"),
+//   { ssr: false, loading: () => <Skeleton height={350} /> }
+// );
+const PreferencesSection = dynamic(
+  () => import("@/components/profile/PreferencesSection"),
+  { ssr: false, loading: () => <Skeleton height={300} /> }
+);
+// const SafetySection = dynamic(() => import("./components/SafetySection"), {
+//   ssr: false,
+//   loading: () => <Skeleton height={250} />,
+// });
+// const AccountSecuritySection = dynamic(
+//   () => import("./components/AccountSecuritySection"),
+//   { ssr: false, loading: () => <Skeleton height={250} /> }
+// );
+// const RideHistorySection = dynamic(
+//   () => import("./components/RideHistorySection"),
+//   { ssr: false, loading: () => <Skeleton height={400} /> }
+// );
+// const StatisticsSection = dynamic(
+//   () => import("./components/StatisticsSection"),
+//   { ssr: false, loading: () => <Skeleton height={350} /> }
+// );
+
+const ProfileAccountSettings = () => {
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Mock delay for skeleton loading effect
+  useEffect(() => {
+    const timer = setTimeout(() => setIsLoading(false), 800);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Mock user data
+  const [user, setUser] = useState({
+    id: 1,
+    name: "Priya Sharma",
+    email: "priya.sharma@mitcollege.edu.in",
+    phone: "+91 98765 43210",
+    college: "MIT College of Engineering, Pune",
+    profilePhoto:
+      "https://images.unsplash.com/photo-1494790108755-2616b612b786?w=150&h=150&fit=crop&crop=face",
+    isCollegeVerified: true,
+    isDriverVerified: true,
+    rating: 4.8,
+    totalRides: 127,
+    dateOfBirth: "2002-03-15",
+    gender: "female",
+    emergencyContact: "Rajesh Sharma",
+    emergencyPhone: "+91 98765 43211",
+    address: "Flat 301, Sunrise Apartments, Kothrud, Pune - 411038",
   });
 
-  const {
-    profile,
-    loading: loadingProfile,
-    updateProfile,
-    fetchUserStats,
-  } = useProfile();
-  const { fetchUserRatings } = useRatings();
-  const { user } = useUser();
+  const [vehicles, setVehicles] = useState([
+    {
+      id: 1,
+      make: "Honda",
+      model: "City",
+      year: "2021",
+      color: "White",
+      licensePlate: "MH12AB1234",
+      seats: "5",
+      fuelType: "petrol",
+      photo:
+        "https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?w=300&h=200&fit=crop",
+      isVerified: true,
+    },
+  ]);
 
-  useEffect(() => {
-    const loadStats = async () => {
-      const stats = await fetchUserStats();
-      if (stats) setUserStats(stats);
-    };
-    loadStats();
-  }, [fetchUserStats]);
+  const [preferences, setPreferences] = useState({
+    musicPreference: "pop",
+    smokingPolicy: "no-smoking",
+    chattiness: "moderate",
+    notifications: {
+      rideMatches: true,
+      messages: true,
+      payments: true,
+      promotions: false,
+    },
+    privacy: {
+      showProfile: true,
+      shareRideHistory: true,
+      shareLocation: true,
+    },
+    autoAccept: {
+      highRatedUsers: true,
+      sameCollege: false,
+    },
+  });
 
-  useEffect(() => {
-    if (profile) {
-      setEditedProfile(profile)
-      fetchUserRatings(profile.id);
-    };
-  }, [profile]);
+  const [safetySettings, setSafetySettings] = useState({
+    trustedContacts: [
+      { id: 1, name: "Rajesh Sharma", phone: "+91 98765 43211", relationship: "father" },
+      { id: 2, name: "Anita Sharma", phone: "+91 98765 43212", relationship: "mother" },
+    ],
+    settings: {
+      autoShareRideDetails: true,
+      enableLocationTracking: true,
+      requireDriverVerification: true,
+      safetyCheckIns: true,
+    },
+  });
 
-  const handleSave = async () => {
-    if (!editedProfile) return;
+  const [securitySettings, setSecuritySettings] = useState({
+    twoFactorEnabled: false,
+    lastPasswordChange: "2024-07-07",
+    loginActivity: [],
+  });
 
-    await updateProfile({
-      full_name: editedProfile.full_name,
-      college: editedProfile.college,
-      phone: editedProfile.phone || "",
-      bio: editedProfile.bio || "",
-    });
-    setIsEditing(false);
+  const [rideHistory] = useState([
+    {
+      id: 1,
+      role: "passenger",
+      from: "MIT College",
+      to: "Phoenix Mall",
+      date: "2024-08-06",
+      time: "2:30 PM",
+      status: "completed",
+      distance: 8.5,
+      duration: "25 min",
+      amount: 85,
+      rating: 5,
+      partner: {
+        name: "Arjun Patel",
+        avatar:
+          "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=50&h=50&fit=crop&crop=face",
+      },
+    },
+  ]);
+
+  const [statistics] = useState({
+    totalRides: 127,
+    totalDistance: 2847,
+    moneySaved: 8540,
+    averageRating: 4.8,
+    totalRatings: 89,
+    co2Saved: 142,
+    fuelSaved: 67,
+    treesEquivalent: 6,
+    studentsHelped: 23,
+    monthlyRides: 18,
+    monthlySavings: 1240,
+    monthlyDistance: 287,
+    monthlyCO2: 18,
+    communityScore: 750,
+    communityRank: 12,
+  });
+
+  const [expandedSections, setExpandedSections] = useState({
+    personalInfo: false,
+    vehicleInfo: false,
+    preferences: false,
+    safety: false,
+    security: false,
+    history: false,
+    statistics: false,
+  });
+
+  const toggleSection = (section: string) => {
+    setExpandedSections((prev) => ({ ...prev, [section]: !prev?.[section] }));
   };
 
-  const handleInputChange = (field: keyof Profile, value: string) => {
-    if (editedProfile) {
-      setEditedProfile({
-        ...editedProfile,
-        [field]: value,
-      });
-    }
-  };
-
-  if (!profile || !editedProfile) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Card className="p-8 text-center">
-          <h3 className="font-semibold mb-2">Profile not found</h3>
-          <p className="text-muted-foreground">
-            Unable to load profile information
-          </p>
-        </Card>
-      </div>
-    );
-  }
-
-  const displayEmail =
-    user?.primaryEmailAddress?.emailAddress || editedProfile.email || "";
-
-  if (loadingProfile) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Card className="p-8 text-center">
-          <h3 className="font-semibold mb-2">Loading Profile...</h3>
-          <p className="text-muted-foreground">
-            Please wait while we fetch your profile information
-          </p>
-        </Card>
-      </div>
-    );
-  }
+  // Mock handlers
+  const handlePhotoUpload = (file: File) => console.log("Uploaded:", file);
+  const handleEditProfile = () =>
+    setExpandedSections((prev) => ({ ...prev, personalInfo: true }));
+  const handleSavePersonalInfo = (data: any) => setUser((prev) => ({ ...prev, ...data }));
+  const handleSavePreferences = (data: any) => setPreferences(data);
+  const handleSaveSafetySettings = (data: any) => setSafetySettings(data);
+  const handleSaveSecuritySettings = (data: any) => setSecuritySettings(data);
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="relative px-4 pt-3 lg:pt-7">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <Link href="/dashboard">
-              <Button variant="ghost" size="icon">
-                <ArrowLeft className="w-5 h-5" />
-              </Button>
-            </Link>
-            <h1 className="text-lg font-semibold">Profile</h1>
-          </div>
-
-          <Button
-            variant={isEditing ? "default" : "outline"}
-            size="sm"
-            onClick={isEditing ? handleSave : () => setIsEditing(true)}
-            className="hover:scale-105 transition-transform duration-200"
-          >
-            {isEditing ? (
-              "Save"
-            ) : (
-              <>
-                <Edit3 className="w-4 h-4 mr-2" />
-                Edit
-              </>
-            )}
-          </Button>
-        </div>
-      </header>
-
-      <div className="container relative lg:top-[-50px] mx-auto p-4 space-y-6 max-w-2xl">
-        {/* Profile Header */}
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center space-x-4">
-              <div className="relative">
-                <Avatar className="w-20 h-20">
-                  <AvatarImage src={profile.avatar_url || user?.imageUrl} />
-                  <AvatarFallback className="bg-gradient-primary text-white text-2xl">
-                    {profile.full_name
-                      ?.split(" ")
-                      .map((n) => n[0])
-                      .join("")}
-                  </AvatarFallback>
-                </Avatar>
-                {isEditing && (
-                  <Button
-                    size="icon"
-                    variant="secondary"
-                    className="absolute -bottom-2 -right-2 w-8 h-8 rounded-full"
-                  >
-                    <Camera className="w-4 h-4" />
-                  </Button>
-                )}
-              </div>
-
-              <div className="flex-1">
-                <div className="flex items-center space-x-2 mb-2">
-                  <h2 className="text-xl font-semibold">
-                    {editedProfile.full_name}
-                  </h2>
-                  <Badge
-                    variant={
-                      editedProfile.verification_status === "verified"
-                        ? "default"
-                        : "secondary"
-                    }
-                  >
-                    <Shield className="w-3 h-3 mr-1" />
-                    {editedProfile.verification_status === "verified"
-                      ? "Verified"
-                      : "Pending"}
-                  </Badge>
-                </div>
-
-                <div className="flex items-center space-x-4 text-sm text-muted-foreground mb-3">
-                  <div className="flex items-center space-x-1">
-                    <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                    <p>
-                      {loadingProfile
-                        ? "0.0"
-                        : profile.avg_rating
-                        ? profile.avg_rating
-                        : 0.0}
-                    </p>
-                  </div>
-                  <span>•</span>
-                  <span>{userStats.totalRides} rides</span>
-                  <span>•</span>
-                  <span>
-                    Joined{" "}
-                    {new Date(editedProfile.created_at).toLocaleDateString(
-                      "en-US",
-                      { month: "long", year: "numeric" }
-                    )}
-                  </span>
-                </div>
-
-                <p className="text-sm text-muted-foreground">
-                  {editedProfile.bio || "No bio added yet"}
-                </p>
-              </div>
+    <div className="page min-h-screen bg-background container mx-auto p-4 space-y-6">
+-      <main className="pb-20 md:pb-6">
+        <div className="max-w-4xl mx-auto px-4">
+          {isLoading ? (
+            <div className="space-y-6">
+              <Skeleton height={120} />
+              <Skeleton height={300} />
+              <Skeleton height={350} />
+              <Skeleton height={300} />
+              <Skeleton height={250} />
             </div>
-          </CardContent>
-        </Card>
-
-        {/* Stats Cards */}
-        <div className="grid grid-cols-2 gap-4">
-          <Card className="hover:shadow-soft hover:scale-105 transition-all duration-300 cursor-pointer">
-            <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-primary animate-pulse">
-                {loadingProfile ? "..." : userStats.completedRides}
-              </div>
-              <p className="text-sm text-muted-foreground">Completed Rides</p>
-            </CardContent>
-          </Card>
-
-          <Card className="hover:shadow-soft hover:scale-105 transition-all duration-300 cursor-pointer">
-            <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-primary animate-pulse">
-                {loadingProfile
-                  ? "..."
-                  : profile.avg_rating
-                  ? profile.avg_rating
-                  : 0.0}
-              </div>
-              <p className="text-sm text-muted-foreground">Average Rating</p>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Details Tab */}
-        <Card className="p-4">
-          <CardHeader>
-            <CardTitle>Personal Information</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4 ">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="name">Full Name</Label>
-                <Input
-                  id="name"
-                  value={editedProfile.full_name}
-                  onChange={(e) =>
-                    handleInputChange("full_name", e.target.value)
-                  }
-                  disabled={!isEditing}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="college">College</Label>
-                <Input
-                  id="college"
-                  value={editedProfile.college || ""}
-                  onChange={(e) => handleInputChange("college", e.target.value)}
-                  disabled={!isEditing}
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <div className="flex items-center space-x-2">
-                <Mail className="w-4 h-4 text-muted-foreground" />
-                <Input id="email" value={displayEmail} disabled />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="phone">Phone Number</Label>
-              <div className="flex items-center space-x-2">
-                <Phone className="w-4 h-4 text-muted-foreground" />
-                <Input
-                  id="phone"
-                  value={editedProfile.phone || ""}
-                  onChange={(e) => handleInputChange("phone", e.target.value)}
-                  disabled={!isEditing}
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="bio">Bio</Label>
-              <Textarea
-                id="bio"
-                value={editedProfile.bio || ""}
-                onChange={(e) => handleInputChange("bio", e.target.value)}
-                disabled={!isEditing}
-                rows={3}
+          ) : (
+            <Suspense fallback={<Skeleton height={400} />}>
+              <ProfileHeader
+                user={user}
+                onPhotoUpload={handlePhotoUpload}
+                onEditProfile={handleEditProfile}
               />
-            </div>
-          </CardContent>
-        </Card>
 
-        {/* Ratings Section */}
-        <RatingsSection userId={profile.id} />
-      </div>
+              <div className="space-y-0">
+                {/* <PersonalInfoSection
+                  user={user}
+                  onSave={handleSavePersonalInfo}
+                  isExpanded={expandedSections.personalInfo}
+                  onToggle={() => toggleSection("personalInfo")}
+                />
+
+                <VehicleInfoSection
+                  vehicles={vehicles}
+                  isExpanded={expandedSections.vehicleInfo}
+                  onToggle={() => toggleSection("vehicleInfo")}
+                /> */}
+
+                <PreferencesSection
+                  preferences={preferences}
+                  onSave={handleSavePreferences}
+                  isExpanded={expandedSections.preferences}
+                  onToggle={() => toggleSection("preferences")}
+                />
+
+                {/* <SafetySection
+                  safetySettings={safetySettings}
+                  onSave={handleSaveSafetySettings}
+                  isExpanded={expandedSections.safety}
+                  onToggle={() => toggleSection("safety")}
+                />
+
+                <AccountSecuritySection
+                  securitySettings={securitySettings}
+                  onSave={handleSaveSecuritySettings}
+                  isExpanded={expandedSections.security}
+                  onToggle={() => toggleSection("security")}
+                />
+
+                <RideHistorySection
+                  rideHistory={rideHistory}
+                  isExpanded={expandedSections.history}
+                  onToggle={() => toggleSection("history")}
+                />
+
+                <StatisticsSection
+                  statistics={statistics}
+                  isExpanded={expandedSections.statistics}
+                  onToggle={() => toggleSection("statistics")}
+                /> */}
+              </div>
+            </Suspense>
+          )}
+        </div>
+      </main>
     </div>
   );
 };
 
-export default Profile;
+export default ProfileAccountSettings;
