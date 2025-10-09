@@ -5,38 +5,44 @@ import dynamic from "next/dynamic";
 import Skeleton from "react-loading-skeleton";
 
 // Lazy load large components to improve page load time
-const ProfileHeader = dynamic(() => import("@/components/profile/ProfileHeader"), {
-  ssr: false,
-  loading: () => <Skeleton height={120} />,
-});
-// const PersonalInfoSection = dynamic(
-//   () => import("./components/PersonalInfoSection"),
-//   { ssr: false, loading: () => <Skeleton height={300} /> }
-// );
-// const VehicleInfoSection = dynamic(
-//   () => import("./components/VehicleInfoSection"),
-//   { ssr: false, loading: () => <Skeleton height={350} /> }
-// );
+const ProfileHeader = dynamic(
+  () => import("@/components/profile/ProfileHeader"),
+  {
+    ssr: false,
+    loading: () => <Skeleton height={120} />,
+  }
+);
+const PersonalInfoSection = dynamic(
+  () => import("@/components/profile/PersonalInfoSection"),
+  { ssr: false, loading: () => <Skeleton height={300} /> }
+);
+const VehicleInfoSection = dynamic(
+  () => import("@/components/profile/VehicleInfoSection"),
+  { ssr: false, loading: () => <Skeleton height={350} /> }
+);
 const PreferencesSection = dynamic(
   () => import("@/components/profile/PreferencesSection"),
   { ssr: false, loading: () => <Skeleton height={300} /> }
 );
-// const SafetySection = dynamic(() => import("./components/SafetySection"), {
-//   ssr: false,
-//   loading: () => <Skeleton height={250} />,
-// });
-// const AccountSecuritySection = dynamic(
-//   () => import("./components/AccountSecuritySection"),
-//   { ssr: false, loading: () => <Skeleton height={250} /> }
-// );
-// const RideHistorySection = dynamic(
-//   () => import("./components/RideHistorySection"),
-//   { ssr: false, loading: () => <Skeleton height={400} /> }
-// );
-// const StatisticsSection = dynamic(
-//   () => import("./components/StatisticsSection"),
-//   { ssr: false, loading: () => <Skeleton height={350} /> }
-// );
+const SafetySection = dynamic(
+  () => import("@/components/profile/SafetySection"),
+  {
+    ssr: false,
+    loading: () => <Skeleton height={250} />,
+  }
+);
+const AccountSecuritySection = dynamic(
+  () => import("@/components/profile/AccountSecuritySection"),
+  { ssr: false, loading: () => <Skeleton height={250} /> }
+);
+const RideHistorySection = dynamic(
+  () => import("@/components/profile/RideHistorySection"),
+  { ssr: false, loading: () => <Skeleton height={400} /> }
+);
+const StatisticsSection = dynamic(
+  () => import("@/components/profile/StatisticsSection"),
+  { ssr: false, loading: () => <Skeleton height={350} /> }
+);
 
 const ProfileAccountSettings = () => {
   const [isLoading, setIsLoading] = useState(true);
@@ -106,8 +112,18 @@ const ProfileAccountSettings = () => {
 
   const [safetySettings, setSafetySettings] = useState({
     trustedContacts: [
-      { id: 1, name: "Rajesh Sharma", phone: "+91 98765 43211", relationship: "father" },
-      { id: 2, name: "Anita Sharma", phone: "+91 98765 43212", relationship: "mother" },
+      {
+        id: 1,
+        name: "Rajesh Sharma",
+        phone: "+91 98765 43211",
+        relationship: "father",
+      },
+      {
+        id: 2,
+        name: "Anita Sharma",
+        phone: "+91 98765 43212",
+        relationship: "mother",
+      },
     ],
     settings: {
       autoShareRideDetails: true,
@@ -126,12 +142,12 @@ const ProfileAccountSettings = () => {
   const [rideHistory] = useState([
     {
       id: 1,
-      role: "passenger",
-      from: "MIT College",
-      to: "Phoenix Mall",
+      role: "Passenger",
+      pickup: "MIT College",
+      drop: "Phoenix Mall",
       date: "2024-08-06",
       time: "2:30 PM",
-      status: "completed",
+      status: "Completed",
       distance: 8.5,
       duration: "25 min",
       amount: 85,
@@ -172,22 +188,26 @@ const ProfileAccountSettings = () => {
     statistics: false,
   });
 
-  const toggleSection = (section: string) => {
-    setExpandedSections((prev) => ({ ...prev, [section]: !prev?.[section] }));
+  const toggleSection = (section: keyof typeof expandedSections) => {
+    setExpandedSections((prev) => ({
+      ...prev,
+      [section]: !prev[section],
+    }));
   };
 
   // Mock handlers
   const handlePhotoUpload = (file: File) => console.log("Uploaded:", file);
   const handleEditProfile = () =>
     setExpandedSections((prev) => ({ ...prev, personalInfo: true }));
-  const handleSavePersonalInfo = (data: any) => setUser((prev) => ({ ...prev, ...data }));
+  const handleSavePersonalInfo = (data: any) =>
+    setUser((prev) => ({ ...prev, ...data }));
   const handleSavePreferences = (data: any) => setPreferences(data);
   const handleSaveSafetySettings = (data: any) => setSafetySettings(data);
   const handleSaveSecuritySettings = (data: any) => setSecuritySettings(data);
 
   return (
     <div className="page min-h-screen bg-background container mx-auto p-4 space-y-6">
--      <main className="pb-20 md:pb-6">
+      <main className="pb-20 md:pb-6">
         <div className="max-w-4xl mx-auto px-4">
           {isLoading ? (
             <div className="space-y-6">
@@ -206,7 +226,7 @@ const ProfileAccountSettings = () => {
               />
 
               <div className="space-y-0">
-                {/* <PersonalInfoSection
+                <PersonalInfoSection
                   user={user}
                   onSave={handleSavePersonalInfo}
                   isExpanded={expandedSections.personalInfo}
@@ -214,10 +234,16 @@ const ProfileAccountSettings = () => {
                 />
 
                 <VehicleInfoSection
-                  vehicles={vehicles}
+                  vehicles={vehicles.map((v) => ({
+                    ...v,
+                    id: String(v.id),
+                  }))}
+                  onAddVehicle={() => {}}
+                  onEditVehicle={() => {}}
+                  onDeleteVehicle={() => {}}
                   isExpanded={expandedSections.vehicleInfo}
                   onToggle={() => toggleSection("vehicleInfo")}
-                /> */}
+                />
 
                 <PreferencesSection
                   preferences={preferences}
@@ -226,7 +252,7 @@ const ProfileAccountSettings = () => {
                   onToggle={() => toggleSection("preferences")}
                 />
 
-                {/* <SafetySection
+                <SafetySection
                   safetySettings={safetySettings}
                   onSave={handleSaveSafetySettings}
                   isExpanded={expandedSections.safety}
@@ -235,7 +261,7 @@ const ProfileAccountSettings = () => {
 
                 <AccountSecuritySection
                   securitySettings={securitySettings}
-                  onSave={handleSaveSecuritySettings}
+                  onSave={() => handleSaveSecuritySettings(securitySettings)}
                   isExpanded={expandedSections.security}
                   onToggle={() => toggleSection("security")}
                 />
@@ -250,7 +276,7 @@ const ProfileAccountSettings = () => {
                   statistics={statistics}
                   isExpanded={expandedSections.statistics}
                   onToggle={() => toggleSection("statistics")}
-                /> */}
+                />
               </div>
             </Suspense>
           )}
