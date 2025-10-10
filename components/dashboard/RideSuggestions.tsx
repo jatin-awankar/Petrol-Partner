@@ -95,7 +95,7 @@ const RideSuggestions: React.FC = () => {
     <div className="bg-card border border-border rounded-xl p-6 mb-6">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center space-x-2">
-          <Icon name="Zap" size={20} className="text-accent" />
+          <Icon name="Zap" size={20} className="text-yellow-300" />
           <h2 className="text-lg font-semibold text-foreground">Suggested Rides</h2>
         </div>
         <Button variant="ghost" size="sm">

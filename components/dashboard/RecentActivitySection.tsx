@@ -68,8 +68,8 @@ const RecentActivitySection: React.FC = () => {
           time: "2 days ago",
           status: "completed",
           icon: "Car",
-          color: "text-accent",
-          bgColor: "bg-accent/10",
+          color: "text-violet-400",
+          bgColor: "bg-violet-400/10",
         },
       ]);
       setLoading(false);
