@@ -31,8 +31,8 @@ const SafetyReminders: React.FC = () => {
           message:
             "Always check driver verification badges and vehicle details before booking.",
           icon: "Shield",
-          color: "text-red",
-          bgColor: "",
+          color: "text-primary",
+          bgColor: "bg-primary/10",
           priority: "high",
         },
         {
@@ -41,7 +41,7 @@ const SafetyReminders: React.FC = () => {
           message:
             "Share your ride details with friends or family for added safety.",
           icon: "MapPin",
-          color: "text-success",
+          color: "text-red-800",
           bgColor: "bg-success/10",
           priority: "medium",
         },
