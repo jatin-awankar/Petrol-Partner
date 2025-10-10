@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import React, { useEffect, useState } from "react";
 import Skeleton from "react-loading-skeleton";
@@ -32,8 +32,8 @@ const StatsCard: React.FC = () => {
           change: "+12%",
           changeType: "positive",
           icon: "Fuel",
-          color: "text-success",
-          bgColor: "bg-success/10",
+          color: "text-error",
+          bgColor: "bg-error/10",
           description: "This month",
         },
         {
@@ -54,8 +54,8 @@ const StatsCard: React.FC = () => {
           change: "+8.1 kg",
           changeType: "positive",
           icon: "Leaf",
-          color: "text-accent",
-          bgColor: "bg-accent/10",
+          color: "text-success",
+          bgColor: "bg-success/10",
           description: "This month",
         },
         {
@@ -77,7 +77,7 @@ const StatsCard: React.FC = () => {
   }, []);
 
   return (
-    <div className="bg-card border border-border rounded-xl p-6 mb-6">
+    <div className="bg-card border border-border rounded-xl p-6 mb-6 shadow-md">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold text-foreground">Your Stats</h2>
         {loading ? (

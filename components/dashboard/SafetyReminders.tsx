@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import React, { useState, useEffect } from "react";
 import Skeleton from "react-loading-skeleton";
@@ -41,7 +41,7 @@ const SafetyReminders: React.FC = () => {
           message:
             "Share your ride details with friends or family for added safety.",
           icon: "MapPin",
-          color: "text-red-800",
+          color: "text-success",
           bgColor: "bg-success/10",
           priority: "medium",
         },
@@ -97,7 +97,7 @@ const SafetyReminders: React.FC = () => {
   if (!visibleReminders?.length) return null;
 
   return (
-    <div className="bg-card border border-border rounded-xl p-6 mb-6">
+    <div className="bg-card border border-border rounded-xl p-6 mb-6 shadow-md">
       <div className="flex items-center space-x-2 mb-4">
         <Icon name="AlertTriangle" size={20} className="text-warning" />
         <h2 className="text-lg font-semibold text-foreground">

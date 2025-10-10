@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import React, { useEffect, useState } from "react";
 import Skeleton from "react-loading-skeleton";
@@ -79,7 +79,7 @@ const CommunityUpdates: React.FC = () => {
   }, []);
 
   return (
-    <div className="bg-card border border-border rounded-xl p-6 mb-6">
+    <div className="bg-card border border-border rounded-xl p-6 mb-6 shadow-md">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold text-foreground">
           Community Updates
@@ -146,8 +146,8 @@ const CommunityUpdates: React.FC = () => {
 
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-2">
-                      <div className="w-6 h-6 bg-muted rounded-full flex items-center justify-center">
-                        <Icon name="User" size={12} />
+                      <div className="w-6 h-6 bg-blue-400/10 rounded-full flex items-center justify-center">
+                        <Icon name="User" size={12} className="text-blue-400" />
                       </div>
                       <span className="text-xs text-muted-foreground">
                         {update?.author ?? "Unknown"}
@@ -156,7 +156,11 @@ const CommunityUpdates: React.FC = () => {
 
                     <div className="flex items-center space-x-2">
                       <Button variant="ghost" size="sm">
-                        <Icon name="Heart" size={14} />
+                        <Icon
+                          name="Heart"
+                          size={14}
+                          className="text-red-500 fill-current"
+                        />
                       </Button>
                       <Button variant="ghost" size="sm">
                         <Icon name="Share2" size={14} />

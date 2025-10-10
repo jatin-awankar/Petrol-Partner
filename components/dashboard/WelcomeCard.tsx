@@ -1,5 +1,5 @@
 // src/pages/dashboard-home/components/WelcomeCard.tsx
-'use client';
+"use client";
 
 import React, { useState, useEffect } from "react";
 import Icon from "@/components/AppIcon";
@@ -78,7 +78,7 @@ const WelcomeCard: React.FC<WelcomeCardProps> = ({
   }
 
   return (
-    <div className="bg-gradient-to-r from-primary to-primary/80 rounded-xl p-6 text-white mb-6">
+    <div className="bg-gradient-to-r from-primary to-primary/80 rounded-xl p-6 text-white mb-6 shadow-md">
       <div className="flex items-center justify-between">
         <div className="flex-1">
           <h1 className="text-2xl font-semibold mb-1">

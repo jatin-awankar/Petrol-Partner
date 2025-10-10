@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import React, { useState, useEffect } from "react";
 import Skeleton from "react-loading-skeleton";
@@ -40,7 +40,7 @@ const QuickActionCards: React.FC = () => {
           id: "offer-ride",
           title: "Offer a Ride",
           description: "Share your journey",
-          icon: "Car",
+          icon: "Bike",
           color: "bg-accent",
           textColor: "text-accent-foreground",
           route: "/post-a-ride",
@@ -53,7 +53,7 @@ const QuickActionCards: React.FC = () => {
   }, []);
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 ">
       {loading
         ? Array.from({ length: 2 }).map((_, idx) => (
             <div
@@ -69,8 +69,12 @@ const QuickActionCards: React.FC = () => {
         : actions?.map((action) => (
             <div
               key={action?.id ?? Math.random()}
-              className="bg-card border border-border rounded-xl p-6 hover:shadow-medium transition-shadow cursor-pointer"
-              onClick={() => action?.route && redirect(action.route)}
+              className="bg-card border border-border rounded-xl p-6 hover:shadow-medium transition-shadow cursor-pointer shadow-md"
+              onClick={() => {
+                if (action?.route) {
+                  redirect(action.route);
+                }
+              }}
             >
               <div className="flex items-start justify-between mb-4">
                 <div
@@ -107,7 +111,9 @@ const QuickActionCards: React.FC = () => {
                   size="sm"
                   onClick={(e) => {
                     e.stopPropagation();
-                    action?.route && redirect(action.route);
+                    if (action?.route) {
+                      redirect(action.route);
+                    }
                   }}
                 >
                   Get Started
