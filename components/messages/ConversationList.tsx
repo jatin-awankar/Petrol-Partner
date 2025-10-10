@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import ConversationCard from "./ConversationCard";
 import { Input } from "../ui/input";
 import Icon from "../AppIcon";
@@ -57,21 +57,25 @@ const ConversationList: React.FC<ConversationListProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Filter conversations based on search and filter
-  const filteredConversations = conversations?.filter((conversation) => {
-    const matchesSearch =
-      conversation?.name?.toLowerCase().includes(searchQuery?.toLowerCase()) ||
-      conversation?.route?.toLowerCase().includes(searchQuery?.toLowerCase());
+  const filteredConversations = useMemo(() => {
+    return conversations?.filter((conversation) => {
+      const matchesSearch =
+        conversation?.name
+          ?.toLowerCase()
+          .includes(searchQuery?.toLowerCase()) ||
+        conversation?.route?.toLowerCase().includes(searchQuery?.toLowerCase());
 
-    const matchesFilter =
-      filterStatus === "all" ||
-      (filterStatus === "active" &&
-        ["confirmed", "pending"].includes(conversation?.rideStatus ?? "")) ||
-      (filterStatus === "completed" &&
-        (conversation?.rideStatus ?? "") === "completed") ||
-      (filterStatus === "archived" && conversation?.isArchived);
+      const matchesFilter =
+        filterStatus === "all" ||
+        (filterStatus === "active" &&
+          ["confirmed", "pending"].includes(conversation?.rideStatus ?? "")) ||
+        (filterStatus === "completed" &&
+          (conversation?.rideStatus ?? "") === "completed") ||
+        (filterStatus === "archived" && conversation?.isArchived);
 
-    return matchesSearch && matchesFilter;
-  });
+      return matchesSearch && matchesFilter;
+    });
+  }, [conversations, searchQuery, filterStatus]);
 
   // Load conversations for current page
   useEffect(() => {
