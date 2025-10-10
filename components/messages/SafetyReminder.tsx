@@ -10,7 +10,7 @@ interface SafetyReminderProps {
 
 const SafetyReminder: React.FC<SafetyReminderProps> = ({ onDismiss }) => {
   return (
-    <div className="bg-warning/10 border border-warning/20 rounded-lg p-4 mb-4 mx-4">
+    <div className="bg-warning/10 border border-warning/20 rounded-lg p-4">
       <div className="flex items-start space-x-3">
         <div className="flex-shrink-0">
           <Icon name="Shield" size={20} className="text-warning" />

@@ -8,7 +8,7 @@ const MessagesPage: React.FC = () => {
   const [showSafetyReminder, setShowSafetyReminder] = useState(true);
 
   return (
-    <div className="max-w-7xl mx-auto w-full">
+    <div className="page bg-background container p-4 space-y-6 max-w-7xl mx-auto w-full">
       {showSafetyReminder && (
         <SafetyReminder onDismiss={() => setShowSafetyReminder(false)} />
       )}

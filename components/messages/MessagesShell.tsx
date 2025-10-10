@@ -90,7 +90,6 @@ const MOCK_CONVERSATIONS: Conversation[] = [
 export default function MessagesShell() {
   const [conversations, setConversations] = useState<Conversation[] | null>(null);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
-  const [showSafetyReminder, setShowSafetyReminder] = useState(true);
   const [activeRideStatus, setActiveRideStatus] = useState<
     "none" | "searching" | "matched" | "en-route" | "arrived" | "in-progress" | "completed"
   >("en-route");
@@ -147,7 +146,7 @@ export default function MessagesShell() {
   };
 
   return (
-    <div className="min-h-[calc(100vh-4rem)] bg-background">
+    <div className="bg-background">
       {/* RideStatusIndicator */}
       <RideStatusIndicator
         status={activeRideStatus}
@@ -158,9 +157,9 @@ export default function MessagesShell() {
       />
 
       {/* Main content */}
-      <div className="pt-16 pb-20 md:pb-6">
+      <div className="mb-3">
         <div className="max-w-7xl mx-auto">
-          <div className="md:flex md:h-[calc(100vh-6rem)]">
+          <div className="md:flex min-h-screen">
             {/* Sidebar */}
             <aside
               className={`${
