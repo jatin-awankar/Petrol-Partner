@@ -112,7 +112,12 @@ const StatisticsSection: React.FC<StatisticsSectionProps> = ({
         />
       </button>
 
-      {isExpanded && (
+      {/* Content */}
+      <div
+        className={`overflow-hidden transition-[max-height,opacity] duration-500 ease-in-out ${
+          isExpanded ? "max-h-[3000px] opacity-100" : "max-h-0 opacity-0"
+        }`}
+      >
         <div className="px-4 pb-4 border-t border-border">
           <div className="pt-4 space-y-6">
             {/* OVERVIEW */}
@@ -311,7 +316,7 @@ const StatisticsSection: React.FC<StatisticsSectionProps> = ({
             </section>
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 };

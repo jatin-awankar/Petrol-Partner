@@ -187,8 +187,12 @@ const VehicleInfoSection: React.FC<VehicleInfoSectionProps> = ({
           className="text-muted-foreground"
         />
       </button>
-
-      {isExpanded && (
+      {/* Content */}
+      <div
+        className={`overflow-hidden transition-[max-height,opacity] duration-500 ease-in-out ${
+          isExpanded ? "max-h-[3000px] opacity-100" : "max-h-0 opacity-0"
+        }`}
+      >
         <div className="px-4 pb-4 border-t border-border pt-4">
           {/* Vehicle List */}
           {vehicles?.length > 0 && (
@@ -242,14 +246,14 @@ const VehicleInfoSection: React.FC<VehicleInfoSectionProps> = ({
                             )}
                           </div>
                         </div>
-                        <div className="flex space-x-2">
+                        <div className="flex flex-wrap gap-2 sm:gap-3 md:gap-4 justify-end">
                           <Button
                             variant="ghost"
                             size="sm"
                             onClick={() => handleEdit(vehicle)}
                             className="!hover:bg-slate-400/10"
                           >
-                            <Edit className="text-slate-500 " />
+                            <Edit className="text-slate-500 w-4 h-4 sm:w-5 sm:h-5" />
                           </Button>
                           <Button
                             variant="ghost"
@@ -257,7 +261,7 @@ const VehicleInfoSection: React.FC<VehicleInfoSectionProps> = ({
                             onClick={() => onDeleteVehicle(vehicle?.id)}
                             className="text-error hover:text-error"
                           >
-                            <Trash2 className="text-slate-500" />
+                            <Trash2 className="text-slate-500 w-4 h-4 sm:w-5 sm:h-5" />
                           </Button>
                         </div>
                       </div>
@@ -383,7 +387,7 @@ const VehicleInfoSection: React.FC<VehicleInfoSectionProps> = ({
             </Button>
           )}
         </div>
-      )}
+      </div>
     </div>
   );
 };

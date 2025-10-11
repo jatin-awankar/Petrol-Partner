@@ -141,7 +141,12 @@ const SafetySection: React.FC<SafetySectionProps> = ({
         />
       </button>
 
-      {isExpanded && (
+      {/* Content */}
+      <div
+        className={`overflow-hidden transition-[max-height,opacity] duration-500 ease-in-out ${
+          isExpanded ? "max-h-[3000px] opacity-100" : "max-h-0 opacity-0"
+        }`}
+      >
         <div className="px-4 pb-4 border-t border-border">
           <div className="pt-4 space-y-6">
             {/* Trusted Contacts */}
@@ -199,7 +204,10 @@ const SafetySection: React.FC<SafetySectionProps> = ({
                       placeholder="e.g., John Doe"
                       value={newContact?.name}
                       onChange={(e) =>
-                        setNewContact({ ...newContact, name: e?.target?.value })
+                        setNewContact({
+                          ...newContact,
+                          name: e?.target?.value,
+                        })
                       }
                       required
                     />
@@ -390,7 +398,7 @@ const SafetySection: React.FC<SafetySectionProps> = ({
             </Button>
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 };

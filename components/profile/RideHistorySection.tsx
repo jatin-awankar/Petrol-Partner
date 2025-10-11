@@ -120,11 +120,16 @@ const RideHistorySection: React.FC<{
         <Icon
           name={isExpanded ? "ChevronUp" : "ChevronDown"}
           size={20}
-          className="text-muted-foreground"
+          className="text-muted-foreground transition-transform duration-200"
         />
       </button>
 
-      {isExpanded && (
+      {/* Content */}
+      <div
+        className={`overflow-hidden transition-[max-height,opacity] duration-500 ease-in-out ${
+          isExpanded ? "max-h-[3000px] opacity-100" : "max-h-0 opacity-0 "
+        }`}
+      >
         <div className="px-4 pb-4 border-t border-border">
           <div className="pt-4 space-y-6">
             {/* Filters */}
@@ -342,7 +347,7 @@ const RideHistorySection: React.FC<{
             )}
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 };
