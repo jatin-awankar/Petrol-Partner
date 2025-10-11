@@ -62,7 +62,7 @@ const ProfileHeader: React.FC<ProfileHeaderProps> = ({
   }
 
   return (
-    <div className="bg-card border border-border rounded-lg p-6 mb-6 shadow-soft transition-all hover:shadow-md">
+    <div className="bg-card border border-border rounded-lg p-6 mb-6 shadow-md">
       <div className="flex flex-col sm:flex-row items-center space-y-4 sm:space-y-0 sm:space-x-6">
         {/* Profile Photo */}
         <div className="relative group">
@@ -112,7 +112,7 @@ const ProfileHeader: React.FC<ProfileHeaderProps> = ({
             <div className="flex items-center space-x-1">
               <Icon
                 name="Star"
-                size={16}
+                size={20}
                 className="text-warning fill-current"
               />
               <span className="font-medium">{user.rating ?? 0}</span>
@@ -122,8 +122,12 @@ const ProfileHeader: React.FC<ProfileHeaderProps> = ({
             </div>
 
             {user.isCollegeVerified && (
-              <div className="flex items-center space-x-1 text-success">
-                <Icon name="BadgeCheck" size={16} />
+              <div className="flex items-center space-x-1 text-green-600 ">
+                <Icon
+                  name="BadgeCheck"
+                  size={25}
+                  className="text-white fill-green-500"
+                />
                 <span>Verified Student</span>
               </div>
             )}

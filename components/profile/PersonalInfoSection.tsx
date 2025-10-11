@@ -117,7 +117,7 @@ const PersonalInfoSection: React.FC<PersonalInfoSectionProps> = ({
   }
 
   return (
-    <div className="bg-card border border-border rounded-lg mb-4">
+    <div className="bg-card border border-border rounded-lg mb-4 shadow-md">
       <button
         onClick={onToggle}
         className="w-full flex items-center justify-between p-4 hover:bg-muted/50 transition-colors"
@@ -139,28 +139,30 @@ const PersonalInfoSection: React.FC<PersonalInfoSectionProps> = ({
             <>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="text-sm font-medium text-muted-foreground">
+                  <label className="text-sm font-medium text-foreground">
                     Full Name
                   </label>
-                  <p className="text-foreground">{formData?.name}</p>
+                  <p className="text-muted-foreground">{formData?.name}</p>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-muted-foreground">
+                  <label className="text-sm font-medium text-foreground">
                     Phone Number
                   </label>
-                  <p className="text-foreground">{formData?.phone}</p>
+                  <p className="text-muted-foreground">{formData?.phone}</p>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-muted-foreground">
+                  <label className="text-sm font-medium text-foreground">
                     Date of Birth
                   </label>
-                  <p className="text-foreground">{formData?.dateOfBirth}</p>
+                  <p className="text-muted-foreground">
+                    {formData?.dateOfBirth}
+                  </p>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-muted-foreground">
+                  <label className="text-sm font-medium text-foreground">
                     Gender
                   </label>
-                  <p className="text-foreground capitalize">
+                  <p className="text-muted-foreground capitalize">
                     {formData?.gender}
                   </p>
                 </div>
@@ -176,16 +178,16 @@ const PersonalInfoSection: React.FC<PersonalInfoSectionProps> = ({
               </div>
 
               <div className="border-t border-border pt-4">
-                <label className="text-sm font-medium text-muted-foreground">
+                <label className="text-sm font-medium text-foreground">
                   Address
                 </label>
-                <p className="text-foreground">{formData?.address}</p>
+                <p className="text-muted-foreground">{formData?.address}</p>
               </div>
 
               <Button
                 variant="outline"
                 onClick={() => setIsEditing(true)}
-                className="mt-4"
+                className="mt-4 text-foreground/60"
               >
                 <Edit />
                 Edit Information

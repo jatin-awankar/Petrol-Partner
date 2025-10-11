@@ -148,7 +148,7 @@ const AccountSecuritySection: React.FC<AccountSecuritySectionProps> = ({
 
   // 🔹 Main section
   return (
-    <div className="bg-card border border-border rounded-lg mb-4">
+    <div className="bg-card border border-border rounded-lg mb-4 shadow-md">
       <button
         onClick={onToggle}
         className="w-full flex items-center justify-between p-4 hover:bg-muted/50 transition-colors"
@@ -328,7 +328,7 @@ const AccountSecuritySection: React.FC<AccountSecuritySectionProps> = ({
                         onClick={() => handleLogoutDevice(activity.id)}
                         className="text-error hover:text-error"
                       >
-                        <LogOut />
+                        <LogOut className="text-gray-400" />
                       </Button>
                     )}
                   </div>

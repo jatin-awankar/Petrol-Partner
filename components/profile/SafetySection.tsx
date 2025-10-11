@@ -125,7 +125,7 @@ const SafetySection: React.FC<SafetySectionProps> = ({
   }
 
   return (
-    <div className="bg-card border border-border rounded-lg mb-4">
+    <div className="bg-card border border-border rounded-lg mb-4 shadow-md">
       <button
         onClick={onToggle}
         className="w-full flex items-center justify-between p-4 hover:bg-muted/50 transition-colors"
@@ -169,7 +169,7 @@ const SafetySection: React.FC<SafetySectionProps> = ({
                           {contact?.phone}
                         </p>
                         {contact?.relationship && (
-                          <p className="text-xs text-muted-foreground capitalize">
+                          <p className="text-xs text-blue-500 capitalize">
                             {contact?.relationship}
                           </p>
                         )}
@@ -178,9 +178,9 @@ const SafetySection: React.FC<SafetySectionProps> = ({
                         variant="ghost"
                         size="sm"
                         onClick={() => handleRemoveContact(contact?.id)}
-                        className="text-error hover:text-error"
+                        className="text-error hover:bg-gray-100"
                       >
-                        <Trash2 />
+                        <Trash2 className="text-gray-400" />
                       </Button>
                     </div>
                   ))}
@@ -329,7 +329,7 @@ const SafetySection: React.FC<SafetySectionProps> = ({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="p-4 border border-border rounded-lg">
                   <div className="flex items-center space-x-3 mb-2">
-                    <Icon name="Phone" size={20} className="text-error" />
+                    <Icon name="Phone" size={20} className="text-error/50" />
                     <h5 className="font-medium text-foreground">
                       Emergency Call
                     </h5>
@@ -344,7 +344,7 @@ const SafetySection: React.FC<SafetySectionProps> = ({
 
                 <div className="p-4 border border-border rounded-lg">
                   <div className="flex items-center space-x-3 mb-2">
-                    <Icon name="MapPin" size={20} className="text-warning" />
+                    <Icon name="MapPin" size={20} className="text-success" />
                     <h5 className="font-medium text-foreground">
                       Share Location
                     </h5>
@@ -368,7 +368,7 @@ const SafetySection: React.FC<SafetySectionProps> = ({
                 <Icon
                   name="Shield"
                   size={48}
-                  className="text-success mx-auto mb-3"
+                  className="text-success mx-auto mb-3 fill-green-600"
                 />
                 <p className="text-muted-foreground">
                   No safety incidents reported

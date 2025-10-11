@@ -167,16 +167,16 @@ const VehicleInfoSection: React.FC<VehicleInfoSectionProps> = ({
   }
 
   return (
-    <div className="bg-card border border-border rounded-lg mb-4">
+    <div className="bg-card border border-border rounded-lg mb-4 shadow-md">
       <button
         onClick={onToggle}
         className="w-full flex items-center justify-between p-4 hover:bg-muted/50 transition-colors"
       >
         <div className="flex items-center space-x-3">
-          <Icon name="Car" size={20} className="text-primary" />
+          <Icon name="Bike" size={20} className="text-primary" />
           <h3 className="font-medium text-foreground">Vehicle Information</h3>
           {vehicles?.length > 0 && (
-            <span className="bg-primary/10 text-primary text-xs px-2 py-1 rounded-full">
+            <span className="bg-yellow-500/10 text-yellow-600 text-xs px-2 py-1 rounded-full">
               {vehicles?.length} vehicle{vehicles?.length > 1 ? "s" : ""}
             </span>
           )}
@@ -217,11 +217,19 @@ const VehicleInfoSection: React.FC<VehicleInfoSectionProps> = ({
                           </p>
                           <div className="flex items-center space-x-4 mt-2 text-sm text-muted-foreground">
                             <span className="flex items-center space-x-1">
-                              <Icon name="Users" size={14} />
+                              <Icon
+                                name="Users"
+                                size={14}
+                                className="text-blue-400"
+                              />
                               <span>{vehicle?.seats} seats</span>
                             </span>
                             <span className="flex items-center space-x-1">
-                              <Icon name="Fuel" size={14} />
+                              <Icon
+                                name="Fuel"
+                                size={14}
+                                className="text-purple-500"
+                              />
                               <span className="capitalize">
                                 {vehicle?.fuelType}
                               </span>
@@ -239,8 +247,9 @@ const VehicleInfoSection: React.FC<VehicleInfoSectionProps> = ({
                             variant="ghost"
                             size="sm"
                             onClick={() => handleEdit(vehicle)}
+                            className="!hover:bg-slate-400/10"
                           >
-                            <Edit />
+                            <Edit className="text-slate-500 " />
                           </Button>
                           <Button
                             variant="ghost"
@@ -248,7 +257,7 @@ const VehicleInfoSection: React.FC<VehicleInfoSectionProps> = ({
                             onClick={() => onDeleteVehicle(vehicle?.id)}
                             className="text-error hover:text-error"
                           >
-                            <Trash2 />
+                            <Trash2 className="text-slate-500" />
                           </Button>
                         </div>
                       </div>

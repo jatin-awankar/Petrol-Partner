@@ -4,28 +4,34 @@ import React, { useState, useEffect } from "react";
 import Icon from "@/components/AppIcon";
 import Image from "@/components/AppImage";
 import Skeleton from "react-loading-skeleton";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select";
 import { Button } from "../ui/button";
 import { MessageSquare, Receipt, Repeat, Star } from "lucide-react";
 import { Label } from "../ui/label";
 
 interface RideHistoryProps {
-    id: string;
-    role: string;
-    pickup: string;
-    drop: string;
-    date: string;
-    time: string;
-    status: "completed" | "cancelled" | "ongoing";
-    distance: number;
-    duration: "25 min";
-    amount: number;
-    rating: number;
-    partner: {
-      name: "Arjun Patel";
-      avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=50&h=50&fit=crop&crop=face";
-    };
-  }
+  id: string;
+  role: string;
+  pickup: string;
+  drop: string;
+  date: string;
+  time: string;
+  status: "completed" | "cancelled" | "ongoing";
+  distance: number;
+  duration: "25 min";
+  amount: number;
+  rating: number;
+  partner: {
+    name: "Arjun Patel";
+    avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=50&h=50&fit=crop&crop=face";
+  };
+}
 
 const RideHistorySection: React.FC<{
   rideHistory: RideHistoryProps[];
@@ -33,13 +39,7 @@ const RideHistorySection: React.FC<{
   onRateRide: (ride: RideHistoryProps, rating: number) => void;
   isExpanded: boolean;
   onToggle: () => void;
-}> = ({
-  rideHistory,
-  onRebook,
-  onRateRide,
-  isExpanded,
-  onToggle,
-}) => {
+}> = ({ rideHistory, onRebook, onRateRide, isExpanded, onToggle }) => {
   const [filterType, setFilterType] = useState("all");
   const [sortBy, setSortBy] = useState("recent");
   const [isLoading, setIsLoading] = useState(true);
@@ -104,7 +104,7 @@ const RideHistorySection: React.FC<{
     });
 
   return (
-    <div className="bg-card border border-border rounded-lg mb-4">
+    <div className="bg-card border border-border rounded-lg mb-4 shadow-md">
       {/* Header */}
       <button
         onClick={onToggle}
@@ -113,7 +113,7 @@ const RideHistorySection: React.FC<{
         <div className="flex items-center space-x-3">
           <Icon name="History" size={20} className="text-primary" />
           <h3 className="font-medium text-foreground">Ride History</h3>
-          <span className="bg-primary/10 text-primary text-xs px-2 py-1 rounded-full">
+          <span className="bg-yellow-500/10 text-yellow-600 text-xs px-2 py-1 rounded-full">
             {rideHistory?.length} rides
           </span>
         </div>
@@ -135,9 +135,7 @@ const RideHistorySection: React.FC<{
               </div>
             ) : (
               <div className="flex flex-col sm:flex-row gap-4">
-                <Label>
-                Filter by
-                </Label>
+                <Label>Filter by</Label>
                 <Select
                   value={filterType || ""}
                   onValueChange={(value) => setFilterType(value)}
@@ -153,9 +151,7 @@ const RideHistorySection: React.FC<{
                     ))}
                   </SelectContent>
                 </Select>
-                <Label>
-                Sort by
-                </Label>
+                <Label>Sort by</Label>
                 <Select
                   value={sortBy || ""}
                   onValueChange={(value) => setSortBy(value)}
@@ -250,7 +246,9 @@ const RideHistorySection: React.FC<{
                             </div>
                             <div className="flex-1">
                               <p className="text-sm font-medium text-foreground">
-                                {ride?.role === "driver" ? "Passenger" : "Driver"}
+                                {ride?.role === "driver"
+                                  ? "Passenger"
+                                  : "Driver"}
                                 : {ride?.partner?.name}
                               </p>
                               {ride?.rating && (
@@ -282,7 +280,7 @@ const RideHistorySection: React.FC<{
                             </span>
                             <span className="flex items-center gap-1">
                               <Icon name="IndianRupee" size={14} />
-                              <span>₹{ride?.amount}</span>
+                              <span>{ride?.amount}</span>
                             </span>
                           </div>
                         </div>
@@ -303,26 +301,22 @@ const RideHistorySection: React.FC<{
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  onClick={() => onRateRide?.(ride, ride.rating)}
+                                  onClick={() =>
+                                    onRateRide?.(ride, ride.rating)
+                                  }
                                 >
-                                    <Star />
+                                  <Star />
                                   Rate Ride
                                 </Button>
                               )}
                             </>
                           )}
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                          >
-                            <Receipt />
+                          <Button variant="ghost" size="sm">
+                            <Receipt className="text-green-600" />
                             Receipt
                           </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                          >
-                            <MessageSquare />
+                          <Button variant="ghost" size="sm" className="hover:">
+                            <MessageSquare className="text-indigo-400 fill-current" />
                             Support
                           </Button>
                         </div>
@@ -334,7 +328,7 @@ const RideHistorySection: React.FC<{
             ) : (
               <div className="text-center py-12">
                 <Icon
-                  name="Car"
+                  name="Bike"
                   size={48}
                   className="text-muted-foreground mx-auto mb-3"
                 />

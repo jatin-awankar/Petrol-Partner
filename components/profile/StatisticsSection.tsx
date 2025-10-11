@@ -9,6 +9,7 @@ type StatCardProps = {
   value?: React.ReactNode;
   subtitle?: string;
   color?: string;
+  className?: string;
 };
 
 type ProgressBarProps = {
@@ -95,7 +96,7 @@ const StatisticsSection: React.FC<StatisticsSectionProps> = ({
   }
 
   return (
-    <div className="bg-card border border-border rounded-lg mb-4">
+    <div className="bg-card border border-border rounded-lg mb-4 shadow-md">
       <button
         onClick={onToggle}
         className="w-full flex items-center justify-between p-4 hover:bg-muted/50 transition-colors"
@@ -119,7 +120,7 @@ const StatisticsSection: React.FC<StatisticsSectionProps> = ({
               <h4 className="font-medium text-foreground mb-4">Overview</h4>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <StatCard
-                  icon="Car"
+                  icon="Bike"
                   title="Total Rides"
                   value={statistics?.totalRides}
                   subtitle="As driver & passenger"
@@ -129,6 +130,7 @@ const StatisticsSection: React.FC<StatisticsSectionProps> = ({
                   title="Distance Traveled"
                   value={`${statistics?.totalDistance ?? 0} km`}
                   subtitle="Across all rides"
+                  color="text-purple-500"
                 />
                 <StatCard
                   icon="IndianRupee"
@@ -143,6 +145,7 @@ const StatisticsSection: React.FC<StatisticsSectionProps> = ({
                   value={statistics?.averageRating ?? "-"}
                   subtitle={`Based on ${statistics?.totalRatings ?? 0} ratings`}
                   color="text-warning"
+                  className="fill-current"
                 />
               </div>
             </section>
@@ -165,14 +168,14 @@ const StatisticsSection: React.FC<StatisticsSectionProps> = ({
                   title="Fuel Saved"
                   value={`${statistics?.fuelSaved ?? 0} L`}
                   subtitle="Through ride sharing"
-                  color="text-success"
+                  color="text-error/50"
                 />
                 <StatCard
                   icon="TreePine"
                   title="Trees Equivalent"
                   value={statistics?.treesEquivalent ?? 0}
                   subtitle="Environmental contribution"
-                  color="text-success"
+                  color="text-purple-400"
                 />
               </div>
             </section>
@@ -211,17 +214,17 @@ const StatisticsSection: React.FC<StatisticsSectionProps> = ({
             {/* MONTHLY BREAKDOWN */}
             <section className="border-t border-border pt-6">
               <h4 className="font-medium text-foreground mb-4">This Month</h4>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 ">
                 {[
                   {
-                    icon: "Car",
+                    icon: "Bike",
                     color: "text-primary",
                     label: "Rides",
                     value: statistics?.monthlyRides,
                   },
                   {
                     icon: "IndianRupee",
-                    color: "text-success",
+                    color: "text-indigo-400",
                     label: "Saved",
                     value: `₹${statistics?.monthlySavings}`,
                   },
@@ -263,7 +266,7 @@ const StatisticsSection: React.FC<StatisticsSectionProps> = ({
               <h4 className="font-medium text-foreground mb-4">
                 Community Contribution
               </h4>
-              <div className="bg-gradient-to-r from-primary/10 to-accent/10 rounded-lg p-4">
+              <div className="bg-gradient-to-r from-primary/10 to-accent/10 rounded-lg p-4 shadow-md">
                 <div className="flex items-center space-x-3 mb-3">
                   <Icon name="Users" size={24} className="text-primary" />
                   <div>
@@ -279,7 +282,7 @@ const StatisticsSection: React.FC<StatisticsSectionProps> = ({
                   <div className="flex-1">
                     <div className="flex justify-between text-sm mb-1">
                       <span className="text-foreground">Impact Score</span>
-                      <span className="text-primary font-medium">
+                      <span className="text-yellow-500 font-medium">
                         {statistics?.communityScore ?? 0}/1000
                       </span>
                     </div>
