@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useAuth } from "@clerk/nextjs";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -24,7 +23,6 @@ interface Ride {
 const ITEMS_PER_PAGE = 5;
 
 export default function RidesPage() {
-  const { getToken } = useAuth();
   const router = useRouter();
 
   const [rides, setRides] = useState<Ride[]>([]);
@@ -56,39 +54,6 @@ export default function RidesPage() {
       );
     }
   }, []);
-
-  // Fetch rides from backend
-  useEffect(() => {
-    const fetchRides = async () => {
-      try {
-        setIsLoading(true);
-        const token = await getToken();
-        if (!token) throw new Error("No token found");
-
-        const query = new URLSearchParams();
-        if (location) {
-          query.append("lat", location.lat.toString());
-          query.append("lng", location.lng.toString());
-        }
-
-        const res = await fetch(`/api/rides?${query.toString()}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-
-        if (!res.ok) throw new Error("Failed to fetch rides");
-
-        const data = await res.json();
-        setRides(data);
-        setFilteredRides(data);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchRides();
-  }, [getToken, location]);
 
   // Search handler
   const handleSearch = () => {
