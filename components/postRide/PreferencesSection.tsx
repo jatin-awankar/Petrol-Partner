@@ -43,7 +43,6 @@ const PreferencesSection: React.FC<PreferencesSectionProps> = ({
     { value: "any", label: "Any Gender" },
     { value: "male", label: "Male Only" },
     { value: "female", label: "Female Only" },
-    { value: "same", label: "Same Gender" },
   ];
 
   const conversationOptions = [
