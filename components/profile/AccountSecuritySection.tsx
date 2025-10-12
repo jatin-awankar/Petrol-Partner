@@ -72,7 +72,7 @@ const AccountSecuritySection: React.FC<AccountSecuritySectionProps> = ({
         },
       ]);
       setIsLoading(false);
-    }, 1000);
+    }, 800);
 
     return () => clearTimeout(timer);
   }, [securitySettings]);
@@ -124,21 +124,30 @@ const AccountSecuritySection: React.FC<AccountSecuritySectionProps> = ({
   // 🔸 Skeleton loader
   if (isLoading) {
     return (
-      <div className="bg-card border border-border rounded-lg mb-4">
+      <div className="bg-card border border-border rounded-lg shadow-md mb-4 animate-pulse">
         <button
           onClick={onToggle}
           className="w-full flex items-center justify-between p-4 hover:bg-muted/50 transition-colors"
         >
           <div className="flex items-center space-x-3">
             <Icon name="Lock" size={20} className="text-primary" />
-            <Skeleton className="w-40 h-5 rounded" />
+            <Skeleton
+              width={160}
+              height={20}
+              className="rounded animate-bounce"
+            />
           </div>
-          <Skeleton className="w-5 h-5 rounded" />
+          <Skeleton width={20} height={20} className="rounded animate-bounce" />
         </button>
         {isExpanded && (
           <div className="px-4 pb-4 border-t border-border pt-4 space-y-4">
             {[1, 2, 3].map((i) => (
-              <Skeleton key={i} className="w-full h-20 rounded-lg" />
+              <Skeleton
+                key={i}
+                width="100%"
+                height={80}
+                className="rounded-lg animate-pulse"
+              />
             ))}
           </div>
         )}

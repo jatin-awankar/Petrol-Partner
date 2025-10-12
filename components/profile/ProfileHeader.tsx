@@ -1,10 +1,11 @@
 "use client";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 // import VerificationBadge from '../../../components/ui/VerificationBadge';
 import AppImage from "../AppImage";
 import Icon from "../AppIcon";
 import { Button } from "../ui/button";
 import { Edit } from "lucide-react";
+import Skeleton from "react-loading-skeleton";
 
 interface UserProfile {
   name: string;
@@ -24,11 +25,20 @@ interface ProfileHeaderProps {
 }
 
 const ProfileHeader: React.FC<ProfileHeaderProps> = ({
-  user,
+  user = null,
   onPhotoUpload,
   onEditProfile,
 }) => {
   const [isUploading, setIsUploading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Simulate loading delay
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsLoading(false);
+    }, 800); // skeleton for 0.8s
+    return () => clearTimeout(timer);
+  }, [user]);
 
   const handlePhotoUpload = async (
     event: React.ChangeEvent<HTMLInputElement>
@@ -44,19 +54,43 @@ const ProfileHeader: React.FC<ProfileHeaderProps> = ({
     }
   };
 
-  if (!user) {
+  if (isLoading) {
     // Skeleton Loading
     return (
-      <div className="bg-card border border-border rounded-lg p-6 mb-6 animate-pulse">
-        <div className="flex flex-col sm:flex-row items-center space-y-4 sm:space-y-0 sm:space-x-6">
+      <div className="bg-card border border-border rounded-lg shadow-md p-6 mb-6 animate-pulse">
+        <div className="flex flex-col sm:flex-row items-center p-2 space-y-4 sm:space-y-0 sm:space-x-6">
           <div className="w-24 h-24 rounded-full bg-muted" />
           <div className="flex-1 space-y-3">
-            <div className="h-6 bg-muted rounded w-1/2" />
-            <div className="h-4 bg-muted rounded w-1/3" />
-            <div className="h-4 bg-muted rounded w-1/4" />
+            <Skeleton
+              width="50%"
+              height={24}
+              className="bg-muted rounded animate-pulse"
+            />
+            <Skeleton
+              width="33.33%"
+              height={16}
+              className="bg-muted rounded animate-pulse"
+            />
+            <Skeleton
+              width="25%"
+              height={16}
+              className="bg-muted rounded animate-pulse"
+            />
           </div>
-          <div className="w-24 h-10 bg-muted rounded" />
+          <Skeleton
+            width={96}
+            height={40}
+            className="bg-muted rounded animate-pulse"
+          />
         </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="bg-card border border-border rounded-lg p-6 mb-6 shadow-md">
+        Profile Now Found
       </div>
     );
   }

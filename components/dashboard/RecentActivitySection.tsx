@@ -6,7 +6,7 @@ import "react-loading-skeleton/dist/skeleton.css";
 import { Button } from "../ui/button";
 import Icon from "../AppIcon";
 import { MessageCircle } from "lucide-react";
-
+import Link from "next/link";
 interface Activity {
   id: number | string;
   type: string;
@@ -83,9 +83,11 @@ const RecentActivitySection: React.FC = () => {
         <h2 className="text-lg font-semibold text-foreground">
           Recent Activity
         </h2>
-        <Button variant="ghost" size="sm">
-          View All
-        </Button>
+        <Link href="/profile-settings">
+          <Button variant="ghost" size="sm">
+            View All
+          </Button>
+        </Link>
       </div>
 
       <div className="space-y-4">

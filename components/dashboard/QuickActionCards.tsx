@@ -2,10 +2,9 @@
 
 import React, { useState, useEffect } from "react";
 import Skeleton from "react-loading-skeleton";
-import "react-loading-skeleton/dist/skeleton.css";
-import { redirect } from "next/navigation";
 import { Button } from "../ui/button";
 import Icon from "../AppIcon";
+import Link from "next/link";
 
 interface Action {
   id: string;
@@ -33,7 +32,7 @@ const QuickActionCards: React.FC = () => {
           icon: "Search",
           color: "bg-success",
           textColor: "text-success-foreground",
-          route: "/ride-details-booking",
+          route: "/search-rides",
           stats: "12 rides available",
         },
         {
@@ -70,55 +69,49 @@ const QuickActionCards: React.FC = () => {
             <div
               key={action?.id ?? Math.random()}
               className="bg-card border border-border rounded-xl p-6 hover:shadow-medium transition-shadow cursor-pointer shadow-md"
-              onClick={() => {
-                if (action?.route) {
-                  redirect(action.route);
-                }
-              }}
             >
-              <div className="flex items-start justify-between mb-4">
-                <div
-                  className={`w-12 h-12 ${
-                    action?.color ?? "bg-gray-300"
-                  } rounded-lg flex items-center justify-center`}
-                >
-                  {action?.icon ? (
-                    <Icon name={action.icon} size={24} color="white" />
-                  ) : (
-                    <Skeleton width={24} height={24} />
-                  )}
+              <Link href={action?.route}>
+                <div className="flex items-start justify-between mb-4">
+                  <div
+                    className={`w-12 h-12 ${
+                      action?.color ?? "bg-gray-300"
+                    } rounded-lg flex items-center justify-center`}
+                  >
+                    {action?.icon ? (
+                      <Icon name={action.icon} size={24} color="white" />
+                    ) : (
+                      <Skeleton width={24} height={24} />
+                    )}
+                  </div>
+                  <Icon
+                    name="ArrowRight"
+                    size={20}
+                    className="text-muted-foreground"
+                  />
                 </div>
-                <Icon
-                  name="ArrowRight"
-                  size={20}
-                  className="text-muted-foreground"
-                />
-              </div>
 
-              <h3 className="text-lg font-semibold text-foreground mb-1">
-                {action?.title ?? <Skeleton width="60%" />}
-              </h3>
-              <p className="text-muted-foreground text-sm mb-3">
-                {action?.description ?? <Skeleton width="80%" />}
-              </p>
+                <h3 className="text-lg font-semibold text-foreground mb-1">
+                  {action?.title ?? <Skeleton width="60%" />}
+                </h3>
+                <p className="text-muted-foreground text-sm mb-3">
+                  {action?.description ?? <Skeleton width="80%" />}
+                </p>
 
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground">
-                  {action?.stats ?? <Skeleton width={50} />}
-                </span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (action?.route) {
-                      redirect(action.route);
-                    }
-                  }}
-                >
-                  Get Started
-                </Button>
-              </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">
+                    {action?.stats ?? <Skeleton width={50} />}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                    }}
+                  >
+                    Get Started
+                  </Button>
+                </div>
+              </Link>
             </div>
           ))}
     </div>

@@ -137,26 +137,46 @@ const VehicleInfoSection: React.FC<VehicleInfoSectionProps> = ({
   // Skeleton loader for vehicle list
   if (!formData) {
     return (
-      <div className="bg-card border border-border rounded-lg mb-4">
+      <div className="bg-card border border-border rounded-lg shadow-md mb-4 animate-pulse">
         <button
           onClick={onToggle}
           className="w-full flex items-center justify-between p-4 hover:bg-muted/50 transition-colors"
         >
           <div className="flex items-center space-x-3">
-            <Icon name="Car" size={20} className="text-primary" />
-            <Skeleton className="w-40 h-5 rounded" />
+            <Icon name="Bike" size={20} className="text-primary" />
+            <Skeleton
+              width={160}
+              height={20}
+              className="rounded animate-bounce"
+            />
           </div>
-          <Skeleton className="w-5 h-5 rounded" />
+          <Skeleton width={20} height={20} className="rounded animate-bounce" />
         </button>
         {isExpanded && (
           <div className="px-4 pb-4 border-t border-border pt-4 space-y-4">
             {[1, 2].map((i) => (
               <div key={i} className="flex items-center space-x-4">
-                <Skeleton className="w-16 h-16 rounded-lg" />
+                <Skeleton
+                  width={64}
+                  height={64}
+                  className="rounded-lg animate-pulse"
+                />
                 <div className="flex-1 space-y-2">
-                  <Skeleton className="w-3/4 h-4 rounded" />
-                  <Skeleton className="w-1/2 h-3 rounded" />
-                  <Skeleton className="w-1/3 h-3 rounded" />
+                  <Skeleton
+                    width="75%"
+                    height={16}
+                    className="rounded animate-pulse"
+                  />
+                  <Skeleton
+                    width="50%"
+                    height={12}
+                    className="rounded animate-pulse"
+                  />
+                  <Skeleton
+                    width="33.33%"
+                    height={12}
+                    className="rounded animate-pulse"
+                  />
                 </div>
               </div>
             ))}

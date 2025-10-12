@@ -9,39 +9,39 @@ const ProfileHeader = dynamic(
   () => import("@/components/profile/ProfileHeader"),
   {
     ssr: false,
-    loading: () => <Skeleton height={120} />,
+    // loading: () => <Skeleton height={120} />,
   }
 );
 const PersonalInfoSection = dynamic(
   () => import("@/components/profile/PersonalInfoSection"),
-  { ssr: false, loading: () => <Skeleton height={300} /> }
+  { ssr: false,  }
 );
 const VehicleInfoSection = dynamic(
   () => import("@/components/profile/VehicleInfoSection"),
-  { ssr: false, loading: () => <Skeleton height={350} /> }
+  { ssr: false,  }
 );
 const PreferencesSection = dynamic(
   () => import("@/components/profile/PreferencesSection"),
-  { ssr: false, loading: () => <Skeleton height={300} /> }
+  { ssr: false,  }
 );
 const SafetySection = dynamic(
   () => import("@/components/profile/SafetySection"),
   {
     ssr: false,
-    loading: () => <Skeleton height={250} />,
+    
   }
 );
 const AccountSecuritySection = dynamic(
   () => import("@/components/profile/AccountSecuritySection"),
-  { ssr: false, loading: () => <Skeleton height={250} /> }
+  { ssr: false, }
 );
 const RideHistorySection = dynamic(
   () => import("@/components/profile/RideHistorySection"),
-  { ssr: false, loading: () => <Skeleton height={400} /> }
+  { ssr: false,}
 );
 const StatisticsSection = dynamic(
   () => import("@/components/profile/StatisticsSection"),
-  { ssr: false, loading: () => <Skeleton height={350} /> }
+  { ssr: false,  }
 );
 
 const ProfileAccountSettings = () => {
@@ -209,15 +209,7 @@ const ProfileAccountSettings = () => {
     <div className="page min-h-screen bg-background container mx-auto p-4 space-y-6">
       <main className="pb-20 md:pb-6">
         <div className="max-w-4xl mx-auto px-4">
-          {isLoading ? (
-            <div className="space-y-6">
-              <Skeleton height={120} />
-              <Skeleton height={300} />
-              <Skeleton height={350} />
-              <Skeleton height={300} />
-              <Skeleton height={250} />
-            </div>
-          ) : (
+          
             <Suspense fallback={<Skeleton height={400} />}>
               <ProfileHeader
                 user={user}
@@ -279,7 +271,7 @@ const ProfileAccountSettings = () => {
                 />
               </div>
             </Suspense>
-          )}
+          
         </div>
       </main>
     </div>

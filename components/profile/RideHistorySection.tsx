@@ -62,7 +62,7 @@ const RideHistorySection: React.FC<{
   useEffect(() => {
     const timer = setTimeout(() => {
       setIsLoading(false);
-    }, 1500);
+    }, 800);
     return () => clearTimeout(timer);
   }, []);
 
@@ -103,6 +103,49 @@ const RideHistorySection: React.FC<{
       }
     });
 
+  // 🔸 Skeleton loader
+  if (isLoading) {
+    return (
+      <div className="bg-card border border-border rounded-lg shadow-md mb-4 animate-pulse">
+        <button
+          onClick={onToggle}
+          className="w-full flex items-center justify-between p-4 hover:bg-muted/50 transition-colors"
+        >
+          <div className="flex items-center space-x-3">
+            <Icon name="History" size={20} className="text-primary" />
+            <Skeleton
+              width={160}
+              height={20}
+              className="rounded animate-bounce"
+            />
+          </div>
+          <Skeleton width={20} height={20} className="rounded animate-bounce" />
+        </button>
+        {isExpanded && (
+          <>
+            <div className="flex flex-col sm:flex-row gap-4">
+              <Skeleton width="50%" height={40} className="animate-pulse" />
+              <Skeleton width="50%" height={40} className="animate-pulse" />
+            </div>
+            <div className="space-y-3">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="border border-border rounded-lg p-4 space-y-3"
+                >
+                  <Skeleton width="25%" height={16} />
+                  <Skeleton width="33.33%" height={16} />
+                  <Skeleton width="66.66%" height={16} />
+                  <Skeleton width="100%" height={40} />
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="bg-card border border-border rounded-lg mb-4 shadow-md">
       {/* Header */}
@@ -133,64 +176,43 @@ const RideHistorySection: React.FC<{
         <div className="px-4 pb-4 border-t border-border">
           <div className="pt-4 space-y-6">
             {/* Filters */}
-            {isLoading ? (
-              <div className="flex flex-col sm:flex-row gap-4">
-                <Skeleton className="h-10 w-full sm:w-1/2" />
-                <Skeleton className="h-10 w-full sm:w-1/2" />
-              </div>
-            ) : (
-              <div className="flex flex-col sm:flex-row gap-4">
-                <Label>Filter by</Label>
-                <Select
-                  value={filterType || ""}
-                  onValueChange={(value) => setFilterType(value)}
-                >
-                  <SelectTrigger className="flex-1">
-                    <SelectValue placeholder="Select Gender" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {filterOptions.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Label>Sort by</Label>
-                <Select
-                  value={sortBy || ""}
-                  onValueChange={(value) => setSortBy(value)}
-                >
-                  <SelectTrigger className="flex-1">
-                    <SelectValue placeholder="Select Gender" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {sortOptions.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
+            <div className="flex flex-col sm:flex-row gap-4">
+              <Label>Filter by</Label>
+              <Select
+                value={filterType || ""}
+                onValueChange={(value) => setFilterType(value)}
+              >
+                <SelectTrigger className="flex-1">
+                  <SelectValue placeholder="Select Gender" />
+                </SelectTrigger>
+                <SelectContent>
+                  {filterOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Label>Sort by</Label>
+              <Select
+                value={sortBy || ""}
+                onValueChange={(value) => setSortBy(value)}
+              >
+                <SelectTrigger className="flex-1">
+                  <SelectValue placeholder="Select Gender" />
+                </SelectTrigger>
+                <SelectContent>
+                  {sortOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
             {/* Ride List */}
-            {isLoading ? (
-              <div className="space-y-3">
-                {Array.from({ length: 3 }).map((_, i) => (
-                  <div
-                    key={i}
-                    className="border border-border rounded-lg p-4 space-y-3"
-                  >
-                    <Skeleton className="h-4 w-1/4" />
-                    <Skeleton className="h-4 w-1/3" />
-                    <Skeleton className="h-4 w-2/3" />
-                    <Skeleton className="h-10 w-full" />
-                  </div>
-                ))}
-              </div>
-            ) : filteredAndSortedHistory?.length > 0 ? (
+            {filteredAndSortedHistory?.length > 0 ? (
               <div className="space-y-4">
                 {filteredAndSortedHistory?.map((ride) => (
                   <div

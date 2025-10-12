@@ -1,5 +1,5 @@
 "use client";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import Skeleton from "react-loading-skeleton";
 import Icon from "../AppIcon";
 
@@ -30,7 +30,15 @@ const StatisticsSection: React.FC<StatisticsSectionProps> = ({
   isExpanded,
   onToggle,
 }) => {
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Simulate loading delay
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsLoading(false);
+    }, 800); // skeleton for 0.8s
+    return () => clearTimeout(timer);
+  }, [statistics]);
 
   const StatCard: React.FC<StatCardProps> = ({
     icon,
@@ -76,21 +84,41 @@ const StatisticsSection: React.FC<StatisticsSectionProps> = ({
 
   if (isLoading) {
     return (
-      <div className="bg-card border border-border rounded-lg p-4">
-        <div className="flex items-center justify-between mb-4">
-          <Skeleton width="40%" height="20px" />
-          <Skeleton width="20%" height="16px" />
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {Array(4)
-            .fill(0)
-            .map((_, i) => (
-              <div key={i} className="bg-muted/30 rounded-lg p-4">
-                <Skeleton width="60%" height="20px" className="mb-3" />
-                <Skeleton width="40%" height="28px" />
-              </div>
-            ))}
-        </div>
+      <div className="bg-card border border-border rounded-lg shadow-md animate-pulse">
+        <button
+          onClick={onToggle}
+          className="w-full flex items-center justify-between p-4 hover:bg-muted/50 transition-colors"
+        >
+          <div className="flex items-center space-x-3">
+            <Icon name="BarChart3" size={20} className="text-primary" />
+            <Skeleton
+              width={160}
+              height={20}
+              className="rounded animate-bounce"
+            />
+          </div>
+          <Skeleton width={20} height={20} className="rounded animate-bounce" />
+        </button>
+        {isExpanded && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {Array(4)
+              .fill(0)
+              .map((_, i) => (
+                <div key={i} className="bg-muted/30 rounded-lg p-4">
+                  <Skeleton
+                    width="60%"
+                    height="20px"
+                    className="mb-3 animate-pulse"
+                  />
+                  <Skeleton
+                    width="40%"
+                    height="28px"
+                    className="animate-pulse"
+                  />
+                </div>
+              ))}
+          </div>
+        )}
       </div>
     );
   }

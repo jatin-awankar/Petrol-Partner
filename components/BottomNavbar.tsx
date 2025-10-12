@@ -10,10 +10,10 @@ const BottomNavbar = () => {
 
   const navigationItems = [
     { label: "Home", path: "/dashboard", icon: "Home", badge: null },
-    { label: "Search", path: "/ride-details-booking", icon: "Search", badge: null },
+    { label: "Search", path: "/search-rides", icon: "Search", badge: null },
     { label: "Post", path: "/post-a-ride", icon: "Plus", badge: null },
     { label: "Messages", path: "/messages-chat", icon: "MessageCircle", badge: 3 },
-    { label: "Account", path: "/profile-account-settings", icon: "User", badge: null },
+    { label: "Account", path: "/profile-settings", icon: "User", badge: null },
   ];
 
   return (
@@ -25,7 +25,7 @@ const BottomNavbar = () => {
             <button
               key={item.path}
               onClick={() => router.push(item.path)}
-              className={`flex flex-col items-center justify-center flex-1 py-2 px-1 transition-colors duration-200 ${
+              className={`flex flex-col items-center justify-center flex-1 py-2 px-1 transition-colors duration-200 cursor-pointer ${
                 isActive ? "text-primary" : "text-muted-foreground hover:text-foreground"
               }`}
             >

@@ -7,6 +7,7 @@ import "react-loading-skeleton/dist/skeleton.css";
 import { Button } from "../ui/button";
 import { Search } from "lucide-react";
 import Icon from "../AppIcon";
+import Link from "next/link";
 
 interface RideSuggestion {
   id: string;
@@ -230,10 +231,12 @@ const RideSuggestions: React.FC = () => {
       </div>
 
       <div className="mt-4 pt-4 border-t border-border">
-        <Button variant="outline" className="w-full">
-          <Search />
-          Browse All Available Rides
-        </Button>
+        <Link href="/search-rides">
+          <Button variant="outline" className="w-full">
+            <Search />
+            Browse All Available Rides
+          </Button>
+        </Link>
       </div>
     </div>
   );
