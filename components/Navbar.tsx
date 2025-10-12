@@ -13,7 +13,7 @@ const Navbar = () => {
     switch (pathname) {
       case "/dashboard":
         return null; // Show logo
-      case "/ride-details-booking":
+      case "/search-rides":
         return "Find Rides";
       case "/post-a-ride":
         return "Post a Ride";
@@ -21,7 +21,7 @@ const Navbar = () => {
         return "Messages";
       case "/payment-transactions":
         return "Payments";
-      case "/profile-account-settings":
+      case "/profile-settings":
         return "Profile";
       default:
         return "Petrol Partner";

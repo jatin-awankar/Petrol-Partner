@@ -1,13 +1,12 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import Skeleton from "react-loading-skeleton";
-import "react-loading-skeleton/dist/skeleton.css";
-// import VerificationBadge from '../../../components/ui/VerificationBadge';
-import { Button } from "../ui/button";
-import { Search } from "lucide-react";
-import Icon from "../AppIcon";
 import Link from "next/link";
+import { Search } from "lucide-react";
+import { Button } from "../ui/button";
+import Icon from "../AppIcon";
+import VerificationBadge from "../ui/VerificationBadge";
+import Skeleton from "react-loading-skeleton";
 
 interface RideSuggestion {
   id: string;
@@ -195,14 +194,15 @@ const RideSuggestions: React.FC = () => {
                         <span className="text-sm font-medium text-foreground">
                           {suggestion.driver}
                         </span>
-                        {/* {suggestion.isVerified && (
+                        {suggestion.isVerified && (
                           <VerificationBadge
                             isVerified={true}
                             verificationType="driver"
                             size="sm"
                             showTooltip={false}
+                            className="p-1"
                           />
-                        )} */}
+                        )}
                       </div>
                       <div className="flex items-center space-x-1">
                         <Icon

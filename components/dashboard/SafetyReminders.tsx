@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from "react";
 import Skeleton from "react-loading-skeleton";
-import "react-loading-skeleton/dist/skeleton.css";
 import { Button } from "../ui/button";
 import Icon from "../AppIcon";
 

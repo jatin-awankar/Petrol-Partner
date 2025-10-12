@@ -29,9 +29,9 @@ export default async function DashboardPage() {
   //   .single();
 
   const profile = {
-    full_name: "",
-    college: "",
-    is_verified: false
+    full_name: "Jatin Kishor Awankar",
+    college: "Prof. Ram Meghe Institute of Technology & Research",
+    is_verified: true
   };
 
   return (
@@ -46,15 +46,15 @@ export default async function DashboardPage() {
         <StatsCard />
         <SafetyReminders />
       </div>
-      {/* <Suspense fallback={<div>Loading activities...</div>}> */}
+      <Suspense fallback={<div>Loading activities...</div>}>
         <RecentActivitySection />
-      {/* </Suspense> */}
-      {/* // <Suspense fallback={<div>Loading rides...</div>}> */}
+      </Suspense>
+      <Suspense fallback={<div>Loading rides...</div>}>
         <RideSuggestions />
-      {/* // </Suspense> */}
-      {/* <Suspense fallback={<div>Loading community updates...</div>}> */}
+      </Suspense>
+      <Suspense fallback={<div>Loading community updates...</div>}>
         <CommunityUpdates />
-      {/* </Suspense> */}
+      </Suspense>
     </div>
   );
 }

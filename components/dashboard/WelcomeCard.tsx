@@ -3,8 +3,8 @@
 
 import React, { useState, useEffect } from "react";
 import Icon from "@/components/AppIcon";
-// import VerificationBadge from '@/components/ui/VerificationBadge';
 import Skeleton from "react-loading-skeleton";
+import VerificationBadge from "../ui/VerificationBadge";
 
 // Error Boundary for this component
 class WelcomeCardErrorBoundary extends React.Component<
@@ -69,10 +69,17 @@ const WelcomeCard: React.FC<WelcomeCardProps> = ({
 
   if (loading) {
     return (
-      <div className="bg-gradient-to-r from-primary to-primary/80 rounded-xl p-6 text-white mb-6">
-        <Skeleton height={30} width={`60%`} className="mb-2" />
-        <Skeleton height={20} width={`40%`} className="mb-4" />
-        <Skeleton height={60} width={`100%`} />
+      <div className="bg-gradient-to-r from-primary to-primary/80 rounded-xl p-6 mb-6 shadow-md">
+        <div className="flex items-center justify-between">
+          <div className="flex-1">
+            <Skeleton height={30} width={`60%`} className="mb-1" />
+            <Skeleton height={20} width={`40%`} className="mb-4" />
+          </div>
+          <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mb-4">
+            <Icon name="" size={32} color="white" />
+          </div>
+        </div>
+        <Skeleton height={20} width={`100%`} />
       </div>
     );
   }
@@ -82,18 +89,19 @@ const WelcomeCard: React.FC<WelcomeCardProps> = ({
       <div className="flex items-center justify-between">
         <div className="flex-1">
           <h1 className="text-2xl font-semibold mb-1">
-            {getGreeting()}, {userName}!
+            {getGreeting()}, {userName?.trim().split(' ')[0]}!
           </h1>
           <div className="flex items-center space-x-2">
-            <p className="text-primary-foreground/80 text-sm">{collegeName}</p>
-            {/* {isVerified && (
+            <span className="text-primary-foreground/80 text-sm">{collegeName}{"  "}
+            {isVerified && (
               <VerificationBadge
                 isVerified={true}
                 verificationType="college"
-                size="sm"
-                showTooltip={false}
+                size="lg"
+                showTooltip={true}
               />
-            )} */}
+            )}
+            </span>
           </div>
         </div>
         <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center">

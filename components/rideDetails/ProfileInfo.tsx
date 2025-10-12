@@ -4,7 +4,7 @@ import React from 'react';
 import Image from '@/components/AppImage';
 import Icon from '@/components/AppIcon';
 import Skeleton from 'react-loading-skeleton';
-// import VerificationBadge from '@/components/ui/VerificationBadge';
+import VerificationBadge from '../ui/VerificationBadge';
 
 interface Profile {
   id?: string;
@@ -134,11 +134,11 @@ const ProfileInfo: React.FC<ProfileInfoProps> = ({
           </div>
 
           <div className="absolute -bottom-1 -right-1">
-            {/* <VerificationBadge
+            <VerificationBadge
               isVerified={!!isVerified}
               verificationType="college"
-              size="sm"
-            /> */}
+              size="lg"
+            />
           </div>
         </div>
 

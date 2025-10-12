@@ -1,11 +1,11 @@
 "use client";
 import React, { useEffect, useState } from "react";
-// import VerificationBadge from '../../../components/ui/VerificationBadge';
 import AppImage from "../AppImage";
 import Icon from "../AppIcon";
 import { Button } from "../ui/button";
 import { Edit } from "lucide-react";
 import Skeleton from "react-loading-skeleton";
+import VerificationBadge from "../ui/VerificationBadge";
 
 interface UserProfile {
   name: string;
@@ -131,10 +131,13 @@ const ProfileHeader: React.FC<ProfileHeaderProps> = ({
             <h1 className="text-2xl font-semibold text-foreground">
               {user.name}
             </h1>
-            {/* <VerificationBadge isVerified={user.isCollegeVerified} verificationType="college" />
+            <VerificationBadge
+              isVerified={user.isCollegeVerified}
+              verificationType="identity"
+            />
             {user.isDriverVerified && (
               <VerificationBadge isVerified verificationType="driver" />
-            )} */}
+            )}
           </div>
 
           <p className="text-muted-foreground mb-1">{user.email}</p>
@@ -156,11 +159,12 @@ const ProfileHeader: React.FC<ProfileHeaderProps> = ({
             </div>
 
             {user.isCollegeVerified ? (
-              <div className="flex items-center space-x-1 text-green-600 ">
-                <Icon
-                  name="BadgeCheck"
-                  size={25}
-                  className="text-white fill-green-500"
+              <div className="flex items-center space-x-1 text-green-600">
+                <VerificationBadge
+                  isVerified
+                  verificationType="college"
+                  size="lg"
+                  className="fill-green-500 text-green-500"
                 />
                 <span>Verified Student</span>
               </div>

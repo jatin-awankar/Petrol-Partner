@@ -2,7 +2,6 @@
 
 import React, { useEffect, useState } from "react";
 import Skeleton from "react-loading-skeleton";
-import "react-loading-skeleton/dist/skeleton.css";
 import { Button } from "../ui/button";
 import { ExternalLink } from "lucide-react";
 import Icon from "../AppIcon";
@@ -79,7 +78,7 @@ const CommunityUpdates: React.FC = () => {
   }, []);
 
   return (
-    <div className="bg-card border border-border rounded-xl p-6 mb-6 shadow-md">
+    <div className="bg-card border border-border rounded-xl p-6 mb-12 md:mb-6 shadow-md">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold text-foreground">
           Community Updates

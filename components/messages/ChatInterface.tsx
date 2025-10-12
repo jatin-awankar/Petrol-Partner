@@ -1,12 +1,12 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
-// import VerificationBadge from "../../../components/ui/VerificationBadge";
 import { Message, Conversation } from "./MessagesShell";
 import AppImage from "../AppImage";
 import Icon from "../AppIcon";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import VerificationBadge from "../ui/VerificationBadge";
 
 interface ChatInterfaceProps {
   conversation: Conversation;
@@ -182,7 +182,18 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
               <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-success border-2 border-card rounded-full"></div>
             )}
             <div className="absolute -top-1 -right-1">
-              {/* <VerificationBadge isVerified={conversation.isVerified} verificationType={conversation.verificationType} size="sm" /> */}
+              <VerificationBadge
+                isVerified={conversation.isVerified}
+                verificationType={
+                  conversation.verificationType === "college" ||
+                  conversation.verificationType === "identity" ||
+                  conversation.verificationType === "driver"
+                    ? conversation.verificationType
+                    : undefined
+                }
+                size="sm"
+                showTooltip={true}
+              />
             </div>
           </div>
           <div>
