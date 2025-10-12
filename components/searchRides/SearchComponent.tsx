@@ -212,14 +212,14 @@ const SearchComponent = () => {
       // search by pickup/dropoff text
       if (
         pickup &&
-        !r.pickup.toLowerCase().includes(pickup.toLowerCase()) &&
-        !r.dropoff.toLowerCase().includes(pickup.toLowerCase())
+        !r.pickup?.toLowerCase().includes(pickup.toLowerCase()) &&
+        !r.dropoff?.toLowerCase().includes(pickup.toLowerCase())
       )
         return false;
       if (
         dropoff &&
-        !r.dropoff.toLowerCase().includes(dropoff.toLowerCase()) &&
-        !r.pickup.toLowerCase().includes(dropoff.toLowerCase())
+        !r.dropoff?.toLowerCase().includes(dropoff.toLowerCase()) &&
+        !r.pickup?.toLowerCase().includes(dropoff.toLowerCase())
       )
         return false;
 
@@ -235,7 +235,7 @@ const SearchComponent = () => {
   /* ---------------------------- handlers ------------------------------ */
   const handleOpenRide = (ride: Ride) => {
     // navigate to ride details (mock route)
-    router.push(`/rides/${ride.id}`);
+    router.push(`/search-rides/${ride.id}`);
   };
 
   const handleClearFilters = () => {
