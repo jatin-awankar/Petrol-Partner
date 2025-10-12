@@ -223,8 +223,8 @@ const VehicleInfoSection: React.FC<VehicleInfoSectionProps> = ({
                             <span className="flex items-center space-x-1">
                               <Icon
                                 name="Users"
-                                size={14}
-                                className="text-blue-400"
+                                size={18}
+                                className="text-blue-400 fill-current"
                               />
                               <span>{vehicle?.seats} seats</span>
                             </span>
@@ -232,7 +232,7 @@ const VehicleInfoSection: React.FC<VehicleInfoSectionProps> = ({
                               <Icon
                                 name="Fuel"
                                 size={14}
-                                className="text-purple-500"
+                                className="text-purple-400"
                               />
                               <span className="capitalize">
                                 {vehicle?.fuelType}
@@ -240,7 +240,11 @@ const VehicleInfoSection: React.FC<VehicleInfoSectionProps> = ({
                             </span>
                             {vehicle?.isVerified && (
                               <span className="flex items-center space-x-1 text-success">
-                                <Icon name="CheckCircle" size={14} />
+                                <Icon
+                                  name="CheckCircle"
+                                  size={16}
+                                  className="text-white fill-success"
+                                />
                                 <span>Verified</span>
                               </span>
                             )}
@@ -285,6 +289,7 @@ const VehicleInfoSection: React.FC<VehicleInfoSectionProps> = ({
                   placeholder="e.g., Honda"
                   value={formData?.make}
                   onChange={(e) => handleInputChange("make", e?.target?.value)}
+                  className="text-gray-100"
                   required
                 />
                 <Label>Model</Label>

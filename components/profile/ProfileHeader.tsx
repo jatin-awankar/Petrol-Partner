@@ -121,7 +121,7 @@ const ProfileHeader: React.FC<ProfileHeaderProps> = ({
               </span>
             </div>
 
-            {user.isCollegeVerified && (
+            {user.isCollegeVerified ? (
               <div className="flex items-center space-x-1 text-green-600 ">
                 <Icon
                   name="BadgeCheck"
@@ -129,6 +129,11 @@ const ProfileHeader: React.FC<ProfileHeaderProps> = ({
                   className="text-white fill-green-500"
                 />
                 <span>Verified Student</span>
+              </div>
+            ) : (
+              <div className="flex item-center space-x-1 text-red-300">
+                <Icon name="BadgeX" size={20} className="text-red-300" />
+                <span>Not verified</span>
               </div>
             )}
           </div>
