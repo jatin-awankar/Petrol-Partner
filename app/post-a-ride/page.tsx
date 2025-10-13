@@ -17,6 +17,7 @@ import PreferencesSection from "@/components/postRide/PreferencesSection";
 
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, Eye, Home, Trash2 } from "lucide-react";
+import { motion } from "framer-motion";
 
 const STORAGE_KEY = "postRideFormData";
 
@@ -90,8 +91,10 @@ const PostRide = () => {
       const newErrors: Record<string, string> = {};
       switch (step) {
         case 1:
-          if (!formData.route.pickup.trim()) newErrors.pickup = "Pickup required";
-          if (!formData.route.dropoff.trim()) newErrors.dropoff = "Drop-off required";
+          if (!formData.route.pickup.trim())
+            newErrors.pickup = "Pickup required";
+          if (!formData.route.dropoff.trim())
+            newErrors.dropoff = "Drop-off required";
           break;
         case 2:
           if (!formData.schedule.date) newErrors.date = "Date required";
@@ -128,7 +131,10 @@ const PostRide = () => {
     }
   }, [currentStep, steps.length, validateStep]);
 
-  const handlePrevious = useCallback(() => setCurrentStep((prev) => Math.max(prev - 1, 1)), []);
+  const handlePrevious = useCallback(
+    () => setCurrentStep((prev) => Math.max(prev - 1, 1)),
+    []
+  );
 
   // Publish ride API
   const handlePublish = useCallback(async () => {
@@ -196,9 +202,17 @@ const PostRide = () => {
   const isFormComplete = completedSteps >= steps.length - 1;
 
   return (
-    <div className="page min-h-screen bg-background container mx-auto p-4 space-y-6">
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="page min-h-screen bg-background container mx-auto p-4 space-y-6"
+    >
       <div className="pb-20 md:pb-6">
-        <ProgressIndicator currentStep={currentStep} totalSteps={steps.length} steps={steps} />
+        <ProgressIndicator
+          currentStep={currentStep}
+          totalSteps={steps.length}
+          steps={steps}
+        />
         <div className="max-w-4xl mx-auto p-4 space-y-6">
           {renderCurrentStep()}
 
@@ -208,19 +222,22 @@ const PostRide = () => {
               variant="outline"
               onClick={handlePrevious}
               disabled={currentStep === 1}
+              className="shadow-sm"
             >
-                <ChevronLeft />
+              <ChevronLeft />
               Previous
             </Button>
 
             <div className="flex items-center space-x-3">
               <div className="hidden md:flex items-center space-x-2 text-sm text-muted-foreground">
                 <Icon name="CheckCircle" size={16} className="text-success" />
-                <span>{completedSteps}/{steps.length} completed</span>
+                <span>
+                  {completedSteps}/{steps.length} completed
+                </span>
               </div>
 
               {currentStep < steps.length ? (
-                <Button variant="default" onClick={handleNext}>
+                <Button variant="default" onClick={handleNext} className="shadow-sm">
                   Next
                   <ChevronRight />
                 </Button>
@@ -229,8 +246,9 @@ const PostRide = () => {
                   variant="default"
                   onClick={() => setShowPreview(true)}
                   disabled={!isFormComplete}
+                  className="shadow-sm"
                 >
-                    <Eye />
+                  <Eye />
                   Preview & Publish
                 </Button>
               )}
@@ -238,12 +256,16 @@ const PostRide = () => {
           </div>
 
           {/* Auto-save info */}
-          <div className="bg-card rounded-lg border border-border p-4 flex items-center justify-between">
+          <div className="bg-card rounded-lg border border-border p-4 flex items-center justify-between shadow-soft">
             <div className="flex items-center space-x-3">
               <Icon name="Save" size={20} className="text-muted-foreground" />
               <div>
-                <p className="text-sm font-medium text-foreground">Auto-saved</p>
-                <p className="text-xs text-muted-foreground">Your progress is automatically saved</p>
+                <p className="text-sm font-medium text-foreground">
+                  Auto-saved
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Your progress is automatically saved
+                </p>
               </div>
             </div>
             <div className="flex items-center space-x-2">
@@ -261,7 +283,11 @@ const PostRide = () => {
                 Clear All
               </Button>
 
-              <Button variant="outline" size="sm" onClick={() => router.push("/dashboard")}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => router.push("/dashboard")}
+              >
                 <Home />
                 Save & Exit
               </Button>
@@ -270,19 +296,27 @@ const PostRide = () => {
         </div>
       </div>
 
-      <PreviewModal isOpen={showPreview} onClose={() => setShowPreview(false)} formData={formData} onPublish={handlePublish} />
+      <PreviewModal
+        isOpen={showPreview}
+        onClose={() => setShowPreview(false)}
+        formData={formData}
+        onPublish={handlePublish}
+      />
 
       {isPublishing && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-card rounded-lg p-8 text-center">
             <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full mx-auto mb-4"></div>
-            <p className="text-lg font-medium text-foreground">Publishing your ride...</p>
-            <p className="text-sm text-muted-foreground mt-2">This may take a few moments</p>
+            <p className="text-lg font-medium text-foreground">
+              Publishing your ride...
+            </p>
+            <p className="text-sm text-muted-foreground mt-2">
+              This may take a few moments
+            </p>
           </div>
         </div>
       )}
-
-    </div>
+    </motion.div>
   );
 };
 

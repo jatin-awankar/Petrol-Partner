@@ -96,7 +96,7 @@ const RouteSection: React.FC<RouteSectionProps> = ({
 
   if (loading) {
     return (
-      <div className="bg-card rounded-lg border border-border p-6 space-y-4 animate-pulse">
+      <div className="bg-card rounded-lg border border-border p-6 space-y-4 animate-pulse shadow-card">
         <Skeleton height={30} width={`60%`} className="mb-2" />
         <Skeleton height={20} width={`40%`} className="mb-2" />
         <Skeleton height={40} width="100%" />
@@ -108,7 +108,7 @@ const RouteSection: React.FC<RouteSectionProps> = ({
   }
 
   return (
-    <div className="bg-card rounded-lg border border-border p-6">
+    <div className="bg-card rounded-lg border border-border p-6 shadow-card">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-semibold text-foreground flex items-center">

@@ -6,6 +6,7 @@ import { Button } from "../ui/button";
 import { ExternalLink } from "lucide-react";
 import Icon from "../AppIcon";
 import AppImage from "../AppImage";
+import { motion } from "framer-motion";
 
 interface CommunityUpdate {
   id: number | string;
@@ -74,7 +75,12 @@ const CommunityUpdates: React.FC = () => {
   }, []);
 
   return (
-    <div className="bg-card border border-border rounded-xl p-6 mb-12 md:mb-6 shadow-md">
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.5 }}
+      className="bg-card border border-border rounded-xl p-6 mb-12 md:mb-6 shadow-md"
+    >
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold text-foreground">
           Community Updates
@@ -157,7 +163,7 @@ const CommunityUpdates: React.FC = () => {
               </div>
             ))}
       </div>
-    </div>
+    </motion.div>
   );
 };
 

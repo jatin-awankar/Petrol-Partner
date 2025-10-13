@@ -54,7 +54,7 @@ const PreviewModal: React.FC<PreviewModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       setLoading(true);
-      const timer = setTimeout(() => setLoading(false), 200);
+      const timer = setTimeout(() => setLoading(false), 300);
       return () => clearTimeout(timer);
     }
   }, [isOpen]);
@@ -80,8 +80,8 @@ const PreviewModal: React.FC<PreviewModalProps> = ({
     return (
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-pulse">
         <div className="bg-card rounded-lg border border-border max-w-2xl w-full h-[80vh] p-6 space-y-4">
-          <Skeleton height={30} width="40%" />
-          <Skeleton count={10} />
+          <Skeleton height={30} width="40%" className="mb-4" />
+          <Skeleton count={6} height={60} className="mb-3"/>
         </div>
       </div>
     );

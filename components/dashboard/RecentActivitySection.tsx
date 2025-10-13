@@ -7,6 +7,7 @@ import { Button } from "../ui/button";
 import Icon from "../AppIcon";
 import { MessageCircle } from "lucide-react";
 import Link from "next/link";
+import { motion } from "framer-motion";
 interface Activity {
   id: number | string;
   type: string;
@@ -78,7 +79,12 @@ const RecentActivitySection: React.FC = () => {
   }, []);
 
   return (
-    <div className="bg-card border border-border rounded-xl p-6 mb-6 shadow-md">
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.5 }}
+      className="bg-card border border-border rounded-xl p-6 mb-6 shadow-md"
+    >
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold text-foreground">
           Recent Activity
@@ -166,7 +172,7 @@ const RecentActivitySection: React.FC = () => {
               </div>
             ))}
       </div>
-    </div>
+    </motion.div>
   );
 };
 

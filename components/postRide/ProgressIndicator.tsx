@@ -72,7 +72,7 @@ const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({
   }
 
   return (
-    <div className="bg-card border-b border-border p-4">
+    <div className="bg-card border-b border-border p-4 shadow-soft">
       <div className="flex items-center justify-between mb-2">
         <h2 className="text-lg font-semibold text-foreground">Post a Ride</h2>
         <span className="text-sm text-muted-foreground">

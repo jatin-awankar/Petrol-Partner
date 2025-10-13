@@ -14,6 +14,7 @@ import RideInformation from "@/components/rideDetails/RideInformation";
 import DriverPreferences from "@/components/rideDetails/DriverPreferences";
 import SafetyPanel from "@/components/rideDetails/SafetyPanel";
 import BookingConfirmationModal from "@/components/rideDetails/BookingConfirmationModal";
+import { motion } from "framer-motion";
 
 const RideDetailsPage = () => {
   const { id } = useParams();
@@ -165,9 +166,14 @@ const RideDetailsPage = () => {
   return (
     <div className="page min-h-screen bg-background container mx-auto p-4 space-y-6">
       <main className="pb-6">
-        <div className="max-w-7xl mx-auto px-4 py-6">
+        <div className="max-w-7xl mx-auto px-4">
           {/* Header Actions */}
-          <div className="flex items-center justify-between mb-6">
+          <motion.div
+            initial={{ y: -10, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ delay: 0.2 }}
+            className="flex flex-row items-center justify-between mb-6"
+          >
             <Button variant="ghost" size="sm" onClick={() => router.back()}>
               <ArrowLeft /> Back
             </Button>
@@ -189,9 +195,13 @@ const RideDetailsPage = () => {
             >
               <Share /> Share
             </Button>
-          </div>
+          </motion.div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="grid grid-cols-1 lg:grid-cols-3 gap-6"
+          >
             {/* Left Column */}
             <div className="lg:col-span-2 space-y-6">
               <ProfileInfo
@@ -222,7 +232,7 @@ const RideDetailsPage = () => {
                 onReportIssue={handleContactSupport}
               />
             </div>
-          </div>
+          </motion.div>
         </div>
       </main>
 

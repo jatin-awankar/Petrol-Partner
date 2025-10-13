@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import Skeleton from "react-loading-skeleton";
 import { Button } from "../ui/button";
 import Icon from "../AppIcon";
+import { motion } from "framer-motion";
 
 interface Reminder {
   id: string;
@@ -96,7 +97,12 @@ const SafetyReminders: React.FC = () => {
   if (!visibleReminders?.length) return null;
 
   return (
-    <div className="bg-card border border-border rounded-xl p-6 mb-6 shadow-md">
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.5 }}
+      className="bg-card border border-border rounded-xl p-6 mb-6 shadow-soft"
+    >
       <div className="flex items-center space-x-2 mb-4">
         <Icon name="AlertTriangle" size={20} className="text-warning" />
         <h2 className="text-lg font-semibold text-foreground">
@@ -153,7 +159,7 @@ const SafetyReminders: React.FC = () => {
           </div>
         ))}
       </div>
-    </div>
+    </motion.div>
   );
 };
 

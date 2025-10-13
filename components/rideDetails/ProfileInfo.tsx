@@ -137,7 +137,8 @@ const ProfileInfo: React.FC<ProfileInfoProps> = ({
             <VerificationBadge
               isVerified={!!isVerified}
               verificationType="college"
-              size="lg"
+              size={18}
+              className='text-success-foreground fill-success'
             />
           </div>
         </div>
@@ -183,7 +184,7 @@ const ProfileInfo: React.FC<ProfileInfoProps> = ({
           <div className="flex items-center space-x-4 mt-3">
             {typeof totalRides !== 'undefined' && (
               <div className="flex items-center space-x-1">
-                <Icon name="Car" size={14} className="text-muted-foreground" />
+                <Icon name="Bike" size={14} className="text-muted-foreground" />
                 <span className="text-xs text-muted-foreground">
                   {totalRides} rides
                 </span>
