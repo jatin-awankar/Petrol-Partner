@@ -89,14 +89,14 @@ const SuggestedRides = () => {
 
   const handleOpenRide = (ride: Ride) => {
     // navigate to ride details (mock route)
-    router.push(`/rides/${ride.id}`);
+    router.push(`/search-rides/${ride.id}`);
   };
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      className="bg-card border border-border rounded-2xl p-6 shadow-soft"
+      className="bg-card border border-border rounded-2xl p-6 shadow-soft mb-12 md:mb-6"
     >
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">

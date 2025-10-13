@@ -138,16 +138,16 @@ const DateTimeSection: React.FC<DateTimeSectionProps> = ({
             type="time"
             value={formData.schedule.time}
             onChange={(e) => handleDateTimeChange("time", e.target.value)}
-            // @ts-expect-error: 'label' prop is custom for our Input component
+            // @ts-expect-error: 'error' prop is custom for our Input component
             error={errors?.time}
             min={getMinTime()}
             required
           />
 
           <div>
-            <label className="block text-sm font-medium text-foreground mb-2">
+            <Label className="block text-sm font-medium text-foreground mb-2">
               Quick Time Selection
-            </label>
+            </Label>
             <div className="grid grid-cols-2 gap-2">
               {quickTimeOptions.map((option) => (
                 <Button
@@ -169,25 +169,26 @@ const DateTimeSection: React.FC<DateTimeSectionProps> = ({
         </div>
 
         <div className="space-y-4">
+          <Label className="flex flex-col items-start">
+          Flexible Timing (minutes)
+              <small>How many minutes early/late you can accommodate</small>
+          </Label>
           <Input
-            // @ts-expect-error: 'label' prop is custom for our Input component
-            label="Flexible Timing (minutes)"
             type="number"
             placeholder="0"
             value={formData.schedule.flexibility}
             onChange={(e) =>
               handleDateTimeChange("flexibility", e.target.value)
             }
-            description="How many minutes early/late you can accommodate"
             min={0}
             max={60}
           />
 
           <div className="bg-muted/50 rounded-lg p-4">
             <div className="flex items-center justify-between mb-3">
-              <label className="text-sm font-medium text-foreground">
+              <Label className="text-sm font-medium text-foreground">
                 Recurring Ride
-              </label>
+              </Label>
               <Button
                 variant="ghost"
                 size="sm"

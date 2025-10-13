@@ -163,7 +163,7 @@ const RideDetailsPage = () => {
 
   // --- Main Render ---
   return (
-    <div className="min-h-screen bg-background">
+    <div className="page min-h-screen bg-background container mx-auto p-4 space-y-6">
       <main className="pb-6">
         <div className="max-w-7xl mx-auto px-4 py-6">
           {/* Header Actions */}

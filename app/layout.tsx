@@ -31,7 +31,7 @@ export default function RootLayout({
         <body>
           <AuthenticatedNavbars />
           {children}
-          <Toaster />
+          <Toaster richColors={true}  />
         </body>
       </html>
     // </Providers>

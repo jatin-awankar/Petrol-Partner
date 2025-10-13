@@ -134,24 +134,24 @@ const PostRide = () => {
   const handlePublish = useCallback(async () => {
     setIsPublishing(true);
     try {
-      const token = localStorage.getItem("token"); // JWT stored on login
-      if (!token) throw new Error("Unauthorized");
+      // const token = localStorage.getItem("token");
+      // if (!token) throw new Error("Unauthorized");
 
-      const response = await fetch("/api/rides/create", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(formData),
-      });
+      // const response = await fetch("/api/rides/create", {
+      //   method: "POST",
+      //   headers: {
+      //     "Content-Type": "application/json",
+      //     Authorization: `Bearer ${token}`,
+      //   },
+      //   body: JSON.stringify(formData),
+      // });
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error?.error || "Failed to publish ride");
-      }
+      // if (!response.ok) {
+      //   const error = await response.json();
+      //   throw new Error(error?.error || "Failed to publish ride");
+      // }
 
-      localStorage.removeItem(STORAGE_KEY);
+      // localStorage.removeItem(STORAGE_KEY);
       toast.success("Ride published successfully!");
       router.push("/dashboard");
     } catch (err) {
