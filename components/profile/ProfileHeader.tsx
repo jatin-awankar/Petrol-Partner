@@ -100,7 +100,7 @@ const ProfileHeader: React.FC<ProfileHeaderProps> = ({
       <div className="flex flex-col sm:flex-row items-center space-y-4 sm:space-y-0 sm:space-x-6">
         {/* Profile Photo */}
         <div className="relative group">
-          <div className="w-24 h-24 rounded-full overflow-hidden bg-muted border-4 border-background shadow-soft">
+          <div className="w-24 h-24 rounded-full overflow-hidden bg-muted border-4 border-background shadow-md">
             <AppImage
               src={user.profilePhoto ?? ""}
               alt={`${user.name}'s profile`}

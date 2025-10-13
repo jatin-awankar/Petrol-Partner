@@ -12,6 +12,7 @@ import {
   SelectValue,
 } from "../ui/select";
 import { Label } from "../ui/label";
+import { toast } from "sonner";
 
 interface User {
   name?: string;
@@ -72,6 +73,7 @@ const PersonalInfoSection: React.FC<PersonalInfoSectionProps> = ({
       if (formData) {
         onSave(formData);
       }
+      toast.success("Profile saved successfully!")
       setIsEditing(false);
       setIsSaving(false);
     }, 1000);

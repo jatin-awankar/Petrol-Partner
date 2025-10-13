@@ -275,7 +275,6 @@ const VehicleInfoSection: React.FC<VehicleInfoSectionProps> = ({
                             variant="ghost"
                             size="sm"
                             onClick={() => handleEdit(vehicle)}
-                            className="!hover:bg-slate-400/10"
                           >
                             <Edit className="text-slate-500 w-4 h-4 sm:w-5 sm:h-5" />
                           </Button>
@@ -283,7 +282,6 @@ const VehicleInfoSection: React.FC<VehicleInfoSectionProps> = ({
                             variant="ghost"
                             size="sm"
                             onClick={() => onDeleteVehicle(vehicle?.id)}
-                            className="text-error hover:text-error"
                           >
                             <Trash2 className="text-slate-500 w-4 h-4 sm:w-5 sm:h-5" />
                           </Button>
