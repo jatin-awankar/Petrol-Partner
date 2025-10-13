@@ -46,7 +46,9 @@ const EmergencyAccessButton: React.FC<EmergencyAccessButtonProps> = ({
   };
 
   return (
-    <div className={`fixed bottom-20 right-4 z-50 md:bottom-6 ${className}`}>
+    <div
+      className={`fixed bottom-20 right-4 z-50 md:bottom-6 backdrop-blur-md ${className}`}
+    >
       {/* Emergency Options */}
       {isExpanded && (
         <div className="mb-3 space-y-2 animate-slide-up">

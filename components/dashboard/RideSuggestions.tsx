@@ -98,7 +98,7 @@ const RideSuggestions: React.FC = () => {
     <div className="bg-card border border-border rounded-xl p-6 mb-6 shadow-md">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center space-x-2">
-          <Icon name="Zap" size={20} className="text-purple-500" />
+          <Icon name="Zap" size={20} className="text-yellow-400 fill-current" />
           <h2 className="text-lg font-semibold text-foreground">
             Suggested Rides
           </h2>
@@ -148,27 +148,15 @@ const RideSuggestions: React.FC = () => {
 
                     <div className="flex items-center space-x-4 text-xs text-muted-foreground">
                       <div className="flex items-center space-x-1">
-                        <Icon
-                          name="Clock"
-                          size={12}
-                          className="text-indigo-400"
-                        />
+                        <Icon name="Clock" size={12} />
                         <span>{suggestion.time}</span>
                       </div>
                       <div className="flex items-center space-x-1">
-                        <Icon
-                          name="Users"
-                          size={12}
-                          className="text-blue-400"
-                        />
+                        <Icon name="Users" size={12} />
                         <span>{suggestion.seats} seats</span>
                       </div>
                       <div className="flex items-center space-x-1">
-                        <Icon
-                          name="Timer"
-                          size={12}
-                          className="text-yellow-500"
-                        />
+                        <Icon name="Timer" size={12} />
                         <span>{suggestion.estimatedTime}</span>
                       </div>
                     </div>
@@ -194,15 +182,6 @@ const RideSuggestions: React.FC = () => {
                         <span className="text-sm font-medium text-foreground">
                           {suggestion.driver}
                         </span>
-                        {suggestion.isVerified && (
-                          <VerificationBadge
-                            isVerified={true}
-                            verificationType="driver"
-                            size="sm"
-                            showTooltip={false}
-                            className="p-1"
-                          />
-                        )}
                       </div>
                       <div className="flex items-center space-x-1">
                         <Icon

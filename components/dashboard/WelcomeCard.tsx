@@ -89,18 +89,20 @@ const WelcomeCard: React.FC<WelcomeCardProps> = ({
       <div className="flex items-center justify-between">
         <div className="flex-1">
           <h1 className="text-2xl font-semibold mb-1">
-            {getGreeting()}, {userName?.trim().split(' ')[0]}!
+            {getGreeting()}, {userName?.trim().split(" ")[0]}!
           </h1>
           <div className="flex items-center space-x-2">
-            <span className="text-primary-foreground/80 text-sm">{collegeName}{"  "}
-            {isVerified && (
-              <VerificationBadge
-                isVerified={true}
-                verificationType="college"
-                size="lg"
-                showTooltip={true}
-              />
-            )}
+            <span className="text-primary-foreground/80 text-sm">
+              {collegeName}
+              {"  "}
+              {isVerified && (
+                <VerificationBadge
+                  isVerified={true}
+                  verificationType="college"
+                  size={16}
+                  showTooltip={true}
+                />
+              )}
             </span>
           </div>
         </div>

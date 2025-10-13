@@ -14,7 +14,6 @@ interface CommunityUpdate {
   content: string;
   timestamp: string;
   author: string;
-  icon: string;
   color: string;
   bgColor: string;
   image: string;
@@ -36,7 +35,6 @@ const CommunityUpdates: React.FC = () => {
             "We have introduced real-time location sharing and emergency SOS button for enhanced safety during rides.",
           timestamp: "2 hours ago",
           author: "Petrol Partner Team",
-          icon: "Shield",
           color: "text-primary",
           bgColor: "bg-primary/10",
           image:
@@ -50,7 +48,6 @@ const CommunityUpdates: React.FC = () => {
             "Meet our top eco-friendly riders who have collectively saved over 500kg of CO₂ this month through ride sharing!",
           timestamp: "1 day ago",
           author: "Community Team",
-          icon: "Users",
           color: "text-success",
           bgColor: "bg-success/10",
           image:
@@ -64,7 +61,6 @@ const CommunityUpdates: React.FC = () => {
             "Join us for Campus Carpool Week! Special rewards for students who share rides. Reduce traffic and win prizes.",
           timestamp: "3 days ago",
           author: "Events Team",
-          icon: "Calendar",
           color: "text-accent",
           bgColor: "bg-accent/10",
           image:
@@ -117,15 +113,6 @@ const CommunityUpdates: React.FC = () => {
                     alt={update?.title ?? "Community Update"}
                     className="w-full h-full object-cover"
                   />
-                  <div
-                    className={`absolute top-3 left-3 w-8 h-8 ${update?.bgColor} rounded-lg flex items-center justify-center`}
-                  >
-                    <Icon
-                      name={update?.icon ?? "Info"}
-                      size={16}
-                      className={update?.color ?? "text-foreground"}
-                    />
-                  </div>
                 </div>
 
                 {/* Content */}

@@ -67,7 +67,7 @@ const RecentActivitySection: React.FC = () => {
           subtitle: "Campus to Train Station",
           time: "2 days ago",
           status: "completed",
-          icon: "Car",
+          icon: "Bike",
           color: "text-violet-400",
           bgColor: "bg-violet-400/10",
         },

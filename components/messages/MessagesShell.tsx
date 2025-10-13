@@ -88,16 +88,27 @@ const MOCK_CONVERSATIONS: Conversation[] = [
 
 /** MessagesShell */
 export default function MessagesShell() {
-  const [conversations, setConversations] = useState<Conversation[] | null>(null);
-  const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
+  const [conversations, setConversations] = useState<Conversation[] | null>(
+    null
+  );
+  const [selectedConversation, setSelectedConversation] =
+    useState<Conversation | null>(null);
   const [activeRideStatus, setActiveRideStatus] = useState<
-    "none" | "searching" | "matched" | "en-route" | "arrived" | "in-progress" | "completed"
+    | "none"
+    | "searching"
+    | "matched"
+    | "en-route"
+    | "arrived"
+    | "in-progress"
+    | "completed"
   >("en-route");
 
   const [isLoading, setIsLoading] = useState(true);
 
   // messages stored per conversation
-  const [messagesMap, setMessagesMap] = useState<{ [conversationId: string]: Message[] }>({});
+  const [messagesMap, setMessagesMap] = useState<{
+    [conversationId: string]: Message[];
+  }>({});
 
   // simulate data load
   useEffect(() => {
@@ -128,8 +139,10 @@ export default function MessagesShell() {
     setSelectedConversation(conv);
   };
   const handleBackToList = () => setSelectedConversation(null);
-  const handleReportUser = (conv?: Conversation) => console.log("Report user", conv?.id);
-  const handleBlockUser = (conv?: Conversation) => console.log("Block user", conv?.id);
+  const handleReportUser = (conv?: Conversation) =>
+    console.log("Report user", conv?.id);
+  const handleBlockUser = (conv?: Conversation) =>
+    console.log("Block user", conv?.id);
   const handleEmergencyCall = () => console.log("Emergency call initiated");
   const handleShareLocation = () => console.log("Share location requested");
   const handleContactSupport = () => console.log("Contacting support...");
@@ -141,7 +154,10 @@ export default function MessagesShell() {
     if (!selectedConversation) return;
     setMessagesMap((prev) => ({
       ...prev,
-      [selectedConversation.id]: [...(prev[selectedConversation.id] || []), msg],
+      [selectedConversation.id]: [
+        ...(prev[selectedConversation.id] || []),
+        msg,
+      ],
     }));
   };
 
@@ -157,16 +173,17 @@ export default function MessagesShell() {
       />
 
       {/* Main content */}
-      <div className="mb-3">
+      <div className="mb-3 shadow-md rounded-lg">
         <div className="max-w-7xl mx-auto">
           <div className="md:flex min-h-screen">
             {/* Sidebar */}
             <aside
               className={`${
-                selectedConversation ? "hidden md:flex md:w-1/3 lg:w-1/4" : "flex w-full md:w-1/3 lg:w-1/4"
+                selectedConversation
+                  ? "hidden md:flex md:w-1/3 lg:w-1/4"
+                  : "flex w-full md:w-1/3 lg:w-1/4"
               } flex-col border-r border-border bg-card`}
             >
-             
               <div className="flex-1 overflow-y-auto">
                 {isLoading ? (
                   <div className="p-4 space-y-3">
@@ -186,11 +203,13 @@ export default function MessagesShell() {
                       ...conv,
                       lastMessage: conv.lastMessage && {
                         ...conv.lastMessage,
-                        type: conv.lastMessage.type ?? '',
+                        type: conv.lastMessage.type ?? "",
                       },
                     }))}
                     onConversationSelect={(conversationId: string) => {
-                      const conv = (conversations ?? []).find((c) => c.id === conversationId);
+                      const conv = (conversations ?? []).find(
+                        (c) => c.id === conversationId
+                      );
                       if (conv) handleConversationSelect(conv);
                     }}
                     selectedConversationId={selectedConversation?.id || ""}
@@ -202,7 +221,9 @@ export default function MessagesShell() {
             {/* Chat panel */}
             <section
               className={`${
-                selectedConversation ? "flex w-full md:w-2/3 lg:w-3/4" : "hidden md:flex md:w-2/3 lg:w-3/4"
+                selectedConversation
+                  ? "flex w-full md:w-2/3 lg:w-3/4"
+                  : "hidden md:flex md:w-2/3 lg:w-3/4"
               } flex-col bg-card`}
             >
               {selectedConversation ? (
@@ -217,15 +238,23 @@ export default function MessagesShell() {
               ) : (
                 <div className="hidden md:flex flex-col items-center justify-center h-full p-8 text-center text-muted-foreground">
                   <div className="w-24 h-24 bg-muted rounded-full flex items-center justify-center mb-6">
-                    <Icon name="MessageCircle" size={32} className="text-muted-foreground" />
+                    <Icon
+                      name="MessageCircle"
+                      size={32}
+                      className="text-muted-foreground"
+                    />
                   </div>
-                  <h2 className="text-xl font-semibold text-foreground mb-2">Select a conversation</h2>
+                  <h2 className="text-xl font-semibold text-foreground mb-2">
+                    Select a conversation
+                  </h2>
                   <p className="max-w-md">
-                    Select a conversation from the sidebar to view messages. New messages will appear here.
+                    Select a conversation from the sidebar to view messages. New
+                    messages will appear here.
                   </p>
                   {totalUnreadCount > 0 && (
                     <div className="mt-4 inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 text-primary text-sm">
-                      {totalUnreadCount} unread message{totalUnreadCount !== 1 ? "s" : ""}
+                      {totalUnreadCount} unread message
+                      {totalUnreadCount !== 1 ? "s" : ""}
                     </div>
                   )}
                 </div>

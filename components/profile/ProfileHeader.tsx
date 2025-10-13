@@ -134,9 +134,14 @@ const ProfileHeader: React.FC<ProfileHeaderProps> = ({
             <VerificationBadge
               isVerified={user.isCollegeVerified}
               verificationType="identity"
+              size={18}
             />
             {user.isDriverVerified && (
-              <VerificationBadge isVerified verificationType="driver" />
+              <VerificationBadge
+                isVerified
+                verificationType="driver"
+                size={18}
+              />
             )}
           </div>
 
@@ -163,8 +168,8 @@ const ProfileHeader: React.FC<ProfileHeaderProps> = ({
                 <VerificationBadge
                   isVerified
                   verificationType="college"
-                  size="lg"
-                  className="fill-green-500 text-green-500"
+                  size={24}
+                  className=" text-white fill-green-500"
                 />
                 <span>Verified Student</span>
               </div>

@@ -95,7 +95,7 @@ const ConversationCard: React.FC<ConversationCardProps> = ({
   return (
     <div
       onClick={conversation ? onClick : undefined}
-      className="flex items-center space-x-3 p-4 hover:bg-muted/50 cursor-pointer transition-colors border-b border-border last:border-b-0"
+      className="flex items-center space-x-3 p-4 hover:bg-muted/50 cursor-pointer transition-colors border-b border-border last:border-b-0 "
       role="button"
       tabIndex={0}
       aria-label={`Conversation with ${conversation?.name || "Unknown User"}`}

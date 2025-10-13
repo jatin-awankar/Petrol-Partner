@@ -7,7 +7,7 @@ import clsx from "clsx";
 interface VerificationBadgeProps {
   isVerified?: boolean;
   verificationType?: "college" | "driver" | "identity";
-  size?: "sm" | "default" | "lg";
+  size?: number;
   showTooltip?: boolean;
   className?: string;
 }
@@ -15,7 +15,7 @@ interface VerificationBadgeProps {
 const VerificationBadge: React.FC<VerificationBadgeProps> = ({
   isVerified = false,
   verificationType = "college",
-  size = "default",
+  size = 24,
   showTooltip = true,
   className = "",
 }) => {
@@ -32,7 +32,7 @@ const VerificationBadge: React.FC<VerificationBadgeProps> = ({
   const verificationConfig = {
     college: {
       icon: "BadgeCheck",
-      color: "text-success",
+      color: "",
       tooltip: "College Verified",
       description: "Student status confirmed",
     },
@@ -51,7 +51,6 @@ const VerificationBadge: React.FC<VerificationBadgeProps> = ({
   };
 
   const config = verificationConfig[verificationType];
-  const currentSize = sizeMap[size];
 
   return (
     <div className="relative inline-block">
@@ -59,16 +58,14 @@ const VerificationBadge: React.FC<VerificationBadgeProps> = ({
       <div
         className={clsx(
           "rounded-full flex items-center justify-center transition-transform hover:scale-105 duration-150",
-          config.color,
-          currentSize.container,
-          className
+          config.color
         )}
         onMouseEnter={() => showTooltip && setShowTooltipState(true)}
         onMouseLeave={() => setShowTooltipState(false)}
         role="img"
         aria-label={config.tooltip}
       >
-        <Icon name={config.icon} size={currentSize.icon} />
+        <Icon name={config.icon} size={size} className={className} />
       </div>
 
       {/* Tooltip */}
