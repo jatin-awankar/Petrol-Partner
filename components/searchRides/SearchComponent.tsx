@@ -9,6 +9,9 @@ import {
   SheetTrigger,
   SheetContent,
   SheetTitle,
+  SheetHeader,
+  SheetDescription,
+  SheetClose,
 } from "@/components/ui/sheet";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import RideCard, { Ride, RideType } from "./RideCard";
@@ -16,6 +19,14 @@ import { Card } from "../ui/card";
 import Skeleton from "react-loading-skeleton";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Label } from "../ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select";
 
 /* --------------------------- Small helpers ----------------------------- */
 export const sleep = (ms = 600) => new Promise((r) => setTimeout(r, ms));
@@ -276,29 +287,32 @@ const SearchComponent = () => {
                   <Icon name="SlidersHorizontal" /> Filters
                 </Button>
               </SheetTrigger>
-              <SheetContent className="p-4">
-                <SheetTitle></SheetTitle>
-                <h3 className="text-lg font-semibold mb-3">Filters</h3>
-
-                <div className="space-y-3">
-                  <div>
-                    <label className="text-sm font-medium">Gender</label>
-                    <select
-                      className="w-full mt-2 p-2 rounded-md border bg-background"
+              <SheetContent>
+                <SheetHeader>
+                  <SheetTitle>Apply Filters</SheetTitle>
+                  <SheetDescription>Search more accurately</SheetDescription>
+                </SheetHeader>
+                <div className="grid flex-1 auto-rows-min gap-6 px-4">
+                  <div className="grid gap-3">
+                    <Label className="text-sm font-medium">Gender</Label>
+                    <Select
                       value={filters.gender}
-                      onChange={(e) =>
-                        setFilters({ ...filters, gender: e.target.value })
+                      onValueChange={(value: string) =>
+                        setFilters({ ...filters, gender: value })
                       }
                     >
-                      <option value="">Any</option>
-                      <option value="male">Male</option>
-                      <option value="female">Female</option>
-                      <option value="other">Other</option>
-                    </select>
+                      <SelectTrigger className="w-full p-2 rounded-md border border-primary bg-background">
+                        <SelectValue placeholder="Select Gender (Default-Any)" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="male">Male</SelectItem>
+                        <SelectItem value="female">Female</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
 
-                  <div>
-                    <label className="text-sm font-medium">College</label>
+                  <div className="grid gap-3">
+                    <Label className="text-sm font-medium">College</Label>
                     <Input
                       placeholder="College name"
                       value={filters.college}
@@ -309,8 +323,8 @@ const SearchComponent = () => {
                   </div>
 
                   <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="text-sm font-medium">Age from</label>
+                    <div className="grid gap-3">
+                      <Label className="text-sm font-medium">Age from</Label>
                       <Input
                         placeholder="18"
                         value={filters.ageFrom}
@@ -319,8 +333,8 @@ const SearchComponent = () => {
                         }
                       />
                     </div>
-                    <div>
-                      <label className="text-sm font-medium">Age to</label>
+                    <div className="grid gap-3">
+                      <Label className="text-sm font-medium">Age to</Label>
                       <Input
                         placeholder="30"
                         value={filters.ageTo}
@@ -335,13 +349,16 @@ const SearchComponent = () => {
                     <Button variant="ghost" onClick={handleClearFilters}>
                       Clear
                     </Button>
-                    <Button
-                      onClick={() => {
-                        setPage(1); /* apply filters */
-                      }}
-                    >
-                      Apply
-                    </Button>
+                    <SheetClose asChild>
+                      <Button
+                        type="submit"
+                        onClick={() => {
+                          setPage(1); /* apply filters */
+                        }}
+                      >
+                        Apply
+                      </Button>
+                    </SheetClose>
                   </div>
                 </div>
               </SheetContent>
