@@ -47,7 +47,7 @@ const RideStatusIndicator: React.FC<RideStatusIndicatorProps> = ({
         };
       case "en-route":
         return {
-          icon: "Car",
+          icon: "Bike",
           text: driverName ? `${driverName} is coming` : "Driver is on the way",
           color: "text-primary",
           bgColor: "bg-primary/10",
@@ -92,7 +92,7 @@ const RideStatusIndicator: React.FC<RideStatusIndicatorProps> = ({
 
   return (
     <div
-      className={`fixed top-20 left-4 right-4 ${config.bgColor} ${config.borderColor} border rounded-lg p-3 shadow-soft z-50 md:left-auto md:right-4 md:w-80`}
+      className={`fixed top-20 left-4 right-4 ${config.bgColor} ${config.borderColor} border rounded-lg p-3 shadow-soft z-50 md:left-auto md:right-4 md:w-80 backdrop-blur-md`}
     >
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-3">

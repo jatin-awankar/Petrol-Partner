@@ -141,9 +141,9 @@ const ConversationList: React.FC<ConversationListProps> = ({
   };
 
   return (
-    <div className="flex flex-col h-full bg-card">
+    <div className="flex flex-col h-full bg-card   ">
       {/* Search Header */}
-      <div className="p-4 border-b border-border">
+      <div className="p-4 border-b border-border ">
         <div className="relative mb-4">
           <Input
             type="search"
@@ -206,7 +206,7 @@ const ConversationList: React.FC<ConversationListProps> = ({
       </div>
 
       {/* Conversations List */}
-      <div className="flex-1 overflow-y-auto" ref={containerRef}>
+      <div className="flex-1 overflow-y-auto " ref={containerRef}>
         {isLoading ? (
           Array.from({ length: PAGE_SIZE }).map((_, idx) => (
             <ConversationCard key={idx} isLoading onClick={() => {}} />
@@ -251,7 +251,7 @@ const ConversationList: React.FC<ConversationListProps> = ({
       </div>
 
       {/* Quick Actions */}
-      <div className="p-4 border-t border-border bg-muted/30">
+      <div className="p-4 border-t border-border bg-muted/30 ">
         <div className="flex items-center justify-between text-sm text-muted-foreground">
           <span>
             {displayedConversations?.length} conversation
