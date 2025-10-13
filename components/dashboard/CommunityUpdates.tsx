@@ -79,7 +79,7 @@ const CommunityUpdates: React.FC = () => {
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.5 }}
-      className="bg-card border border-border rounded-xl p-6 mb-12 md:mb-6 shadow-md"
+      className="bg-card border border-border rounded-xl p-6 mb-12 md:mb-6 shadow-soft"
     >
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold text-foreground">

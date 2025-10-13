@@ -100,7 +100,7 @@ const RideSuggestions: React.FC = () => {
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.5 }}
-      className="bg-card border border-border rounded-xl p-6 mb-6 shadow-md"
+      className="bg-card border border-border rounded-xl p-6 mb-6 shadow-soft"
     >
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center space-x-2">

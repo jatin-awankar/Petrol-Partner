@@ -74,7 +74,7 @@ const QuickActionCards: React.FC = () => {
         : actions?.map((action) => (
             <div
               key={action?.id ?? Math.random()}
-              className="bg-card border border-border rounded-xl p-6 hover:shadow-medium transition-shadow cursor-pointer shadow-md"
+              className="bg-card border border-border rounded-xl p-6 hover:shadow-medium transition-shadow cursor-pointer shadow-card"
             >
               <Link href={action?.route}>
                 <div className="flex items-start justify-between mb-4">
