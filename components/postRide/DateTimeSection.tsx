@@ -122,7 +122,7 @@ const DateTimeSection: React.FC<DateTimeSectionProps> = ({
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="space-y-4">
-          <Label>Departure Date</Label>
+          <Label className="mb-2">Departure Date</Label>
           <Input
             type="date"
             value={formData.schedule.date}
@@ -133,7 +133,7 @@ const DateTimeSection: React.FC<DateTimeSectionProps> = ({
             required
           />
 
-          <Label>Departure Time</Label>
+          <Label className="mb-2">Departure Time</Label>
           <Input
             type="time"
             value={formData.schedule.time}
@@ -145,7 +145,7 @@ const DateTimeSection: React.FC<DateTimeSectionProps> = ({
           />
 
           <div>
-            <Label className="block text-sm font-medium text-foreground mb-2">
+            <Label className="mb-2">
               Quick Time Selection
             </Label>
             <div className="grid grid-cols-2 gap-2">

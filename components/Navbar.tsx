@@ -31,7 +31,7 @@ const Navbar = () => {
   const isHomePage = pathname === "/dashboard";
 
   return (
-    <header className="sticky top-0 left-0 right-0 bg-card border-b border-border z-100">
+    <header className="sticky top-0 left-0 right-0 bg-card border-b border-border z-100 shadow-card">
       <div className="flex items-center justify-between h-16 px-4">
         {/* Left */}
         <div className="flex items-center">
@@ -55,7 +55,7 @@ const Navbar = () => {
         <div className="flex items-center space-x-3">
           <Button variant="ghost" size="icon">
             <Icon name="Bell" size={20} />
-            <span className="absolute -top-1 -right-1 w-2 h-2 bg-error rounded-full"></span>
+            <span className="-top-1 -right-1 w-2 h-2 bg-error rounded-full"></span>
           </Button>
 
           <div className="relative">
@@ -82,7 +82,7 @@ const Navbar = () => {
                   <hr className="my-2 border-border" />
                   <button
                     className="w-full px-4 py-2 text-left text-sm text-error hover:bg-muted flex items-center space-x-2"
-                    onClick={() => signOut()}
+                    // onClick={() => signOut()}
                   >
                     <Icon name="LogOut" size={16} />
                     <span>Sign Out</span>

@@ -129,8 +129,7 @@ const RouteSection: React.FC<RouteSectionProps> = ({
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="space-y-4">
           {/* Pickup */}
-          <div>
-            <Label>Pickup Location</Label>
+            <Label className="mb-2">Pickup Location</Label>
             <Input
               placeholder="Enter pickup address"
               value={formData.route.pickup}
@@ -143,38 +142,30 @@ const RouteSection: React.FC<RouteSectionProps> = ({
               variant="ghost"
               size="sm"
               onClick={() => handleUseCurrentLocation("pickup")}
-              className="mt-2"
               disabled={loadingLocation}
             >
               <Navigation />
               {loadingLocation ? "Fetching..." : "Use Current Location"}
             </Button>
-          </div>
 
           {/* Dropoff */}
-          <div>
+            <Label className="mb-2">Drop-off Location</Label>
             <Input
-              // @ts-expect-error: 'label' prop is custom for our Input component
-              label="Drop-off Location"
               placeholder="Enter destination address"
               value={formData.route.dropoff}
               onChange={(e) => handleLocationChange("dropoff", e.target.value)}
+              // @ts-expect-error: 'error' prop is custom for our Input component
               error={errors?.dropoff}
               required
             />
-          </div>
 
           {/* Via */}
-          <div>
+            <Label className="mb-2">Via (Optional)</Label>
             <Input
-              // @ts-expect-error: 'label' prop is custom for our Input component
-              label="Via (Optional)"
               placeholder="Any stops along the way"
               value={formData.route.via}
               onChange={(e) => handleLocationChange("via", e.target.value)}
-              description="Add intermediate stops if any"
             />
-          </div>
 
           {/* Estimated Route Info */}
           <div className="bg-muted/50 rounded-lg p-3">

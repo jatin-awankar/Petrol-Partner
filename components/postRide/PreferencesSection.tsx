@@ -112,7 +112,7 @@ const PreferencesSection: React.FC<PreferencesSectionProps> = ({
               value={formData?.preferences?.gender || ""}
               onValueChange={(value) => handlePreferenceChange("gender", value)}
             >
-              <SelectTrigger>
+              <SelectTrigger className="w-full">
                 <SelectValue placeholder="Select Gender" />
               </SelectTrigger>
               <SelectContent>
@@ -133,7 +133,7 @@ const PreferencesSection: React.FC<PreferencesSectionProps> = ({
                 handlePreferenceChange("conversation", value)
               }
             >
-              <SelectTrigger>
+              <SelectTrigger className="w-full">
                 <SelectValue placeholder="Select Conversation Preference" />
               </SelectTrigger>
               <SelectContent>
@@ -155,7 +155,7 @@ const PreferencesSection: React.FC<PreferencesSectionProps> = ({
               value={formData?.preferences?.music || ""}
               onValueChange={(value) => handlePreferenceChange("music", value)}
             >
-              <SelectTrigger>
+              <SelectTrigger className="w-full">
                 <SelectValue placeholder="Select Music Preference" />
               </SelectTrigger>
               <SelectContent>

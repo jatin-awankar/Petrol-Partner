@@ -103,7 +103,7 @@ const PreviewModal: React.FC<PreviewModalProps> = ({
         {/* Content */}
         <div className="p-6 space-y-6">
           {/* Route Information */}
-          <div className="bg-muted/30 rounded-lg p-4">
+          <div className="bg-muted/60 shadow-card rounded-lg p-4">
             <h3 className="font-semibold text-foreground mb-3 flex items-center">
               <Icon name="MapPin" size={18} className="mr-2 text-primary" />
               Route Details
@@ -128,7 +128,7 @@ const PreviewModal: React.FC<PreviewModalProps> = ({
 
           {/* Schedule */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-muted/30 rounded-lg p-4">
+            <div className="bg-muted/60 shadow-card rounded-lg p-4">
               <h3 className="font-semibold text-foreground mb-2 flex items-center">
                 <Icon name="Calendar" size={18} className="mr-2 text-primary" />
                 Date & Time
@@ -142,7 +142,7 @@ const PreviewModal: React.FC<PreviewModalProps> = ({
               )}
             </div>
 
-            <div className="bg-muted/30 rounded-lg p-4">
+            <div className="bg-muted/60 shadow-card rounded-lg p-4">
               <h3 className="font-semibold text-foreground mb-2 flex items-center">
                 <Icon name="Users" size={18} className="mr-2 text-primary" />
                 Available Seats
@@ -154,7 +154,7 @@ const PreviewModal: React.FC<PreviewModalProps> = ({
 
           {/* Vehicle & Pricing */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-muted/30 rounded-lg p-4">
+            <div className="bg-muted/60 shadow-card rounded-lg p-4">
               <h3 className="font-semibold text-foreground mb-2 flex items-center">
                 <Icon name="Car" size={18} className="mr-2 text-primary" />
                 Vehicle
@@ -176,7 +176,7 @@ const PreviewModal: React.FC<PreviewModalProps> = ({
               )}
             </div>
 
-            <div className="bg-muted/30 rounded-lg p-4">
+            <div className="bg-muted/60 shadow-card rounded-lg p-4">
               <h3 className="font-semibold text-foreground mb-2 flex items-center">
                 <Icon name="IndianRupee" size={18} className="mr-2 text-primary" />
                 Pricing
@@ -187,7 +187,7 @@ const PreviewModal: React.FC<PreviewModalProps> = ({
           </div>
 
           {/* Preferences */}
-          <div className="bg-muted/30 rounded-lg p-4">
+          <div className="bg-muted/60 shadow-card rounded-lg p-4">
             <h3 className="font-semibold text-foreground mb-3 flex items-center">
               <Icon name="Settings" size={18} className="mr-2 text-primary" />
               Preferences & Rules
@@ -228,7 +228,7 @@ const PreviewModal: React.FC<PreviewModalProps> = ({
           </div>
 
           {/* Payment Methods */}
-          <div className="bg-muted/30 rounded-lg p-4">
+          <div className="bg-muted/60 shadow-card rounded-lg p-4">
             <h3 className="font-semibold text-foreground mb-2 flex items-center">
               <Icon name="CreditCard" size={18} className="mr-2 text-primary" />
               Payment Methods
@@ -244,7 +244,7 @@ const PreviewModal: React.FC<PreviewModalProps> = ({
 
           {/* Additional Notes */}
           {formData?.preferences?.notes && (
-            <div className="bg-muted/30 rounded-lg p-4">
+            <div className="bg-muted/60 shadow-card rounded-lg p-4">
               <h3 className="font-semibold text-foreground mb-2 flex items-center">
                 <Icon name="MessageSquare" size={18} className="mr-2 text-primary" />
                 Additional Notes
