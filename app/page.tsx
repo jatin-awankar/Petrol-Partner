@@ -4,7 +4,7 @@ import FeatureSection from "@/components/FeatureSection";
 import CTASection from "@/components/CTASection";
 // import { useAuth } from "@/hooks/useAuth";
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+// import { useEffect } from "react";
 
 export default function LandingPage() {
   // const { user, loading } = useAuth();
