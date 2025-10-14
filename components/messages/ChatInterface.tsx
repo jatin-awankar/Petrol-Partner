@@ -191,7 +191,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                     ? conversation.verificationType
                     : undefined
                 }
-                size="sm"
+                size={16}
                 showTooltip={true}
               />
             </div>

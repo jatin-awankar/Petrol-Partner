@@ -5,7 +5,6 @@ import Link from "next/link";
 import { Search } from "lucide-react";
 import { Button } from "../ui/button";
 import Icon from "../AppIcon";
-import VerificationBadge from "../ui/VerificationBadge";
 import Skeleton from "react-loading-skeleton";
 import { motion } from "framer-motion";
 
