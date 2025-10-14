@@ -171,7 +171,7 @@ const PostRide = () => {
     } finally {
       setIsPublishing(false);
     }
-  }, [formData, router]);
+  }, [router]);
 
   const renderCurrentStep = useCallback(() => {
     const comp = steps[currentStep - 1]?.component;

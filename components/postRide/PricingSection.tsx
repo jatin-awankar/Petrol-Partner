@@ -41,6 +41,7 @@ const PricingSection: FC<PricingSectionProps> = ({ formData, updateFormData, err
       setHasError(true);
       setIsLoading(false);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData?.availableSeats, useCalculated]);
 
   const handlePricingChange = (field: string, value: any) => {
