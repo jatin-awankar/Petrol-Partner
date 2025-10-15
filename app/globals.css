@@ -1,5 +1,5 @@
 @import "tailwindcss";
-@import 'react-loading-skeleton/dist/skeleton.css';
+@import "react-loading-skeleton/dist/skeleton.css";
 
 /* Tailwind v4 theme tokens */
 @theme {
@@ -56,7 +56,7 @@
 
   --muted: 210 40% 96%;
   --muted-foreground: 215 16% 47%;
-  
+
   --accent: 204, 94%, 94%;
   --accent-foreground: 204 94% 30%;
 
@@ -67,13 +67,13 @@
   --input: 214 32% 91%;
   --ring: 204 94% 62%;
 
-  --success: 122.82,38.46%,56.67%;
+  --success: 122.82, 38.46%, 56.67%;
   --success-foreground: 0 0% 100%;
 
-  --error: 4.11,89.62%,58.43%;
+  --error: 4.11, 89.62%, 58.43%;
   --error-foreground: 0 0% 100%;
 
-  --warning: 45.00,100.00%,51.37%;
+  --warning: 45, 100%, 51.37%;
   --warning-foreground: 0 0% 100%;
 
   /* Custom design tokens */
@@ -139,13 +139,13 @@
   --input: 215 25% 25%;
   --ring: 204 94% 62%;
 
-  --success: 122.58,40.97%,44.51%;
+  --success: 122.58, 40.97%, 44.51%;
   --success-foreground: 0 0% 100%;
 
-  --error: 4.11,89.62%,58.43%;
+  --error: 4.11, 89.62%, 58.43%;
   --error-foreground: 0 0% 100%;
 
-  --warning: 45.00,100.00%,51.37%;
+  --warning: 45, 100%, 51.37%;
   --warning-foreground: 0 0% 100%;
 
   /* Dark mode gradients */
@@ -175,7 +175,6 @@
 @layer base {
   * {
     @apply border-border;
-    
   }
   body {
     @apply bg-background text-foreground antialiased;
@@ -183,6 +182,16 @@
 }
 
 @layer utilities {
+  /* Override active tab color globally */
+  [data-state="active"].tabs-trigger {
+    background-color: white; /* or a custom color */
+  }
+
+  /* Optional hover or transition enhancements */
+  .tabs-trigger {
+    transition: background-color 0.2s, color 0.2s;
+  }
+
   .bg-gradient-primary {
     background: var(--gradient-primary);
   }
@@ -205,11 +214,15 @@
     padding: 2rem;
   }
 
-  .navbar {
+  @media (max-width: 768px) {
+    .page {
+      padding: 1rem;
+    }
+  }
+
+  /* .navbar {
     position: sticky;
     top: 0;
-    /* left: 0;
-    width: 100%; */
     min-height: 64px;
     padding-inline: calc(var(--spacing) * 4);
     padding-block: calc(var(--spacing) * 3);
@@ -217,7 +230,7 @@
     align-items: center;
     z-index: 50;
     margin: 0 auto;
-  }
+  } */
 
   .logo {
     height: 6em;
@@ -241,7 +254,7 @@
     color: #888;
   }
 
-  .dock-outer {
+  /* .dock-outer {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -279,8 +292,6 @@
     justify-content: center;
     border-radius: 10px;
     background-color: var(--secondary);
-    /* box-shadow: 0 0px 6px -1px rgba(0, 0, 0, 0.3); */
-      /* 0 2px 4px -1px rgba(0, 0, 0, 0.06); */
     cursor: pointer;
     outline: none;
     transition: transform 0.2s ease;
@@ -336,5 +347,5 @@
   .card-profile:hover {
     transform: scale(1.1);
     box-shadow: 0 0 8px hsl(204 94% 62% / 0.6);
-  }
+  } */
 }

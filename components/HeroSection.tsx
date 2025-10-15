@@ -21,8 +21,11 @@ const HeroSection = () => {
             transition={{ duration: 0.8 }}
           >
             <h1 className="text-5xl md:text-7xl font-bold mb-6 leading-tight">
+              <span className='block bg-gradient-to-b from-blue-100 to-white bg-clip-text text-transparent'>
+
               Your College
-              <span className="block bg-gradient-to-r from-white to-blue-200 bg-clip-text text-transparent">
+              </span>
+              <span className="">
                 Ride Partner
               </span>
             </h1>
@@ -34,7 +37,7 @@ const HeroSection = () => {
 
             <div className="flex flex-col sm:flex-row gap-4 justify-center mb-12">
               <Button size="lg" variant="secondary" className="text-lg px-8 py-6" asChild>
-                <Link href="/sign-up">Sign Up Now</Link>
+                <Link href="/sign-up">Get Started</Link>
               </Button>
               <Button size="lg" variant="outline" className="text-lg px-8 py-6 bg-white/10 border-white/30 text-white hover:bg-white/20" asChild>
                 <Link href="/sign-in">Sign In</Link>

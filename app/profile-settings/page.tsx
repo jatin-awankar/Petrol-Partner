@@ -208,7 +208,7 @@ const ProfileAccountSettings = () => {
   return (
     <div className="page min-h-screen bg-background container mx-auto p-4 space-y-6">
       <main className="pb-20 md:pb-6">
-        <div className="max-w-4xl mx-auto px-4">
+        <div className="max-w-4xl mx-auto">
           
             <Suspense fallback={<Skeleton height={400} />}>
               <ProfileHeader

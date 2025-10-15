@@ -387,17 +387,17 @@ const SearchComponent = () => {
             setPage(1);
           }}
         >
-          <div className="flex items-center justify-between mb-4">
-            <TabsList className="flex gap-2">
+          <div className="flex flex-col md:flex-row gap-2 items-center justify-between mb-4">
+            <TabsList className="flex gap-2 w-full md:w-fit">
               <TabsTrigger
                 value="offer"
-                className="flex items-center gap-2 px-4 py-2 rounded-lg"
+                className="tabs-trigger flex items-center gap-2 px-4 py-2 rounded-lg"
               >
-                <Icon name="Car" /> Ride Offers
+                <Icon name="Bike" /> Ride Offers
               </TabsTrigger>
               <TabsTrigger
                 value="request"
-                className="flex items-center gap-2 px-4 py-2 rounded-lg"
+                className="tabs-trigger flex items-center gap-2 px-4 py-2 rounded-lg"
               >
                 <Icon name="User" /> Ride Requests
               </TabsTrigger>

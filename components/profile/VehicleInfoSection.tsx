@@ -265,7 +265,7 @@ const VehicleInfoSection: React.FC<VehicleInfoSectionProps> = ({
                                   size={16}
                                   className="text-white fill-success"
                                 />
-                                <span>Verified</span>
+                                <span className="hidden md:flex">Verified</span>
                               </span>
                             )}
                           </div>

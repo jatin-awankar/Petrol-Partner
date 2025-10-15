@@ -182,8 +182,8 @@ const RideHistorySection: React.FC<{
                 value={filterType || ""}
                 onValueChange={(value) => setFilterType(value)}
               >
-                <SelectTrigger className="flex-1">
-                  <SelectValue placeholder="Select Gender" />
+                <SelectTrigger className="flex-1 w-full">
+                  <SelectValue placeholder="Select Ride" />
                 </SelectTrigger>
                 <SelectContent>
                   {filterOptions.map((option) => (
@@ -198,7 +198,7 @@ const RideHistorySection: React.FC<{
                 value={sortBy || ""}
                 onValueChange={(value) => setSortBy(value)}
               >
-                <SelectTrigger className="flex-1">
+                <SelectTrigger className="flex-1 w-full">
                   <SelectValue placeholder="Select Gender" />
                 </SelectTrigger>
                 <SelectContent>

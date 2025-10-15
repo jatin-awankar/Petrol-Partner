@@ -184,7 +184,7 @@ const AccountSecuritySection: React.FC<AccountSecuritySectionProps> = ({
             <div>
               <h4 className="font-medium text-foreground mb-4">Password</h4>
               {!showPasswordForm ? (
-                <div className="flex items-center justify-between p-3 border border-border rounded-lg">
+                <div className="flex flex-col sm:flex-row gap-2 justify-between p-3 border border-border rounded-lg">
                   <div>
                     <p className="font-medium text-foreground">Password</p>
                     <p className="text-sm text-muted-foreground">
@@ -356,7 +356,7 @@ const AccountSecuritySection: React.FC<AccountSecuritySectionProps> = ({
               </h4>
               <div className="space-y-3">
                 <div className="p-3 border border-border rounded-lg">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col sm:flex-row gap-2 justify-between">
                     <div>
                       <p className="font-medium text-foreground">
                         Download Account Data
@@ -373,7 +373,7 @@ const AccountSecuritySection: React.FC<AccountSecuritySectionProps> = ({
                 </div>
 
                 <div className="p-3 border border-error/20 bg-error/5 rounded-lg">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col sm:flex-row gap-2 justify-between">
                     <div>
                       <p className="font-medium text-error">Delete Account</p>
                       <p className="text-sm text-muted-foreground">

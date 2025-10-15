@@ -125,6 +125,7 @@ const DateTimeSection: React.FC<DateTimeSectionProps> = ({
           <Label className="mb-2">Departure Date</Label>
           <Input
             type="date"
+            placeholder="Specify your date"
             value={formData.schedule.date}
             onChange={(e) => handleDateTimeChange("date", e.target.value)}
             // @ts-expect-error: 'error' prop is custom for our Input component
@@ -136,6 +137,7 @@ const DateTimeSection: React.FC<DateTimeSectionProps> = ({
           <Label className="mb-2">Departure Time</Label>
           <Input
             type="time"
+            placeholder="Specify your time"
             value={formData.schedule.time}
             onChange={(e) => handleDateTimeChange("time", e.target.value)}
             // @ts-expect-error: 'error' prop is custom for our Input component

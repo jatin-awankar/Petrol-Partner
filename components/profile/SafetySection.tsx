@@ -56,6 +56,33 @@ const SafetySection: React.FC<SafetySectionProps> = ({
   );
   const [isSaving, setIsSaving] = useState(false);
 
+  const safetyPreferences = [
+    {
+      id: "autoShareRide",
+      label: "Auto-share ride details with trusted contacts",
+      desc: "Automatically share ride information when you start a trip",
+      key: "autoShare"
+    },
+    {
+      id: "enableLocationTracking",
+      label: "Enable location tracking during rides",
+      desc: "Allow real-time location tracking for safety purposes",
+      key: "enableLocationTracking"
+    },
+    {
+      id: "reqDriverVerf",
+      label: "Require driver verification for rides",
+      desc: "Only accept rides from drivers with verified documents",
+      key: "reqDriverVerf"
+    },
+    {
+      id: "sendSafetyChecks",
+      label: "Send safety check-ins during long rides",
+      desc: "Receive periodic safety check-ins for rides longer than 1",
+      key: "sendSafetyChecks"
+    }
+  ]
+
   // Simulate loading delay for skeleton
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -297,55 +324,21 @@ const SafetySection: React.FC<SafetySectionProps> = ({
                 Safety Preferences
               </h4>
               <div className="space-y-3">
-                <Label>
-                  Auto-share ride details with trusted contacts
-                  <small>
-                    Automatically share ride information when you start a trip
-                  </small>
-                </Label>
-                <Checkbox
+                {safetyPreferences.map((item) => (
+                  <div key={item.id} className="flex space-x-3">
+                    <Checkbox
+                  id={item.id}
                   checked={settings?.autoShareRideDetails}
                   onCheckedChange={(checked) =>
                     handleSettingChange("autoShareRideDetails", checked)
                   }
-                />
-                <Label>
-                  Enable location tracking during rides
-                  <small>
-                    Allow real-time location tracking for safety purposes
-                  </small>
-                </Label>
-                <Checkbox
-                  checked={settings?.enableLocationTracking}
-                  onCheckedChange={(checked) =>
-                    handleSettingChange("enableLocationTracking", checked)
-                  }
-                />
-                <Label>
-                  Require driver verification for rides
-                  <small>
-                    Only accept rides from drivers with verified documents
-                  </small>
-                </Label>
-                <Checkbox
-                  checked={settings?.requireDriverVerification}
-                  onCheckedChange={(checked) =>
-                    handleSettingChange("requireDriverVerification", checked)
-                  }
-                />
-                <Label>
-                  Send safety check-ins during long rides
-                  <small>
-                    Receive periodic safety check-ins for rides longer than 1
-                    hour
-                  </small>
-                </Label>
-                <Checkbox
-                  checked={settings?.safetyCheckIns}
-                  onCheckedChange={(checked) =>
-                    handleSettingChange("safetyCheckIns", checked)
-                  }
-                />
+                  />
+                  <Label htmlFor={item.id} className="flex flex-col items-start">
+                    <span>{item.label}</span>
+                    <small className="text-muted-foreground">{item.desc}</small>
+                  </Label>
+                  </div>
+                ))}
               </div>
             </div>
 

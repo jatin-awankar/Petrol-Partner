@@ -233,7 +233,7 @@ const StatisticsSection: React.FC<StatisticsSectionProps> = ({
                   label="Community Helper (Help 25 students)"
                   current={statistics?.studentsHelped}
                   total={25}
-                  color="bg-accent"
+                  color="bg-indigo-400"
                 />
                 <ProgressBar
                   label="Distance Master (Travel 1000km)"
@@ -299,7 +299,7 @@ const StatisticsSection: React.FC<StatisticsSectionProps> = ({
               <h4 className="font-medium text-foreground mb-4">
                 Community Contribution
               </h4>
-              <div className="bg-gradient-to-r from-primary/10 to-accent/10 rounded-lg p-4 shadow-md">
+              <div className="bg-gradient-to-r from-primary/10 to-warning/10 rounded-lg p-4 shadow-md">
                 <div className="flex items-center space-x-3 mb-3">
                   <Icon name="Users" size={24} className="text-primary" />
                   <div>
@@ -321,7 +321,7 @@ const StatisticsSection: React.FC<StatisticsSectionProps> = ({
                     </div>
                     <div className="w-full bg-muted rounded-full h-3">
                       <div
-                        className="bg-gradient-to-r from-primary to-accent h-3 rounded-full transition-all duration-300"
+                        className="bg-gradient-to-r from-primary to-warning h-3 rounded-full transition-all duration-300"
                         style={{
                           width: `${Math.min(
                             (statistics?.communityScore / 1000) * 100,
