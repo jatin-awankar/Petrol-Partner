@@ -181,7 +181,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             {conversation.isOnline && (
               <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-success border-2 border-card rounded-full"></div>
             )}
-            <div className="absolute -top-1 -right-1">
+            <div className="absolute -top-1 -right-1 text-primary !">
               <VerificationBadge
                 isVerified={conversation.isVerified}
                 verificationType={
@@ -191,7 +191,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                     ? conversation.verificationType
                     : undefined
                 }
-                size="sm"
+                size={16}
                 showTooltip={true}
               />
             </div>
