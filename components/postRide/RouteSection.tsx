@@ -96,7 +96,7 @@ const RouteSection: React.FC<RouteSectionProps> = ({
 
   if (loading) {
     return (
-      <div className="bg-card rounded-lg border border-border p-6 space-y-4 animate-pulse">
+      <div className="bg-card rounded-lg border border-border p-6 space-y-4 animate-pulse shadow-card">
         <Skeleton height={30} width={`60%`} className="mb-2" />
         <Skeleton height={20} width={`40%`} className="mb-2" />
         <Skeleton height={40} width="100%" />
@@ -108,7 +108,7 @@ const RouteSection: React.FC<RouteSectionProps> = ({
   }
 
   return (
-    <div className="bg-card rounded-lg border border-border p-6">
+    <div className="bg-card rounded-lg border border-border p-6 shadow-card">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-semibold text-foreground flex items-center">
@@ -129,8 +129,7 @@ const RouteSection: React.FC<RouteSectionProps> = ({
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="space-y-4">
           {/* Pickup */}
-          <div>
-            <Label>Pickup Location</Label>
+            <Label className="mb-2">Pickup Location</Label>
             <Input
               placeholder="Enter pickup address"
               value={formData.route.pickup}
@@ -143,38 +142,30 @@ const RouteSection: React.FC<RouteSectionProps> = ({
               variant="ghost"
               size="sm"
               onClick={() => handleUseCurrentLocation("pickup")}
-              className="mt-2"
               disabled={loadingLocation}
             >
               <Navigation />
               {loadingLocation ? "Fetching..." : "Use Current Location"}
             </Button>
-          </div>
 
           {/* Dropoff */}
-          <div>
+            <Label className="mb-2">Drop-off Location</Label>
             <Input
-              // @ts-expect-error: 'label' prop is custom for our Input component
-              label="Drop-off Location"
               placeholder="Enter destination address"
               value={formData.route.dropoff}
               onChange={(e) => handleLocationChange("dropoff", e.target.value)}
+              // @ts-expect-error: 'error' prop is custom for our Input component
               error={errors?.dropoff}
               required
             />
-          </div>
 
           {/* Via */}
-          <div>
+            <Label className="mb-2">Via (Optional)</Label>
             <Input
-              // @ts-expect-error: 'label' prop is custom for our Input component
-              label="Via (Optional)"
               placeholder="Any stops along the way"
               value={formData.route.via}
               onChange={(e) => handleLocationChange("via", e.target.value)}
-              description="Add intermediate stops if any"
             />
-          </div>
 
           {/* Estimated Route Info */}
           <div className="bg-muted/50 rounded-lg p-3">

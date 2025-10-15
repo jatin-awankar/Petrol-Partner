@@ -144,7 +144,7 @@ const VehicleSection: React.FC<VehicleSectionProps> = ({
 
   if (loading) {
     return (
-      <div className="bg-card rounded-lg border border-border p-6 space-y-4 animate-pulse">
+      <div className="bg-card rounded-lg border border-border p-6 space-y-4 animate-pulse shadow-card">
         <Skeleton height={30} width="40%" />
         <Skeleton height={40} width="100%" count={6} />
         <Skeleton height={120} width="100%" className="rounded-lg" />
@@ -153,7 +153,7 @@ const VehicleSection: React.FC<VehicleSectionProps> = ({
   }
 
   return (
-    <div className="bg-card rounded-lg border border-border p-6 space-y-6">
+    <div className="bg-card rounded-lg border border-border p-6 space-y-6 shadow-card">
       <h3 className="text-lg font-semibold text-foreground flex items-center mb-4">
         <Icon name="Car" size={20} className="mr-2 text-primary" />
         Vehicle Information

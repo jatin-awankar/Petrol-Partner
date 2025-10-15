@@ -64,7 +64,7 @@ const PersonalInfoSection: React.FC<PersonalInfoSectionProps> = ({
     return () => clearTimeout(timer);
   }, [user]);
 
-  const handleInputChange = (field, value) =>
+  const handleInputChange = (field: string, value: string) =>
     setFormData((prev) => ({ ...prev, [field]: value }));
 
   const handleSave = () => {

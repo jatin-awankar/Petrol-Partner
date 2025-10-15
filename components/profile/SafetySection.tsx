@@ -74,27 +74,38 @@ const SafetySection: React.FC<SafetySectionProps> = ({
 
   const handleAddContact = () => {
     if (newContact?.name && newContact?.phone) {
-      const contact = { id: Date.now(), ...newContact };
-      setTrustedContacts([...trustedContacts, contact]);
+      // Never override id from input, always generate a new one
+      const { name, phone, relationship } = newContact;
+      const contact = { id: Date.now(), name, phone, relationship };
+      setTrustedContacts([...(trustedContacts ?? []), contact]);
       setNewContact({ id: 0, name: "", phone: "", relationship: "" });
       setShowAddContact(false);
     }
   };
 
   const handleRemoveContact = (id: number) => {
-    setTrustedContacts(
-      trustedContacts?.filter((contact) => contact?.id !== id)
+    setTrustedContacts((prev) =>
+      (prev ?? []).filter((contact) => contact?.id !== id)
     );
   };
 
-  const handleSettingChange = (field, value) => {
+  const handleSettingChange = (field: any, value: any) => {
+    // @ts-expect-error: 'error' prop is custom for our Input component
     setSettings((prev) => ({ ...prev, [field]: value }));
   };
 
   const handleSave = async () => {
     setIsSaving(true);
     setTimeout(() => {
-      onSave({ trustedContacts, settings });
+      onSave({
+        trustedContacts: trustedContacts ?? [],
+        settings: settings ?? {
+          autoShareRideDetails: false,
+          enableLocationTracking: false,
+          requireDriverVerification: false,
+          safetyCheckIns: false,
+        },
+      });
       setIsSaving(false);
     }, 1000);
   };

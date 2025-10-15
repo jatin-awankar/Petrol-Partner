@@ -1,8 +1,10 @@
+'use client';
 import React, { useState, useEffect, FC } from 'react';
 import Icon from '../AppIcon';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
+import Skeleton from 'react-loading-skeleton';
 
 interface PricingSectionProps {
   formData: any;
@@ -13,23 +15,36 @@ interface PricingSectionProps {
 const PricingSection: FC<PricingSectionProps> = ({ formData, updateFormData, errors }) => {
   const [useCalculated, setUseCalculated] = useState(true);
   const [calculatedFare, setCalculatedFare] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
+  const [hasError, setHasError] = useState(false);
 
-  // Mock calculation based on distance and fuel costs
+  // Simulate loading + mock calculation
   useEffect(() => {
-    const distance = 25; // Mock distance in km
-    const fuelPrice = 102; // Mock fuel price per liter
-    const mileage = 15; // Mock vehicle mileage
-    const fuelCost = (distance / mileage) * fuelPrice;
-    const tollsAndParking = 50; // Mock additional costs
-    const calculated = Math.ceil((fuelCost + tollsAndParking) / (formData?.availableSeats || 1));
-    setCalculatedFare(calculated);
+    try {
+      const timer = setTimeout(() => {
+        const distance = 25;
+        const fuelPrice = 102;
+        const mileage = 15;
+        const fuelCost = (distance / mileage) * fuelPrice;
+        const tollsAndParking = 50;
+        const calculated = Math.ceil((fuelCost + tollsAndParking) / (formData?.availableSeats || 1));
+        setCalculatedFare(calculated);
 
-    if (useCalculated) {
-      handlePricingChange('farePerSeat', calculated);
+        if (useCalculated) {
+          handlePricingChange('farePerSeat', calculated);
+        }
+        setIsLoading(false);
+      }, 500);
+      return () => clearTimeout(timer);
+    } catch (err) {
+      console.error('Error:', err);
+      setHasError(true);
+      setIsLoading(false);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData?.availableSeats, useCalculated]);
 
-  const handlePricingChange = (field, value) => {
+  const handlePricingChange = (field: string, value: any) => {
     updateFormData({
       ...formData,
       pricing: {
@@ -39,10 +54,10 @@ const PricingSection: FC<PricingSectionProps> = ({ formData, updateFormData, err
     });
   };
 
-  const handlePaymentMethodToggle = (method) => {
+  const handlePaymentMethodToggle = (method: string) => {
     const methods = formData?.pricing?.paymentMethods?.includes(method)
-      ? formData?.pricing?.paymentMethods?.filter(m => m !== method)
-      : [...formData?.pricing?.paymentMethods, method];
+      ? formData?.pricing?.paymentMethods?.filter((m: string) => m !== method)
+      : [...(formData?.pricing?.paymentMethods || []), method];
 
     handlePricingChange('paymentMethods', methods);
   };
@@ -56,8 +71,33 @@ const PricingSection: FC<PricingSectionProps> = ({ formData, updateFormData, err
 
   const totalEarnings = (formData?.pricing?.farePerSeat || 0) * (formData?.availableSeats || 1);
 
+  // ⏳ Skeleton UI
+  if (isLoading) {
+    return (
+      <div className="bg-card rounded-lg border border-border p-6 space-y-6 shadow-card animate-pulse">
+        <Skeleton className="h-6 w-1/3" />
+        <div className="space-y-4">
+          <Skeleton className="h-24 w-full rounded-md" />
+          <Skeleton className="h-12 w-full rounded-md" />
+          <Skeleton className="h-32 w-full rounded-md" />
+          <Skeleton className="h-32 w-full rounded-md" />
+        </div>
+      </div>
+    );
+  }
+
+  // ❌ Error fallback
+  if (hasError) {
+    return (
+      <div className="p-6 border rounded-lg bg-destructive/10 text-destructive">
+        Something went wrong while loading pricing details. Please try again.
+      </div>
+    );
+  }
+
+  // ✅ Main content
   return (
-    <div className="bg-card rounded-lg border border-border p-6 space-y-6">
+    <div className="bg-card rounded-lg border border-border p-6 space-y-6 shadow-card transition-opacity duration-300">
       <h3 className="text-lg font-semibold text-foreground flex items-center mb-4">
         <Icon name="IndianRupee" size={20} className="mr-2 text-primary" />
         Pricing & Payment
@@ -116,9 +156,7 @@ const PricingSection: FC<PricingSectionProps> = ({ formData, updateFormData, err
           </Button>
         </div>
 
-        <Label>
-        Fare per Seat (₹)
-        </Label>
+        <Label>Fare per Seat (₹)</Label>
         <Input
           type="number"
           value={formData?.pricing?.farePerSeat}
@@ -126,12 +164,12 @@ const PricingSection: FC<PricingSectionProps> = ({ formData, updateFormData, err
             setUseCalculated(false);
             handlePricingChange('farePerSeat', parseInt(e?.target?.value) || 0);
           }}
-          // @ts-expect-error: 'label' prop is custom for our Input component
-          error={errors?.farePerSeat}
           min={1}
           required
-          description={`Total earnings: ₹${totalEarnings}`}
+          // @ts-expect-error: 'error' is custom prop
+          error={errors?.farePerSeat}
         />
+        <p className="text-xs text-muted-foreground">Total earnings: ₹{totalEarnings}</p>
       </div>
 
       {/* Payment Methods */}
@@ -148,7 +186,7 @@ const PricingSection: FC<PricingSectionProps> = ({ formData, updateFormData, err
               onClick={() => handlePaymentMethodToggle(method.id)}
               className="justify-start"
             >
-                <Icon name={method.icon} size={20} />
+              <Icon name={method.icon} size={20} />
               {method.label}
             </Button>
           ))}
@@ -158,7 +196,7 @@ const PricingSection: FC<PricingSectionProps> = ({ formData, updateFormData, err
         )}
       </div>
 
-      {/* Cost Sharing Explanation */}
+      {/* Cost Sharing */}
       <div className="bg-accent/10 border border-accent/20 rounded-lg p-4 flex items-start space-x-3">
         <Icon name="Calculator" size={20} className="text-accent mt-0.5" />
         <div>
@@ -185,7 +223,9 @@ const PricingSection: FC<PricingSectionProps> = ({ formData, updateFormData, err
         </div>
         <div className="flex justify-between text-sm border-t border-success/20 pt-2">
           <span className="font-medium text-foreground">Net Earnings:</span>
-          <span className="font-semibold text-success">₹{totalEarnings - Math.ceil(totalEarnings * 0.05)}</span>
+          <span className="font-semibold text-success">
+            ₹{totalEarnings - Math.ceil(totalEarnings * 0.05)}
+          </span>
         </div>
       </div>
     </div>

@@ -5,6 +5,7 @@ import Skeleton from "react-loading-skeleton";
 import { Button } from "../ui/button";
 import Icon from "../AppIcon";
 import Link from "next/link";
+import { motion } from "framer-motion";
 
 interface Action {
   id: string;
@@ -52,7 +53,12 @@ const QuickActionCards: React.FC = () => {
   }, []);
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 ">
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.5 }}
+      className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 "
+    >
       {loading
         ? Array.from({ length: 2 }).map((_, idx) => (
             <div
@@ -68,7 +74,7 @@ const QuickActionCards: React.FC = () => {
         : actions?.map((action) => (
             <div
               key={action?.id ?? Math.random()}
-              className="bg-card border border-border rounded-xl p-6 hover:shadow-medium transition-shadow cursor-pointer shadow-md"
+              className="bg-card border border-border rounded-xl p-6 hover:shadow-medium transition-shadow cursor-pointer shadow-card"
             >
               <Link href={action?.route}>
                 <div className="flex items-start justify-between mb-4">
@@ -114,7 +120,7 @@ const QuickActionCards: React.FC = () => {
               </Link>
             </div>
           ))}
-    </div>
+    </motion.div>
   );
 };
 

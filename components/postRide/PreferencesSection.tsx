@@ -1,4 +1,6 @@
-import React from "react";
+'use client';
+
+import React, { useEffect, useState } from "react";
 import Icon from "../AppIcon";
 import {
   Select,
@@ -10,6 +12,7 @@ import {
 import { Label } from "../ui/label";
 import { Input } from "../ui/input";
 import { Button } from "../ui/button";
+import Skeleton from "react-loading-skeleton";
 
 interface PreferencesSectionProps {
   formData: any;
@@ -22,6 +25,15 @@ const PreferencesSection: React.FC<PreferencesSectionProps> = ({
   updateFormData,
   errors,
 }) => {
+
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Simulate loading delay for skeletons
+  useEffect(() => {
+    const timer = setTimeout(() => setIsLoading(false), 500);
+    return () => clearTimeout(timer);
+  }, []);
+
   const handlePreferenceChange = (field: string, value: any) => {
     updateFormData({
       ...formData,
@@ -69,8 +81,22 @@ const PreferencesSection: React.FC<PreferencesSectionProps> = ({
     { id: "luggage_limit", label: "Limited Luggage", icon: "Luggage" },
   ];
 
+  if (isLoading) {
+    return (
+      <div className="bg-card rounded-lg border border-border p-6 space-y-6 shadow-card animate-pulse">
+        <Skeleton className="h-6 w-1/3" />
+        <div className="space-y-4">
+          <Skeleton className="h-24 w-full rounded-md" />
+          <Skeleton className="h-12 w-full rounded-md" />
+          <Skeleton className="h-32 w-full rounded-md" />
+          <Skeleton className="h-32 w-full rounded-md" />
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="bg-card rounded-lg border border-border p-6 space-y-6">
+    <div className="bg-card rounded-lg border border-border p-6 space-y-6 shadow-card">
       <h3 className="text-lg font-semibold text-foreground flex items-center mb-4">
         <Icon name="Settings" size={20} className="mr-2 text-primary" />
         Ride Preferences
@@ -86,7 +112,7 @@ const PreferencesSection: React.FC<PreferencesSectionProps> = ({
               value={formData?.preferences?.gender || ""}
               onValueChange={(value) => handlePreferenceChange("gender", value)}
             >
-              <SelectTrigger>
+              <SelectTrigger className="w-full">
                 <SelectValue placeholder="Select Gender" />
               </SelectTrigger>
               <SelectContent>
@@ -107,7 +133,7 @@ const PreferencesSection: React.FC<PreferencesSectionProps> = ({
                 handlePreferenceChange("conversation", value)
               }
             >
-              <SelectTrigger>
+              <SelectTrigger className="w-full">
                 <SelectValue placeholder="Select Conversation Preference" />
               </SelectTrigger>
               <SelectContent>
@@ -129,7 +155,7 @@ const PreferencesSection: React.FC<PreferencesSectionProps> = ({
               value={formData?.preferences?.music || ""}
               onValueChange={(value) => handlePreferenceChange("music", value)}
             >
-              <SelectTrigger>
+              <SelectTrigger className="w-full">
                 <SelectValue placeholder="Select Music Preference" />
               </SelectTrigger>
               <SelectContent>

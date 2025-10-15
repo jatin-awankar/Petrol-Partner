@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import Skeleton from "react-loading-skeleton";
 import Icon from "../AppIcon";
+import { motion } from "framer-motion";
 
 interface StatItem {
   id: string;
@@ -41,7 +42,7 @@ const StatsCard: React.FC = () => {
           value: "23",
           change: "+5",
           changeType: "positive",
-          icon: "Car",
+          icon: "Bike",
           color: "text-primary",
           bgColor: "bg-primary/10",
           description: "Total rides",
@@ -76,7 +77,12 @@ const StatsCard: React.FC = () => {
   }, []);
 
   return (
-    <div className="bg-card border border-border rounded-xl p-6 mb-6 shadow-md">
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.5 }}
+      className="bg-card border border-border rounded-xl p-6 mb-6 shadow-soft"
+    >
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold text-foreground">Your Stats</h2>
         {loading ? (
@@ -175,7 +181,7 @@ const StatsCard: React.FC = () => {
           </div>
         )}
       </div>
-    </div>
+    </motion.div>
   );
 };
 

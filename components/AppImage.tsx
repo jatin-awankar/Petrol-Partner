@@ -25,7 +25,7 @@ const AppImage: React.FC<ImageProps> = ({
     }
   };
 
-  return <Image src={imgSrc} alt={alt} className={className} width={100} height={100} />;
+  return <Image src={imgSrc || fallbackSrc} alt={alt} className={className} width={100} height={100} />;
 };
 
 export default AppImage;

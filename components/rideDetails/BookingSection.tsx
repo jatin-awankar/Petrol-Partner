@@ -138,7 +138,7 @@ const BookingSection: React.FC<BookingSectionProps> = ({ ride, role = 'passenger
               onValueChange={(value) => setSelectedPaymentMethod(value)}
               required
             >
-              <SelectTrigger>
+              <SelectTrigger className='w-full'>
                 <SelectValue placeholder="Select payment method" />
               </SelectTrigger>
               <SelectContent>

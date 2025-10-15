@@ -96,7 +96,7 @@ const ProfileHeader: React.FC<ProfileHeaderProps> = ({
   }
 
   return (
-    <div className="bg-card border border-border rounded-lg p-6 mb-6 shadow-md">
+    <div className="bg-card border border-border rounded-lg p-6 mb-6 shadow-soft">
       <div className="flex flex-col sm:flex-row items-center space-y-4 sm:space-y-0 sm:space-x-6">
         {/* Profile Photo */}
         <div className="relative group">

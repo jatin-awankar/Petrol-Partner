@@ -62,7 +62,7 @@ const SeatsSection: React.FC<SeatsSectionProps> = ({
 
   if (loading) {
     return (
-      <div className="bg-card rounded-lg border border-border p-6 space-y-4 animate-pulse">
+      <div className="bg-card rounded-lg border border-border p-6 space-y-4 animate-pulse shadow-card">
         <Skeleton height={30} width={`50%`} className="mb-2" />
         <Skeleton height={40} width="100%" count={3} />
         <Skeleton height={120} width="100%" className="rounded-lg" />
@@ -71,7 +71,7 @@ const SeatsSection: React.FC<SeatsSectionProps> = ({
   }
 
   return (
-    <div className="bg-card rounded-lg border border-border p-6">
+    <div className="bg-card rounded-lg border border-border p-6 shadow-card">
       <h3 className="text-lg font-semibold text-foreground flex items-center mb-4">
         <Icon name="Users" size={20} className="mr-2 text-primary" />
         Available Seats

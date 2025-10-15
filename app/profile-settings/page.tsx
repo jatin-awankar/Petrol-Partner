@@ -259,6 +259,7 @@ const ProfileAccountSettings = () => {
                 />
 
                 <RideHistorySection
+                  // @ts-expect-error: 'error' prop is custom for our Input component
                   rideHistory={rideHistory}
                   isExpanded={expandedSections.history}
                   onToggle={() => toggleSection("history")}
