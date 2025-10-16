@@ -268,7 +268,7 @@ const PostRide = () => {
                 </p>
               </div>
             </div>
-            <div className="flex items-center space-x-2">
+            <div className="flex flex-col sm:flex-row gap-2 items-end space-x-2">
               <Button
                 variant="ghost"
                 size="sm"
