@@ -189,10 +189,19 @@ const ProfileAccountSettings = () => {
   });
 
   const toggleSection = (section: keyof typeof expandedSections) => {
-    setExpandedSections((prev) => ({
-      ...prev,
-      [section]: !prev[section],
-    }));
+    setExpandedSections((prev) => {
+      // Close all sections first
+      const allClosed = Object.keys(prev).reduce(
+        (acc, key) => ({ ...acc, [key]: false }),
+        {} as typeof prev
+      );
+  
+      // Toggle only the clicked section
+      return {
+        ...allClosed,
+        [section]: !prev[section],
+      };
+    });
   };
 
   // Mock handlers

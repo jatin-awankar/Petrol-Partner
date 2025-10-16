@@ -53,8 +53,8 @@ const BookingConfirmationModal: React.FC<BookingConfirmationModalProps> = ({
   const showSkeleton = isLoading || !bookingData;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-      <div className="bg-card rounded-lg max-w-md w-full max-h-[90vh] overflow-y-auto shadow-lg">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4">
+      <div className="bg-card rounded-lg max-w-md w-full max-h-[80vh] overflow-y-auto shadow-lg">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-border">
           <h2 className="text-lg font-semibold text-foreground">
@@ -91,7 +91,7 @@ const BookingConfirmationModal: React.FC<BookingConfirmationModalProps> = ({
               </>
             ) : (
               <div className="space-y-2">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-2">
                   <span className="text-sm text-muted-foreground">Route</span>
                   <span className="text-sm text-foreground">
                     {bookingData?.route?.pickup ?? "Pickup"} →{" "}
@@ -188,13 +188,13 @@ const BookingConfirmationModal: React.FC<BookingConfirmationModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center space-x-3 p-4 border-t border-border">
+        <div className="flex items-center justify-between space-x-3 p-4 border-t border-border">
           <Button
             variant="outline"
             size="default"
             onClick={onClose}
             disabled={isLoading}
-            className="w-50"
+            // className="w-full"
           >
             Cancel
           </Button>
@@ -203,7 +203,7 @@ const BookingConfirmationModal: React.FC<BookingConfirmationModalProps> = ({
             size="default"
             onClick={onConfirm}
             disabled={isLoading}
-            className="w-50"
+            // className="w-full"
           >
             <Icon name="CreditCard" />
             {showSkeleton ? (
