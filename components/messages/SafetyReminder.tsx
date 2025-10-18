@@ -62,7 +62,7 @@ const SafetyReminder: React.FC<SafetyReminderProps> = ({ onDismiss }) => {
                 variant="outline"
                 size="sm"
                 onClick={() => console.log("View safety guidelines")}
-                className="text-xs !bg-gray-50 hover:!bg-primary/80 hover:!text-white"
+                className="text-xs"
               >
                 Safety Guidelines
               </Button>

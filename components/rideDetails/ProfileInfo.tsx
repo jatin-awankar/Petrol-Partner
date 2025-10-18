@@ -170,7 +170,7 @@ const ProfileInfo: React.FC<ProfileInfoProps> = ({
           </div>
 
           {/* Role tag */}
-          <p className="text-xs font-medium text-accent uppercase tracking-wide mb-1">
+          <p className="text-xs font-medium text-accent-foreground uppercase tracking-wide mb-1">
             {role === 'driver' ? 'Driver' : 'Passenger'}
           </p>
 

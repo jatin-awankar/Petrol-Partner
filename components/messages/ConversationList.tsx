@@ -160,7 +160,7 @@ const ConversationList: React.FC<ConversationListProps> = ({
         </div>
 
         {/* Filter Tabs */}
-        <div className="flex space-x-1 bg-muted rounded-lg p-1">
+        <div className="grid grid-cols-2 space-x-1 bg-muted rounded-lg p-1">
           {[
             { key: "all", label: "All", count: conversations?.length },
             { key: "active", label: "Active", count: getFilterCount("active") },
