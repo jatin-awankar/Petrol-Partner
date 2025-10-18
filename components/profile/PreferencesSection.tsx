@@ -103,7 +103,7 @@ const PreferencesSection: React.FC<PreferencesSectionProps> = ({
   // Render skeleton when formData is null
   if (isloading) {
     return (
-      <div className="bg-card border border-border rounded-lg shadow-md mb-4 animate-pulse">
+      <div className="bg-card border border-border rounded-lg shadow-card animate-pulse">
         <button
           onClick={onToggle}
           className="w-full flex items-center justify-between p-4 hover:bg-muted/50 transition-colors"
@@ -152,7 +152,7 @@ const PreferencesSection: React.FC<PreferencesSectionProps> = ({
   }
 
   return (
-    <div className="bg-card border border-border rounded-lg mb-6 shadow-md">
+    <div className="bg-card border border-border rounded-lg shadow-card">
       {/* Header */}
       <button
         onClick={onToggle}

@@ -95,7 +95,7 @@ const PersonalInfoSection: React.FC<PersonalInfoSectionProps> = ({
   // Render skeleton when formData is null
   if (!formData) {
     return (
-      <div className="bg-card border border-border rounded-lg shadow-md mb-4 animate-pulse">
+      <div className="bg-card border border-border rounded-lg shadow-card animate-pulse">
         <button
           onClick={onToggle}
           className="w-full flex items-center justify-between p-4 hover:bg-muted/50 transition-colors"
@@ -119,7 +119,7 @@ const PersonalInfoSection: React.FC<PersonalInfoSectionProps> = ({
   }
 
   return (
-    <div className="bg-card border border-border rounded-lg mb-4 shadow-md">
+    <div className="bg-card border border-border rounded-lg shadow-card">
       <button
         onClick={onToggle}
         className="w-full flex items-center justify-between p-4 hover:bg-muted/50 transition-colors"

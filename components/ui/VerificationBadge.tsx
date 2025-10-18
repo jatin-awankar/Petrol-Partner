@@ -38,13 +38,13 @@ const VerificationBadge: React.FC<VerificationBadgeProps> = ({
     },
     driver: {
       icon: "Bike",
-      color: "bg-success-foreground text-success",
+      color: "text-success",
       tooltip: "Driver Verified",
       description: "License and vehicle verified",
     },
     identity: {
       icon: "Shield",
-      color: " bg-primary-foreground text-primary",
+      color: "text-primary",
       tooltip: "Identity Verified",
       description: "Government ID verified",
     },

@@ -3,9 +3,9 @@ import type { Metadata } from "next";
 import { Poppins } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
-// import { Providers } from "./provider";
 import React from "react";
 import AuthenticatedNavbars from "@/components/AuthenticatedNavbars";
+import { ThemeProvider } from "./provider";
 
 const poppins = Poppins({
   subsets: ["latin"],
@@ -26,14 +26,18 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    // <Providers>
-      <html lang="en" className={`${poppins.variable} font-sans antialiased`}>
-        <body>
+    <html
+      lang="en"
+      suppressHydrationWarning
+      className={`${poppins.variable} font-sans antialiased`}
+    >
+      <body>
+        <ThemeProvider>
           <AuthenticatedNavbars />
           {children}
-          <Toaster richColors={true}  />
-        </body>
-      </html>
-    // </Providers>
+          <Toaster richColors={true} />
+        </ThemeProvider>
+      </body>
+    </html>
   );
 }

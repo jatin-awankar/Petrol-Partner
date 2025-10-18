@@ -84,7 +84,7 @@ const StatisticsSection: React.FC<StatisticsSectionProps> = ({
 
   if (isLoading) {
     return (
-      <div className="bg-card border border-border rounded-lg shadow-md animate-pulse">
+      <div className="bg-card border border-border rounded-lg shadow-card animate-pulse">
         <button
           onClick={onToggle}
           className="w-full flex items-center justify-between p-4 hover:bg-muted/50 transition-colors"
@@ -124,7 +124,7 @@ const StatisticsSection: React.FC<StatisticsSectionProps> = ({
   }
 
   return (
-    <div className="bg-card border border-border rounded-lg mb-4 shadow-md">
+    <div className="bg-card border border-border rounded-lg shadow-card">
       <button
         onClick={onToggle}
         className="w-full flex items-center justify-between p-4 hover:bg-muted/50 transition-colors"

@@ -106,7 +106,7 @@ const RideHistorySection: React.FC<{
   // 🔸 Skeleton loader
   if (isLoading) {
     return (
-      <div className="bg-card border border-border rounded-lg shadow-md mb-4 animate-pulse">
+      <div className="bg-card border border-border rounded-lg shadow-card animate-pulse">
         <button
           onClick={onToggle}
           className="w-full flex items-center justify-between p-4 hover:bg-muted/50 transition-colors"
@@ -147,7 +147,7 @@ const RideHistorySection: React.FC<{
   }
 
   return (
-    <div className="bg-card border border-border rounded-lg mb-4 shadow-md">
+    <div className="bg-card border border-border rounded-lg shadow-card">
       {/* Header */}
       <button
         onClick={onToggle}
