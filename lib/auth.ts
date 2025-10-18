@@ -1,83 +1,70 @@
-// // lib/auth.ts
-// import jwt, { JwtPayload } from "jsonwebtoken";
-// import bcrypt from "bcryptjs";
+// lib/auth.ts
+import "server-only";
+import jwt, { Secret, SignOptions } from "jsonwebtoken";
+import bcrypt from "bcrypt";
+import crypto from "crypto";
 
-// /**
-//  * ============================================================
-//  * 🔒 AUTH UTILITIES (JWT + PASSWORD HASHING)
-//  * ============================================================
-//  * - Uses bcryptjs for password hashing
-//  * - Uses JWT for stateless authentication
-//  * - Works with HttpOnly cookies or client-side storage
-//  * ============================================================
-//  */
+const ACCESS_TOKEN_SECRET: Secret = process.env.ACCESS_TOKEN_SECRET!;
+const ACCESS_TOKEN_EXPIRES = (process.env.ACCESS_TOKEN_EXPIRES || "15m") as SignOptions["expiresIn"];
+const REFRESH_TOKEN_EXPIRES_DAYS = Number(process.env.REFRESH_TOKEN_EXPIRES_DAYS || "30");
 
-// const JWT_SECRET = process.env.JWT_SECRET;
-// if (!JWT_SECRET) {
-//   throw new Error("❌ Missing JWT_SECRET in environment variables");
-// }
+if (!ACCESS_TOKEN_SECRET) throw new Error("ACCESS_TOKEN_SECRET not set");
 
-// /**
-//  * Interface for user payload stored in JWT
-//  */
-// export interface UserPayload {
-//   id: string;
-//   email: string;
-// }
+export function signAccessToken(payload: Record<string, any>) {
+  return jwt.sign(payload, ACCESS_TOKEN_SECRET, { expiresIn: ACCESS_TOKEN_EXPIRES });
+}
 
-// /**
-//  * Create a signed JWT token for a user
-//  */
-// export function createToken(user: UserPayload): string {
-//   return jwt.sign(
-//     {
-//       id: user.id,
-//       email: user.email,
-//     },
-//     JWT_SECRET as string,
-//     {
-//       expiresIn: "7d", // token validity (7 days)
-//       algorithm: "HS256",
-//     }
-//   );
-// }
+export function verifyAccessToken(token: string) {
+  return jwt.verify(token, ACCESS_TOKEN_SECRET);
+}
 
-// /**
-//  * Verify and decode a JWT token
-//  * @returns Decoded payload if valid, null if invalid or expired
-//  */
-// export function verifyToken(token: string): JwtPayload | null {
-//   if (!JWT_SECRET) {
-//     console.warn("JWT_SECRET is not defined.");
-//     return null;
-//   }
-//   try {
-//     return jwt.verify(token, JWT_SECRET) as JwtPayload;
-//   } catch (error) {
-//     console.warn("Invalid or expired token:", error);
-//     return null;
-//   }
-// }
+export async function hashPassword(password: string) {
+  return bcrypt.hash(password, 12);
+}
 
-// /**
-//  * Hash a plaintext password using bcrypt
-//  */
-// export async function hashPassword(password: string): Promise<string> {
-//   const salt = await bcrypt.genSalt(12); // higher salt rounds for stronger hash
-//   return bcrypt.hash(password, salt);
-// }
+export async function verifyPassword(password: string, hash: string) {
+  return bcrypt.compare(password, hash);
+}
 
-// /**
-//  * Compare a plaintext password against a hashed password
-//  */
-// export async function comparePassword(
-//   password: string,
-//   hashed: string
-// ): Promise<boolean> {
-//   try {
-//     return await bcrypt.compare(password, hashed);
-//   } catch (error) {
-//     console.error("Password comparison failed:", error);
-//     return false;
-//   }
-// }
+/**
+ * Refresh token helpers:
+ * - createRefreshToken() -> returns { token, hash, expiresAt }
+ * - hashRefreshToken(token) -> hex hash used to store/lookup
+ */
+export function createRefreshToken() {
+  const token = crypto.randomBytes(64).toString("hex"); // 128 chars
+  const hash = hashRefreshToken(token);
+  const expiresAt = new Date(Date.now() + REFRESH_TOKEN_EXPIRES_DAYS * 24 * 3600 * 1000);
+  return { token, hash, expiresAt };
+}
+
+export function hashRefreshToken(token: string) {
+  return crypto.createHash("sha256").update(token).digest("hex");
+}
+
+import { NextRequest } from "next/server";
+import { pool } from "@/lib/db";
+
+// Extracts user info from Authorization header and verifies JWT
+export async function getUserFromToken(req: NextRequest) {
+  try {
+    const authHeader = req.headers.get("authorization");
+    if (!authHeader || !authHeader.startsWith("Bearer ")) return null;
+
+    const token = authHeader.split(" ")[1];
+    const decoded = verifyAccessToken(token) as { userId: string };
+
+    if (!decoded?.userId) return null;
+
+    // Fetch the user from DB (optional but recommended to ensure validity)
+    const result = await pool.query(
+      "SELECT id, email, full_name, is_verified FROM users WHERE id = $1",
+      [decoded.userId]
+    );
+
+    return result.rows[0] || null;
+  } catch (err) {
+    console.error("getUserFromToken error:", err);
+    return null;
+  }
+}

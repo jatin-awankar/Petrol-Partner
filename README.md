@@ -44,3 +44,14 @@ npm i framer-motion
 npm i tailwindcss-animate  
 npm install lottie-react
 npm install motion
+
+backend install:
+npm i pg
+npm i bcrypt
+npm i jsonwebtoken
+npm install --save-dev @types/bcrypt
+npm install --save-dev @types/jsonwebtoken
+npm i dotenv
+
+
+generate random hex: node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
