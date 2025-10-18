@@ -1,12 +1,12 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 
 export async function GET(
-  req: Request,
-  { params }: { params: { id: string } }
+  req: NextRequest,
+  params: any
 ) {
   try {
-    const { id } = params;
+    const { id } = await params;
 
     if (!id)
       return NextResponse.json({ error: 'Ride ID missing' }, { status: 400 });
@@ -57,8 +57,8 @@ export async function GET(
 import { verifyAccessToken } from '@/lib/jwt';
 
 export async function PATCH(
-  req: Request,
-  { params }: { params: { id: string } }
+  req: NextRequest,
+  params: any
 ) {
   try {
     const authHeader = req.headers.get('authorization');
@@ -69,7 +69,7 @@ export async function PATCH(
     const payload: any = verifyAccessToken(token);
     const driverId = payload.userId;
 
-    const rideId = params.id;
+    const rideId = await params.id;
     if (!rideId)
       return NextResponse.json({ error: 'Ride ID missing' }, { status: 400 });
 

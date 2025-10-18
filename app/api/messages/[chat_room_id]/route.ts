@@ -1,8 +1,8 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { verifyAccessToken } from "@/lib/jwt";
 import { query } from "@/lib/db";
 
-export async function GET(req: Request, { params }: { params: { chat_room_id: string } }) {
+export async function GET(req: NextRequest, { params }: { params: any }) {
   try {
     const authHeader = req.headers.get("authorization");
     if (!authHeader)
@@ -14,7 +14,7 @@ export async function GET(req: Request, { params }: { params: { chat_room_id: st
       return NextResponse.json({ error: "Invalid token" }, { status: 401 });
 
     const userId = payload.userId;
-    const { chat_room_id } = params;
+    const { chat_room_id } = await params;
 
     // Check if user belongs to this chat room
     const roomCheck = await query(

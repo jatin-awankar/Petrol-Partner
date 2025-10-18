@@ -1,15 +1,15 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
+import { verifyAccessToken } from '@/lib/jwt';
 
-export async function GET(
-  req: Request,
-  { params }: { params: { id: string } }
-) {
+// GET ride details by ID
+export async function GET(req: NextRequest, context: any) {
   try {
-    const { id } = params;
+    const { id } = await context.params;
 
-    if (!id)
+    if (!id) {
       return NextResponse.json({ error: 'Ride ID missing' }, { status: 400 });
+    }
 
     const rideQuery = `
       SELECT 
@@ -51,25 +51,26 @@ export async function GET(
   }
 }
 
-
-import { verifyAccessToken } from '@/lib/jwt';
-
-export async function PATCH(
-  req: Request,
-  { params }: { params: { id: string } }
-) {
+// PATCH ride by ID (requires auth)
+export async function PATCH(req: NextRequest, context: any) {
   try {
     const authHeader = req.headers.get('authorization');
-    if (!authHeader)
+    if (!authHeader) {
       return NextResponse.json({ error: 'Authorization header missing' }, { status: 401 });
+    }
 
     const token = authHeader.split(' ')[1];
+    if (!token) {
+      return NextResponse.json({ error: 'Access token missing' }, { status: 401 });
+    }
+
     const payload: any = verifyAccessToken(token);
     const passengerId = payload.userId;
 
-    const requestId = params.id;
-    if (!requestId)
+    const { id: requestId } = await context.params;
+    if (!requestId) {
       return NextResponse.json({ error: 'Ride request ID missing' }, { status: 400 });
+    }
 
     const body = await req.json();
     const {
@@ -92,11 +93,13 @@ export async function PATCH(
       [requestId]
     );
 
-    if (checkQuery.rowCount === 0)
+    if (checkQuery.rowCount === 0) {
       return NextResponse.json({ error: 'Ride request not found' }, { status: 404 });
+    }
 
-    if (checkQuery.rows[0].passenger_id !== passengerId)
+    if (checkQuery.rows[0].passenger_id !== passengerId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
 
     // Update ride request
     const updateQuery = `
