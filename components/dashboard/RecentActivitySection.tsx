@@ -74,7 +74,7 @@ const RecentActivitySection: React.FC = () => {
         },
       ]);
       setLoading(false);
-    }, 1000); // simulate 1s loading
+    }, 500); // simulate 1s loading
     return () => clearTimeout(timer);
   }, []);
 
@@ -82,7 +82,7 @@ const RecentActivitySection: React.FC = () => {
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.5 }}
+      transition={{ delay: 0.3 }}
       className="bg-card border border-border rounded-xl p-6 mb-6 shadow-soft"
     >
       <div className="flex items-center justify-between mb-4">

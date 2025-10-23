@@ -20,14 +20,17 @@ export async function GET(req: Request) {
     try {
       payload = verifyAccessToken(token);
     } catch {
-      return NextResponse.json({ error: 'Invalid or expired token' }, { status: 403 });
+      return NextResponse.json(
+        { success: false, message: 'Invalid or expired token' },
+        { status: 403 }
+      );
     }
 
     const userId = payload.userId;
 
     // 3. Fetch user profile from DB
     const result = await query(
-      'SELECT id, email, full_name, phone, profile_image, is_verified, role, created_at, updated_at FROM users WHERE id = $1',
+      'SELECT id, email, full_name, phone, college, profile_image, is_verified, role, created_at, updated_at, avg_rating FROM users WHERE id = $1',
       [userId]
     );
 

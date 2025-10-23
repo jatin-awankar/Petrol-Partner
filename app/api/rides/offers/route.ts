@@ -81,6 +81,7 @@ const PAGE_SIZE = 5; // Default pagination size
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
+    const type = "offer";
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || PAGE_SIZE.toString());
     const pickup = searchParams.get('pickup');
@@ -121,7 +122,7 @@ export async function GET(req: Request) {
     values.push(offset);
 
     const ridesQuery = `
-      SELECT r.*, u.full_name AS driver_name, u.profile_image AS driver_image
+      SELECT r.*, u.*
       FROM ride_offers r
       JOIN users u ON r.driver_id = u.id
       ${whereClause}
@@ -133,6 +134,7 @@ export async function GET(req: Request) {
     const rides = ridesRes.rows;
 
     return NextResponse.json({
+      type,
       page,
       limit,
       totalCount,

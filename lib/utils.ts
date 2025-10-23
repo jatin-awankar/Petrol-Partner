@@ -18,3 +18,62 @@ export function getDistance(lat1: number, lon1: number, lat2: number, lon2: numb
       Math.sin(dLon / 2);
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
+
+// String Date to short date format (18-Oct)
+export const formatUtcToTodayOrDayMonth = (isoDateString: string) => {
+  if (!isoDateString) {
+    return null;
+  }
+
+  try {
+    const inputDate = new Date(isoDateString);
+    const today = new Date();
+
+    // Check if the input date is today by comparing UTC year, month, and day.
+    const isToday =
+      inputDate.getUTCFullYear() === today.getUTCFullYear() &&
+      inputDate.getUTCMonth() === today.getUTCMonth() &&
+      inputDate.getUTCDate() === today.getUTCDate();
+
+    if (isToday) {
+      return "Today";
+    }
+
+    // If it's not today, format it as "Day-Month" in UTC.
+
+    return inputDate.toLocaleDateString('en-US', {
+      day: '2-digit',
+      month: 'short',
+      timeZone: 'UTC',
+    });
+
+  } catch (error) {
+    console.error("Error formatting date:", error);
+    return null;
+  }
+};
+
+export const formatTimeToAmPm = (timeString: string) => {
+  if (!timeString) {
+    return null;
+  }
+
+  try {
+    // Split the time string to get hours and minutes
+    const [hourString, minute] = timeString.split(':');
+    let hours = parseInt(hourString, 10);
+
+    // Determine AM or PM
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    
+    // Convert to 12-hour format (12:00 PM for noon, 12:00 AM for midnight)
+    hours = hours % 12;
+    hours = hours ? hours : 12; // The hour '0' should be '12'
+    
+    // Return the formatted string
+    return `${hours}:${minute} ${ampm}`;
+  } catch (error) {
+    console.error("Error formatting time:", error);
+    return null;
+  }
+};

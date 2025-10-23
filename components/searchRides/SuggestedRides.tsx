@@ -6,89 +6,28 @@ import Icon from "../AppIcon";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 import Skeleton from "react-loading-skeleton";
-import RideCard, { Ride } from "./RideCard";
+import RideCard from "./RideCard";
 import { useRouter } from "next/navigation";
-import { sleep } from "./SearchComponent";
+import { useFetchSuggestedRides } from "@/hooks/rides/useFetchSuggestedRides";
 
 const SuggestedRides = () => {
   const router = useRouter();
 
-  const [suggestions, setSuggestions] = useState<Ride[]>([]);
+  const { rideOffers, rideRequests, loading } = useFetchSuggestedRides();
+  const [suggestions, setSuggestions] = useState<CombineRideData[]>([]);
 
-  const [suggestionLoading, setSuggestionLoading] = useState(true);
+  useEffect(() => {
+    const offers =
+      rideOffers && Array.isArray(rideOffers.rides) ? rideOffers.rides : [];
+    const requests =
+      rideRequests && Array.isArray(rideRequests.rides)
+        ? rideRequests.rides
+        : [];
+    setSuggestions([...offers, ...requests]);
+  }, [rideOffers, rideRequests]);
 
-    /* -------------------- mock suggestions (smart) ---------------------- */
-    useEffect(() => {
-        let cancelled = false;
-    
-        (async () => {
-          setSuggestionLoading(true);
-          await sleep(900);
-          if (cancelled) return;
-    
-          // pick 3-4 offers/requests near "user"
-          const mockSuggestions: Ride[] = [
-            {
-              id: "s1",
-              type: "offer",
-              pickup: "Hostel Gate",
-              dropoff: "Central Park",
-              time: "Today, 06:00 PM",
-              price: "₹45",
-              seatsAvailable: 2,
-              driver: {
-                id: "d101",
-                name: "Neha",
-                gender: "female",
-                college: "IIT",
-                age: 23,
-              },
-              distanceKm: 3.2,
-            },
-            {
-              id: "s2",
-              type: "offer",
-              pickup: "Library",
-              dropoff: "City Mall",
-              time: "Today, 07:30 PM",
-              price: "₹70",
-              seatsAvailable: 3,
-              driver: {
-                id: "d102",
-                name: "Rohit",
-                gender: "male",
-                college: "NIT",
-                age: 26,
-              },
-              distanceKm: 4.1,
-            },
-            {
-              id: "s3",
-              type: "request",
-              pickup: "Hostel Gate",
-              dropoff: "Airport",
-              time: "Tomorrow, 08:00 AM",
-              passenger: {
-                id: "p101",
-                name: "Meera",
-                gender: "female",
-                college: "MIT",
-                age: 22,
-              },
-            },
-          ];
-    
-          setSuggestions(mockSuggestions);
-          setSuggestionLoading(false);
-        })();
-    
-        return () => {
-          cancelled = true;
-        };
-      }, []);
-
-  const handleOpenRide = (ride: Ride) => {
-    // navigate to ride details (mock route)
+  //---------------------------- handlers ------------------------------//
+  const handleOpenRide = (ride: CombineRideData) => {
     router.push(`/search-rides/${ride.id}`);
   };
 
@@ -122,18 +61,19 @@ const SuggestedRides = () => {
         </div>
       </div>
 
-      {suggestionLoading ? (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <Card key={i} className="p-4">
-              <Skeleton height={110} />
-            </Card>
-          ))}
+      {suggestions.length === 0 ? (
+        <div className="py-8 text-center text-muted-foreground">
+          No suggestions found.
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {suggestions.map((s) => (
-            <RideCard key={s.id} ride={s} onClick={handleOpenRide} />
+            <RideCard
+              key={s.id}
+              ride={s}
+              onClick={handleOpenRide}
+              loading={loading}
+            />
           ))}
         </div>
       )}

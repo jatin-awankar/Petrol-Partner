@@ -7,84 +7,36 @@ import { Button } from "../ui/button";
 import Icon from "../AppIcon";
 import Skeleton from "react-loading-skeleton";
 import { motion } from "framer-motion";
-
-interface RideSuggestion {
-  id: string;
-  type: string;
-  title: string;
-  route: string;
-  driver: string;
-  time: string;
-  price: string;
-  seats: number;
-  rating: number;
-  isVerified: boolean;
-  estimatedTime: string;
-  reason: string;
-}
+import { useFetchSuggestedRides } from "@/hooks/rides/useFetchSuggestedRides";
+import { useRouter } from "next/navigation";
+import Image from "next/image";
+import { formatTimeToAmPm } from "@/lib/utils";
 
 const RideSuggestions: React.FC = () => {
-  const [suggestions, setSuggestions] = useState<RideSuggestion[] | null>(null);
+  const router = useRouter();
+
+  const [suggestions, setSuggestions] = useState<CombineRideData[] | null>(null);
   const [dismissedSuggestions, setDismissedSuggestions] = useState<string[]>(
     []
   );
-  const [loading, setLoading] = useState(true);
+  const { rideOffers, rideRequests, loading } = useFetchSuggestedRides();
 
   useEffect(() => {
-    // Simulate fetching from API
-    const timer = setTimeout(() => {
-      setSuggestions([
-        {
-          id: "suggestion-1",
-          type: "popular-route",
-          title: "Popular Route Available",
-          route: "Campus → Downtown Mall",
-          driver: "Emma Wilson",
-          time: "4:30 PM",
-          price: "₹45",
-          seats: 2,
-          rating: 4.9,
-          isVerified: true,
-          estimatedTime: "25 min",
-          reason: "Based on your frequent trips",
-        },
-        {
-          id: "suggestion-2",
-          type: "nearby",
-          title: "Ride Near You",
-          route: "Library → Train Station",
-          driver: "David Chen",
-          time: "6:15 PM",
-          price: "₹60",
-          seats: 1,
-          rating: 4.7,
-          isVerified: true,
-          estimatedTime: "35 min",
-          reason: "Leaving from your location",
-        },
-        {
-          id: "suggestion-3",
-          type: "regular",
-          title: "Regular Commute Match",
-          route: "Campus → Airport",
-          driver: "Sarah Johnson",
-          time: "Tomorrow, 8:00 AM",
-          price: "₹120",
-          seats: 3,
-          rating: 5.0,
-          isVerified: true,
-          estimatedTime: "45 min",
-          reason: "Matches your schedule",
-        },
-      ]);
-      setLoading(false);
-    }, 1000);
-
-    return () => clearTimeout(timer);
-  }, []);
+    const offers =
+      rideOffers && Array.isArray(rideOffers.rides) ? rideOffers.rides : [];
+    const requests =
+      rideRequests && Array.isArray(rideRequests.rides)
+        ? rideRequests.rides
+        : [];
+    setSuggestions([...offers, ...requests]);
+  }, [rideOffers, rideRequests]);
 
   const dismissSuggestion = (suggestionId: string) => {
     setDismissedSuggestions((prev) => [...prev, suggestionId]);
+  };
+
+  const handleOpenRide = (ride: CombineRideData) => {
+    router.push(`/search-rides/${ride.id}`);
   };
 
   const visibleSuggestions = suggestions?.filter(
@@ -98,7 +50,7 @@ const RideSuggestions: React.FC = () => {
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.5 }}
+      transition={{ delay: 0.3 }}
       className="bg-card border border-border rounded-xl p-6 mb-6 shadow-soft"
     >
       <div className="flex items-center justify-between mb-4">
@@ -129,40 +81,49 @@ const RideSuggestions: React.FC = () => {
           : visibleSuggestions?.map((suggestion) => (
               <div
                 key={suggestion.id}
-                className="border border-border rounded-lg p-4 hover:shadow-soft transition-shadow"
+                className="border border-border rounded-lg p-4 hover:shadow-soft transition-shadow cursor-pointer"
+                onClick={() => handleOpenRide(suggestion)}
               >
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex-1">
                     <div className="flex items-center space-x-2 mb-1 flex-wrap">
-                      <h3 className="text-sm font-medium text-foreground">
-                        {suggestion.title}
+                      <h3 className="text-sm font-medium text-muted-foreground">
+                        {suggestion.driver_id
+                          ? suggestion.available_seats &&
+                            suggestion.available_seats > 1
+                            ? "Need Partners"
+                            : "Need a Partner"
+                          : "Need a Rider"}
                       </h3>
                       <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded">
-                        {suggestion.reason}
+                        {suggestion.driver_id ? "offer" : "request"}
                       </span>
                     </div>
 
-                    <div className="flex items-center space-x-2 text-sm text-muted-foreground mb-2">
+                    <div className="flex items-center space-x-2 text-sm text-foreground mb-2">
                       <Icon
                         name="MapPin"
                         size={14}
                         className="text-green-600"
                       />
-                      <span>{suggestion.route}</span>
+                      <span>
+                        {suggestion.pickup_location}&nbsp; → &nbsp;
+                        {suggestion.drop_location}
+                      </span>
                     </div>
 
                     <div className="flex items-center space-x-4 text-xs text-muted-foreground">
                       <div className="flex items-center space-x-1">
                         <Icon name="Clock" size={12} />
-                        <span>{suggestion.time}</span>
+                        <span>{formatTimeToAmPm(suggestion.time)}</span>
                       </div>
                       <div className="flex items-center space-x-1">
                         <Icon name="Users" size={12} />
-                        <span>{suggestion.seats} seats</span>
-                      </div>
-                      <div className="flex items-center space-x-1">
-                        <Icon name="Timer" size={12} />
-                        <span>{suggestion.estimatedTime}</span>
+                        <span>
+                          {suggestion.available_seats ||
+                            suggestion.seats_required}{" "}
+                          seats
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -180,12 +141,22 @@ const RideSuggestions: React.FC = () => {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-3">
                     <div className="w-8 h-8 bg-blue-400/10 rounded-full flex items-center justify-center">
-                      <Icon name="User" size={14} className="text-blue-400" />
+                      {suggestion.profile_image ? (
+                        <Image
+                          src={suggestion.profile_image}
+                          alt={suggestion?.full_name?.[0]?.toUpperCase() ?? "?"}
+                          width={36}
+                          height={36}
+                          className="w-full rounded-full overflow-hidden"
+                        />
+                      ) : (
+                        <Icon name="User" size={14} className="text-blue-400" />
+                      )}
                     </div>
                     <div>
                       <div className="flex items-center space-x-2">
                         <span className="text-sm font-medium text-foreground">
-                          {suggestion.driver}
+                          {suggestion.full_name}
                         </span>
                       </div>
                       <div className="flex items-center space-x-1">
@@ -195,7 +166,7 @@ const RideSuggestions: React.FC = () => {
                           className="text-warning fill-current"
                         />
                         <span className="text-xs text-muted-foreground">
-                          {suggestion.rating}
+                          {suggestion.avg_rating}
                         </span>
                       </div>
                     </div>
@@ -203,7 +174,7 @@ const RideSuggestions: React.FC = () => {
 
                   <div className="flex items-center space-x-3">
                     <span className="text-lg font-bold text-foreground">
-                      {suggestion.price}
+                      ₹{suggestion.price_per_seat}
                     </span>
                     <Button variant="default" size="sm">
                       Book Now

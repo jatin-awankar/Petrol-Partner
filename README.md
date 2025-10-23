@@ -52,6 +52,7 @@ npm i jsonwebtoken
 npm install --save-dev @types/bcrypt
 npm install --save-dev @types/jsonwebtoken
 npm i dotenv
-
+npm install jwt-decode
+npm install @tanstack/react-query @supabase/supabase-js
 
 generate random hex: node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"

@@ -7,78 +7,22 @@ import { ExternalLink } from "lucide-react";
 import Icon from "../AppIcon";
 import AppImage from "../AppImage";
 import { motion } from "framer-motion";
-
-interface CommunityUpdate {
-  id: number | string;
-  type: string;
-  title: string;
-  content: string;
-  timestamp: string;
-  author: string;
-  color: string;
-  bgColor: string;
-  image: string;
-}
+import { useCommunityUpdates } from "@/hooks/community/useCommunityUpdates";
+import { formatUtcToTodayOrDayMonth } from "@/lib/utils";
 
 const CommunityUpdates: React.FC = () => {
-  const [updates, setUpdates] = useState<CommunityUpdate[] | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { updates, loading, hasMore, loadMore } = useCommunityUpdates({ limit: 3 });
+  const [commUpdates, setCommUpdates] = useState<typeof updates>([]);
 
   useEffect(() => {
-    // Simulate API fetch
-    const timer = setTimeout(() => {
-      setUpdates([
-        {
-          id: 1,
-          type: "announcement",
-          title: "New Safety Features Added",
-          content:
-            "We have introduced real-time location sharing and emergency SOS button for enhanced safety during rides.",
-          timestamp: "2 hours ago",
-          author: "Petrol Partner Team",
-          color: "text-primary",
-          bgColor: "bg-primary/10",
-          image:
-            "https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=400&h=200&fit=crop",
-        },
-        {
-          id: 2,
-          type: "community",
-          title: "Student Spotlight: Eco Warriors",
-          content:
-            "Meet our top eco-friendly riders who have collectively saved over 500kg of CO₂ this month through ride sharing!",
-          timestamp: "1 day ago",
-          author: "Community Team",
-          color: "text-success",
-          bgColor: "bg-success/10",
-          image:
-            "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=400&h=200&fit=crop",
-        },
-        {
-          id: 3,
-          type: "event",
-          title: "Campus Carpool Week",
-          content:
-            "Join us for Campus Carpool Week! Special rewards for students who share rides. Reduce traffic and win prizes.",
-          timestamp: "3 days ago",
-          author: "Events Team",
-          color: "text-accent",
-          bgColor: "bg-accent/10",
-          image:
-            "https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=400&h=200&fit=crop",
-        },
-      ]);
-      setLoading(false);
-    }, 1200);
-
-    return () => clearTimeout(timer);
-  }, []);
+    if (updates) setCommUpdates(updates);
+  }, [updates]);
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.5 }}
+      transition={{ delay: 0.3 }}
       className="bg-card border border-border rounded-xl p-6 mb-12 md:mb-6 shadow-soft"
     >
       <div className="flex items-center justify-between mb-4">
@@ -92,7 +36,7 @@ const CommunityUpdates: React.FC = () => {
       </div>
 
       <div className="space-y-4">
-        {loading
+        {loading && commUpdates.length === 0
           ? Array.from({ length: 3 }).map((_, idx) => (
               <div
                 key={idx}
@@ -107,28 +51,26 @@ const CommunityUpdates: React.FC = () => {
                 </div>
               </div>
             ))
-          : updates?.map((update) => (
+          : commUpdates?.map((update) => (
               <div
                 key={update?.id}
                 className="border border-border rounded-lg overflow-hidden"
               >
-                {/* Image */}
                 <div className="relative h-32 overflow-hidden">
                   <AppImage
-                    src={update?.image ?? ""}
+                    src={update?.image_url ?? ""}
                     alt={update?.title ?? "Community Update"}
                     className="w-full h-full object-cover"
                   />
                 </div>
 
-                {/* Content */}
                 <div className="p-4">
                   <div className="flex items-start justify-between mb-2">
                     <h3 className="text-sm font-medium text-foreground line-clamp-1">
                       {update?.title ?? "Untitled"}
                     </h3>
                     <span className="text-xs text-muted-foreground whitespace-nowrap ml-2">
-                      {update?.timestamp ?? "-"}
+                      {formatUtcToTodayOrDayMonth(update?.created_at) ?? "-"}
                     </span>
                   </div>
 
@@ -163,6 +105,19 @@ const CommunityUpdates: React.FC = () => {
               </div>
             ))}
       </div>
+
+      {/* Load More Button */}
+      {hasMore && (
+        <div className="mt-6 flex justify-center">
+          <Button
+            onClick={loadMore}
+            disabled={loading}
+            className="bg-primary text-white hover:bg-primary/90"
+          >
+            {loading ? "Loading..." : "Load More"}
+          </Button>
+        </div>
+      )}
     </motion.div>
   );
 };

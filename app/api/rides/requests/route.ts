@@ -77,6 +77,7 @@ const PAGE_SIZE = 5;
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
+    const type = "request";
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || PAGE_SIZE.toString());
     const pickup = searchParams.get('pickup');
@@ -114,7 +115,7 @@ export async function GET(req: Request) {
     values.push(limit, offset);
     const ridesRes = await query(
       `
-      SELECT r.*, u.full_name AS passenger_name, u.profile_image AS passenger_image
+      SELECT r.*, u.*
       FROM ride_requests r
       JOIN users u ON r.passenger_id = u.id
       ${whereClause}
@@ -125,11 +126,12 @@ export async function GET(req: Request) {
     );
 
     return NextResponse.json({
+      type,
       page,
       limit,
       totalCount,
       totalPages: Math.ceil(totalCount / limit),
-      ride_requests: ridesRes.rows,
+      rides: ridesRes.rows,
     });
   } catch (err: any) {
     console.error('List ride requests error:', err);

@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS ride_offers (
   pickup_lng double precision NOT NULL,
   drop_lat double precision NOT NULL,
   drop_lng double precision NOT NULL,
-  available_seats integer NOT NULL CHECK (available_seats > 0),
+  available_seats integer NOT NULL CHECK (available_seats >= 0),
   price_per_seat numeric(10,2) NOT NULL,
   date date NOT NULL,
   time time NOT NULL,
@@ -65,7 +65,7 @@ CREATE TABLE IF NOT EXISTS ride_requests (
   pickup_lng double precision NOT NULL,
   drop_lat double precision NOT NULL,
   drop_lng double precision NOT NULL,
-  seats_required integer NOT NULL CHECK (seats_required > 0),
+  seats_required integer NOT NULL CHECK (seats_required >= 0),
   date date NOT NULL,
   time time NOT NULL,
   status text DEFAULT 'active' CHECK (status IN ('active','matched','cancelled','completed')),
@@ -129,3 +129,15 @@ CREATE INDEX IF NOT EXISTS idx_messages_chatroom ON messages(chat_room_id);
 CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages(sender_id);
 CREATE INDEX IF NOT EXISTS idx_messages_receiver ON messages(receiver_id);
 CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at DESC);
+
+
+-- table for updates
+CREATE TABLE IF NOT EXISTS community_updates (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  type text CHECK (type IN ('announcement', 'event', 'update', 'alert', 'maintenance')),
+  title text NOT NULL,
+  content text NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  author TEXT DEFAULT 'Petrol Partner Team',
+  image_url TEXT
+)

@@ -6,60 +6,49 @@ import { Button } from "../ui/button";
 import Icon from "../AppIcon";
 import Link from "next/link";
 import { motion } from "framer-motion";
-
-interface Action {
-  id: string;
-  title: string;
-  description: string;
-  icon: string;
-  color: string;
-  textColor: string;
-  route: string;
-  stats: string;
-}
+import { useFetchRideOffers } from "@/hooks/rides/useRideOffers";
+import { useFetchRideRequests } from "@/hooks/rides/useRideRequests";
 
 const QuickActionCards: React.FC = () => {
   const [actions, setActions] = useState<Action[] | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { offers, loading: loadingOffers } = useFetchRideOffers();
+  const { requests, loading: loadingRequests } = useFetchRideRequests();
 
-  // Simulate fetching actions (replace with API call if needed)
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setActions([
-        {
-          id: "find-ride",
-          title: "Find a Ride",
-          description: "Search for available rides",
-          icon: "Search",
-          color: "bg-success",
-          textColor: "text-success-foreground",
-          route: "/search-rides",
-          stats: "12 rides available",
-        },
-        {
-          id: "offer-ride",
-          title: "Offer a Ride",
-          description: "Share your journey",
-          icon: "Bike",
-          color: "bg-warning",
-          textColor: "text-warning-foreground",
-          route: "/post-a-ride",
-          stats: "Earn ₹150-300",
-        },
-      ]);
-      setLoading(false);
-    }, 1000); // simulate 1s loading
-    return () => clearTimeout(timer);
-  }, []);
+    setActions([
+      {
+        id: "find-ride",
+        title: "Find a Ride",
+        description: "Search for available rides",
+        icon: "Search",
+        color: "bg-success",
+        textColor: "text-success-foreground",
+        route: "/search-rides",
+        stats: `${
+          (offers?.totalCount ?? 0) + (requests?.totalCount ?? 0)
+        } rides available`,
+      },
+      {
+        id: "post-ride",
+        title: "Offer/Request a Ride",
+        description: "Share your journey",
+        icon: "Bike",
+        color: "bg-warning",
+        textColor: "text-warning-foreground",
+        route: "/post-a-ride",
+        stats: "Earn ₹10-100 per ride",
+      },
+    ]);
+  }, [offers?.totalCount, requests?.totalCount]);
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.5 }}
+      transition={{ delay: 0.3 }}
       className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 "
     >
-      {loading
+      {loadingOffers && loadingRequests
         ? Array.from({ length: 2 }).map((_, idx) => (
             <div
               key={idx}

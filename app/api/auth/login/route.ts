@@ -62,7 +62,6 @@ export async function POST(req: Request) {
         full_name: user.full_name,
       },
       accessToken,
-      refreshToken,
     });
 
     // Set HttpOnly cookie for refresh token
@@ -75,6 +74,8 @@ export async function POST(req: Request) {
       path: '/',
       maxAge: 7 * 24 * 60 * 60,
     });
+
+    response.headers.set('Authorization', `Bearer ${accessToken}`);
 
     return response;
   } catch (error: any) {
