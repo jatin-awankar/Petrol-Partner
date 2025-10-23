@@ -18,11 +18,15 @@ import PreferencesSection from "@/components/postRide/PreferencesSection";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, Eye, Home, Trash2 } from "lucide-react";
 import { motion } from "framer-motion";
+import { useCreateRideOffer } from "@/hooks/rides/useRideOffers";
 
 const STORAGE_KEY = "postRideFormData";
 
 const PostRide = () => {
   const router = useRouter();
+
+  const { createRideOffer, loading } = useCreateRideOffer();
+
   const [currentStep, setCurrentStep] = useState(1);
   const [showPreview, setShowPreview] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
@@ -140,38 +144,43 @@ const PostRide = () => {
   const handlePublish = useCallback(async () => {
     setIsPublishing(true);
     try {
-      // const token = localStorage.getItem("token");
-      // if (!token) throw new Error("Unauthorized");
-
-      // const response = await fetch("/api/rides/create", {
-      //   method: "POST",
-      //   headers: {
-      //     "Content-Type": "application/json",
-      //     Authorization: `Bearer ${token}`,
-      //   },
-      //   body: JSON.stringify(formData),
-      // });
-
-      // if (!response.ok) {
-      //   const error = await response.json();
-      //   throw new Error(error?.error || "Failed to publish ride");
-      // }
-
-      // localStorage.removeItem(STORAGE_KEY);
+      const body = {
+        pickup_location: formData.route.pickup,
+        drop_location: formData.route.dropoff,
+        pickup_lat: formData.route.pickup_lat || "23.33",
+        pickup_lng: formData.route.pickup_lng || "22.22",
+        drop_lat: formData.route.drop_lat || "18.88",
+        drop_lng: formData.route.drop_lng || "19.99",
+        available_seats: formData.availableSeats,
+        price_per_seat: formData.pricing.farePerSeat,
+        date: formData.schedule.date,
+        time: formData.schedule.time,
+        vehicle_details: formData.vehicle.make
+          ? `${formData.vehicle.make} ${formData.vehicle.model || ""}`.trim()
+          : null,
+        notes: formData.preferences.notes || null,
+      };
+  
+      console.log("📦 Sending ride data:", body); // Debug log
+  
+      await createRideOffer(body);
+  
       toast.success("Ride published successfully!");
+      localStorage.removeItem(STORAGE_KEY);
       router.push("/dashboard");
     } catch (err) {
       if (err instanceof Error) {
-        console.error(err);
+        console.error("Publish error: ",err);
         toast.error(err.message || "Failed to publish ride");
       } else {
-        console.error(err);
+        console.error("Publish error: ",err);
         toast.error("Failed to publish ride");
       }
     } finally {
       setIsPublishing(false);
     }
-  }, [router]);
+  }, [createRideOffer, formData, router]);
+  
 
   const renderCurrentStep = useCallback(() => {
     const comp = steps[currentStep - 1]?.component;
@@ -303,7 +312,7 @@ const PostRide = () => {
         onPublish={handlePublish}
       />
 
-      {isPublishing && (
+      {loading && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-card rounded-lg p-8 text-center">
             <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full mx-auto mb-4"></div>

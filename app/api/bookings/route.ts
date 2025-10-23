@@ -60,7 +60,7 @@ export async function POST(req: Request) {
 
 // app/api/bookings/route.ts
 import { NextRequest } from "next/server";
-import { getUserFromToken } from "@/lib/auth";
+import { getUserFromToken } from "@/lib/jwt";
 import { pool } from "@/lib/db";
 
 export async function GET(req: NextRequest) {

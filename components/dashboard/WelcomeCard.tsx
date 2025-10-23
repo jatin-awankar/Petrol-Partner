@@ -40,10 +40,9 @@ class WelcomeCardErrorBoundary extends React.Component<
 
 const WelcomeCard = () => {
   const currentHour = new Date().getHours();
-  const { profile, loading, error } = useUserProfile();
+  const { profile, loading } = useUserProfile();
 
   // if (error) return <p className="text-red-500">{error}</p>
-  console.log(error);
 
   const getGreeting = () => {
     if (currentHour < 12) return "Good morning";

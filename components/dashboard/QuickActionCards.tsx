@@ -11,8 +11,8 @@ import { useFetchRideRequests } from "@/hooks/rides/useRideRequests";
 
 const QuickActionCards: React.FC = () => {
   const [actions, setActions] = useState<Action[] | null>(null);
-  const { offers, loading: loadingOffers } = useFetchRideOffers();
-  const { requests, loading: loadingRequests } = useFetchRideRequests();
+  const { offers } = useFetchRideOffers();
+  const { requests } = useFetchRideRequests();
 
   useEffect(() => {
     setActions([
@@ -48,19 +48,7 @@ const QuickActionCards: React.FC = () => {
       transition={{ delay: 0.3 }}
       className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 "
     >
-      {loadingOffers && loadingRequests
-        ? Array.from({ length: 2 }).map((_, idx) => (
-            <div
-              key={idx}
-              className="bg-card border border-border rounded-xl p-6 animate-pulse"
-            >
-              <Skeleton width={48} height={48} className="mb-4" />
-              <Skeleton width="70%" height={20} className="mb-2" />
-              <Skeleton width="90%" height={14} className="mb-3" />
-              <Skeleton width="50%" height={16} />
-            </div>
-          ))
-        : actions?.map((action) => (
+      {actions?.map((action) => (
             <div
               key={action?.id ?? Math.random()}
               className="bg-card border border-border rounded-xl p-6 hover:shadow-medium transition-shadow cursor-pointer shadow-card"
@@ -93,8 +81,8 @@ const QuickActionCards: React.FC = () => {
                 </p>
 
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-muted-foreground">
-                    {action?.stats ?? <Skeleton width={50} />}
+                  <span className="text-xs text-muted-foreground animate-pulse">
+                    {action?.stats ?? <Skeleton width="50%" />}
                   </span>
                   <Button
                     variant="ghost"

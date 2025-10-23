@@ -1,17 +1,23 @@
-import { NextResponse } from 'next/server';
-import { query } from '@/lib/db';
-import { verifyAccessToken } from '@/lib/jwt';
+import { NextResponse } from "next/server";
+import { query } from "@/lib/db";
+import { verifyAccessToken } from "@/lib/jwt";
 
 export async function POST(req: Request) {
   try {
-    const authHeader = req.headers.get('authorization');
+    const authHeader = req.headers.get("authorization");
     if (!authHeader)
-      return NextResponse.json({ error: 'Authorization header missing' }, { status: 401 });
+      return NextResponse.json(
+        { error: "Authorization header missing" },
+        { status: 401 }
+      );
 
-    const token = authHeader.split(' ')[1];
+    const token = authHeader.split(" ")[1];
     const payload = verifyAccessToken(token);
-    if (typeof payload !== 'object' || !('userId' in payload)) {
-      return NextResponse.json({ error: 'Invalid token payload' }, { status: 401 });
+    if (typeof payload !== "object" || !("userId" in payload)) {
+      return NextResponse.json(
+        { error: "Invalid token payload" },
+        { status: 401 }
+      );
     }
     const driverId = payload.userId;
 
@@ -43,7 +49,10 @@ export async function POST(req: Request) {
       !date ||
       !time
     ) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+      return NextResponse.json(
+        { error: "Missing required fields" },
+        { status: 400 }
+      );
     }
 
     const result = await query(
@@ -70,11 +79,13 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ride_offer: result.rows[0] }, { status: 201 });
   } catch (err: any) {
-    console.error('Create ride offer error:', err);
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+    console.error("Create ride offer error:", err);
+    return NextResponse.json(
+      { error: "Internal Server Error" },
+      { status: 500 }
+    );
   }
 }
-
 
 const PAGE_SIZE = 5; // Default pagination size
 
@@ -82,11 +93,11 @@ export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const type = "offer";
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || PAGE_SIZE.toString());
-    const pickup = searchParams.get('pickup');
-    const drop = searchParams.get('drop');
-    const date = searchParams.get('date');
+    const page = parseInt(searchParams.get("page") || "1");
+    const limit = parseInt(searchParams.get("limit") || PAGE_SIZE.toString());
+    const pickup = searchParams.get("pickup");
+    const drop = searchParams.get("drop");
+    const date = searchParams.get("date");
 
     const offset = (page - 1) * limit;
 
@@ -109,8 +120,9 @@ export async function GET(req: Request) {
       filters.push(`date = $${values.length}`);
     }
 
-    let whereClause = filters.length > 0 ? `WHERE ${filters.join(' AND ')}` : '';
-    whereClause += (whereClause ? ' AND ' : 'WHERE ') + "status = 'active'";
+    let whereClause =
+      filters.length > 0 ? `WHERE ${filters.join(" AND ")}` : "";
+    whereClause += (whereClause ? " AND " : "WHERE ") + "status = 'active'";
 
     // Query total count
     const countQuery = `SELECT COUNT(*) FROM ride_offers ${whereClause}`;
@@ -122,7 +134,7 @@ export async function GET(req: Request) {
     values.push(offset);
 
     const ridesQuery = `
-      SELECT r.*, u.*
+      SELECT r.*, u.full_name, u.email, u.phone, u.is_verified, u.created_at, u.role, u.college, u.profile_image, u.avg_rating, u.age
       FROM ride_offers r
       JOIN users u ON r.driver_id = u.id
       ${whereClause}
@@ -142,7 +154,10 @@ export async function GET(req: Request) {
       rides,
     });
   } catch (error: any) {
-    console.error('List ride offers error:', error);
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+    console.error("List ride offers error:", error);
+    return NextResponse.json(
+      { error: "Internal Server Error" },
+      { status: 500 }
+    );
   }
 }

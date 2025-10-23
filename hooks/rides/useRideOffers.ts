@@ -6,7 +6,7 @@ import { useState, useEffect, useCallback } from "react";
 // ✅ Helper function to get JWT token from localStorage or cookies
 const getToken = () => {
   if (typeof window !== "undefined") {
-    return localStorage.getItem("token");
+    return localStorage.getItem("access_token");
   }
   return null;
 };
