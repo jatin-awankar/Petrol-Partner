@@ -54,7 +54,7 @@ export function useFetchSuggestedRides(options: SuggestedRidesOptions = {}) {
     } finally {
       setLoading(false);
     }
-  }, [options.latitude, options.longitude, options.limit]);
+  }, [options.latitude, options.longitude, options.limit, options.date]);
 
   useEffect(() => {
     fetchSuggestedRides();

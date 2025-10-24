@@ -4,8 +4,6 @@ import { motion } from "framer-motion";
 import React, { useEffect, useState } from "react";
 import Icon from "../AppIcon";
 import { Button } from "../ui/button";
-import { Card } from "../ui/card";
-import Skeleton from "react-loading-skeleton";
 import RideCard from "./RideCard";
 import { useRouter } from "next/navigation";
 import { useFetchSuggestedRides } from "@/hooks/rides/useFetchSuggestedRides";
@@ -65,7 +63,11 @@ const SuggestedRides = () => {
         </div>
       </div>
 
-      {suggestions.length === 0 ? (
+      {loading ? (
+        <div className="py-8 text-center text-muted-foreground">
+          Loading smart suggestions...
+        </div>
+      ) : suggestions.length === 0 ? (
         <div className="py-8 text-center text-muted-foreground">
           No suggestions found.
         </div>

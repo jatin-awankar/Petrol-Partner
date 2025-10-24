@@ -12,7 +12,6 @@ import { useFetchSuggestedRides } from "@/hooks/rides/useFetchSuggestedRides";
 const NearbyRides = () => {
   const router = useRouter();
 
-  
   const [rides, setRides] = useState<{
     offers: CombineRideData[];
     requests: CombineRideData[];
@@ -27,8 +26,11 @@ const NearbyRides = () => {
   } | null>(null);
   const [loadingLocation, setLoadingLocation] = useState(false);
   const [showNearby, setShowNearby] = useState(false);
-  
-  const { rideOffers, rideRequests, loading } = useFetchSuggestedRides({latitude: userLocation?.lat, longitude:userLocation?.lng});
+
+  const { rideOffers, rideRequests, loading } = useFetchSuggestedRides({
+    latitude: userLocation?.lat,
+    longitude: userLocation?.lng,
+  });
 
   // Fetch all rides (mock or Supabase)
   useEffect(() => {
@@ -160,7 +162,11 @@ const NearbyRides = () => {
             <h3 className="text-lg font-semibold text-foreground mb-4">
               Ride Offers
             </h3>
-            {filteredRides.offers.length ? (
+            {loading ? (
+              <div className="py-4 text-center text-muted-foreground">
+                Loading nearby ride requests...
+              </div>
+            ) : filteredRides.offers.length ? (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {filteredRides.offers.map((s) => (
                   <RideCard
@@ -188,7 +194,11 @@ const NearbyRides = () => {
             <h3 className="text-lg font-semibold text-foreground mb-4">
               Ride Requests
             </h3>
-            {filteredRides.requests.length ? (
+            {loading ? (
+              <div className="py-4 text-center text-muted-foreground">
+                Loading nearby ride offers...
+              </div>
+            ) : filteredRides.requests.length ? (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {filteredRides.requests.map((s) => (
                   <RideCard
