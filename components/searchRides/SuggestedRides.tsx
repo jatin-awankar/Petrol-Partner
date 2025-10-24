@@ -9,11 +9,15 @@ import Skeleton from "react-loading-skeleton";
 import RideCard from "./RideCard";
 import { useRouter } from "next/navigation";
 import { useFetchSuggestedRides } from "@/hooks/rides/useFetchSuggestedRides";
+import { todaysDate } from "@/lib/utils";
 
 const SuggestedRides = () => {
   const router = useRouter();
 
-  const { rideOffers, rideRequests, loading } = useFetchSuggestedRides();
+  const { rideOffers, rideRequests, loading } = useFetchSuggestedRides({
+    limit: 3,
+    date: todaysDate.toISOString(),
+  });
   const [suggestions, setSuggestions] = useState<CombineRideData[]>([]);
 
   useEffect(() => {

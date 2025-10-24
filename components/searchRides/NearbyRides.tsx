@@ -5,8 +5,6 @@ import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { getDistance } from "@/lib/utils";
-import { Card } from "../ui/card";
-import Skeleton from "react-loading-skeleton";
 import RideCard from "./RideCard";
 import { useRouter } from "next/navigation";
 import { useFetchSuggestedRides } from "@/hooks/rides/useFetchSuggestedRides";
@@ -14,8 +12,7 @@ import { useFetchSuggestedRides } from "@/hooks/rides/useFetchSuggestedRides";
 const NearbyRides = () => {
   const router = useRouter();
 
-  const { rideOffers, rideRequests, loading } = useFetchSuggestedRides();
-
+  
   const [rides, setRides] = useState<{
     offers: CombineRideData[];
     requests: CombineRideData[];
@@ -30,6 +27,8 @@ const NearbyRides = () => {
   } | null>(null);
   const [loadingLocation, setLoadingLocation] = useState(false);
   const [showNearby, setShowNearby] = useState(false);
+  
+  const { rideOffers, rideRequests, loading } = useFetchSuggestedRides({latitude: userLocation?.lat, longitude:userLocation?.lng});
 
   // Fetch all rides (mock or Supabase)
   useEffect(() => {

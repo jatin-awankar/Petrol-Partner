@@ -10,16 +10,21 @@ import { motion } from "framer-motion";
 import { useFetchSuggestedRides } from "@/hooks/rides/useFetchSuggestedRides";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { formatTimeToAmPm } from "@/lib/utils";
+import { formatTimeToAmPm, todaysDate } from "@/lib/utils";
 
 const RideSuggestions: React.FC = () => {
   const router = useRouter();
 
-  const [suggestions, setSuggestions] = useState<CombineRideData[] | null>(null);
+  const [suggestions, setSuggestions] = useState<CombineRideData[] | null>(
+    null
+  );
   const [dismissedSuggestions, setDismissedSuggestions] = useState<string[]>(
     []
   );
-  const { rideOffers, rideRequests, loading } = useFetchSuggestedRides();
+  const { rideOffers, rideRequests, loading } = useFetchSuggestedRides({
+    limit: 2,
+    date: todaysDate.toISOString(),
+  });
 
   useEffect(() => {
     const offers =
@@ -67,7 +72,7 @@ const RideSuggestions: React.FC = () => {
 
       <div className="space-y-4">
         {loading
-          ? Array.from({ length: 3 }).map((_, idx) => (
+          ? Array.from({ length: 2 }).map((_, idx) => (
               <div
                 key={idx}
                 className="border border-border rounded-lg p-4 animate-pulse"

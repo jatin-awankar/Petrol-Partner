@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback } from "react";
 
 const getToken = () => {
   if (typeof window !== "undefined") {
-    return localStorage.getItem("token");
+    return localStorage.getItem("access_token");
   }
   return null;
 };
@@ -14,6 +14,7 @@ interface SuggestedRidesOptions {
   latitude?: number;
   longitude?: number;
   limit?: number;
+  date?: string;
 }
 
 export function useFetchSuggestedRides(options: SuggestedRidesOptions = {}) {
@@ -27,9 +28,10 @@ export function useFetchSuggestedRides(options: SuggestedRidesOptions = {}) {
     setError(null);
 
     const query = new URLSearchParams();
-    if (options.latitude) query.append("lat", String(options.latitude));
-    if (options.longitude) query.append("lng", String(options.longitude));
-    query.append("limit", String(options.limit || 5));
+    if (options.latitude) query.append("pickup_lat", String(options.latitude));
+    if (options.longitude) query.append("pickup_lng", String(options.longitude));
+    if (options.limit) query.append("limit", String(options.limit));
+    if (options.date) query.append("date", String(options.date));
 
     try {
       // Fetch suggested ride offers

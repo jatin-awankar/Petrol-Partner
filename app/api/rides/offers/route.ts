@@ -87,66 +87,103 @@ export async function POST(req: Request) {
   }
 }
 
-const PAGE_SIZE = 5; // Default pagination size
+const PAGE_SIZE = 5; // default pagination size
+const SEARCH_RADIUS_KM = 1; // 1 km radius
 
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
-    const type = "offer";
-    const page = parseInt(searchParams.get("page") || "1");
-    const limit = parseInt(searchParams.get("limit") || PAGE_SIZE.toString());
-    const pickup = searchParams.get("pickup");
-    const drop = searchParams.get("drop");
+    const page = parseInt(searchParams.get("page") || "1", 10);
+    const limit = parseInt(
+      searchParams.get("limit") || PAGE_SIZE.toString(),
+      10
+    );
+    const pickup_lat = searchParams.get("pickup_lat");
+    const pickup_lng = searchParams.get("pickup_lng");
     const date = searchParams.get("date");
 
     const offset = (page - 1) * limit;
-
-    // Build dynamic filter query
-    const filters = [];
+    const filters: string[] = [`r.status = 'active'`];
     const values: any[] = [];
 
-    if (pickup) {
-      values.push(`%${pickup}%`);
-      filters.push(`pickup_location ILIKE $${values.length}`);
-    }
-
-    if (drop) {
-      values.push(`%${drop}%`);
-      filters.push(`drop_location ILIKE $${values.length}`);
-    }
-
+    // Optional date filter
     if (date) {
       values.push(date);
-      filters.push(`date = $${values.length}`);
+      filters.push(`r.date = $${values.length}`);
     }
 
-    let whereClause =
-      filters.length > 0 ? `WHERE ${filters.join(" AND ")}` : "";
-    whereClause += (whereClause ? " AND " : "WHERE ") + "status = 'active'";
-
-    // Query total count
-    const countQuery = `SELECT COUNT(*) FROM ride_offers ${whereClause}`;
+    // Count total rides (with same filters)
+    const countQuery = `SELECT COUNT(*) FROM ride_offers r WHERE ${filters.join(" AND ")}`;
     const countRes = await query(countQuery, values);
     const totalCount = parseInt(countRes.rows[0].count, 10);
 
-    // Query paginated data
-    values.push(limit);
-    values.push(offset);
+    const sqlValues: any[] = [...values]; // start with same filters
 
-    const ridesQuery = `
-      SELECT r.*, u.full_name, u.email, u.phone, u.is_verified, u.created_at, u.role, u.college, u.profile_image, u.avg_rating, u.age
-      FROM ride_offers r
-      JOIN users u ON r.driver_id = u.id
-      ${whereClause}
-      ORDER BY r.created_at DESC
-      LIMIT $${values.length - 1} OFFSET $${values.length};
-    `;
+    let sql: string;
 
-    const ridesRes = await query(ridesQuery, values);
+    if (pickup_lat && pickup_lng) {
+      const lat = parseFloat(pickup_lat);
+      const lng = parseFloat(pickup_lng);
+
+      sqlValues.push(lat, lng, SEARCH_RADIUS_KM, limit, offset);
+
+      sql = `
+        SELECT 
+          r.*,
+          u.full_name,
+          u.email,
+          u.phone,
+          u.is_verified,
+          u.college,
+          u.profile_image,
+          u.avg_rating,
+          (
+            6371 * acos(
+              cos(radians($${sqlValues.length - 4})) * cos(radians(r.pickup_lat)) *
+              cos(radians(r.pickup_lng) - radians($${sqlValues.length - 3})) +
+              sin(radians($${sqlValues.length - 4})) * sin(radians(r.pickup_lat))
+            )
+          ) AS distance_km
+        FROM ride_offers r
+        JOIN users u ON r.driver_id = u.id
+        WHERE ${filters.join(" AND ")}
+        AND (
+          6371 * acos(
+            cos(radians($${sqlValues.length - 4})) * cos(radians(r.pickup_lat)) *
+            cos(radians(r.pickup_lng) - radians($${sqlValues.length - 3})) +
+            sin(radians($${sqlValues.length - 4})) * sin(radians(r.pickup_lat))
+          )
+        ) <= $${sqlValues.length - 2}
+        ORDER BY distance_km ASC
+        LIMIT $${sqlValues.length - 1} OFFSET $${sqlValues.length};
+      `;
+    } else {
+      // No location provided → default ordering
+      sqlValues.push(limit, offset);
+
+      sql = `
+        SELECT 
+          r.*,
+          u.full_name,
+          u.email,
+          u.phone,
+          u.is_verified,
+          u.college,
+          u.profile_image,
+          u.avg_rating
+        FROM ride_offers r
+        JOIN users u ON r.driver_id = u.id
+        WHERE ${filters.join(" AND ")}
+        ORDER BY r.created_at DESC
+        LIMIT $${sqlValues.length - 1} OFFSET $${sqlValues.length};
+      `;
+    }
+
+    const ridesRes = await query(sql, sqlValues);
     const rides = ridesRes.rows;
 
     return NextResponse.json({
-      type,
+      success: true,
       page,
       limit,
       totalCount,
@@ -156,7 +193,7 @@ export async function GET(req: Request) {
   } catch (error: any) {
     console.error("List ride offers error:", error);
     return NextResponse.json(
-      { error: "Internal Server Error" },
+      { success: false, error: "Internal Server Error" },
       { status: 500 }
     );
   }

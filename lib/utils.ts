@@ -5,9 +5,11 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+export const todaysDate = new Date();
+
 // Haversine formula: distance between two lat/lng points in km
-export function getDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
-  const R = 6371; // Earth's radius in km
+export function getDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371; // Radius of Earth in km
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLon = ((lon2 - lon1) * Math.PI) / 180;
   const a =
@@ -16,7 +18,8 @@ export function getDistance(lat1: number, lon1: number, lat2: number, lon2: numb
       Math.cos((lat2 * Math.PI) / 180) *
       Math.sin(dLon / 2) *
       Math.sin(dLon / 2);
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c; // distance in KM
 }
 
 // String Date to short date format (18-Oct)
@@ -27,13 +30,12 @@ export const formatUtcToTodayOrDayMonth = (isoDateString: string) => {
 
   try {
     const inputDate = new Date(isoDateString);
-    const today = new Date();
 
     // Check if the input date is today by comparing UTC year, month, and day.
     const isToday =
-      inputDate.getUTCFullYear() === today.getUTCFullYear() &&
-      inputDate.getUTCMonth() === today.getUTCMonth() &&
-      inputDate.getUTCDate() === today.getUTCDate();
+      inputDate.getUTCFullYear() === todaysDate.getUTCFullYear() &&
+      inputDate.getUTCMonth() === todaysDate.getUTCMonth() &&
+      inputDate.getUTCDate() === todaysDate.getUTCDate();
 
     if (isToday) {
       return "Today";
