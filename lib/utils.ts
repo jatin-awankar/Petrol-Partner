@@ -40,8 +40,8 @@ export const formatUtcToTodayOrDayMonth = (isoDateString: string) => {
     if (isToday) {
       return "Today";
     }
-
-    return inputDate.toDateString();
+    
+    return inputDate.toDateString().slice(0, -5);
 
   } catch (error) {
     console.error("Error formatting date:", error);

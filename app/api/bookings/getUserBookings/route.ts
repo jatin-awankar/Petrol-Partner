@@ -27,7 +27,7 @@ export async function GET(req: Request) {
 
     // Get pagination params
     const { searchParams } = new URL(req.url);
-    const limit = parseInt(searchParams.get("limit") || "5");
+    const limit = parseInt(searchParams.get("limit") || "4");
     const offset = parseInt(searchParams.get("offset") || "0");
 
     // 🔍 Fetch all bookings where user is involved (either driver or passenger)

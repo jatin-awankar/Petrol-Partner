@@ -142,7 +142,7 @@ const RideSuggestions: React.FC = () => {
                   </Button>
                 </div>
 
-                {/* Driver Info */}
+                {/* Info */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-3">
                     <div className="w-8 h-8 bg-blue-400/10 rounded-full flex items-center justify-center">
