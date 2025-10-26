@@ -33,21 +33,15 @@ export const formatUtcToTodayOrDayMonth = (isoDateString: string) => {
 
     // Check if the input date is today by comparing UTC year, month, and day.
     const isToday =
-      inputDate.getUTCFullYear() === todaysDate.getUTCFullYear() &&
-      inputDate.getUTCMonth() === todaysDate.getUTCMonth() &&
-      inputDate.getUTCDate() === todaysDate.getUTCDate();
+      inputDate.getFullYear() === todaysDate.getFullYear() &&
+      inputDate.getMonth() === todaysDate.getMonth() &&
+      inputDate.getDate() === todaysDate.getDate();
 
     if (isToday) {
       return "Today";
     }
-
-    // If it's not today, format it as "Day-Month" in UTC.
-
-    return inputDate.toLocaleDateString('en-US', {
-      day: '2-digit',
-      month: 'short',
-      timeZone: 'UTC',
-    });
+    
+    return inputDate.toDateString().slice(0, -5);
 
   } catch (error) {
     console.error("Error formatting date:", error);

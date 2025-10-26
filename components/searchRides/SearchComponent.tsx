@@ -129,7 +129,7 @@ const SearchComponent = () => {
 
   return (
     <>
-      <div className="bg-card border border-border rounded-2xl p-4 shadow-soft mb-6">
+      <div className="bg-card border border-border rounded-2xl p-4 mb-6">
         <div className="flex flex-col md:flex-row gap-3 items-center">
           <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-3 w-full">
             <Input
@@ -265,13 +265,13 @@ const SearchComponent = () => {
             <TabsList className="flex gap-2 w-full md:w-fit px-1">
               <TabsTrigger
                 value="offer"
-                className="tabs-trigger flex items-center gap-2 px-4 py-2 rounded-lg"
+                className="tabs-trigger flex items-center gap-2 px-4 py-2 rounded-lg cursor-pointer"
               >
                 <Icon name="Bike" /> Ride Offers
               </TabsTrigger>
               <TabsTrigger
                 value="request"
-                className="tabs-trigger flex items-center gap-2 px-4 py-2 rounded-lg"
+                className="tabs-trigger flex items-center gap-2 px-4 py-2 rounded-lg cursor-pointer"
               >
                 <Icon name="User" /> Ride Requests
               </TabsTrigger>
@@ -283,7 +283,15 @@ const SearchComponent = () => {
 
           <TabsContent value="offer">
             <AnimatePresence mode="wait">
-              {filtered.length ? (
+              {offerLoading && requestLoading ? (
+                <div className="py-8 text-center text-muted-foreground">
+                  Loading rides data...
+                </div>
+              ) : filtered.length === 0 ? (
+                <div className="py-8 text-center text-muted-foreground">
+                  No rides found — try removing filters or widening the search.
+                </div>
+              ) : (
                 <motion.div
                   layout
                   className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
@@ -297,10 +305,6 @@ const SearchComponent = () => {
                     />
                   ))}
                 </motion.div>
-              ) : (
-                <div className="py-8 text-center text-muted-foreground">
-                  No rides found — try removing filters or widening the search.
-                </div>
               )}
             </AnimatePresence>
           </TabsContent>

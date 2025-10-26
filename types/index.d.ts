@@ -134,6 +134,28 @@ interface CommunityUpdates {
   image_url: string;
 }
 
+// fetch bookings data
+interface BookingsData {
+  booking_id: string;
+  created_at: string;
+  date: string;
+  driver_id: string;
+  drop_location: string;
+  other_user_email: string;
+  other_user_name: string;
+  passenger_id: string;
+  pickup_location: string;
+  price_per_seat: string;
+  ride_id: string;
+  role: string;
+  seats_booked: number;
+  status: string;
+  time: string;
+  total_price: string;
+  updated_at: string;
+  user_role: string;
+}
+
 // - Mapping props
 interface MapProps {
   className?: string;

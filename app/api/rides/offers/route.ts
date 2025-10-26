@@ -103,7 +103,7 @@ export async function GET(req: Request) {
     const date = searchParams.get("date");
 
     const offset = (page - 1) * limit;
-    const filters: string[] = [`r.status = 'active'`];
+    const filters: string[] = ["r.status = 'active'"];
     const values: any[] = [];
 
     // Optional date filter
@@ -112,13 +112,7 @@ export async function GET(req: Request) {
       filters.push(`r.date = $${values.length}`);
     }
 
-    // Count total rides (with same filters)
-    const countQuery = `SELECT COUNT(*) FROM ride_offers r WHERE ${filters.join(" AND ")}`;
-    const countRes = await query(countQuery, values);
-    const totalCount = parseInt(countRes.rows[0].count, 10);
-
-    const sqlValues: any[] = [...values]; // start with same filters
-
+    const sqlValues = [...values];
     let sql: string;
 
     if (pickup_lat && pickup_lng) {
@@ -126,6 +120,11 @@ export async function GET(req: Request) {
       const lng = parseFloat(pickup_lng);
 
       sqlValues.push(lat, lng, SEARCH_RADIUS_KM, limit, offset);
+      const latIndex = sqlValues.length - 4;
+      const lngIndex = sqlValues.length - 3;
+      const radiusIndex = sqlValues.length - 2;
+      const limitIndex = sqlValues.length - 1;
+      const offsetIndex = sqlValues.length;
 
       sql = `
         SELECT 
@@ -137,29 +136,27 @@ export async function GET(req: Request) {
           u.college,
           u.profile_image,
           u.avg_rating,
-          (
-            6371 * acos(
-              cos(radians($${sqlValues.length - 4})) * cos(radians(r.pickup_lat)) *
-              cos(radians(r.pickup_lng) - radians($${sqlValues.length - 3})) +
-              sin(radians($${sqlValues.length - 4})) * sin(radians(r.pickup_lat))
-            )
-          ) AS distance_km
+          (6371 * acos(
+            cos(radians($${latIndex})) * cos(radians(r.pickup_lat)) *
+            cos(radians(r.pickup_lng) - radians($${lngIndex})) +
+            sin(radians($${latIndex})) * sin(radians(r.pickup_lat))
+          )) AS distance_km
         FROM ride_offers r
         JOIN users u ON r.driver_id = u.id
         WHERE ${filters.join(" AND ")}
-        AND (
-          6371 * acos(
-            cos(radians($${sqlValues.length - 4})) * cos(radians(r.pickup_lat)) *
-            cos(radians(r.pickup_lng) - radians($${sqlValues.length - 3})) +
-            sin(radians($${sqlValues.length - 4})) * sin(radians(r.pickup_lat))
-          )
-        ) <= $${sqlValues.length - 2}
+        AND (6371 * acos(
+            cos(radians($${latIndex})) * cos(radians(r.pickup_lat)) *
+            cos(radians(r.pickup_lng) - radians($${lngIndex})) +
+            sin(radians($${latIndex})) * sin(radians(r.pickup_lat))
+        )) <= $${radiusIndex}
         ORDER BY distance_km ASC
-        LIMIT $${sqlValues.length - 1} OFFSET $${sqlValues.length};
+        LIMIT $${limitIndex} OFFSET $${offsetIndex};
       `;
     } else {
-      // No location provided → default ordering
+      // No location → default ordering
       sqlValues.push(limit, offset);
+      const limitIndex = sqlValues.length - 1;
+      const offsetIndex = sqlValues.length;
 
       sql = `
         SELECT 
@@ -175,12 +172,22 @@ export async function GET(req: Request) {
         JOIN users u ON r.driver_id = u.id
         WHERE ${filters.join(" AND ")}
         ORDER BY r.created_at DESC
-        LIMIT $${sqlValues.length - 1} OFFSET $${sqlValues.length};
+        LIMIT $${limitIndex} OFFSET $${offsetIndex};
       `;
     }
 
+    // Count total rides
+    const countQuery = `SELECT COUNT(*) FROM ride_offers r WHERE ${filters.join(
+      " AND "
+    )}`;
+    const countRes = await query(countQuery, values);
+    const totalCount = parseInt(countRes.rows[0].count, 10);
+
     const ridesRes = await query(sql, sqlValues);
-    const rides = ridesRes.rows;
+    const rides = ridesRes.rows.map((ride) => ({
+      ...ride,
+      date: ride.date,
+    }));
 
     return NextResponse.json({
       success: true,
