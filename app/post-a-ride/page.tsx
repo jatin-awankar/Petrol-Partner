@@ -160,27 +160,26 @@ const PostRide = () => {
           : null,
         notes: formData.preferences.notes || null,
       };
-  
+
       console.log("📦 Sending ride data:", body); // Debug log
-  
+
       await createRideOffer(body);
-  
+
       toast.success("Ride published successfully!");
       localStorage.removeItem(STORAGE_KEY);
       router.push("/dashboard");
     } catch (err) {
       if (err instanceof Error) {
-        console.error("Publish error: ",err);
+        console.error("Publish error: ", err);
         toast.error(err.message || "Failed to publish ride");
       } else {
-        console.error("Publish error: ",err);
+        console.error("Publish error: ", err);
         toast.error("Failed to publish ride");
       }
     } finally {
       setIsPublishing(false);
     }
   }, [createRideOffer, formData, router]);
-  
 
   const renderCurrentStep = useCallback(() => {
     const comp = steps[currentStep - 1]?.component;
@@ -246,7 +245,11 @@ const PostRide = () => {
               </div>
 
               {currentStep < steps.length ? (
-                <Button variant="default" onClick={handleNext} className="shadow-sm">
+                <Button
+                  variant="default"
+                  onClick={handleNext}
+                  className="shadow-sm"
+                >
                   Next
                   <ChevronRight />
                 </Button>
