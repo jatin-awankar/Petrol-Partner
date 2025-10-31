@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { signOut } from "next-auth/react";
 import Icon from "./AppIcon";
 import { Button } from "./ui/button";
 
@@ -20,7 +21,6 @@ const Navbar = () => {
 
   const isActive = (path: string) => pathname === path;
 
-  // Dynamic text based on route
   const getPageText = () => {
     switch (pathname) {
       case "/dashboard":
@@ -37,6 +37,19 @@ const Navbar = () => {
         return "Payments";
       default:
         return "Petrol Partner";
+    }
+  };
+
+  // ✅ Logout logic
+  const handleLogout = async () => {
+    try {
+      setIsMenuOpen(false);
+      // Clear legacy refresh token (optional)
+      await fetch("/api/auth/logout", { method: "POST" });
+      // End NextAuth session + redirect home
+      await signOut({ callbackUrl: "/" });
+    } catch (err) {
+      console.error("Logout failed:", err);
     }
   };
 
@@ -90,7 +103,7 @@ const Navbar = () => {
             <span className="absolute -top-1 -right-1 w-2 h-2 bg-error rounded-full" />
           </Button>
 
-          {/* Profile */}
+          {/* Profile dropdown */}
           <div className="relative">
             <Button
               variant="ghost"
@@ -104,6 +117,7 @@ const Navbar = () => {
             {isMenuOpen && (
               <div className="absolute right-0 top-12 w-48 bg-popover/90 backdrop-blur-md border border-border rounded-lg shadow-md z-200">
                 <div className="py-2">
+                  {/* Settings */}
                   <button
                     className="w-full px-4 py-2 text-left text-sm text-foreground hover:bg-muted flex items-center space-x-2"
                     onClick={() => {
@@ -114,13 +128,13 @@ const Navbar = () => {
                     <Icon name="Settings" size={16} />
                     <span>Settings</span>
                   </button>
+
                   <hr className="my-2 border-border" />
+
+                  {/* ✅ Logout */}
                   <button
                     className="w-full px-4 py-2 text-left text-sm text-error hover:bg-muted flex items-center space-x-2"
-                    onClick={() => {
-                      setIsMenuOpen(false);
-                      // handle sign-out logic here
-                    }}
+                    onClick={handleLogout}
                   >
                     <Icon name="LogOut" size={16} />
                     <span>Sign Out</span>
