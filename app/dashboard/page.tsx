@@ -1,4 +1,7 @@
 // app/dashboard/page.tsx
+import { getServerSession } from "next-auth/next";
+import { redirect } from "next/navigation";
+import { authOptions } from "@/lib/authOptions";
 
 import React, { Suspense } from "react";
 import WelcomeCard from "@/components/dashboard/WelcomeCard";
@@ -9,7 +12,19 @@ import RecentActivitySection from "@/components/dashboard/RecentActivitySection"
 import RideSuggestions from "@/components/dashboard/RideSuggestions";
 import CommunityUpdates from "@/components/dashboard/CommunityUpdates";
 
-export default function DashboardPage() {
+// 🚨 Important: remove "use client" (must be a server component)
+export default async function DashboardPage() {
+  // 1️⃣ Get the current user's session (server-side)
+  const session = await getServerSession(authOptions);
+
+  // 2️⃣ If no session, redirect to the NextAuth signin page
+  if (!session) {
+    redirect("/api/auth/signin");
+  }
+
+  // 3️⃣ Optionally use session.user data
+  const userName = session.user?.name ?? "User";
+
   return (
     <div className="page min-h-screen bg-background container mx-auto p-4 space-y-6">
       <WelcomeCard />

@@ -1,40 +1,33 @@
-import { NextResponse } from 'next/server';
-import { query } from '@/lib/db';
-import crypto from 'crypto';
-import { cookies } from 'next/headers';
+import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 
-export async function POST(req: Request) {
+export async function POST() {
   try {
-    // 1. Get refresh token from cookie or request body
-    let refreshToken = (await cookies()).get('refresh_token')?.value;
-    if (!refreshToken) {
-      const body = await req.json();
-      refreshToken = body.refreshToken;
+    // 1️⃣ Optionally clear your legacy refresh token cookie (if it exists)
+    const cookieStore = await cookies();
+    const refreshToken = await cookieStore.get?.("refresh_token");
+
+    if (refreshToken) {
+      const res = NextResponse.json({ message: "Logged out successfully" });
+      res.cookies.set?.({
+        name: "refresh_token",
+        value: "",
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "strict",
+        path: "/",
+        maxAge: 0, // expire immediately
+      });
+      return res;
     }
 
-    if (!refreshToken) {
-      return NextResponse.json({ error: 'Refresh token missing' }, { status: 400 });
-    }
-
-    // 2. Hash the token and remove from DB
-    const tokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
-    await query('DELETE FROM refresh_tokens WHERE token_hash = $1', [tokenHash]);
-
-    // 3. Clear cookie
-    const response = NextResponse.json({ message: 'Logged out successfully' });
-    response.cookies.set({
-      name: 'refresh_token',
-      value: '',
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      path: '/',
-      maxAge: 0, // clear immediately
-    });
-
-    return response;
+    // 2️⃣ Simply respond — NextAuth signOut() will clear its own cookies
+    return NextResponse.json({ message: "Logged out successfully" });
   } catch (error: any) {
-    console.error('Logout error:', error);
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+    console.error("Logout error:", error);
+    return NextResponse.json(
+      { error: "Internal Server Error" },
+      { status: 500 }
+    );
   }
 }

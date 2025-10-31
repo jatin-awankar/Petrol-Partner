@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { signIn } from "next-auth/react";
 
 export default function RegisterPage() {
   const [formData, setFormData] = useState({
@@ -21,21 +22,37 @@ export default function RegisterPage() {
     e.preventDefault();
     setLoading(true);
 
-    const res = await fetch("/api/auth/register", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(formData),
-    });
+    try {
+      // 1️⃣ Call your backend to register the user
+      const res = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formData),
+      });
 
-    const data = await res.json();
-    setLoading(false);
+      const data = await res.json();
 
-    if (res.ok) {
-      localStorage.setItem("token", data.token);
+      if (!res.ok) {
+        throw new Error(data.error || "Registration failed");
+      }
+
+      // 2️⃣ Automatically log in with NextAuth
+      const signInRes = await signIn("credentials", {
+        redirect: false,
+        email: formData.email,
+        password: formData.password,
+      });
+
+      if (signInRes?.error) {
+        throw new Error(signInRes.error);
+      }
+
       alert("Registration successful! Redirecting to dashboard...");
       router.push("/dashboard");
-    } else {
-      alert(data.error || "Something went wrong");
+    } catch (err: any) {
+      alert(err.message || "Something went wrong");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -106,4 +123,3 @@ export default function RegisterPage() {
     </div>
   );
 }
-
