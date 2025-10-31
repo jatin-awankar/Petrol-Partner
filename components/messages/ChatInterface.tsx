@@ -280,7 +280,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       </div>
 
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-[46vh] max-h-[46vh] md:min-h-[56vh] md:max-h-[56vh]">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-[53vh] max-h-[53vh] md:min-h-[56vh] md:max-h-[56vh]">
         {messages.map(renderMessage)}
         {isTyping && (
           <div className="flex justify-start mb-4">

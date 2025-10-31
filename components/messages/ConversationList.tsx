@@ -207,7 +207,7 @@ const ConversationList: React.FC<ConversationListProps> = ({
       </div>
 
       {/* Conversations List */}
-      <div className="flex-1 overflow-y-auto min-h-[43vh] max-h-[43vh] md:min-h-[50vh] md:max-h-[50vh]" ref={containerRef}>
+      <div className="flex-1 overflow-y-auto min-h-[47vh] max-h-[47vh] md:min-h-[50vh] md:max-h-[50vh]" ref={containerRef}>
         <ScrollArea className="h-full">
         {isLoading ? (
           Array.from({ length: PAGE_SIZE }).map((_, idx) => (
