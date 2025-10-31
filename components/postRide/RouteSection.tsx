@@ -38,7 +38,7 @@ export default function RouteSection({
   const [pickupSuggestions, setPickupSuggestions] = useState<any[]>([]);
   const [dropoffSuggestions, setDropoffSuggestions] = useState<any[]>([]);
   const [routeGeoJSON, setRouteGeoJSON] =
-    useState<mapboxgl.GeoJSONSourceRaw | null>(null);
+    useState<mapboxgl.GeoJSONSource | null>(null);
 
   const [selectedPickup, setSelectedPickup] = useState<{
     lat: number;
