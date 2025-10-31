@@ -84,6 +84,78 @@ const MOCK_CONVERSATIONS: Conversation[] = [
     unreadCount: 0,
     isArchived: false,
   },
+  {
+    id: "conv_3",
+    name: "Mike Chen",
+    avatar:
+      "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face",
+    isVerified: true,
+    verificationType: "driver",
+    isOnline: false,
+    lastSeen: new Date(Date.now() - 1800000).toISOString(),
+    rideStatus: "pending",
+    rideDate: "Tomorrow, 9:00 AM",
+    route: "North Campus → Library",
+    lastMessage: {
+      id: "msg_2",
+      senderId: "currentUser",
+      content: "Sounds good! See you tomorrow",
+      timestamp: new Date(Date.now() - 1800000).toISOString(),
+      status: "delivered",
+      type: "text",
+    },
+    lastMessageTime: new Date(Date.now() - 1800000).toISOString(),
+    unreadCount: 0,
+    isArchived: false,
+  },
+  {
+    id: "conv_4",
+    name: "Mike Chen",
+    avatar:
+      "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face",
+    isVerified: true,
+    verificationType: "driver",
+    isOnline: false,
+    lastSeen: new Date(Date.now() - 1800000).toISOString(),
+    rideStatus: "pending",
+    rideDate: "Tomorrow, 9:00 AM",
+    route: "North Campus → Library",
+    lastMessage: {
+      id: "msg_2",
+      senderId: "currentUser",
+      content: "Sounds good! See you tomorrow",
+      timestamp: new Date(Date.now() - 1800000).toISOString(),
+      status: "delivered",
+      type: "text",
+    },
+    lastMessageTime: new Date(Date.now() - 1800000).toISOString(),
+    unreadCount: 0,
+    isArchived: false,
+  },
+  {
+    id: "conv_5",
+    name: "Mike Chen",
+    avatar:
+      "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face",
+    isVerified: true,
+    verificationType: "driver",
+    isOnline: false,
+    lastSeen: new Date(Date.now() - 1800000).toISOString(),
+    rideStatus: "pending",
+    rideDate: "Tomorrow, 9:00 AM",
+    route: "North Campus → Library",
+    lastMessage: {
+      id: "msg_2",
+      senderId: "currentUser",
+      content: "Sounds good! See you tomorrow",
+      timestamp: new Date(Date.now() - 1800000).toISOString(),
+      status: "delivered",
+      type: "text",
+    },
+    lastMessageTime: new Date(Date.now() - 1800000).toISOString(),
+    unreadCount: 0,
+    isArchived: false,
+  },
 ];
 
 /** MessagesShell */
@@ -164,19 +236,19 @@ export default function MessagesShell() {
   return (
     <div className="bg-background">
       {/* RideStatusIndicator */}
-      <RideStatusIndicator
+      {/* <RideStatusIndicator
         status={activeRideStatus}
         driverName="Sarah Johnson"
         estimatedTime="3 mins"
         onViewDetails={handleViewRideDetails}
         onEmergency={handleEmergency}
-      />
+      /> */}
 
       {/* Main content */}
-      <div className="pb-14">
-        <div className="mb-3 shadow-md overflow-hidden rounded-xl">
+      <div className="mb-12 md:mb-0">
+        <div className="shadow-md overflow-hidden rounded-md">
           <div className="max-w-7xl mx-auto">
-            <div className="md:flex ">
+            <div className="md:flex p-0 m-0">
               {/* Sidebar */}
               <aside
                 className={`${
@@ -185,20 +257,7 @@ export default function MessagesShell() {
                     : "flex w-full md:w-1/3 lg:w-1/4"
                 } flex-col border-r border-border bg-card`}
               >
-                <div className="flex-1 overflow-y-auto">
-                  {isLoading ? (
-                    <div className="p-4 space-y-3">
-                      {Array.from({ length: 5 }).map((_, i) => (
-                        <div key={i} className="flex items-center gap-3 p-2">
-                          <div className="w-12 h-12 rounded-full bg-muted animate-pulse" />
-                          <div className="flex-1">
-                            <div className="h-4 w-3/4 bg-muted rounded animate-pulse mb-2" />
-                            <div className="h-3 w-1/2 bg-muted rounded animate-pulse" />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
+                <div className="flex">
                     <ConversationList
                       conversations={(conversations ?? []).map((conv) => ({
                         ...conv,
@@ -215,7 +274,6 @@ export default function MessagesShell() {
                       }}
                       selectedConversationId={selectedConversation?.id || ""}
                     />
-                  )}
                 </div>
               </aside>
 
@@ -225,7 +283,7 @@ export default function MessagesShell() {
                   selectedConversation
                     ? "flex w-full md:w-2/3 lg:w-3/4"
                     : "hidden md:flex md:w-2/3 lg:w-3/4"
-                } flex-col bg-card`}
+                }  flex-col bg-card`}
               >
                 {selectedConversation ? (
                   <ChatInterface
@@ -238,7 +296,7 @@ export default function MessagesShell() {
                   />
                 ) : (
                   <div className="hidden md:flex flex-col items-center justify-center h-full p-8 text-center text-muted-foreground">
-                    <div className="w-24 h-24 bg-muted rounded-full flex items-center justify-center mb-6">
+                    <div className="w-24 h-24 bg-muted rounded-full flex items-center justify-center">
                       <Icon
                         name="MessageCircle"
                         size={32}

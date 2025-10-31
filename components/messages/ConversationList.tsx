@@ -3,6 +3,7 @@ import ConversationCard from "./ConversationCard";
 import { Input } from "../ui/input";
 import Icon from "../AppIcon";
 import { Button } from "../ui/button";
+import { ScrollArea } from "../ui/scroll-area";
 
 interface LastMessage {
   type: "text" | "location" | "image" | string;
@@ -141,9 +142,9 @@ const ConversationList: React.FC<ConversationListProps> = ({
   };
 
   return (
-    <div className="flex flex-col h-full bg-card   ">
+    <div className="flex flex-col bg-card">
       {/* Search Header */}
-      <div className="p-4 border-b border-border ">
+      <div className="p-4 border-b border-border sticky top-0 z-10">
         <div className="relative mb-4">
           <Input
             type="search"
@@ -206,7 +207,8 @@ const ConversationList: React.FC<ConversationListProps> = ({
       </div>
 
       {/* Conversations List */}
-      <div className="flex-1 overflow-y-auto " ref={containerRef}>
+      <div className="flex-1 overflow-y-auto min-h-[43vh] max-h-[43vh] md:min-h-[50vh] md:max-h-[50vh]" ref={containerRef}>
+        <ScrollArea className="h-full">
         {isLoading ? (
           Array.from({ length: PAGE_SIZE }).map((_, idx) => (
             <ConversationCard key={idx} isLoading onClick={() => {}} />
@@ -248,10 +250,11 @@ const ConversationList: React.FC<ConversationListProps> = ({
               ))}
           </div>
         )}
+        </ScrollArea>
       </div>
 
       {/* Quick Actions */}
-      <div className="p-4 border-t border-border bg-muted/30 ">
+      <div className="p-4 border-t border-border bg-muted/30 sticky bottom-0">
         <div className="flex items-center justify-between text-sm text-muted-foreground">
           <span>
             {displayedConversations?.length} conversation
