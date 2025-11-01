@@ -1,49 +1,40 @@
-import { NextResponse } from 'next/server';
-import { query } from '@/lib/db';
-import { verifyAccessToken } from '@/lib/jwt';
+// app/api/user/route.ts
+import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/authOptions";
+import { query } from "@/lib/db";
 
-export async function GET(req: Request) {
+export async function GET() {
   try {
-    // 1. Get access token from Authorization header
-    const authHeader = req.headers.get('authorization');
-    if (!authHeader) {
-      return NextResponse.json({ error: 'Authorization header missing' }, { status: 401 });
-    }
+    // 1️⃣ Get current logged-in user session
+    const session = await getServerSession(authOptions);
 
-    const token = authHeader.split(' ')[1]; // Bearer <token>
-    if (!token) {
-      return NextResponse.json({ error: 'Access token missing' }, { status: 401 });
-    }
-
-    // 2. Verify JWT
-    let payload: any;
-    try {
-      payload = verifyAccessToken(token);
-    } catch {
+    if (!session || !session.user?.email) {
       return NextResponse.json(
-        { success: false, message: 'Invalid or expired token' },
-        { status: 403 }
+        { error: "Unauthorized" },
+        { status: 401 }
       );
     }
 
-    const userId = payload.userId;
-
-    // 3. Fetch user profile from DB
+    // 2️⃣ Fetch user data from the database using email
     const result = await query(
-      'SELECT id, email, full_name, phone, college, profile_image, is_verified, role, created_at, updated_at, avg_rating FROM users WHERE id = $1',
-      [userId]
+      "SELECT id, email, full_name, phone, college, profile_image, is_verified, role, created_at, updated_at, avg_rating FROM users WHERE email = $1",
+      [session.user.email]
     );
 
     if (result.rowCount === 0) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
     const user = result.rows[0];
 
-    // 4. Return user data
+    // 3️⃣ Return the user data
     return NextResponse.json({ user });
   } catch (error: any) {
-    console.error('Get user error:', error);
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+    console.error("Get user error:", error);
+    return NextResponse.json(
+      { error: "Internal Server Error" },
+      { status: 500 }
+    );
   }
 }

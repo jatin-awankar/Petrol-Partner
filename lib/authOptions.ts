@@ -1,6 +1,8 @@
 // lib/authOptions.ts
 import type { AuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
+import bcrypt from "bcrypt";
+import { query } from "@/lib/db"; // your DB helper
 
 export const authOptions: AuthOptions = {
   providers: [
@@ -15,37 +17,33 @@ export const authOptions: AuthOptions = {
           throw new Error("Missing email or password");
         }
 
-        try {
-          // Call your API route that checks credentials in the database
-          const res = await fetch(
-            `${process.env.NEXTAUTH_URL}/api/auth/login`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                email: credentials.email,
-                password: credentials.password,
-              }),
-            }
-          );
+        // 🔍 Check user in database
+        const result = await query("SELECT * FROM users WHERE email = $1", [
+          credentials.email,
+        ]);
 
-          const data = await res.json();
-
-          // If backend rejects login → fail auth
-          if (!res.ok || !data.user) {
-            throw new Error(data.error || "Invalid credentials");
-          }
-
-          // ✅ Return the user object to NextAuth
-          return {
-            id: data.user.id,
-            name: data.user.full_name,
-            email: data.user.email,
-          };
-        } catch (err: any) {
-          console.error("Authorize error:", err);
-          throw new Error(err.message || "Login failed");
+        if (result.rowCount === 0) {
+          throw new Error("Invalid credentials");
         }
+
+        const user = result.rows[0];
+
+        // 🔒 Compare password
+        const isValid = await bcrypt.compare(
+          credentials.password,
+          user.password_hash
+        );
+
+        if (!isValid) {
+          throw new Error("Invalid credentials");
+        }
+
+        // ✅ Return minimal safe user object
+        return {
+          id: user.id,
+          name: user.full_name,
+          email: user.email,
+        };
       },
     }),
   ],
