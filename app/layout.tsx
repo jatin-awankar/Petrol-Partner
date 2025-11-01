@@ -7,6 +7,8 @@ import React from "react";
 import AuthenticatedNavbars from "@/components/AuthenticatedNavbars";
 import { ThemeProvider } from "./provider";
 import { AuthProvider } from "@/hooks/auth/useAuth";
+import { SessionProvider } from "next-auth/react";
+import ClientProviders from "./providers/ClientProviders";
 
 const poppins = Poppins({
   subsets: ["latin"],
@@ -33,13 +35,16 @@ export default function RootLayout({
       className={`${poppins.variable} font-sans antialiased`}
     >
       <body>
-        <AuthProvider>
-          <ThemeProvider>
-            <AuthenticatedNavbars />
-            {children}
-            <Toaster richColors={true} />
-          </ThemeProvider>
-        </AuthProvider>
+        {/* ✅ Wrap everything that might use useSession */}
+        <ClientProviders>
+          <AuthProvider>
+            <ThemeProvider>
+              <AuthenticatedNavbars />
+              {children}
+              <Toaster richColors={true} />
+            </ThemeProvider>
+          </AuthProvider>
+        </ClientProviders>
       </body>
     </html>
   );

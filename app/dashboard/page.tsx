@@ -17,9 +17,9 @@ export default async function DashboardPage() {
   // 1️⃣ Get the current user's session (server-side)
   const session = await getServerSession(authOptions);
 
-  // 2️⃣ If no session, redirect to the NextAuth signin page
+  // 2️⃣ If no session, redirect to the loginpage
   if (!session) {
-    redirect("/api/auth/signin");
+    redirect("/login");
   }
 
   // 3️⃣ Optionally use session.user data

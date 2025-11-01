@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { useRouter } from "next/navigation";
+import { redirect, useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 import Icon from "@/components/AppIcon";
@@ -19,19 +19,27 @@ import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, Eye, Home, Trash2 } from "lucide-react";
 import { motion } from "framer-motion";
 import { useCreateRideOffer } from "@/hooks/rides/useRideOffers";
+import { authOptions } from "@/lib/authOptions";
+import { useSession } from "next-auth/react";
 
 const STORAGE_KEY = "postRideFormData";
 
 const PostRide = () => {
+  const { status } = useSession();
+
+  useEffect(() => {
+    if (status === "unauthenticated") {
+      redirect("/login");
+    }
+  }, [status]);
+
   const router = useRouter();
 
   const { createRideOffer, loading } = useCreateRideOffer();
-
   const [currentStep, setCurrentStep] = useState(1);
   const [showPreview, setShowPreview] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
-
   const [formData, setFormData] = useState<any>({
     route: { pickup: "", dropoff: "", via: "" },
     schedule: {
@@ -61,7 +69,6 @@ const PostRide = () => {
       notes: "",
     },
   });
-
   const steps = useMemo(
     () => [
       { id: 1, title: "Route", component: "route" },
