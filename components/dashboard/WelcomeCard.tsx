@@ -50,7 +50,7 @@ const WelcomeCard = () => {
     return "Good evening";
   };
 
-  if (!profile && loading) {
+  if (loading) {
     return (
       <motion.div
         initial={{ opacity: 0, x: 8 }}

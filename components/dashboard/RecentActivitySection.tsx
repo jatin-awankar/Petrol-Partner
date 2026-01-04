@@ -99,7 +99,9 @@ const RecentActivitySection: React.FC = () => {
                 </div>
               </div>
             ))
-          : activities.map((activity: any) => (
+          : activities.length === 0 ?
+            <div className="text-xl">No Recent Activities</div> :
+            activities.map((activity: any) => (
               <div
                 key={activity.id}
                 className="flex items-start space-x-3 border-b border-border pb-3 last:border-0"
