@@ -1,23 +1,17 @@
 // app/api/messages/chats/route.ts
 import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
-import { verifyAccessToken } from "@/lib/jwt";
+import { getAuthenticatedUserId } from "@/lib/auth";
 
 export async function GET(req: Request) {
   try {
-    const authHeader = req.headers.get("authorization");
-    if (!authHeader)
+    const userId = await getAuthenticatedUserId();
+    if (!userId) {
       return NextResponse.json(
-        { error: "Authorization header missing" },
+        { error: "Unauthorized" },
         { status: 401 }
       );
-
-    const token = authHeader.split(" ")[1];
-    const payload = verifyAccessToken(token);
-    if (typeof payload !== "object" || !("userId" in payload))
-      return NextResponse.json({ error: "Invalid token" }, { status: 401 });
-
-    const userId = payload.userId;
+    }
 
     const chatsRes = await query(
       `

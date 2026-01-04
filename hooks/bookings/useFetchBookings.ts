@@ -2,13 +2,6 @@
 
 import { useState, useEffect, useCallback } from "react";
 
-const getToken = () => {
-  if (typeof window !== "undefined") {
-    return localStorage.getItem("access_token");
-  }
-  return null;
-};
-
 interface BookingsProps {
   bookings: BookingsData[];
   pagination: {
@@ -36,9 +29,7 @@ export function useFetchBookings(limit: number) {
         `/api/bookings/getUserBookings?${query.toString()}`,
         {
           method: "GET",
-          headers: {
-            Authorization: `Bearer ${getToken()}`,
-          },
+          credentials: "include", // Include cookies for NextAuth session
         }
       );
       if (!res.ok) throw new Error("Failed to fetch driver bookings");

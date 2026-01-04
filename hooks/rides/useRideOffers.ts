@@ -3,14 +3,6 @@
 
 import { useState, useEffect, useCallback } from "react";
 
-// ✅ Helper function to get JWT token from localStorage or cookies
-const getToken = () => {
-  if (typeof window !== "undefined") {
-    return localStorage.getItem("access_token");
-  }
-  return null;
-};
-
 /* ------------------------------- FETCH ALL OFFERS ------------------------------- */
 export function useFetchRideOffers() {
   const [offers, setOffers] = useState<FetchRides | null>();
@@ -22,9 +14,7 @@ export function useFetchRideOffers() {
     setError(null);
     try {
       const res = await fetch("/api/rides/offers", {
-        headers: {
-          Authorization: `Bearer ${getToken()}`,
-        },
+        credentials: "include", // Include cookies for NextAuth session
       });
 
       if (!res.ok) throw new Error("Failed to fetch ride offers");
@@ -59,8 +49,8 @@ export function useCreateRideOffer() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${getToken()}`,
         },
+        credentials: "include", // Include cookies for NextAuth session
         body: JSON.stringify(rideData),
       });
 
@@ -87,11 +77,11 @@ export function useUpdateRideOffer() {
     setError(null);
     try {
       const res = await fetch(`/api/rides/offers/${id}`, {
-        method: "PUT",
+        method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${getToken()}`,
         },
+        credentials: "include", // Include cookies for NextAuth session
         body: JSON.stringify(updates),
       });
 
@@ -118,9 +108,7 @@ export function useDeleteRideOffer() {
     try {
       const res = await fetch(`/api/rides/offers/${id}`, {
         method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${getToken()}`,
-        },
+        credentials: "include", // Include cookies for NextAuth session
       });
 
       if (!res.ok) throw new Error("Failed to delete ride offer");

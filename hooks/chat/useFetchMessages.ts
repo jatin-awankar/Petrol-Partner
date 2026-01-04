@@ -2,13 +2,6 @@
 
 import { useState, useEffect, useCallback } from "react";
 
-const getToken = () => {
-  if (typeof window !== "undefined") {
-    return localStorage.getItem("token");
-  }
-  return null;
-};
-
 export function useFetchMessages(chatRoomId: string | null) {
   const [messages, setMessages] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -21,12 +14,12 @@ export function useFetchMessages(chatRoomId: string | null) {
       setError(null);
 
       try {
-        const res = await fetch(`/api/chat/rooms/${chatRoomId}/messages`, {
-          headers: { Authorization: `Bearer ${getToken()}` },
+        const res = await fetch(`/api/messages/${chatRoomId}`, {
+          credentials: "include", // Include cookies for NextAuth session
         });
         if (!res.ok) throw new Error("Failed to fetch messages");
         const data = await res.json();
-        setMessages(data);
+        setMessages(data.messages || data);
       } catch (err: any) {
         setError(err?.message ?? "Unknown error");
       } finally {

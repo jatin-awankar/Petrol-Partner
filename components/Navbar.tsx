@@ -44,8 +44,6 @@ const Navbar = () => {
   const handleLogout = async () => {
     try {
       setIsMenuOpen(false);
-      // Clear legacy refresh token (optional)
-      await fetch("/api/auth/logout", { method: "POST" });
       // End NextAuth session + redirect home
       await signOut({ callbackUrl: "/" });
     } catch (err) {

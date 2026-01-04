@@ -3,13 +3,6 @@
 
 import { useState, useEffect, useCallback } from "react";
 
-const getToken = () => {
-  if (typeof window !== "undefined") {
-    return localStorage.getItem("token");
-  }
-  return null;
-};
-
 interface SearchFilters {
   pickup?: string;
   drop?: string;
@@ -35,20 +28,16 @@ export function useSearchRides(filters: SearchFilters) {
 
     try {
       // Fetch ride offers
-      const offersRes = await fetch(`/api/rides/offers/search?${query}`, {
-        headers: {
-          Authorization: `Bearer ${getToken()}`,
-        },
+      const offersRes = await fetch(`/api/rides/offers?${query}`, {
+        credentials: "include", // Include cookies for NextAuth session
       });
       if (!offersRes.ok) throw new Error("Failed to fetch ride offers");
       const offersData = await offersRes.json();
-      setRideOffers(offersData);
+      setRideOffers(offersData.rides || offersData);
 
       // Fetch ride requests
-      const requestsRes = await fetch(`/api/rides/requests/search?${query}`, {
-        headers: {
-          Authorization: `Bearer ${getToken()}`,
-        },
+      const requestsRes = await fetch(`/api/rides/requests?${query}`, {
+        credentials: "include", // Include cookies for NextAuth session
       });
       if (!requestsRes.ok) throw new Error("Failed to fetch ride requests");
       const requestsData = await requestsRes.json();

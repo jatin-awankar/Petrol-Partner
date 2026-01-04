@@ -1,29 +1,16 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
-import { verifyAccessToken } from '@/lib/jwt';
+import { getAuthenticatedUserId } from "@/lib/auth";
 
 export async function PATCH(req: Request) {
   try {
-    // 1. Get access token from Authorization header
-    const authHeader = req.headers.get('authorization');
-    if (!authHeader) {
-      return NextResponse.json({ error: 'Authorization header missing' }, { status: 401 });
+    const userId = await getAuthenticatedUserId();
+    if (!userId) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
     }
-
-    const token = authHeader.split(' ')[1];
-    if (!token) {
-      return NextResponse.json({ error: 'Access token missing' }, { status: 401 });
-    }
-
-    // 2. Verify JWT
-    let payload: any;
-    try {
-      payload = verifyAccessToken(token);
-    } catch {
-      return NextResponse.json({ error: 'Invalid or expired token' }, { status: 403 });
-    }
-
-    const userId = payload.userId;
 
     // 3. Parse request body
     const { full_name, phone, profile_image } = await req.json();

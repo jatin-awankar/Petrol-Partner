@@ -1,23 +1,17 @@
 // app/api/messages/route.ts
 import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
-import { verifyAccessToken } from "@/lib/jwt";
+import { getAuthenticatedUserId } from "@/lib/auth";
 
 export async function POST(req: Request) {
   try {
-    const authHeader = req.headers.get("authorization");
-    if (!authHeader)
+    const sender_id = await getAuthenticatedUserId();
+    if (!sender_id) {
       return NextResponse.json(
-        { error: "Authorization header missing" },
+        { error: "Unauthorized" },
         { status: 401 }
       );
-
-    const token = authHeader.split(" ")[1];
-    const payload = verifyAccessToken(token);
-    if (typeof payload !== "object" || !("userId" in payload))
-      return NextResponse.json({ error: "Invalid token" }, { status: 401 });
-
-    const sender_id = payload.userId;
+    }
     const body = await req.json();
     const { chat_room_id, content } = body;
 

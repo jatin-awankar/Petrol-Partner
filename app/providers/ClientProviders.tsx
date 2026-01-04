@@ -3,7 +3,6 @@
 
 import { SessionProvider } from "next-auth/react";
 import { ThemeProvider } from "../provider";
-import { AuthProvider } from "@/hooks/auth/useAuth";
 import { Toaster } from "@/components/ui/sonner";
 import React from "react";
 
@@ -14,12 +13,10 @@ export default function ClientProviders({
 }) {
   return (
     <SessionProvider>
-      <AuthProvider>
-        <ThemeProvider>
-          {children}
-          <Toaster richColors={true} />
-        </ThemeProvider>
-      </AuthProvider>
+      <ThemeProvider>
+        {children}
+        <Toaster richColors={true} />
+      </ThemeProvider>
     </SessionProvider>
   );
 }

@@ -1,25 +1,4 @@
 // lib/middleware.ts
-// import jwt from 'jsonwebtoken';
-
-// export function getUserFromAuthHeader(authHeader?: string | null) {
-//   const auth = authHeader ?? '';
-//   const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
-//   if (!token) return null;
-//   try {
-//     const payload = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET!);
-//     return payload as any;
-//   } catch {
-//     return null;
-//   }
-// }
-
-// export { default } from "next-auth/middleware";
-
-// export const config = {
-//   matcher: ["/dashboard/:path*", "/api/user/:path*"], // protect these routes
-// };
-
-// middleware.ts
 import { withAuth } from "next-auth/middleware";
 import { NextResponse } from "next/server";
 
@@ -35,7 +14,7 @@ export default withAuth(
       authorized: ({ token }) => !!token,
     },
     pages: {
-      signIn: "/", // 👈 custom login page
+      signIn: "/login", // Custom login page
     },
   }
 );
@@ -45,7 +24,12 @@ export const config = {
   matcher: [
     "/dashboard/:path*",  // Protect all dashboard routes
     "/api/user/:path*",   // Protect user API routes
-    "/rides/:path*",      // Example: protect ride pages
-    "/profile/:path*"     // Example: protect user profile pages
+    "/api/bookings/:path*", // Protect booking API routes
+    "/api/rides/:path*",   // Protect ride API routes
+    "/api/messages/:path*", // Protect message API routes
+    "/api/vehicle/:path*",  // Protect vehicle API routes
+    "/profile-settings/:path*", // Protect profile pages
+    "/post-a-ride/:path*",  // Protect post ride pages
+    "/messages-chat/:path*", // Protect messages pages
   ],
 };

@@ -2,13 +2,6 @@
 
 import { useState } from "react";
 
-const getToken = () => {
-  if (typeof window !== "undefined") {
-    return localStorage.getItem("token");
-  }
-  return null;
-};
-
 export function useSendMessage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -18,13 +11,13 @@ export function useSendMessage() {
     setError(null);
 
     try {
-      const res = await fetch(`/api/chat/rooms/${chatRoomId}/messages`, {
+      const res = await fetch(`/api/messages/send`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${getToken()}`,
         },
-        body: JSON.stringify({ content }),
+        credentials: "include", // Include cookies for NextAuth session
+        body: JSON.stringify({ chat_room_id: chatRoomId, content }),
       });
 
       if (!res.ok) throw new Error("Failed to send message");

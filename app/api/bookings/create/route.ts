@@ -1,28 +1,15 @@
 import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
-import { verifyAccessToken } from "@/lib/jwt";
+import { getAuthenticatedUserId } from "@/lib/auth";
 
 export async function POST(req: Request) {
   try {
-    const authHeader = req.headers.get("authorization");
-    if (!authHeader)
-      return NextResponse.json(
-        { error: "Authorization header missing" },
-        { status: 401 }
-      );
-
-    const token = authHeader.split(" ")[1];
-    const payload = verifyAccessToken(token);
-    if (typeof payload !== "object" || !("userId" in payload)) {
-      return NextResponse.json(
-        { error: "Invalid token payload" },
-        { status: 401 }
-      );
-    }
-
-    const userId = payload.userId;
+    const userId = await getAuthenticatedUserId();
     if (!userId) {
-      return NextResponse.json({ error: "Invalid token" }, { status: 401 });
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
     }
 
     const body = await req.json();

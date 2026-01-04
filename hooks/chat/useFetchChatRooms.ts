@@ -2,13 +2,6 @@
 
 import { useState, useEffect } from "react";
 
-const getToken = () => {
-  if (typeof window !== "undefined") {
-    return localStorage.getItem("token");
-  }
-  return null;
-};
-
 export function useFetchChatRooms() {
   const [chatRooms, setChatRooms] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -18,8 +11,8 @@ export function useFetchChatRooms() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/chat/rooms", {
-        headers: { Authorization: `Bearer ${getToken()}` },
+      const res = await fetch("/api/messages/chat", {
+        credentials: "include", // Include cookies for NextAuth session
       });
       if (!res.ok) throw new Error("Failed to fetch chat rooms");
       const data = await res.json();

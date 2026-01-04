@@ -5,9 +5,6 @@ import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
 import React from "react";
 import AuthenticatedNavbars from "@/components/AuthenticatedNavbars";
-import { ThemeProvider } from "./provider";
-import { AuthProvider } from "@/hooks/auth/useAuth";
-import { SessionProvider } from "next-auth/react";
 import ClientProviders from "./providers/ClientProviders";
 
 const poppins = Poppins({
@@ -35,15 +32,9 @@ export default function RootLayout({
       className={`${poppins.variable} font-sans antialiased`}
     >
       <body>
-        {/* ✅ Wrap everything that might use useSession */}
         <ClientProviders>
-          <AuthProvider>
-            <ThemeProvider>
-              <AuthenticatedNavbars />
-              {children}
-              <Toaster richColors={true} />
-            </ThemeProvider>
-          </AuthProvider>
+          <AuthenticatedNavbars />
+          {children}
         </ClientProviders>
       </body>
     </html>

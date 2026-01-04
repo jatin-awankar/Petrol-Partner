@@ -1,7 +1,7 @@
 // app/hooks/auth/useUserProfile.ts
 'use client';
 import { useState, useEffect, useCallback } from "react";
-import { useAuth } from "./useAuth";
+import { useSession } from "next-auth/react";
 
 interface UserProfile {
   id: string;
@@ -18,24 +18,25 @@ interface UserProfile {
 }
 
 export const useUserProfile = () => {
-  const { token } = useAuth(); // ✅ token from context
+  const { data: session, status } = useSession();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
   // Fetch profile
   const fetchProfile = useCallback(async () => {
-    if (!token) return; // wait for token
+    if (status === "loading") return; // wait for session
+    if (!session) {
+      setLoading(false);
+      return;
+    }
 
     setLoading(true);
     setError(null);
 
     try {
       const res = await fetch("/api/user/me", {
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        credentials: "include", // Include cookies for NextAuth session
       });
 
       if (!res.ok) {
@@ -51,23 +52,23 @@ export const useUserProfile = () => {
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, [session, status]);
 
   // Update profile
   const updateProfile = useCallback(
     async (updates: Partial<UserProfile>) => {
-      if (!token) return;
+      if (!session) return;
 
       setLoading(true);
       setError(null);
 
       try {
-        const res = await fetch("/api/user/me", {
+        const res = await fetch("/api/user/update", {
           method: "PATCH",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
           },
+          credentials: "include", // Include cookies for NextAuth session
           body: JSON.stringify(updates),
         });
 
@@ -84,10 +85,10 @@ export const useUserProfile = () => {
         setLoading(false);
       }
     },
-    [token]
+    [session]
   );
 
-  // Auto-fetch when token changes
+  // Auto-fetch when session changes
   useEffect(() => {
     fetchProfile();
   }, [fetchProfile]);

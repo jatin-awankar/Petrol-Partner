@@ -2,26 +2,21 @@
 
 import { useState } from "react";
 
-const getToken = () => {
-  if (typeof window !== "undefined") {
-    return localStorage.getItem("token");
-  }
-  return null;
-};
-
 export function useCancelBooking() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const cancelBooking = async (bookingId: string) => {
+  const cancelBooking = async (bookingId: string, newStatus: string = "cancelled") => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/bookings/${bookingId}`, {
-        method: "DELETE",
+      const res = await fetch(`/api/bookings/updateStatus`, {
+        method: "PATCH",
         headers: {
-          Authorization: `Bearer ${getToken()}`,
+          "Content-Type": "application/json",
         },
+        credentials: "include", // Include cookies for NextAuth session
+        body: JSON.stringify({ booking_id: bookingId, new_status: newStatus }),
       });
 
       if (!res.ok) throw new Error("Failed to cancel booking");
