@@ -90,7 +90,8 @@ export default function RouteSection({
         }
       });
     }
-  }, [showMap]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [indiaBounds, selectedPickup, showMap]);
 
   const fetchRoute = async () => {
     if (!selectedPickup || !selectedDropoff) return;
