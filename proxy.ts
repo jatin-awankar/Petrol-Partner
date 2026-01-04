@@ -1,10 +1,10 @@
-// lib/middleware.ts
+// proxy.ts - Next.js 16+ uses "proxy" instead of "middleware"
 import { withAuth } from "next-auth/middleware";
 import { NextResponse } from "next/server";
 
 // 🔒 Protect routes that require authentication
 export default withAuth(
-  function middleware(req) {
+  function proxy(req) {
     // You can add custom logic here if needed
     return NextResponse.next();
   },
@@ -28,8 +28,12 @@ export const config = {
     "/api/rides/:path*",   // Protect ride API routes
     "/api/messages/:path*", // Protect message API routes
     "/api/vehicle/:path*",  // Protect vehicle API routes
-    "/profile-settings/:path*", // Protect profile pages
+    "/profile-settings", // Protect profile-settings page
+    "/profile-settings/:path*", // Protect profile pages sub-routes
     "/post-a-ride/:path*",  // Protect post ride pages
     "/messages-chat/:path*", // Protect messages pages
+    "/search-rides/:path*", // Protect search rides pages
+    "/payments/:path*", // Protect payments pages
   ],
 };
+
