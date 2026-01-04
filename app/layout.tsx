@@ -5,7 +5,7 @@ import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
 import React from "react";
 import AuthenticatedNavbars from "@/components/AuthenticatedNavbars";
-import { ThemeProvider } from "./provider";
+import ClientProviders from "./providers/ClientProviders";
 
 const poppins = Poppins({
   subsets: ["latin"],
@@ -32,11 +32,10 @@ export default function RootLayout({
       className={`${poppins.variable} font-sans antialiased`}
     >
       <body>
-        <ThemeProvider>
+        <ClientProviders>
           <AuthenticatedNavbars />
           {children}
-          <Toaster richColors={true} />
-        </ThemeProvider>
+        </ClientProviders>
       </body>
     </html>
   );

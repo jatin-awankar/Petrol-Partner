@@ -1,19 +1,16 @@
 import { NextResponse } from "next/server";
-import { verifyAccessToken } from "@/lib/jwt";
+import { getAuthenticatedUserId } from "@/lib/auth";
 import { query } from "@/lib/db";
 
 export async function POST(req: Request) {
   try {
-    const authHeader = req.headers.get("authorization");
-    if (!authHeader)
-      return NextResponse.json({ error: "Authorization header missing" }, { status: 401 });
-
-    const token = authHeader.split(" ")[1];
-    const payload = verifyAccessToken(token);
-    if (typeof payload !== "object" || !("userId" in payload))
-      return NextResponse.json({ error: "Invalid token" }, { status: 401 });
-
-    const sender_id = payload.userId;
+    const sender_id = await getAuthenticatedUserId();
+    if (!sender_id) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
     const body = await req.json();
     const { chat_room_id, receiver_id, content } = body;
 

@@ -8,13 +8,32 @@ CREATE TABLE IF NOT EXISTS users (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   email TEXT NOT NULL UNIQUE,
   password_hash TEXT,                -- nullable for future OAuth
-  full_name TEXT,
-  phone TEXT,
-  profile_image TEXT,
-  is_verified BOOLEAN DEFAULT false,
+  -- full_name TEXT,
+  -- phone TEXT,
+  -- profile_image TEXT,
+  -- is_verified BOOLEAN DEFAULT false,
   role TEXT DEFAULT 'user',          -- can be 'user', 'driver', 'admin'
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS user_details (
+  id uuid PRIMARY KEY REFERENCES users (id) ON DELETE CASCADE,
+  full_name text,
+  college text,
+  phone text,
+  age numeric,
+  gender text CHECK (gender IN('male', 'female')),
+  dob text,
+  address text,
+  avatar_url text,
+  is_verified boolean DEFAULT false,
+  verification_type text CHECK (verification_type IN ('college_email', 'id_card', 'admin')),
+  verified_at timestamp,
+  -- verified_by uuid REFERENCES users (id),
+  avg_rating numeric DEFAULT 0,
+  created_at timestamp DEFAULT now(),
+  updated_at timestamp DEFAULT now()
 );
 
 -- REFRESH TOKENS table
@@ -41,7 +60,7 @@ CREATE TABLE IF NOT EXISTS ride_offers (
   pickup_lng double precision NOT NULL,
   drop_lat double precision NOT NULL,
   drop_lng double precision NOT NULL,
-  available_seats integer NOT NULL CHECK (available_seats > 0),
+  available_seats integer NOT NULL CHECK (available_seats >= 0),
   price_per_seat numeric(10,2) NOT NULL,
   date date NOT NULL,
   time time NOT NULL,
@@ -65,7 +84,7 @@ CREATE TABLE IF NOT EXISTS ride_requests (
   pickup_lng double precision NOT NULL,
   drop_lat double precision NOT NULL,
   drop_lng double precision NOT NULL,
-  seats_required integer NOT NULL CHECK (seats_required > 0),
+  seats_required integer NOT NULL CHECK (seats_required >= 0),
   date date NOT NULL,
   time time NOT NULL,
   status text DEFAULT 'active' CHECK (status IN ('active','matched','cancelled','completed')),
@@ -129,3 +148,46 @@ CREATE INDEX IF NOT EXISTS idx_messages_chatroom ON messages(chat_room_id);
 CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages(sender_id);
 CREATE INDEX IF NOT EXISTS idx_messages_receiver ON messages(receiver_id);
 CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at DESC);
+
+
+-- table for updates
+CREATE TABLE IF NOT EXISTS community_updates (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  type text CHECK (type IN ('announcement', 'event', 'update', 'alert', 'maintenance')),
+  title text NOT NULL,
+  content text NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  author TEXT DEFAULT 'Petrol Partner Team',
+  image_url TEXT
+)
+
+-- user adds emergency contacts
+CREATE TABLE IF NOT EXISTS emergency_contacts (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid REFERENCES users (id) ON DELETE CASCADE,
+  name text NOT NULL,
+  phone text NOT NULL,
+  relationship text,
+  is_primary boolean DEFAULT false,
+  verified boolean DEFAULT false,
+  created_at timestamp DEFAULT now()
+);
+
+-- user adds vehicles
+CREATE TABLE IF NOT EXISTS user_vehicles (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  vehicle_number VARCHAR(20) UNIQUE NOT NULL,
+  manufacturer VARCHAR(100),
+  model VARCHAR(100),
+  vehicle_type VARCHAR(50),
+  manufacture_year INT,
+  fuel_type VARCHAR(20),
+  seat_capacity INT,
+  insurance_valid_upto DATE,
+  fitness_valid_upto DATE,
+  registered_at VARCHAR(100),
+  verified BOOLEAN DEFAULT false,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+

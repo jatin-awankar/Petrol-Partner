@@ -54,20 +54,20 @@ export async function GET(
 }
 
 
-import { verifyAccessToken } from '@/lib/jwt';
+import { getAuthenticatedUserId } from '@/lib/auth';
 
 export async function PATCH(
   req: NextRequest,
   params: any
 ) {
   try {
-    const authHeader = req.headers.get('authorization');
-    if (!authHeader)
-      return NextResponse.json({ error: 'Authorization header missing' }, { status: 401 });
-
-    const token = authHeader.split(' ')[1];
-    const payload: any = verifyAccessToken(token);
-    const driverId = payload.userId;
+    const driverId = await getAuthenticatedUserId();
+    if (!driverId) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
 
     const rideId = await params.id;
     if (!rideId)

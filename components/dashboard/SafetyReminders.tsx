@@ -6,59 +6,49 @@ import { Button } from "../ui/button";
 import Icon from "../AppIcon";
 import { motion } from "framer-motion";
 
-interface Reminder {
-  id: string;
-  title: string;
-  message: string;
-  icon: string;
-  color: string;
-  bgColor: string;
-  priority: "high" | "medium";
-}
-
 const SafetyReminders: React.FC = () => {
   const [dismissedReminders, setDismissedReminders] = useState<string[]>([]);
   const [reminders, setReminders] = useState<Reminder[] | null>(null);
-  const [loading, setLoading] = useState(true);
+  // const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Simulate API call
-    const timer = setTimeout(() => {
-      setReminders([
-        {
-          id: "verify-driver",
-          title: "Verify Driver Details",
-          message:
-            "Always check driver verification badges and vehicle details before booking.",
-          icon: "Shield",
-          color: "text-primary",
-          bgColor: "bg-primary/10",
-          priority: "high",
-        },
-        {
-          id: "share-location",
-          title: "Share Your Trip",
-          message:
-            "Share your ride details with friends or family for added safety.",
-          icon: "MapPin",
-          color: "text-success",
-          bgColor: "bg-success/10",
-          priority: "medium",
-        },
-        {
-          id: "emergency-contacts",
-          title: "Emergency Contacts",
-          message: "Keep emergency contacts updated in your profile settings.",
-          icon: "Phone",
-          color: "text-error",
-          bgColor: "bg-error/10",
-          priority: "high",
-        },
-      ]);
-      setLoading(false);
-    }, 1000);
+    // const timer = setTimeout(() => {
+    //   setLoading(false);
+    // }, 500);
+    
+    setReminders([
+      {
+        id: "verify-driver",
+        title: "Verify Driver Details",
+        message:
+          "Add a vehicle for driver verification badge to post your offer.",
+        icon: "Shield",
+        color: "text-primary",
+        bgColor: "bg-primary/10",
+        priority: "high",
+      },
+      {
+        id: "share-location",
+        title: "Share Your Trip",
+        message:
+          "Share your ride details with friends or family for added safety.",
+        icon: "MapPin",
+        color: "text-success",
+        bgColor: "bg-success/10",
+        priority: "medium",
+      },
+      {
+        id: "emergency-contacts",
+        title: "Emergency Contacts",
+        message: "Keep emergency contacts updated in your profile settings.",
+        icon: "Phone",
+        color: "text-error",
+        bgColor: "bg-error/10",
+        priority: "high",
+      },
+    ]);
 
-    return () => clearTimeout(timer);
+    // return () => clearTimeout(timer);
   }, []);
 
   const visibleReminders = reminders?.filter(
@@ -69,30 +59,30 @@ const SafetyReminders: React.FC = () => {
     if (reminderId) setDismissedReminders((prev) => [...prev, reminderId]);
   };
 
-  if (loading) {
-    return (
-      <div className="bg-card border border-border rounded-xl p-6 mb-6">
-        <div className="flex items-center space-x-2 mb-4">
-          <Skeleton width={20} height={20} circle />
-          <Skeleton width={120} height={20} />
-        </div>
-        <div className="space-y-3">
-          {Array.from({ length: 3 }).map((_, idx) => (
-            <div key={idx} className="border border-border/50 rounded-lg p-4">
-              <div className="flex items-start space-x-3">
-                <Skeleton width={32} height={32} circle />
-                <div className="flex-1 space-y-1">
-                  <Skeleton width="60%" height={14} />
-                  <Skeleton width="90%" height={12} />
-                </div>
-              </div>
-              <Skeleton width="80%" height={20} className="mt-2" />
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
+  // if (loading) {
+  //   return (
+  //     <div className="bg-card border border-border rounded-xl p-6 mb-6">
+  //       <div className="flex items-center space-x-2 mb-4">
+  //         <Skeleton width={20} height={20} circle />
+  //         <Skeleton width={120} height={20} />
+  //       </div>
+  //       <div className="space-y-3">
+  //         {Array.from({ length: 3 }).map((_, idx) => (
+  //           <div key={idx} className="border border-border/50 rounded-lg p-4">
+  //             <div className="flex items-start space-x-3">
+  //               <Skeleton width={32} height={32} circle />
+  //               <div className="flex-1 space-y-1">
+  //                 <Skeleton width="60%" height={14} />
+  //                 <Skeleton width="90%" height={12} />
+  //               </div>
+  //             </div>
+  //             <Skeleton width="80%" height={20} className="mt-2" />
+  //           </div>
+  //         ))}
+  //       </div>
+  //     </div>
+  //   );
+  // }
 
   if (!visibleReminders?.length) return null;
 
@@ -100,7 +90,7 @@ const SafetyReminders: React.FC = () => {
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.5 }}
+      transition={{ delay: 0.3 }}
       className="bg-card border border-border rounded-xl p-6 mb-6 shadow-soft"
     >
       <div className="flex items-center space-x-2 mb-4">

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
-import { verifyAccessToken } from '@/lib/jwt';
+import { getAuthenticatedUserId } from '@/lib/auth';
 
 // GET ride details by ID
 export async function GET(req: NextRequest, context: any) {
@@ -54,18 +54,13 @@ export async function GET(req: NextRequest, context: any) {
 // PATCH ride by ID (requires auth)
 export async function PATCH(req: NextRequest, context: any) {
   try {
-    const authHeader = req.headers.get('authorization');
-    if (!authHeader) {
-      return NextResponse.json({ error: 'Authorization header missing' }, { status: 401 });
+    const passengerId = await getAuthenticatedUserId();
+    if (!passengerId) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
     }
-
-    const token = authHeader.split(' ')[1];
-    if (!token) {
-      return NextResponse.json({ error: 'Access token missing' }, { status: 401 });
-    }
-
-    const payload: any = verifyAccessToken(token);
-    const passengerId = payload.userId;
 
     const { id: requestId } = await context.params;
     if (!requestId) {

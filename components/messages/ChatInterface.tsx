@@ -100,7 +100,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         key={msg.id}
         className={`flex ${
           isCurrentUser ? "justify-end" : "justify-start"
-        } mb-4`}
+        }`}
       >
         {!isCurrentUser && (
           <div className="w-8 h-8 rounded-full overflow-hidden mr-2 flex-shrink-0">
@@ -160,7 +160,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   return (
     <div className="flex flex-col h-full bg-background">
       {/* Chat Header */}
-      <div className="flex items-center justify-between p-4 border-b border-border bg-card">
+      <div className="flex items-center justify-between p-4 border-b border-border bg-card sticky top-0 z-10">
         <div className="flex items-center space-x-3">
           <Button
             variant="ghost"
@@ -280,7 +280,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       </div>
 
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-[53vh] max-h-[53vh] md:min-h-[56vh] md:max-h-[56vh]">
         {messages.map(renderMessage)}
         {isTyping && (
           <div className="flex justify-start mb-4">
@@ -344,7 +344,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       )}
 
       {/* Message Input */}
-      <div className="border-t border-border p-4 bg-card">
+      <div className="border-t border-border p-4 bg-card sticky bottom-0">
         <div className="flex items-end space-x-2">
           <div className="flex space-x-1">
             <Button

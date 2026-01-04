@@ -1,117 +1,250 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import Icon from "@/components/AppIcon";
-import Skeleton from "react-loading-skeleton";
+import React, { useState, useEffect, useRef } from "react";
+import mapboxgl from "mapbox-gl";
 import { Button } from "../ui/button";
-import { Eye, EyeOff, Navigation } from "lucide-react";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import Icon from "@/components/AppIcon";
+import { Eye, EyeOff, Navigation } from "lucide-react";
 
-// Error Boundary
-class RouteSectionErrorBoundary extends React.Component<
-  { children: React.ReactNode },
-  { hasError: boolean }
-> {
-  constructor(props: { children: React.ReactNode }) {
-    super(props);
-    this.state = { hasError: false };
-  }
+mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
-  static getDerivedStateFromError(_: Error) {
-    return { hasError: true };
-  }
-
-  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error("RouteSection Error:", error, errorInfo);
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div className="bg-red-100 text-red-800 p-4 rounded-xl">
-          Something went wrong loading the Route Section.
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
-
-// Props
 interface RouteSectionProps {
   formData: any;
   updateFormData: (data: any) => void;
   errors: Record<string, string>;
 }
 
-const RouteSection: React.FC<RouteSectionProps> = ({
+export default function RouteSection({
   formData,
   updateFormData,
   errors,
-}) => {
+}: RouteSectionProps) {
   const [showMap, setShowMap] = useState(false);
-  const [loadingLocation, setLoadingLocation] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const mapContainerRef = useRef<HTMLDivElement | null>(null);
+  const indiaBounds: [number, number, number, number] = [
+    68.1766451354,
+    6.74713827189, // West, South
+    97.4025614766,
+    35.4940095078, // East, North
+  ];
+  const mapRef = useRef<mapboxgl.Map | null>(null);
+  const pickupMarkerRef = useRef<mapboxgl.Marker | null>(null);
+  const dropoffMarkerRef = useRef<mapboxgl.Marker | null>(null);
 
-  // Simulate async loading
+  const [pickupQuery, setPickupQuery] = useState("");
+  const [dropoffQuery, setDropoffQuery] = useState("");
+  const [pickupSuggestions, setPickupSuggestions] = useState<any[]>([]);
+  const [dropoffSuggestions, setDropoffSuggestions] = useState<any[]>([]);
+  const [routeGeoJSON, setRouteGeoJSON] =
+    useState<mapboxgl.GeoJSONSource | null>(null);
+
+  const [selectedPickup, setSelectedPickup] = useState<{
+    lat: number;
+    lng: number;
+  } | null>(null);
+  const [selectedDropoff, setSelectedDropoff] = useState<{
+    lat: number;
+    lng: number;
+  } | null>(null);
+
+  // === Initialize map ===
   useEffect(() => {
-    const timer = setTimeout(() => setLoading(false), 500);
-    return () => clearTimeout(timer);
-  }, []);
+    if (mapContainerRef.current && !mapRef.current && showMap) {
+      mapRef.current = new mapboxgl.Map({
+        container: mapContainerRef.current,
+        style: "mapbox://styles/mapbox/streets-v11",
+        center: [77.209, 28.6139], // Delhi
+        zoom: 5,
+        maxBounds: [
+          [indiaBounds[0], indiaBounds[1]],
+          [indiaBounds[2], indiaBounds[3]],
+        ],
+      });
 
-  const handleLocationChange = (field: string, value: string) => {
-    updateFormData({
-      ...formData,
-      route: {
-        ...formData.route,
-        [field]: value,
-      },
-    });
+      // Allow user to select pickup/dropoff via click
+      mapRef.current.on("click", (e) => {
+        const { lng, lat } = e.lngLat;
+
+        // Check if click is within India
+        const insideIndia =
+          lng >= indiaBounds[0] &&
+          lng <= indiaBounds[2] &&
+          lat >= indiaBounds[1] &&
+          lat <= indiaBounds[3];
+
+        if (!insideIndia) {
+          alert("Please select a location within India 🇮🇳");
+          return;
+        }
+
+        if (!selectedPickup) {
+          setSelectedPickup({ lat, lng });
+          addMarker("pickup", lng, lat);
+          reverseGeocode("pickup", lng, lat);
+        } else {
+          setSelectedDropoff({ lat, lng });
+          addMarker("dropoff", lng, lat);
+          reverseGeocode("dropoff", lng, lat);
+        }
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [indiaBounds, selectedPickup, showMap]);
+
+  const fetchRoute = async () => {
+    if (!selectedPickup || !selectedDropoff) return;
+
+    const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${selectedPickup.lng},${selectedPickup.lat};${selectedDropoff.lng},${selectedDropoff.lat}?geometries=geojson&access_token=${mapboxgl.accessToken}`;
+    const res = await fetch(url);
+    const data = await res.json();
+
+    if (data.routes && data.routes.length > 0) {
+      const route = data.routes[0].geometry;
+
+      // Remove existing route layer if any
+      if (mapRef.current!.getSource("route")) {
+        mapRef.current!.removeLayer("route");
+        mapRef.current!.removeSource("route");
+      }
+
+      mapRef.current!.addSource("route", {
+        type: "geojson",
+        data: {
+          type: "Feature",
+          properties: {},
+          geometry: route,
+        },
+      });
+
+      mapRef.current!.addLayer({
+        id: "route",
+        type: "line",
+        source: "route",
+        layout: {
+          "line-join": "round",
+          "line-cap": "round",
+        },
+        paint: {
+          "line-color": "#3b82f6",
+          "line-width": 5,
+        },
+      });
+
+      // Fit map bounds to the route
+      const coordinates = route.coordinates;
+      const bounds = coordinates.reduce(
+        (b: mapboxgl.LngLatBounds, coord: [number, number]) => b.extend(coord),
+        new mapboxgl.LngLatBounds(coordinates[0], coordinates[0])
+      );
+      mapRef.current!.fitBounds(bounds, { padding: 50 });
+    }
   };
 
-  const handleUseCurrentLocation = (field: string) => {
-    if (!navigator.geolocation) {
-      alert("Geolocation is not supported by your browser.");
+  // === Add marker helper ===
+  const addMarker = (type: "pickup" | "dropoff", lng: number, lat: number) => {
+    const markerColor = type === "pickup" ? "#22c55e" : "#ef4444";
+    const markerRef = type === "pickup" ? pickupMarkerRef : dropoffMarkerRef;
+
+    if (markerRef.current) markerRef.current.remove();
+
+    const marker = new mapboxgl.Marker({ color: markerColor })
+      .setLngLat([lng, lat])
+      .addTo(mapRef.current!);
+
+    markerRef.current = marker;
+  };
+
+  // === Reverse Geocode (coords → address) ===
+  const reverseGeocode = async (
+    type: "pickup" | "dropoff",
+    lng: number,
+    lat: number
+  ) => {
+    const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${mapboxgl.accessToken}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    const place =
+      data.features?.[0]?.place_name || `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+
+    if (type === "pickup") {
+      setPickupQuery(place);
+      updateFormData({
+        ...formData,
+        route: { ...formData.route, pickup: place },
+      });
+    } else {
+      setDropoffQuery(place);
+      updateFormData({
+        ...formData,
+        route: { ...formData.route, dropoff: place },
+      });
+    }
+  };
+
+  // === Search Locations (address → suggestions) ===
+  const searchLocation = async (query: string, type: "pickup" | "dropoff") => {
+    if (!query) {
+      if (type === "pickup") setPickupSuggestions([]);
+      else setDropoffSuggestions([]);
       return;
     }
-    setLoadingLocation(true);
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const { latitude, longitude } = position.coords;
-        handleLocationChange(
-          field,
-          `Current Location (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`
-        );
-        setLoadingLocation(false);
-      },
-      (error) => {
-        console.error("Error getting location:", error);
-        alert("Unable to fetch your current location.");
-        setLoadingLocation(false);
-      },
-      { enableHighAccuracy: true }
-    );
+
+    const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(
+      query
+    )}.json?access_token=${
+      mapboxgl.accessToken
+    }&autocomplete=true&limit=5&country=in`;
+
+    const res = await fetch(url);
+    const data = await res.json();
+
+    const suggestions = data.features || [];
+    if (type === "pickup") setPickupSuggestions(suggestions);
+    else setDropoffSuggestions(suggestions);
   };
 
-  if (loading) {
-    return (
-      <div className="bg-card rounded-lg border border-border p-6 space-y-4 animate-pulse shadow-card">
-        <Skeleton height={30} width={`60%`} className="mb-2" />
-        <Skeleton height={20} width={`40%`} className="mb-2" />
-        <Skeleton height={40} width="100%" />
-        <Skeleton height={40} width="100%" />
-        <Skeleton height={40} width="100%" />
-        <Skeleton height={160} width="100%" className="rounded-lg" />
-      </div>
+  // === When user selects a suggestion ===
+  const handleSelectSuggestion = (
+    type: "pickup" | "dropoff",
+    suggestion: any
+  ) => {
+    const [lng, lat] = suggestion.center;
+    if (type === "pickup") {
+      setPickupQuery(suggestion.place_name);
+      setPickupSuggestions([]);
+      setSelectedPickup({ lat, lng });
+      addMarker("pickup", lng, lat);
+      mapRef.current?.flyTo({ center: [lng, lat], zoom: 13 });
+    } else {
+      setDropoffQuery(suggestion.place_name);
+      setDropoffSuggestions([]);
+      setSelectedDropoff({ lat, lng });
+      addMarker("dropoff", lng, lat);
+      mapRef.current?.flyTo({ center: [lng, lat], zoom: 13 });
+    }
+    fetchRoute();
+  };
+
+  // === Live search typing ===
+  useEffect(() => {
+    const delay = setTimeout(() => searchLocation(pickupQuery, "pickup"), 400);
+    return () => clearTimeout(delay);
+  }, [pickupQuery]);
+
+  useEffect(() => {
+    const delay = setTimeout(
+      () => searchLocation(dropoffQuery, "dropoff"),
+      400
     );
-  }
+    return () => clearTimeout(delay);
+  }, [dropoffQuery]);
 
   return (
     <div className="bg-card rounded-lg border border-border p-6 shadow-card">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold text-foreground flex items-center">
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="text-lg font-semibold flex items-center">
           <Icon name="MapPin" size={20} className="mr-2 text-primary" />
           Route Details
         </h3>
@@ -120,105 +253,65 @@ const RouteSection: React.FC<RouteSectionProps> = ({
           size="sm"
           onClick={() => setShowMap(!showMap)}
         >
-          {showMap ? <EyeOff /> : <Eye />}
-          {showMap ? "Hide" : "Show"} Map
+          {showMap ? <EyeOff /> : <Eye />} {showMap ? "Hide" : "Show"} Map
         </Button>
       </div>
 
-      {/* Form Inputs */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="space-y-4">
-          {/* Pickup */}
-            <Label className="mb-2">Pickup Location</Label>
-            <Input
-              placeholder="Enter pickup address"
-              value={formData.route.pickup}
-              onChange={(e) => handleLocationChange("pickup", e.target.value)}
-              // @ts-expect-error: 'error' prop is custom for our Input component
-              error={errors?.pickup}
-              required
-            />
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => handleUseCurrentLocation("pickup")}
-              disabled={loadingLocation}
-            >
-              <Navigation />
-              {loadingLocation ? "Fetching..." : "Use Current Location"}
-            </Button>
-
-          {/* Dropoff */}
-            <Label className="mb-2">Drop-off Location</Label>
-            <Input
-              placeholder="Enter destination address"
-              value={formData.route.dropoff}
-              onChange={(e) => handleLocationChange("dropoff", e.target.value)}
-              // @ts-expect-error: 'error' prop is custom for our Input component
-              error={errors?.dropoff}
-              required
-            />
-
-          {/* Via */}
-            <Label className="mb-2">Via (Optional)</Label>
-            <Input
-              placeholder="Any stops along the way"
-              value={formData.route.via}
-              onChange={(e) => handleLocationChange("via", e.target.value)}
-            />
-
-          {/* Estimated Route Info */}
-          <div className="bg-muted/50 rounded-lg p-3">
-            <div className="flex items-center text-sm text-muted-foreground mb-2">
-              <Icon name="Route" size={16} className="mr-2" />
-              Estimated Route Info
-            </div>
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <span className="text-muted-foreground">Distance:</span>
-                <span className="ml-2 font-medium text-foreground">~25 km</span>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Duration:</span>
-                <span className="ml-2 font-medium text-foreground">
-                  ~35 min
-                </span>
-              </div>
-            </div>
-          </div>
+      {/* Inputs */}
+      <div className="space-y-4">
+        {/* Pickup */}
+        <div>
+          <Label>Pickup Location</Label>
+          <Input
+            value={pickupQuery}
+            onChange={(e) => setPickupQuery(e.target.value)}
+            placeholder="Search pickup location"
+          />
+          {pickupSuggestions.length > 0 && (
+            <ul className="border rounded-lg mt-2 bg-background shadow max-h-48 overflow-y-auto text-foreground">
+              {pickupSuggestions.map((s, i) => (
+                <li
+                  key={i}
+                  className="p-2 hover:bg-gray-800 cursor-pointer text-sm"
+                  onClick={() => handleSelectSuggestion("pickup", s)}
+                >
+                  {s.place_name}
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
 
-        {/* Map */}
-        {showMap && (
-          <div className="lg:block">
-            <div className="bg-muted rounded-lg h-64 lg:h-80 flex items-center justify-center">
-              <iframe
-                width="100%"
-                height="100%"
-                loading="lazy"
-                title="Route Map"
-                referrerPolicy="no-referrer-when-downgrade"
-                src="https://www.google.com/maps?q=28.6139,77.2090&z=12&output=embed"
-                className="rounded-lg"
-              />
-            </div>
-            <p className="text-xs text-muted-foreground mt-2 text-center">
-              Interactive map will show your route once locations are entered
-            </p>
-          </div>
-        )}
+        {/* Dropoff */}
+        <div>
+          <Label>Dropoff Location</Label>
+          <Input
+            value={dropoffQuery}
+            onChange={(e) => setDropoffQuery(e.target.value)}
+            placeholder="Search dropoff location"
+          />
+          {dropoffSuggestions.length > 0 && (
+            <ul className="border rounded-lg mt-2 bg-background shadow max-h-48 overflow-y-auto text-foreground">
+              {dropoffSuggestions.map((s, i) => (
+                <li
+                  key={i}
+                  className="p-2 hover:bg-gray-800 cursor-pointer text-sm"
+                  onClick={() => handleSelectSuggestion("dropoff", s)}
+                >
+                  {s.place_name}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </div>
-    </div>
-  );
-};
 
-// Export wrapped with error boundary
-export default function RouteSectionWithErrorBoundary(
-  props: RouteSectionProps
-) {
-  return (
-    <RouteSectionErrorBoundary>
-      <RouteSection {...props} />
-    </RouteSectionErrorBoundary>
+      {/* Map */}
+      {showMap && (
+        <div className="mt-4 rounded-lg overflow-hidden">
+          <div ref={mapContainerRef} className="w-full h-80 rounded-lg" />
+        </div>
+      )}
+    </div>
   );
 }

@@ -1,6 +1,8 @@
-// import { supabase } from "@/lib/supabase";
-// import { verifyToken } from "@/lib/auth";
-// import { cookies } from "next/headers";
+// app/dashboard/page.tsx
+import { getServerSession } from "next-auth/next";
+import { redirect } from "next/navigation";
+import { authOptions } from "@/lib/authOptions";
+
 import React, { Suspense } from "react";
 import WelcomeCard from "@/components/dashboard/WelcomeCard";
 import QuickActionCards from "@/components/dashboard/QuickActionCards";
@@ -10,45 +12,30 @@ import RecentActivitySection from "@/components/dashboard/RecentActivitySection"
 import RideSuggestions from "@/components/dashboard/RideSuggestions";
 import CommunityUpdates from "@/components/dashboard/CommunityUpdates";
 
+// 🚨 Important: remove "use client" (must be a server component)
 export default async function DashboardPage() {
-  // const token = (await cookies()).get("token")?.value;
-  // const decoded = token ? verifyToken(token) : null;
+  // 1️⃣ Get the current user's session (server-side)
+  const session = await getServerSession(authOptions);
 
-  // if (!decoded) {
-  //   return (
-  //     <div className="text-center mt-20">
-  //       <p>Please log in to access your dashboard.</p>
-  //     </div>
-  //   );
-  // }
+  // 2️⃣ If no session, redirect to the loginpage
+  if (!session) {
+    redirect("/login");
+  }
 
-  // const { data: profile } = await supabase
-  //   .from("user_profiles")
-  //   .select("full_name, college, is_verified")
-  //   .eq("id", decoded.id)
-  //   .single();
-
-  const profile = {
-    full_name: "Jatin Kishor Awankar",
-    college: "Prof. Ram Meghe Institute of Technology & Research",
-    is_verified: true
-  };
+  // 3️⃣ Optionally use session.user data
+  const userName = session.user?.name ?? "User";
 
   return (
     <div className="page min-h-screen bg-background container mx-auto p-4 space-y-6">
-      <WelcomeCard
-        userName={profile?.full_name || "Student"}
-        collegeName={profile?.college || "Your College"}
-        isVerified={profile?.is_verified || false}
-      />
+      <WelcomeCard />
       <QuickActionCards />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <StatsCard />
+        {/* <StatsCard /> */}
         <SafetyReminders />
+        <Suspense fallback={<div>Loading activities...</div>}>
+          <RecentActivitySection />
+        </Suspense>
       </div>
-      <Suspense fallback={<div>Loading activities...</div>}>
-        <RecentActivitySection />
-      </Suspense>
       <Suspense fallback={<div>Loading rides...</div>}>
         <RideSuggestions />
       </Suspense>

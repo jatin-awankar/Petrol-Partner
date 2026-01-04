@@ -57,29 +57,14 @@ const PreferencesSection: React.FC<PreferencesSectionProps> = ({
     { value: "female", label: "Female Only" },
   ];
 
-  const conversationOptions = [
-    { value: "any", label: "No Preference" },
-    { value: "chatty", label: "Love to Chat" },
-    { value: "quiet", label: "Prefer Quiet" },
-    { value: "music", label: "Music Over Talk" },
-  ];
-
-  const musicOptions = [
-    { value: "any", label: "Any Music" },
-    { value: "bollywood", label: "Bollywood" },
-    { value: "english", label: "English Pop" },
-    { value: "classical", label: "Classical" },
-    { value: "none", label: "No Music" },
-  ];
-
-  const rideRules = [
-    { id: "no_smoking", label: "No Smoking", icon: "Ban" },
-    { id: "no_food", label: "No Food/Drinks", icon: "Coffee" },
-    { id: "no_pets", label: "No Pets", icon: "Dog" },
-    { id: "punctual", label: "Be Punctual", icon: "Clock" },
-    { id: "verified_only", label: "Verified Students Only", icon: "Shield" },
-    { id: "luggage_limit", label: "Limited Luggage", icon: "Luggage" },
-  ];
+  // const rideRules = [
+  //   { id: "no_smoking", label: "No Smoking", icon: "Ban" },
+  //   { id: "no_food", label: "No Food/Drinks", icon: "Coffee" },
+  //   { id: "no_pets", label: "No Pets", icon: "Dog" },
+  //   { id: "punctual", label: "Be Punctual", icon: "Clock" },
+  //   { id: "verified_only", label: "Verified Students Only", icon: "Shield" },
+  //   { id: "luggage_limit", label: "Limited Luggage", icon: "Luggage" },
+  // ];
 
   if (isLoading) {
     return (
@@ -124,50 +109,10 @@ const PreferencesSection: React.FC<PreferencesSectionProps> = ({
               </SelectContent>
             </Select>
           </div>
-
-          <div className="space-y-2">
-            <Label>Conversation Level</Label>
-            <Select
-              value={formData?.preferences?.conversation || ""}
-              onValueChange={(value) =>
-                handlePreferenceChange("conversation", value)
-              }
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select Conversation Preference" />
-              </SelectTrigger>
-              <SelectContent>
-                {conversationOptions.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
         </div>
 
         {/* Right Column */}
         <div className="space-y-4">
-          <div className="space-y-2">
-            <Label>Music Preference</Label>
-            <Select
-              value={formData?.preferences?.music || ""}
-              onValueChange={(value) => handlePreferenceChange("music", value)}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select Music Preference" />
-              </SelectTrigger>
-              <SelectContent>
-                {musicOptions.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
           {/* Age Range */}
           <div className="space-y-2">
             <Label>Age Range (Optional)</Label>
@@ -203,7 +148,7 @@ const PreferencesSection: React.FC<PreferencesSectionProps> = ({
       </div>
 
       {/* Ride Rules */}
-      <div>
+      {/* <div>
         <Label className="block text-sm font-medium text-foreground mb-3">
           Ride Rules & Requirements
         </Label>
@@ -225,7 +170,7 @@ const PreferencesSection: React.FC<PreferencesSectionProps> = ({
             </Button>
           ))}
         </div>
-      </div>
+      </div> */}
 
       {/* Additional Notes */}
       <div>

@@ -37,10 +37,10 @@ const HeroSection = () => {
 
             <div className="flex flex-col sm:flex-row gap-4 justify-center mb-12">
               <Button size="lg" variant="secondary" className="text-lg px-8 py-6" asChild>
-                <Link href="/sign-up">Get Started</Link>
+                <Link href="/register">Get Started</Link>
               </Button>
               <Button size="lg" variant="outline" className="text-lg px-8 py-6 bg-white/10 border-white/30 text-white hover:bg-white/20" asChild>
-                <Link href="/sign-in">Sign In</Link>
+                <Link href="/login">Sign In</Link>
               </Button>
             </div>
           </motion.div>

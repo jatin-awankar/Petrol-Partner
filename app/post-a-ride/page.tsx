@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { useRouter } from "next/navigation";
+import { redirect, useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 import Icon from "@/components/AppIcon";
@@ -18,16 +18,28 @@ import PreferencesSection from "@/components/postRide/PreferencesSection";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, Eye, Home, Trash2 } from "lucide-react";
 import { motion } from "framer-motion";
+import { useCreateRideOffer } from "@/hooks/rides/useRideOffers";
+import { authOptions } from "@/lib/authOptions";
+import { useSession } from "next-auth/react";
 
 const STORAGE_KEY = "postRideFormData";
 
 const PostRide = () => {
+  const { status } = useSession();
+
+  useEffect(() => {
+    if (status === "unauthenticated") {
+      redirect("/login");
+    }
+  }, [status]);
+
   const router = useRouter();
+
+  const { createRideOffer, loading } = useCreateRideOffer();
   const [currentStep, setCurrentStep] = useState(1);
   const [showPreview, setShowPreview] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
-
   const [formData, setFormData] = useState<any>({
     route: { pickup: "", dropoff: "", via: "" },
     schedule: {
@@ -57,7 +69,6 @@ const PostRide = () => {
       notes: "",
     },
   });
-
   const steps = useMemo(
     () => [
       { id: 1, title: "Route", component: "route" },
@@ -140,38 +151,42 @@ const PostRide = () => {
   const handlePublish = useCallback(async () => {
     setIsPublishing(true);
     try {
-      // const token = localStorage.getItem("token");
-      // if (!token) throw new Error("Unauthorized");
+      const body = {
+        pickup_location: formData.route.pickup,
+        drop_location: formData.route.dropoff,
+        pickup_lat: formData.route.pickup_lat || "23.33",
+        pickup_lng: formData.route.pickup_lng || "22.22",
+        drop_lat: formData.route.drop_lat || "18.88",
+        drop_lng: formData.route.drop_lng || "19.99",
+        available_seats: formData.availableSeats,
+        price_per_seat: formData.pricing.farePerSeat,
+        date: formData.schedule.date,
+        time: formData.schedule.time,
+        vehicle_details: formData.vehicle.make
+          ? `${formData.vehicle.make} ${formData.vehicle.model || ""}`.trim()
+          : null,
+        notes: formData.preferences.notes || null,
+      };
 
-      // const response = await fetch("/api/rides/create", {
-      //   method: "POST",
-      //   headers: {
-      //     "Content-Type": "application/json",
-      //     Authorization: `Bearer ${token}`,
-      //   },
-      //   body: JSON.stringify(formData),
-      // });
+      console.log("📦 Sending ride data:", body); // Debug log
 
-      // if (!response.ok) {
-      //   const error = await response.json();
-      //   throw new Error(error?.error || "Failed to publish ride");
-      // }
+      await createRideOffer(body);
 
-      // localStorage.removeItem(STORAGE_KEY);
       toast.success("Ride published successfully!");
+      localStorage.removeItem(STORAGE_KEY);
       router.push("/dashboard");
     } catch (err) {
       if (err instanceof Error) {
-        console.error(err);
+        console.error("Publish error: ", err);
         toast.error(err.message || "Failed to publish ride");
       } else {
-        console.error(err);
+        console.error("Publish error: ", err);
         toast.error("Failed to publish ride");
       }
     } finally {
       setIsPublishing(false);
     }
-  }, [router]);
+  }, [createRideOffer, formData, router]);
 
   const renderCurrentStep = useCallback(() => {
     const comp = steps[currentStep - 1]?.component;
@@ -213,7 +228,7 @@ const PostRide = () => {
           totalSteps={steps.length}
           steps={steps}
         />
-        <div className="max-w-4xl mx-auto p-4 space-y-6">
+        <div className="max-w-4xl mx-auto p-4 pt-6 space-y-6">
           {renderCurrentStep()}
 
           {/* Navigation */}
@@ -237,7 +252,11 @@ const PostRide = () => {
               </div>
 
               {currentStep < steps.length ? (
-                <Button variant="default" onClick={handleNext} className="shadow-sm">
+                <Button
+                  variant="default"
+                  onClick={handleNext}
+                  className="shadow-sm"
+                >
                   Next
                   <ChevronRight />
                 </Button>
@@ -268,9 +287,9 @@ const PostRide = () => {
                 </p>
               </div>
             </div>
-            <div className="flex flex-col sm:flex-row gap-2 items-end space-x-2">
+            <div className="flex flex-col sm:flex-row gap-2 w-fit items-end ">
               <Button
-                variant="ghost"
+                variant="destructive"
                 size="sm"
                 onClick={() => {
                   if (confirm("Are you sure you want to clear all data?")) {
@@ -278,15 +297,17 @@ const PostRide = () => {
                     window.location.reload();
                   }
                 }}
+                className=""
               >
                 <Trash2 />
                 Clear All
               </Button>
 
               <Button
-                variant="outline"
+                variant="ghost"
                 size="sm"
                 onClick={() => router.push("/dashboard")}
+                className="bg-accent dark:bg-accent/50"
               >
                 <Home />
                 Save & Exit
@@ -303,7 +324,7 @@ const PostRide = () => {
         onPublish={handlePublish}
       />
 
-      {isPublishing && (
+      {loading && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-card rounded-lg p-8 text-center">
             <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full mx-auto mb-4"></div>

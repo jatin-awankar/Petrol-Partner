@@ -1,11 +1,12 @@
 // src/pages/dashboard-home/components/WelcomeCard.tsx
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React from "react";
 import Icon from "@/components/AppIcon";
 import Skeleton from "react-loading-skeleton";
 import VerificationBadge from "../ui/VerificationBadge";
 import { motion } from "framer-motion";
+import { useUserProfile } from "@/hooks/auth/useUserProfile";
 
 // Error Boundary for this component
 class WelcomeCardErrorBoundary extends React.Component<
@@ -37,30 +38,11 @@ class WelcomeCardErrorBoundary extends React.Component<
   }
 }
 
-// Props interface
-interface WelcomeCardProps {
-  userName?: string | null;
-  collegeName?: string | null;
-  isVerified?: boolean;
-  activeStudents?: number;
-  campusArea?: string;
-}
+const WelcomeCard = () => {
+  const currentHour = new Date().getHours();
+  const { profile, loading } = useUserProfile();
 
-const WelcomeCard: React.FC<WelcomeCardProps> = ({
-  userName = "Student",
-  collegeName = "Your College",
-  isVerified = false,
-  activeStudents = 0,
-  campusArea = "Campus Area",
-}) => {
-  const [currentHour, setCurrentHour] = useState<number>(new Date().getHours());
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    // Simulate loading delay
-    const timer = setTimeout(() => setLoading(false), 500);
-    return () => clearTimeout(timer);
-  }, []);
+  // if (error) return <p className="text-red-500">{error}</p>
 
   const getGreeting = () => {
     if (currentHour < 12) return "Good morning";
@@ -104,13 +86,13 @@ const WelcomeCard: React.FC<WelcomeCardProps> = ({
       <div className="flex items-center justify-between">
         <div className="flex-1">
           <h1 className="text-2xl font-semibold mb-1">
-            {getGreeting()}, {userName?.trim().split(" ")[0]}!
+            {getGreeting()}, {profile?.full_name?.trim().split(" ")[0] || "Student"}!
           </h1>
           <div className="flex items-center space-x-2">
             <span className="text-primary-foreground/80 text-sm">
-              {collegeName}
+              {profile?.college || "Your College"}
               {"  "}
-              {isVerified && (
+              {profile?.is_verified && (
                 <VerificationBadge
                   isVerified={true}
                   verificationType="college"
@@ -129,11 +111,11 @@ const WelcomeCard: React.FC<WelcomeCardProps> = ({
       <div className="mt-4 flex items-center space-x-4 text-sm">
         <div className="flex items-center space-x-1">
           <Icon name="MapPin" size={16} />
-          <span>{campusArea}</span>
+          <span>campusArea</span>
         </div>
         <div className="flex items-center space-x-1">
           <Icon name="Users" size={16} />
-          <span>{activeStudents.toLocaleString()} active students</span>
+          <span>0 active students</span>
         </div>
       </div>
     </div>
@@ -141,10 +123,10 @@ const WelcomeCard: React.FC<WelcomeCardProps> = ({
 };
 
 // Export wrapped with error boundary
-export default function WelcomeCardWithErrorBoundary(props: WelcomeCardProps) {
+export default function WelcomeCardWithErrorBoundary() {
   return (
     <WelcomeCardErrorBoundary>
-      <WelcomeCard {...props} />
+      <WelcomeCard />
     </WelcomeCardErrorBoundary>
   );
 }

@@ -1,57 +1,21 @@
-// "use client";
-// import { useState } from "react";
-// import { useRouter } from "next/navigation";
+import { getServerSession } from "next-auth";
+import { redirect } from "next/navigation";
+import { authOptions } from "@/lib/authOptions";
+import LoginForm from "@/components/LoginForm";
 
-// export default function LoginPage() {
-//   const [email, setEmail] = useState("");
-//   const [password, setPassword] = useState("");
-//   const router = useRouter();
+export default async function LoginPage() {
+  const session = await getServerSession(authOptions);
 
-//   async function handleLogin() {
-//     const res = await fetch("/api/auth/login", {
-//       method: "POST",
-//       headers: { "Content-Type": "application/json" },
-//       body: JSON.stringify({ email, password }),
-//     });
+  // 🚀 Instant redirect if user already authenticated
+  if (session) {
+    redirect("/dashboard");
+  }
 
-//     const data = await res.json();
-//     if (res.ok) {
-//       localStorage.setItem("token", data.token);
-//       router.push("/dashboard");
-//     } else {
-//       alert(data.error);
-//     }
-//   }
-
-//   return (
-//     <div className="p-6 max-w-md mx-auto">
-//       <h1 className="text-xl font-bold mb-4">Login</h1>
-//       <input
-//         className="border p-2 w-full mb-2"
-//         placeholder="Email"
-//         value={email}
-//         onChange={(e) => setEmail(e.target.value)}
-//       />
-//       <input
-//         className="border p-2 w-full mb-4"
-//         type="password"
-//         placeholder="Password"
-//         value={password}
-//         onChange={(e) => setPassword(e.target.value)}
-//       />
-//       <button className="btn btn-primary w-full" onClick={handleLogin}>
-//         Sign In
-//       </button>
-//     </div>
-//   );
-// }
-
-import React from 'react'
-
-const page = () => {
   return (
-    <div>page</div>
-  )
+    <div className="flex justify-center items-center min-h-screen px-4">
+      <div className="w-full max-w-md">
+        <LoginForm />
+      </div>
+    </div>
+  );
 }
-
-export default page
