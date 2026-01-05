@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Share } from "lucide-react";
 import EmergencyAccessButton from "@/components/ui/EmergencyAccessButton";
+import { motion } from "framer-motion";
 
 // Components
 import ProfileInfo from "@/components/rideDetails/ProfileInfo";
@@ -14,155 +15,408 @@ import RideInformation from "@/components/rideDetails/RideInformation";
 import DriverPreferences from "@/components/rideDetails/DriverPreferences";
 import SafetyPanel from "@/components/rideDetails/SafetyPanel";
 import BookingConfirmationModal from "@/components/rideDetails/BookingConfirmationModal";
-import { motion } from "framer-motion";
+import { useBookRide } from "@/hooks/bookings/useBookRide";
+import { formatUtcToTodayOrDayMonth } from "@/lib/utils";
+
+// Types
+interface RideData {
+  id: string;
+  type: "offer" | "request";
+  driver?: {
+    id: string;
+    name: string;
+    avatar?: string;
+    college?: string;
+    year?: string;
+    rating?: number;
+    reviewCount?: number;
+    totalRides?: number;
+    joinedDate?: string;
+    isVerified?: boolean;
+    bio?: string;
+  };
+  passenger?: {
+    id: string;
+    name: string;
+    avatar?: string;
+    college?: string;
+    year?: string;
+    rating?: number;
+    reviewCount?: number;
+    totalRides?: number;
+    joinedDate?: string;
+    isVerified?: boolean;
+    bio?: string;
+  };
+  route?: {
+    pickup: {
+      name: string;
+      address: string;
+      lat: number;
+      lng: number;
+    };
+    dropoff: {
+      name: string;
+      address: string;
+      lat: number;
+      lng: number;
+    };
+    duration?: string;
+    distance?: string;
+    pickupTime?: string;
+    dropoffTime?: string;
+  };
+  date?: string;
+  availableSeats?: number;
+  totalSeats?: number;
+  seats_required?: number;
+  baseFare?: number;
+  fuelShare?: number;
+  platformFee?: number;
+  totalPrice?: number;
+  price_per_seat?: number;
+  vehicle?: {
+    make?: string;
+    model?: string;
+    year?: string;
+    color?: string;
+    plateNumber?: string;
+    image?: string;
+  };
+  vehicle_details?: any;
+  safetyFeatures?: string[];
+  preferences?: {
+    music?: string;
+    conversation?: string;
+    pets?: string;
+    smoking?: string;
+  };
+}
+
+// Transform API response to component format
+const transformRideOffer = (apiData: any): RideData => {
+  let vehicleDetails: any = {};
+  try {
+    vehicleDetails = apiData.vehicle_details
+      ? typeof apiData.vehicle_details === "string"
+        ? JSON.parse(apiData.vehicle_details)
+        : apiData.vehicle_details
+      : {};
+  } catch (e) {
+    console.warn("Failed to parse vehicle_details:", e);
+    vehicleDetails = {};
+  }
+
+  const pricePerSeat = parseFloat(apiData.price_per_seat || "0");
+  const baseFare = pricePerSeat * 0.7;
+  const fuelShare = pricePerSeat * 0.25;
+  const platformFee = Math.max(pricePerSeat * 0.05, 15);
+  const joinedAt = formatUtcToTodayOrDayMonth(apiData.created_at || "")
+
+  return {
+    id: apiData.id,
+    type: "offer",
+    driver: {
+      id: apiData.driver_id,
+      name: apiData.driver_name || "Unknown Driver",
+      avatar: apiData.driver_image,
+      college: apiData.driver_college || apiData.college,
+      rating: parseFloat(apiData.driver_rating || apiData.avg_rating || "0"),
+      reviewCount: apiData.driver_review_count || 0,
+      isVerified: apiData.driver_is_verified !== undefined 
+        ? apiData.driver_is_verified 
+        : apiData.is_verified || false,
+      joinedDate: joinedAt || undefined,
+      totalRides: parseInt(apiData.total_rides || apiData.totalRides || "0", 10) || 0,
+    },
+    route: {
+      pickup: {
+        name: apiData.pickup_location || "Pickup Location",
+        address: apiData.pickup_location || "",
+        lat: parseFloat(apiData.pickup_lat || "0"),
+        lng: parseFloat(apiData.pickup_lng || "0"),
+      },
+      dropoff: {
+        name: apiData.drop_location || "Drop Location",
+        address: apiData.drop_location || "",
+        lat: parseFloat(apiData.drop_lat || "0"),
+        lng: parseFloat(apiData.drop_lng || "0"),
+      },
+      pickupTime: apiData.time || "",
+    },
+    date: apiData.date || "",
+    availableSeats: parseInt(apiData.available_seats || "0", 10),
+    totalSeats: parseInt(apiData.available_seats || "0", 10),
+    price_per_seat: pricePerSeat,
+    totalPrice: pricePerSeat,
+    baseFare: baseFare,
+    fuelShare: fuelShare,
+    platformFee: platformFee,
+    vehicle: {
+      make: vehicleDetails.make || vehicleDetails.make_model?.split(" ")[0],
+      model: vehicleDetails.model || vehicleDetails.make_model?.split(" ").slice(1).join(" "),
+      year: vehicleDetails.year,
+      color: vehicleDetails.color,
+      plateNumber: vehicleDetails.plate_number || vehicleDetails.plateNumber,
+      image: vehicleDetails.image,
+    },
+    preferences: vehicleDetails.preferences || {},
+    safetyFeatures: [
+      "GPS Tracking",
+      "Emergency Button",
+      "Driver Verification",
+    ],
+  };
+};
+
+const transformRideRequest = (apiData: any): RideData => {
+  const pricePerSeat = parseFloat(apiData.price_per_seat || apiData.price_offer || "0");
+  const baseFare = pricePerSeat * 0.7;
+  const fuelShare = pricePerSeat * 0.25;
+  const platformFee = Math.max(pricePerSeat * 0.05, 15);
+  const joinedAt = formatUtcToTodayOrDayMonth(apiData.created_at || "")
+
+  return {
+    id: apiData.id,
+    type: "request",
+    passenger: {
+      id: apiData.passenger_id,
+      name: apiData.passenger_name || "Unknown Passenger",
+      avatar: apiData.passenger_image,
+      college: apiData.passenger_college || apiData.college,
+      rating: parseFloat(apiData.passenger_rating || apiData.avg_rating || "0"),
+      reviewCount: apiData.passenger_review_count || 0,
+      isVerified: apiData.passenger_is_verified !== undefined 
+        ? apiData.passenger_is_verified 
+        : apiData.is_verified || false,
+      joinedDate: joinedAt || undefined,
+      totalRides: parseInt(apiData.total_rides || apiData.totalRides || "0", 10) || 0,
+    },
+    route: {
+      pickup: {
+        name: apiData.pickup_location || "Pickup Location",
+        address: apiData.pickup_location || "",
+        lat: parseFloat(apiData.pickup_lat || "0"),
+        lng: parseFloat(apiData.pickup_lng || "0"),
+      },
+      dropoff: {
+        name: apiData.drop_location || "Drop Location",
+        address: apiData.drop_location || "",
+        lat: parseFloat(apiData.drop_lat || "0"),
+        lng: parseFloat(apiData.drop_lng || "0"),
+      },
+      pickupTime: apiData.time || "",
+    },
+    date: apiData.date || "",
+    seats_required: parseInt(apiData.seats_required || "1", 10),
+    availableSeats: parseInt(apiData.seats_required || "1", 10),
+    totalSeats: parseInt(apiData.seats_required || "1", 10),
+    price_per_seat: pricePerSeat,
+    totalPrice: pricePerSeat,
+    baseFare: baseFare,
+    fuelShare: fuelShare,
+    platformFee: platformFee,
+    safetyFeatures: [
+      "GPS Tracking",
+      "Emergency Button",
+      "Passenger Verification",
+    ],
+  };
+};
 
 const RideDetailsPage = () => {
   const { id } = useParams();
   const router = useRouter();
+  const { bookRide, loading: isBookingLoading } = useBookRide();
 
-  const [rideData, setRideData] = useState<any>(null);
+  const [rideData, setRideData] = useState<RideData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showConfirmationModal, setShowConfirmationModal] = useState(false);
   const [bookingData, setBookingData] = useState<any>(null);
-  const [isBookingLoading, setIsBookingLoading] = useState(false);
 
-  // --- Fetch ride data ---
-  useEffect(() => {
-    const fetchRideData = async () => {
-      try {
-        setLoading(true);
-        setError(null);
+  // Fetch ride data - try both offer and request endpoints
+  const fetchRideData = useCallback(async () => {
+    // Handle both string and array cases from useParams
+    const rideId = Array.isArray(id) ? id[0] : id;
+    
+    if (!rideId || typeof rideId !== "string") {
+      console.error("Invalid ride ID:", id);
+      setError("Invalid ride ID");
+      setLoading(false);
+      return;
+    }
 
-        // TODO: Replace with Supabase fetch
-        const mockRide = {
-          id: "ride_001",
-          type: "offer", // or 'request'
-          driver: {
-            id: "driver_001",
-            name: "Arjun Sharma",
-            avatar:
-              "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face",
-            college: "IIT Delhi",
-            year: "3rd Year, Computer Science",
-            rating: 4.8,
-            reviewCount: 127,
-            totalRides: 89,
-            joinedDate: "Jan 2023",
-            isVerified: true,
-            bio: "Friendly driver who loves music and good conversations.",
-          },
-          route: {
-            pickup: {
-              name: "IIT Delhi Main Gate",
-              address: "Hauz Khas, New Delhi, Delhi 110016",
-              lat: 28.5449,
-              lng: 77.1928,
-            },
-            dropoff: {
-              name: "Connaught Place",
-              address: "Connaught Place, New Delhi, Delhi 110001",
-              lat: 28.6315,
-              lng: 77.2167,
-            },
-            duration: "35 mins",
-            distance: "12.5 km",
-            pickupTime: "09:15 AM",
-            dropoffTime: "09:50 AM",
-          },
-          date: "Today, Jan 8",
-          availableSeats: 3,
-          totalSeats: 4,
-          baseFare: 80,
-          fuelShare: 45,
-          platformFee: 15,
-          totalPrice: 125,
-          vehicle: {
-            make: "Maruti Suzuki",
-            model: "Swift",
-            year: "2021",
-            color: "White",
-            plateNumber: "DL 8C AB 1234",
-            image:
-              "https://images.unsplash.com/photo-1549399736-8e8c2e2b5b5e?w=200&h=150&fit=crop",
-          },
-          safetyFeatures: [
-            "GPS Tracking",
-            "Emergency Button",
-            "Driver Verification",
-          ],
-          preferences: {
-            music: "Bollywood & Pop",
-            conversation: "Moderate",
-            pets: "Not allowed",
-            smoking: "No smoking",
-          },
-          passenger: {},
-        };
+    setLoading(true);
+    setError(null);
 
-        setRideData(mockRide);
-      } catch (err) {
-        setError(
-          err instanceof Error
-            ? err.message || "Failed to load ride data."
-            : "Failed to load ride data."
-        );
-      } finally {
-        setLoading(false);
+    try {
+      console.log("Fetching ride with ID:", rideId);
+      
+      // Try ride offer first
+      let response = await fetch(`/api/rides/offers/${rideId}`, {
+        credentials: "include",
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.ride && data.ride.driver_id) {
+          setRideData(transformRideOffer(data.ride));
+          setLoading(false);
+          return;
+        }
+      } else if (response.status !== 404) {
+        // If it's not a 404, there might be a server error
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Failed to fetch ride offer: ${response.status}`);
       }
-    };
 
-    if (id) fetchRideData();
+      // If not found, try ride request
+      response = await fetch(`/api/rides/requests/${rideId}`, {
+        credentials: "include",
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.ride && data.ride.passenger_id) {
+          setRideData(transformRideRequest(data.ride));
+          setLoading(false);
+          return;
+        }
+      } else if (response.status !== 404) {
+        // If it's not a 404, there might be a server error
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Failed to fetch ride request: ${response.status}`);
+      }
+
+      // If neither worked, show error
+      setError("Ride not found. The ride may have been removed or the ID is invalid.");
+    } catch (err) {
+      console.error("Error fetching ride data:", err);
+      setError(
+        err instanceof Error
+          ? err.message || "Failed to load ride data."
+          : "Failed to load ride data."
+      );
+    } finally {
+      setLoading(false);
+    }
   }, [id]);
 
-  // --- Booking Logic ---
-  const handleBookRide = (bookingDetails: Record<string, unknown>) => {
-    const fullBookingData = {
-      ...bookingDetails,
-      route: {
-        pickup: rideData?.route?.pickup?.name,
-        dropoff: rideData?.route?.dropoff?.name,
-      },
-      date: rideData?.date,
-      driverName: rideData?.driver?.name,
+  useEffect(() => {
+    fetchRideData();
+  }, [fetchRideData]);
+
+  // Booking Logic
+  const handleBookRide = useCallback(
+    (bookingDetails: Record<string, unknown>) => {
+      if (!rideData) return;
+
+      const fullBookingData = {
+        ...bookingDetails,
+        ride_offer_id: rideData.type === "offer" ? rideData.id : undefined,
+        ride_request_id: rideData.type === "request" ? rideData.id : undefined,
+        route: {
+          pickup: rideData.route?.pickup?.name,
+          dropoff: rideData.route?.dropoff?.name,
+        },
+        date: rideData.date,
+        driverName:
+          rideData.type === "offer"
+            ? rideData.driver?.name
+            : rideData.passenger?.name,
+      };
+
+      setBookingData(fullBookingData);
+      setShowConfirmationModal(true);
+    },
+    [rideData]
+  );
+
+  const handleConfirmBooking = useCallback(async () => {
+    if (!bookingData) return;
+
+    try {
+      const result = await bookRide({
+        ride_offer_id: bookingData.ride_offer_id,
+        ride_request_id: bookingData.ride_request_id,
+        seats_booked: bookingData.seats || 1,
+      });
+
+      if (result) {
+        setShowConfirmationModal(false);
+        router.push("/dashboard");
+      }
+    } catch (err) {
+      console.error("Booking error:", err);
+    }
+  }, [bookingData, bookRide, router]);
+
+  // Emergency actions
+  const handleEmergencyCall = useCallback(
+    () => (window.location.href = "tel:911"),
+    []
+  );
+  const handleShareLocation = useCallback(
+    () => alert("Location shared with contacts."),
+    []
+  );
+  const handleContactSupport = useCallback(
+    () => alert("Contacting support..."),
+    []
+  );
+
+  // Share functionality
+  const handleShare = useCallback(() => {
+    if (!rideData) return;
+
+    const shareData = {
+      title: "Petrol Partner Ride",
+      text: `Check this ride from ${rideData.route?.pickup?.name} to ${rideData.route?.dropoff?.name}`,
+      url: window.location.href,
     };
 
-    setBookingData(fullBookingData);
-    setShowConfirmationModal(true);
-  };
-
-  const handleConfirmBooking = async () => {
-    setIsBookingLoading(true);
-    try {
-      await new Promise((res) => setTimeout(res, 1500));
-      setShowConfirmationModal(false);
-      alert("Booking request sent! Awaiting confirmation.");
-      router.push("/dashboard");
-    } catch {
-      alert("Failed to confirm booking.");
-    } finally {
-      setIsBookingLoading(false);
+    if (navigator.share) {
+      navigator.share(shareData).catch((err) => {
+        console.error("Share error:", err);
+      });
+    } else {
+      navigator.clipboard.writeText(window.location.href);
+      alert("Ride link copied!");
     }
-  };
+  }, [rideData]);
 
-  // --- Emergency actions ---
-  const handleEmergencyCall = () => (window.location.href = "tel:911");
-  const handleShareLocation = () => alert("Location shared with contacts.");
-  const handleContactSupport = () => alert("Contacting support...");
-
-  // --- Error UI ---
-  if (error) {
+  // Loading state
+  if (loading) {
     return (
-      <div className="p-8 text-center">
-        <p className="text-destructive font-semibold">{error}</p>
-        <Button onClick={() => router.back()} className="mt-4">
-          Go Back
-        </Button>
+      <div className="page min-h-screen bg-background container mx-auto p-4 space-y-6">
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+            <p className="text-muted-foreground">Loading ride details...</p>
+          </div>
+        </div>
       </div>
     );
   }
 
-  // --- Main Render ---
+  // Error state
+  if (error || !rideData) {
+    return (
+      <div className="page min-h-screen bg-background container mx-auto p-4">
+        <div className="flex flex-col items-center justify-center min-h-[60vh] text-center">
+          <p className="text-destructive font-semibold text-lg mb-4">
+            {error || "Ride not found"}
+          </p>
+          <Button onClick={() => router.back()} variant="outline">
+            <ArrowLeft className="mr-2" /> Go Back
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // Main Render
   return (
     <div className="page min-h-screen bg-background container mx-auto p-4 space-y-6">
       <main>
@@ -175,25 +429,10 @@ const RideDetailsPage = () => {
             className="flex flex-row items-center justify-between mb-6"
           >
             <Button variant="ghost" size="sm" onClick={() => router.back()}>
-              <ArrowLeft /> Back
+              <ArrowLeft className="mr-2" /> Back
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                if (navigator.share) {
-                  navigator.share({
-                    title: "Petrol Partner Ride",
-                    text: `Check this ride from ${rideData?.route?.pickup?.name} to ${rideData?.route?.dropoff?.name}`,
-                    url: window.location.href,
-                  });
-                } else {
-                  navigator.clipboard.writeText(window.location.href);
-                  alert("Ride link copied!");
-                }
-              }}
-            >
-              <Share /> Share
+            <Button variant="outline" size="sm" onClick={handleShare}>
+              <Share className="mr-2" /> Share
             </Button>
           </motion.div>
 
@@ -206,26 +445,37 @@ const RideDetailsPage = () => {
             <div className="lg:col-span-2 space-y-6">
               <ProfileInfo
                 profile={
-                  rideData?.type === "offer"
-                    ? rideData?.driver ?? {}
-                    : rideData?.passenger ?? {}
+                  rideData.type === "offer"
+                    ? rideData.driver ?? {}
+                    : rideData.passenger ?? {}
                 }
-                role={rideData?.type === "offer" ? "driver" : "passenger"}
+                role={rideData.type === "offer" ? "driver" : "passenger"}
+                loading={loading}
               />
 
-              <RouteMap route={rideData?.route} />
+              <RouteMap route={rideData.route} />
               <RideInformation ride={rideData} />
-              <DriverPreferences preferences={rideData?.preferences} />
+              {rideData.type === "offer" && (
+                <DriverPreferences preferences={rideData.preferences} />
+              )}
 
               {/* Mobile Booking */}
               <div className="lg:hidden mb-6">
-                <BookingSection ride={rideData} onBookRide={handleBookRide} />
+                <BookingSection
+                  ride={rideData}
+                  role={rideData.type === "offer" ? "passenger" : "driver"}
+                  onBookRide={handleBookRide}
+                />
               </div>
             </div>
 
             {/* Right Column */}
             <div className="hidden lg:block space-y-6">
-              <BookingSection ride={rideData} onBookRide={handleBookRide} />
+              <BookingSection
+                ride={rideData}
+                role={rideData.type === "offer" ? "passenger" : "driver"}
+                onBookRide={handleBookRide}
+              />
               <SafetyPanel
                 onEmergencyContact={handleEmergencyCall}
                 onShareLocation={handleShareLocation}

@@ -3,13 +3,31 @@ import { query } from '@/lib/db';
 
 export async function GET(
   req: NextRequest,
-  params: any
+  context: { params: Promise<{ id: string }> | { id: string } } | any
 ) {
   try {
-    const { id } = await params;
+    // Handle different Next.js App Router parameter formats
+    let id: string | undefined;
+    
+    if (context?.params) {
+      const params = context.params instanceof Promise ? await context.params : context.params;
+      id = params?.id || params?.id?.[0];
+    } else if (context?.id) {
+      id = context.id;
+    }
 
-    if (!id)
+    // Extract ID from URL as fallback
+    if (!id) {
+      const url = new URL(req.url);
+      const pathParts = url.pathname.split('/');
+      const idIndex = pathParts.indexOf('offers') + 1;
+      id = pathParts[idIndex];
+    }
+
+    if (!id) {
+      console.error('Ride ID missing. Context:', context, 'URL:', req.url);
       return NextResponse.json({ error: 'Ride ID missing' }, { status: 400 });
+    }
 
     const rideQuery = `
       SELECT 
@@ -19,6 +37,8 @@ export async function GET(
         u.email AS driver_email,
         u.phone AS driver_phone,
         u.profile_image AS driver_image,
+        u.college AS driver_college,
+        u.is_verified AS driver_is_verified,
         COALESCE(u.avg_rating, 0) AS driver_rating,
         r.pickup_location,
         r.drop_location,
@@ -33,7 +53,13 @@ export async function GET(
         r.vehicle_details,
         r.notes,
         r.status,
-        r.created_at
+        r.created_at,
+        (
+          SELECT COUNT(*) 
+          FROM bookings b 
+          WHERE b.driver_id = r.driver_id 
+          AND b.status = 'completed'
+        ) AS total_rides
       FROM ride_offers r
       JOIN users u ON r.driver_id = u.id
       WHERE r.id = $1
@@ -58,7 +84,7 @@ import { getAuthenticatedUserId } from '@/lib/auth';
 
 export async function PATCH(
   req: NextRequest,
-  params: any
+  context: { params: Promise<{ id: string }> | { id: string } } | any
 ) {
   try {
     const driverId = await getAuthenticatedUserId();
@@ -69,7 +95,24 @@ export async function PATCH(
       );
     }
 
-    const rideId = await params.id;
+    // Handle different Next.js App Router parameter formats
+    let rideId: string | undefined;
+    
+    if (context?.params) {
+      const params = context.params instanceof Promise ? await context.params : context.params;
+      rideId = params?.id || params?.id?.[0];
+    } else if (context?.id) {
+      rideId = context.id;
+    }
+
+    // Extract ID from URL as fallback
+    if (!rideId) {
+      const url = new URL(req.url);
+      const pathParts = url.pathname.split('/');
+      const idIndex = pathParts.indexOf('offers') + 1;
+      rideId = pathParts[idIndex];
+    }
+
     if (!rideId)
       return NextResponse.json({ error: 'Ride ID missing' }, { status: 400 });
 

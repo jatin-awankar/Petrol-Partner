@@ -14,8 +14,8 @@ export async function POST(req: Request) {
       );
     }
 
-    // 2. Check if user already exists
-    const existingUser = await query("SELECT * FROM users WHERE email = $1", [
+    // 2. Check if user already exists (optimized: select only id)
+    const existingUser = await query("SELECT id FROM users WHERE email = $1", [
       email,
     ]);
     if (existingUser?.rowCount && existingUser.rowCount > 0) {

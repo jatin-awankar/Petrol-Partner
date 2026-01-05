@@ -1,16 +1,13 @@
-"use client"; // client component
+"use client";
 
-import React from "react";
 import Navbar from "@/components/Navbar";
 import BottomNavbar from "@/components/BottomNavbar";
 
 export default function AuthenticatedNavbars() {
   return (
     <>
-    {/* <SignedIn> */}
       <Navbar />
       <BottomNavbar />
-    {/* </SignedIn> */}
     </>
   );
 }

@@ -31,7 +31,7 @@ export function useFetchSuggestedRides(options: SuggestedRidesOptions = {}) {
     if (options.latitude) query.append("pickup_lat", String(options.latitude));
     if (options.longitude) query.append("pickup_lng", String(options.longitude));
     if (options.limit) query.append("limit", String(options.limit));
-    if (options.date) query.append("date", String(options.date));
+    // if (options.date) query.append("date", String(options.date));
 
     try {
       // Fetch suggested ride offers

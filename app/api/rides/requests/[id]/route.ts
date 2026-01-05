@@ -3,11 +3,31 @@ import { query } from '@/lib/db';
 import { getAuthenticatedUserId } from '@/lib/auth';
 
 // GET ride details by ID
-export async function GET(req: NextRequest, context: any) {
+export async function GET(
+  req: NextRequest,
+  context: { params: Promise<{ id: string }> | { id: string } } | any
+) {
   try {
-    const { id } = await context.params;
+    // Handle different Next.js App Router parameter formats
+    let id: string | undefined;
+    
+    if (context?.params) {
+      const params = context.params instanceof Promise ? await context.params : context.params;
+      id = params?.id || params?.id?.[0];
+    } else if (context?.id) {
+      id = context.id;
+    }
+
+    // Extract ID from URL as fallback
+    if (!id) {
+      const url = new URL(req.url);
+      const pathParts = url.pathname.split('/');
+      const idIndex = pathParts.indexOf('requests') + 1;
+      id = pathParts[idIndex];
+    }
 
     if (!id) {
+      console.error('Ride request ID missing. Context:', context, 'URL:', req.url);
       return NextResponse.json({ error: 'Ride ID missing' }, { status: 400 });
     }
 
@@ -19,6 +39,8 @@ export async function GET(req: NextRequest, context: any) {
         u.email AS passenger_email,
         u.phone AS passenger_phone,
         u.profile_image AS passenger_image,
+        u.college AS passenger_college,
+        u.is_verified AS passenger_is_verified,
         COALESCE(u.avg_rating, 0) AS passenger_rating,
         r.pickup_location,
         r.drop_location,
@@ -31,7 +53,13 @@ export async function GET(req: NextRequest, context: any) {
         r.time,
         r.notes,
         r.status,
-        r.created_at
+        r.created_at,
+        (
+          SELECT COUNT(*) 
+          FROM bookings b 
+          WHERE b.passenger_id = r.passenger_id 
+          AND b.status = 'completed'
+        ) AS total_rides
       FROM ride_requests r
       JOIN users u ON r.passenger_id = u.id
       WHERE r.id = $1
@@ -52,7 +80,10 @@ export async function GET(req: NextRequest, context: any) {
 }
 
 // PATCH ride by ID (requires auth)
-export async function PATCH(req: NextRequest, context: any) {
+export async function PATCH(
+  req: NextRequest,
+  context: { params: Promise<{ id: string }> | { id: string } } | any
+) {
   try {
     const passengerId = await getAuthenticatedUserId();
     if (!passengerId) {
@@ -62,7 +93,24 @@ export async function PATCH(req: NextRequest, context: any) {
       );
     }
 
-    const { id: requestId } = await context.params;
+    // Handle different Next.js App Router parameter formats
+    let requestId: string | undefined;
+    
+    if (context?.params) {
+      const params = context.params instanceof Promise ? await context.params : context.params;
+      requestId = params?.id || params?.id?.[0];
+    } else if (context?.id) {
+      requestId = context.id;
+    }
+
+    // Extract ID from URL as fallback
+    if (!requestId) {
+      const url = new URL(req.url);
+      const pathParts = url.pathname.split('/');
+      const idIndex = pathParts.indexOf('requests') + 1;
+      requestId = pathParts[idIndex];
+    }
+
     if (!requestId) {
       return NextResponse.json({ error: 'Ride request ID missing' }, { status: 400 });
     }

@@ -1,6 +1,7 @@
 // lib/authOptions.ts
 import type { AuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
+import GoogleProvider from "next-auth/providers/google";
 import bcrypt from "bcrypt";
 import { query } from "@/lib/db"; // DB helper
 
@@ -17,10 +18,11 @@ export const authOptions: AuthOptions = {
           throw new Error("Missing email or password");
         }
 
-        // 🔍 Check user in database
-        const result = await query("SELECT * FROM users WHERE email = $1", [
-          credentials.email,
-        ]);
+        // 🔍 Check user in database (optimized: select only needed columns)
+        const result = await query(
+          "SELECT id, email, full_name, password_hash FROM users WHERE email = $1",
+          [credentials.email]
+        );
 
         if (result.rowCount === 0) {
           throw new Error("Invalid credentials");
@@ -35,7 +37,7 @@ export const authOptions: AuthOptions = {
         );
 
         if (!isValid) {
-          throw new Error("Invalid credentials");
+          throw new Error("Invalid password");
         }
 
         // ✅ Return minimal safe user object
@@ -46,6 +48,10 @@ export const authOptions: AuthOptions = {
         };
       },
     }),
+    GoogleProvider({
+      clientId: process.env.GOOGLE_CLIENT_ID!,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+    })
   ],
 
   session: {
@@ -55,7 +61,35 @@ export const authOptions: AuthOptions = {
   secret: process.env.NEXTAUTH_SECRET,
 
   callbacks: {
-    async jwt({ token, user }) {
+    async signIn({ user, account, profile }) {
+      // Handle Google OAuth sign-in
+      if (account?.provider === "google") {
+        try {
+          // Check if user exists in database (optimized: select only id)
+          const result = await query(
+            "SELECT id FROM users WHERE email = $1",
+            [user.email]
+          );
+
+          if (result.rowCount === 0) {
+            // Create new user in database for Google OAuth
+            const insertResult = await query(
+              "INSERT INTO users (email, full_name, password_hash) VALUES ($1, $2, $3) RETURNING id",
+              [user.email, user.name || "", ""] // Empty password_hash for OAuth users
+            );
+            user.id = insertResult.rows[0].id.toString();
+          } else {
+            // User exists, use their ID
+            user.id = result.rows[0].id.toString();
+          }
+        } catch (error) {
+          console.error("Error handling Google sign-in:", error);
+          return false; // Prevent sign-in on error
+        }
+      }
+      return true;
+    },
+    async jwt({ token, user, account }) {
       if (user) {
         token.user = user;
         token.userId = user.id; // Store user ID in token
@@ -63,20 +97,18 @@ export const authOptions: AuthOptions = {
       return token;
     },
     async session({ session, token }) {
-      if (token.user && session.user) {
-        // Extend session.user with id from token
+      // Optimized: Only update session if token has user data
+      if (token.userId && session.user) {
         const user = session.user as any;
-        const tokenUser = token.user as any;
         user.id = token.userId as string;
-        if (tokenUser?.name) user.name = tokenUser.name;
-        if (tokenUser?.email) user.email = tokenUser.email;
+        // Token already contains user data from jwt callback, no need to re-assign
       }
       return session;
     },
   },
 };
 
-// {
+//  {
 //   providers: [
 //     EmailProvider({
 //       server: process.env.EMAIL_SERVER || "",
@@ -126,3 +158,4 @@ export const authOptions: AuthOptions = {
 //   // Secret used to sign tokens
 //   secret: process.env.NEXTAUTH_SECRET,
 // }
+

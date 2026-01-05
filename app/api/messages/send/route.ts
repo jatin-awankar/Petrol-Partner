@@ -17,19 +17,19 @@ export async function POST(req: Request) {
     if (!chat_room_id || !receiver_id || !content)
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
 
-    // Verify sender is part of this chat room
+    // Verify sender is part of this chat room (optimized: select only id)
     const roomCheck = await query(
-      `SELECT * FROM chat_rooms WHERE id = $1 AND (driver_id = $2 OR passenger_id = $2)`,
+      `SELECT id FROM chat_rooms WHERE id = $1 AND (driver_id = $2 OR passenger_id = $2)`,
       [chat_room_id, sender_id]
     );
 
     if (roomCheck.rowCount === 0)
       return NextResponse.json({ error: "Unauthorized or invalid chat room" }, { status: 403 });
 
-    // Insert message
+    // Insert message (optimized: return only needed columns)
     const result = await query(
       `INSERT INTO messages (chat_room_id, sender_id, receiver_id, content)
-       VALUES ($1, $2, $3, $4) RETURNING *`,
+       VALUES ($1, $2, $3, $4) RETURNING id, chat_room_id, sender_id, receiver_id, content, created_at, is_read`,
       [chat_room_id, sender_id, receiver_id, content]
     );
 

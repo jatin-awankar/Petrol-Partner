@@ -13,18 +13,18 @@ export async function GET(req: NextRequest, { params }: { params: any }) {
     }
     const { chat_room_id } = await params;
 
-    // Check if user belongs to this chat room
+    // Check if user belongs to this chat room (optimized: select only id)
     const roomCheck = await query(
-      `SELECT * FROM chat_rooms WHERE id = $1 AND (driver_id = $2 OR passenger_id = $2)`,
+      `SELECT id FROM chat_rooms WHERE id = $1 AND (driver_id = $2 OR passenger_id = $2)`,
       [chat_room_id, userId]
     );
 
     if (roomCheck.rowCount === 0)
       return NextResponse.json({ error: "Unauthorized or invalid chat room" }, { status: 403 });
 
-    // Fetch messages
+    // Fetch messages (optimized: select only needed columns)
     const messages = await query(
-      `SELECT * FROM messages WHERE chat_room_id = $1 ORDER BY created_at ASC`,
+      `SELECT id, chat_room_id, sender_id, receiver_id, content, created_at, is_read FROM messages WHERE chat_room_id = $1 ORDER BY created_at ASC`,
       [chat_room_id]
     );
 

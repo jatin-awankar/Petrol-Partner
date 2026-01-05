@@ -72,7 +72,8 @@ export default function RegisterPage() {
           placeholder="Full Name"
           value={formData.full_name}
           onChange={handleChange}
-          className="w-full border p-2 rounded-md bg-background text-foreground"
+          className="border border-gray-300 rounded-md p-2 w-full mb-4 focus:ring-1 focus:ring-blue-400 outline-none"
+          disabled={loading}
           required
         />
 
@@ -82,7 +83,8 @@ export default function RegisterPage() {
           placeholder="Email Address"
           value={formData.email}
           onChange={handleChange}
-          className="w-full border p-2 rounded-md bg-background text-foreground"
+          className="border border-gray-300 rounded-md p-2 w-full mb-4 focus:ring-1 focus:ring-blue-400 outline-none"
+          disabled={loading}
           required
         />
 
@@ -92,7 +94,8 @@ export default function RegisterPage() {
           placeholder="Password"
           value={formData.password}
           onChange={handleChange}
-          className="w-full border p-2 rounded-md bg-background text-foreground"
+          className="border border-gray-300 rounded-md p-2 w-full mb-4 focus:ring-1 focus:ring-blue-400 outline-none"
+          disabled={loading}
           required
         />
 
@@ -102,13 +105,18 @@ export default function RegisterPage() {
           placeholder="College Name (optional)"
           value={formData.college_name}
           onChange={handleChange}
-          className="w-full border p-2 rounded-md bg-background text-foreground"
+          className="border border-gray-300 rounded-md p-2 w-full mb-4 focus:ring-1 focus:ring-blue-400 outline-none"
+          disabled={loading}
         />
 
         <button
           type="submit"
           disabled={loading}
-          className="w-full bg-primary text-primary-foreground py-2 rounded-md hover:opacity-90"
+          className={`w-full py-2 rounded-md text-white font-semibold transition cursor-pointer ${
+            loading
+              ? "bg-blue-400 cursor-not-allowed"
+              : "bg-blue-600 hover:bg-blue-700"
+          }`}
         >
           {loading ? "Creating Account..." : "Register"}
         </button>

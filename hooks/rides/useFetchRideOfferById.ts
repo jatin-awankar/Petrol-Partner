@@ -3,13 +3,6 @@
 
 import { useState, useEffect, useCallback } from "react";
 
-const getToken = () => {
-  if (typeof window !== "undefined") {
-    return localStorage.getItem("token");
-  }
-  return null;
-};
-
 export function useFetchRideOfferById(id: string | null) {
   const [rideOffer, setRideOffer] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
@@ -27,14 +20,17 @@ export function useFetchRideOfferById(id: string | null) {
 
       try {
         const res = await fetch(`/api/rides/offers/${id}`, {
-          headers: {
-            Authorization: `Bearer ${getToken()}`,
-          },
+          credentials: "include", // Include cookies for NextAuth session
         });
 
-        if (!res.ok) throw new Error("Failed to fetch ride offer");
+        if (!res.ok) {
+          if (res.status === 404) {
+            throw new Error("Ride offer not found");
+          }
+          throw new Error("Failed to fetch ride offer");
+        }
         const data = await res.json();
-        setRideOffer(data);
+        setRideOffer(data.ride || data);
       } catch (err: any) {
         setError(err?.message ?? "Unknown error");
         setRideOffer(null);
@@ -47,7 +43,7 @@ export function useFetchRideOfferById(id: string | null) {
 
   useEffect(() => {
     fetchRideOffer();
-  }, [fetchRideOffer, id]);
+  }, [fetchRideOffer]);
 
   return { rideOffer, loading, error, refetch: fetchRideOffer };
 }

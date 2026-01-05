@@ -21,9 +21,9 @@ export async function POST(req: Request) {
         { status: 400 }
       );
 
-    // Verify chat room and participant
+    // Verify chat room and participant (optimized: select only needed columns)
     const chatRes = await query(
-      "SELECT * FROM chat_rooms WHERE id = $1 AND is_archived = false",
+      "SELECT driver_id, passenger_id FROM chat_rooms WHERE id = $1 AND is_archived = false",
       [chat_room_id]
     );
     if (chatRes.rowCount === 0)

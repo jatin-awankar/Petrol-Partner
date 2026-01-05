@@ -20,8 +20,11 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: 'Invalid booking ID or status' }, { status: 400 });
     }
 
-    // 3️⃣ Fetch the booking
-    const bookingRes = await query('SELECT * FROM bookings WHERE id = $1', [booking_id]);
+    // 3️⃣ Fetch the booking (optimized: select only needed columns)
+    const bookingRes = await query(
+      'SELECT driver_id, passenger_id, status, ride_offer_id, ride_request_id, seats_booked FROM bookings WHERE id = $1',
+      [booking_id]
+    );
     if (bookingRes.rowCount === 0)
       return NextResponse.json({ error: 'Booking not found' }, { status: 404 });
 
@@ -43,7 +46,7 @@ export async function PATCH(req: Request) {
     // 7️⃣ If confirmed, auto-create chat room (only if not already created)
     if (new_status === 'confirmed') {
       const existingChat = await query(
-        `SELECT * FROM chat_rooms WHERE booking_id = $1`,
+        `SELECT id FROM chat_rooms WHERE booking_id = $1`,
         [booking_id]
       );
 
