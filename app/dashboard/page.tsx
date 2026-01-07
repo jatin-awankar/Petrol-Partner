@@ -3,10 +3,9 @@ import { getServerSession } from "next-auth/next";
 import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/authOptions";
 
-import React, { Suspense } from "react";
+import { Suspense } from "react";
 import WelcomeCard from "@/components/dashboard/WelcomeCard";
 import QuickActionCards from "@/components/dashboard/QuickActionCards";
-import StatsCard from "@/components/dashboard/StatsCard";
 import SafetyReminders from "@/components/dashboard/SafetyReminders";
 import RecentActivitySection from "@/components/dashboard/RecentActivitySection";
 import RideSuggestions from "@/components/dashboard/RideSuggestions";

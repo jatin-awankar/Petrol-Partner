@@ -45,7 +45,7 @@ export default function LoginForm() {
         <input
           type="email"
           placeholder="Email"
-          className="border border-gray-300 rounded-md p-2 w-full mb-3 focus:ring-2 focus:ring-blue-400 outline-none"
+          className="border border-gray-300 rounded-md p-2 w-full mb-3 focus:ring-1 focus:ring-blue-400 outline-none"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           disabled={loading}
@@ -55,7 +55,7 @@ export default function LoginForm() {
         <input
           type="password"
           placeholder="Password"
-          className="border border-gray-300 rounded-md p-2 w-full mb-4 focus:ring-2 focus:ring-blue-400 outline-none"
+          className="border border-gray-300 rounded-md p-2 w-full mb-4 focus:ring-1 focus:ring-blue-400 outline-none"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           disabled={loading}
@@ -65,7 +65,7 @@ export default function LoginForm() {
         <button
           type="submit"
           disabled={loading}
-          className={`w-full py-2 rounded-md text-white font-semibold transition ${
+          className={`w-full py-2 rounded-md text-white font-semibold transition cursor-pointer ${
             loading
               ? "bg-blue-400 cursor-not-allowed"
               : "bg-blue-600 hover:bg-blue-700"
@@ -73,11 +73,22 @@ export default function LoginForm() {
         >
           {loading ? "Signing in..." : "Sign In"}
         </button>
+        <p className="text-center text-muted-foreground my-2">or</p>
+        <button
+          onClick={() => signIn("google", { callbackUrl: "/dashboard" })}
+          className={`w-full py-2 rounded-md text-white font-semibold transition border cursor-pointer ${
+            loading
+              ? "cursor-not-allowed"
+              : "hover:bg-accent"
+          }`}
+        >
+          Sign in with Google
+        </button>
       </form>
 
       <p className="text-sm text-gray-500 mt-4 text-center">
         Don’t have an account?{" "}
-        <a href="/signup" className="text-blue-600 hover:underline">
+        <a href="/register" className="text-blue-600 hover:underline">
           Create one
         </a>
       </p>

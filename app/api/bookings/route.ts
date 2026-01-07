@@ -18,8 +18,11 @@ export async function POST(req: Request) {
     if (!ride_offer_id || !ride_request_id || !seats_booked)
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
 
-    // Fetch ride_offer details
-    const rideOfferRes = await dbQuery('SELECT * FROM ride_offers WHERE id = $1 AND status = $2', [ride_offer_id, 'active']);
+    // Fetch ride_offer details (optimized: select only needed columns)
+    const rideOfferRes = await dbQuery(
+      'SELECT id, driver_id, available_seats, price_per_seat FROM ride_offers WHERE id = $1 AND status = $2',
+      [ride_offer_id, 'active']
+    );
     if (rideOfferRes.rowCount === 0)
       return NextResponse.json({ error: 'Ride offer not found or inactive' }, { status: 404 });
 
@@ -28,8 +31,11 @@ export async function POST(req: Request) {
     if (seats_booked > rideOffer.available_seats)
       return NextResponse.json({ error: 'Not enough seats available' }, { status: 400 });
 
-    // Fetch ride_request details
-    const rideRequestRes = await dbQuery('SELECT * FROM ride_requests WHERE id = $1 AND status = $2 AND passenger_id = $3', [ride_request_id, 'active', passengerId]);
+    // Fetch ride_request details (optimized: select only id for validation)
+    const rideRequestRes = await dbQuery(
+      'SELECT id FROM ride_requests WHERE id = $1 AND status = $2 AND passenger_id = $3',
+      [ride_request_id, 'active', passengerId]
+    );
     if (rideRequestRes.rowCount === 0)
       return NextResponse.json({ error: 'Ride request not found or inactive' }, { status: 404 });
 
@@ -40,7 +46,7 @@ export async function POST(req: Request) {
     const bookingRes = await dbQuery(
       `INSERT INTO bookings (ride_offer_id, ride_request_id, driver_id, passenger_id, seats_booked, price_total)
        VALUES ($1,$2,$3,$4,$5,$6)
-       RETURNING *`,
+       RETURNING id, ride_offer_id, ride_request_id, driver_id, passenger_id, seats_booked, price_total, status, created_at`,
       [ride_offer_id, ride_request_id, rideOffer.driver_id, passengerId, seats_booked, price_total]
     );
 

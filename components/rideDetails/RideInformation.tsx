@@ -4,6 +4,7 @@ import React from "react";
 import Skeleton from "react-loading-skeleton";
 import Icon from "../AppIcon";
 import AppImage from "../AppImage";
+import { formatTimeToAmPm, formatUtcToTodayOrDayMonth } from "@/lib/utils";
 
 interface RideInformationProps {
   ride?: any;
@@ -15,6 +16,8 @@ const RideInformation: React.FC<RideInformationProps> = ({
   role = "passenger",
 }) => {
   const isLoading = !ride;
+  const departureTime = formatTimeToAmPm(ride.route.pickupTime)
+  const departureDate = formatUtcToTodayOrDayMonth(ride.date)
 
   return (
     <div className="bg-card rounded-lg p-4 border border-border shadow-soft">
@@ -30,13 +33,13 @@ const RideInformation: React.FC<RideInformationProps> = ({
             </div>
             <div>
               <p className="text-sm font-medium text-foreground">
-                {isLoading ? <Skeleton width={100} /> : ride?.date ?? "—"}
+                {isLoading ? <Skeleton width={100} /> : departureDate ?? "—"}
               </p>
               <p className="text-xs text-muted-foreground">
                 {isLoading ? (
                   <Skeleton width={80} />
                 ) : (
-                  `Departure: ${ride?.route?.pickupTime ?? "—"}`
+                  `Departure: ${departureTime ?? "—"}`
                 )}
               </p>
             </div>
@@ -96,60 +99,72 @@ const RideInformation: React.FC<RideInformationProps> = ({
 
         {/* Vehicle Details */}
         {ride?.type === "offer" && (
-          <div className="flex items-center space-x-3">
-            <div className="w-16 h-12 rounded-lg overflow-hidden">
-              {isLoading ? (
-                <Skeleton height="100%" width="100%" />
-              ) : (
-                <AppImage
-                  src={ride?.vehicle?.image ?? ""}
-                  alt={`${ride?.vehicle?.make ?? ""} ${
-                    ride?.vehicle?.model ?? ""
-                  }`}
-                  className="w-full h-full object-cover"
-                />
+          ride?.vehicle && (ride.vehicle.make || ride.vehicle.model) ? (
+            <div className="flex items-center space-x-3">
+              {ride?.vehicle?.image && (
+                <div className="w-16 h-12 rounded-lg overflow-hidden">
+                  {isLoading ? (
+                    <Skeleton height="100%" width="100%" />
+                  ) : (
+                    <AppImage
+                      src={ride.vehicle.image}
+                      alt={`${ride.vehicle.make ?? ""} ${
+                        ride.vehicle.model ?? ""
+                      }`}
+                      className="w-full h-full object-cover"
+                    />
+                  )}
+                </div>
               )}
-            </div>
-            <div className="flex-1 space-y-1">
-              <p className="text-sm font-medium text-foreground">
-                {isLoading ? (
-                  <Skeleton width={80} />
-                ) : (
-                  `${ride?.vehicle?.make ?? "—"} ${ride?.vehicle?.model ?? ""}`
+              <div className="flex-1 space-y-1">
+                <p className="text-sm font-medium text-foreground">
+                  {isLoading ? (
+                    <Skeleton width={80} />
+                  ) : (
+                    `${ride.vehicle.make ?? "—"} ${ride.vehicle.model ?? ""}`.trim()
+                  )}
+                </p>
+                {(ride.vehicle.color || ride.vehicle.year) && (
+                  <p className="text-xs text-muted-foreground">
+                    {isLoading ? (
+                      <Skeleton width={100} />
+                    ) : (
+                      `${ride.vehicle.color ?? "—"} • ${
+                        ride.vehicle.year ?? "—"
+                      }`
+                    )}
+                  </p>
                 )}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {isLoading ? (
-                  <Skeleton width={100} />
-                ) : (
-                  `${ride?.vehicle?.color ?? "—"} • ${
-                    ride?.vehicle?.year ?? "—"
-                  }`
-                )}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {isLoading ? (
-                  <Skeleton width={80} />
-                ) : (
-                  ride?.vehicle?.plateNumber ?? "—"
-                )}
-              </p>
-            </div>
-            {ride?.vehicle?.fuelEfficiency && (
-              <div className="flex items-center space-x-1">
-                {isLoading ? (
-                  <Skeleton width={30} />
-                ) : (
-                  <>
-                    <Icon name="Fuel" size={14} className="text-success" />
-                    <span className="text-xs text-success font-medium">
-                      {ride.vehicle.fuelEfficiency} km/l
-                    </span>
-                  </>
+                {ride.vehicle.plateNumber && (
+                  <p className="text-xs text-muted-foreground">
+                    {isLoading ? (
+                      <Skeleton width={80} />
+                    ) : (
+                      ride.vehicle.plateNumber
+                    )}
+                  </p>
                 )}
               </div>
-            )}
-          </div>
+              {ride.vehicle.fuelEfficiency && (
+                <div className="flex items-center space-x-1">
+                  {isLoading ? (
+                    <Skeleton width={30} />
+                  ) : (
+                    <>
+                      <Icon name="Fuel" size={14} className="text-success" />
+                      <span className="text-xs text-success font-medium">
+                        {ride.vehicle.fuelEfficiency} km/l
+                      </span>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="text-sm text-muted-foreground">
+              Vehicle details not available.
+            </div>
+          )
         )}
 
         {/* Safety Features */}

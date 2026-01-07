@@ -32,16 +32,17 @@ const DriverPreferences: React.FC<DriverPreferencesProps> = ({
     }
   };
 
-  const getPreferenceColor = (value: string) => {
-    if (!value) return "text-muted-foreground";
+  const getPreferenceColor = (value: string | null | undefined) => {
+    if (!value || typeof value !== 'string') return "text-muted-foreground";
+    const lowerValue = value.toLowerCase();
     if (
-      value.toLowerCase().includes("no") ||
-      value.toLowerCase().includes("not allowed")
+      lowerValue.includes("no") ||
+      lowerValue.includes("not allowed")
     )
       return "text-error";
     if (
-      value.toLowerCase().includes("yes") ||
-      value.toLowerCase().includes("allowed")
+      lowerValue.includes("yes") ||
+      lowerValue.includes("allowed")
     )
       return "text-success";
     return "text-foreground";
@@ -65,33 +66,49 @@ const DriverPreferences: React.FC<DriverPreferencesProps> = ({
     );
   }
 
+  // Handle null/undefined preferences
+  if (!preferences || Object.keys(preferences).length === 0) {
+    return (
+      <div className="bg-card rounded-lg p-4 border border-border shadow-soft">
+        <h3 className="text-lg font-semibold text-foreground mb-4">
+          Driver Preferences
+        </h3>
+        <p className="text-sm text-muted-foreground">
+          No preferences specified.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="bg-card rounded-lg p-4 border border-border shadow-soft">
       <h3 className="text-lg font-semibold text-foreground mb-4">
         Driver Preferences
       </h3>
       <div className="space-y-3">
-        {Object.entries(preferences).map(([key, value]) => (
-          <div key={key} className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 bg-muted rounded-lg flex items-center justify-center">
-                <Icon
-                  name={getPreferenceIcon(key)}
-                  size={16}
-                  className="text-muted-foreground"
-                />
+        {Object.entries(preferences)
+          .filter(([key, value]) => key !== 'notes' && value !== null && value !== undefined && value !== '')
+          .map(([key, value]) => (
+            <div key={key} className="flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <div className="w-8 h-8 bg-muted rounded-lg flex items-center justify-center">
+                  <Icon
+                    name={getPreferenceIcon(key)}
+                    size={16}
+                    className="text-muted-foreground"
+                  />
+                </div>
+                <span className="text-sm font-medium text-foreground capitalize">
+                  {key.replace(/([A-Z])/g, " $1").trim()}
+                </span>
               </div>
-              <span className="text-sm font-medium text-foreground capitalize">
-                {key.replace(/([A-Z])/g, " $1").trim()}
+              <span
+                className={`text-sm font-medium ${getPreferenceColor(String(value))}`}
+              >
+                {value || "—"}
               </span>
             </div>
-            <span
-              className={`text-sm font-medium ${getPreferenceColor(value)}`}
-            >
-              {value || "—"}
-            </span>
-          </div>
-        ))}
+          ))}
       </div>
 
       {/* Additional Notes */}

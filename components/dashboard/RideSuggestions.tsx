@@ -96,8 +96,8 @@ const RideSuggestions: React.FC = () => {
                         {suggestion.driver_id
                           ? suggestion.available_seats &&
                             suggestion.available_seats > 1
-                            ? "Need Partners"
-                            : "Need a Partner"
+                            ? "Need Commuters"
+                            : "Need a Commuter"
                           : "Need a Rider"}
                       </h3>
                       <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded">

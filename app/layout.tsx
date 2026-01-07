@@ -2,10 +2,11 @@
 import type { Metadata } from "next";
 import { Poppins } from "next/font/google";
 import "./globals.css";
-import { Toaster } from "@/components/ui/sonner";
+// import { Toaster } from "@/components/ui/sonner";
 import React from "react";
 import AuthenticatedNavbars from "@/components/AuthenticatedNavbars";
 import ClientProviders from "./providers/ClientProviders";
+import { Analytics } from '@vercel/analytics/next';
 
 const poppins = Poppins({
   subsets: ["latin"],
@@ -35,6 +36,7 @@ export default function RootLayout({
         <ClientProviders>
           <AuthenticatedNavbars />
           {children}
+          <Analytics />
         </ClientProviders>
       </body>
     </html>
