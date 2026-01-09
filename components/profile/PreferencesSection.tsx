@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import Icon from "../AppIcon";
 import {
   Select,
@@ -13,7 +13,7 @@ import { Label } from "../ui/label";
 import { Button } from "../ui/button";
 import Skeleton from "react-loading-skeleton";
 
-interface Preferences {
+export interface Preferences {
   musicPreference?: string;
   smokingPolicy?: string;
   chattiness?: string;
@@ -34,74 +34,209 @@ interface Preferences {
   };
 }
 
-interface PreferencesSectionProps {
-  preferences?: Preferences;
-  onSave: (data: Preferences) => void;
+export interface PreferencesSectionProps {
+  preferences?: Preferences | null;
+  onSave?: (data: Preferences) => void | Promise<void>;
   isExpanded: boolean;
   onToggle: () => void;
   isLoading?: boolean;
+  error?: string | null;
 }
 
+const DEFAULT_PREFERENCES: Preferences = {
+  musicPreference: "",
+  smokingPolicy: "",
+  chattiness: "",
+  notifications: {
+    rideMatches: false,
+    messages: false,
+    payments: false,
+    promotions: false,
+  },
+  privacy: {
+    showProfile: false,
+    shareRideHistory: false,
+    shareLocation: false,
+  },
+  autoAccept: {
+    highRatedUsers: false,
+    sameCollege: false,
+  },
+};
+
 const PreferencesSection: React.FC<PreferencesSectionProps> = ({
-  preferences,
+  preferences = null,
   onSave,
   isExpanded,
   onToggle,
-  isLoading = true,
+  isLoading: externalLoading = false,
+  error: externalError = null,
 }) => {
-  const [formData, setFormData] = useState<Preferences>(preferences || {});
+  const [formData, setFormData] = useState<Preferences>(DEFAULT_PREFERENCES);
   const [isSaving, setIsSaving] = useState(false);
-  const [isloading, setIsLoading] = useState(isLoading);
+  const [isInternalLoading, setIsInternalLoading] = useState(true);
+  const [saveSuccess, setSaveSuccess] = useState(false);
 
-  const musicOptions = [
-    { value: "any", label: "Any music is fine" },
-    { value: "pop", label: "Pop" },
-    { value: "rock", label: "Rock" },
-    { value: "classical", label: "Classical" },
-    { value: "jazz", label: "Jazz" },
-    { value: "no-music", label: "Prefer no music" },
-  ];
+  const isLoading = externalLoading || isInternalLoading;
 
-  const smokingOptions = [
-    { value: "no-smoking", label: "No smoking allowed" },
-    { value: "smoking-ok", label: "Smoking is okay" },
-    { value: "no-preference", label: "No preference" },
-  ];
+  // Configuration arrays
+  const musicOptions = useMemo(
+    () => [
+      { value: "any", label: "Any music is fine" },
+      { value: "pop", label: "Pop" },
+      { value: "rock", label: "Rock" },
+      { value: "classical", label: "Classical" },
+      { value: "jazz", label: "Jazz" },
+      { value: "no-music", label: "Prefer no music" },
+    ],
+    []
+  );
 
-  const chattinessOptions = [
-    { value: "chatty", label: "Love to chat" },
-    { value: "moderate", label: "Moderate conversation" },
-    { value: "quiet", label: "Prefer quiet rides" },
-  ];
+  const smokingOptions = useMemo(
+    () => [
+      { value: "no-smoking", label: "No smoking allowed" },
+      { value: "smoking-ok", label: "Smoking is okay" },
+      { value: "no-preference", label: "No preference" },
+    ],
+    []
+  );
 
-  // Simulate loading delay
+  const chattinessOptions = useMemo(
+    () => [
+      { value: "chatty", label: "Love to chat" },
+      { value: "moderate", label: "Moderate conversation" },
+      { value: "quiet", label: "Prefer quiet rides" },
+    ],
+    []
+  );
+
+  const notificationItems = useMemo(
+    () => [
+      {
+        id: "rideMatches",
+        label: "Ride match notifications",
+        desc: "Get notified when someone matches your ride",
+        key: "rideMatches" as const,
+      },
+      {
+        id: "messages",
+        label: "Message notifications",
+        desc: "Get notified for new messages",
+        key: "messages" as const,
+      },
+      {
+        id: "payments",
+        label: "Payment notifications",
+        desc: "Get notified for payment updates",
+        key: "payments" as const,
+      },
+      {
+        id: "promotions",
+        label: "Promotional notifications",
+        desc: "Receive updates about new features and offers",
+        key: "promotions" as const,
+      },
+    ],
+    []
+  );
+
+  const privacyItems = useMemo(
+    () => [
+      {
+        id: "showProfile",
+        label: "Show my profile to other students",
+        desc: "Allow other verified students to see your profile",
+        key: "showProfile" as const,
+      },
+      {
+        id: "shareRideHistory",
+        label: "Share ride history for better matches",
+        desc: "Help us suggest better ride matches based on your history",
+        key: "shareRideHistory" as const,
+      },
+      {
+        id: "shareLocation",
+        label: "Allow location sharing during rides",
+        desc: "Share your location with emergency contacts during active rides",
+        key: "shareLocation" as const,
+      },
+    ],
+    []
+  );
+
+  const autoAcceptItems = useMemo(
+    () => [
+      {
+        id: "highRatedUsers",
+        label: "Auto-accept rides from highly rated users",
+        desc: "Automatically accept ride requests from users with 4.5+ rating",
+        key: "highRatedUsers" as const,
+      },
+      {
+        id: "sameCollege",
+        label: "Auto-accept rides from same college",
+        desc: "Automatically accept requests from students in your college",
+        key: "sameCollege" as const,
+      },
+    ],
+    []
+  );
+
+  // Initialize from props
   useEffect(() => {
-    const timer = setTimeout(() => {
-      if (preferences) {
-        setFormData(preferences);
-      }
-      setIsLoading(false);
-    }, 800); // skeleton for 0.8s
-    return () => clearTimeout(timer);
+    if (preferences !== null) {
+      const timer = setTimeout(() => {
+        setFormData({
+          ...DEFAULT_PREFERENCES,
+          ...preferences,
+          notifications: {
+            ...DEFAULT_PREFERENCES.notifications,
+            ...(preferences?.notifications ?? {}),
+          },
+          privacy: {
+            ...DEFAULT_PREFERENCES.privacy,
+            ...(preferences?.privacy ?? {}),
+          },
+          autoAccept: {
+            ...DEFAULT_PREFERENCES.autoAccept,
+            ...(preferences?.autoAccept ?? {}),
+          },
+        });
+        setIsInternalLoading(false);
+      }, 300);
+      return () => clearTimeout(timer);
+    } else {
+      setIsInternalLoading(false);
+    }
   }, [preferences]);
 
-  const handleInputChange = <K extends keyof Preferences>(
-    field: K,
-    value: Preferences[K]
-  ) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
-  };
+  const handleInputChange = useCallback(
+    <K extends keyof Preferences>(field: K, value: Preferences[K]) => {
+      setFormData((prev) => ({ ...prev, [field]: value }));
+    },
+    []
+  );
 
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
+    if (!onSave) return;
+
     setIsSaving(true);
-    setTimeout(() => {
-      onSave(formData);
-      setIsSaving(false);
-    }, 1000);
-  };
+    setSaveSuccess(false);
 
-  // Render skeleton when formData is null
-  if (isloading) {
+    try {
+      await onSave(formData);
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch (err) {
+      console.error("Failed to save preferences:", err);
+      // Error is handled by parent component via error prop
+    } finally {
+      setIsSaving(false);
+    }
+  }, [formData, onSave]);
+
+  // Render skeleton when loading
+  if (isLoading) {
     return (
       <div className="bg-card border border-border rounded-lg shadow-card animate-pulse">
         <button
@@ -176,6 +311,18 @@ const PreferencesSection: React.FC<PreferencesSectionProps> = ({
         }`}
       >
         <div className="px-4 pb-6 border-t border-border pt-4 space-y-8">
+          {saveSuccess && (
+            <div className="p-3 bg-success/10 border border-success/20 rounded-lg">
+              <p className="text-sm text-success">Preferences saved successfully!</p>
+            </div>
+          )}
+
+          {externalError && (
+            <div className="p-3 bg-error/10 border border-error/20 rounded-lg">
+              <p className="text-sm text-error">{externalError}</p>
+            </div>
+          )}
+
           {/* Ride Preferences */}
           <section>
             <h4 className="font-medium text-foreground mb-4">
@@ -259,54 +406,31 @@ const PreferencesSection: React.FC<PreferencesSectionProps> = ({
               Notification Settings
             </h4>
             <div className="space-y-3">
-              {[
-                {
-                  id: "rideMatches",
-                  label: "Ride match notifications",
-                  desc: "Get notified when someone matches your ride",
-                  key: "rideMatches",
-                },
-                {
-                  id: "messages",
-                  label: "Message notifications",
-                  desc: "Get notified for new messages",
-                  key: "messages",
-                },
-                {
-                  id: "payments",
-                  label: "Payment notifications",
-                  desc: "Get notified for payment updates",
-                  key: "payments",
-                },
-                {
-                  id: "promotions",
-                  label: "Promotional notifications",
-                  desc: "Receive updates about new features and offers",
-                  key: "promotions",
-                },
-              ].map((item) => (
-                <div key={item.id} className="flex space-x-3">
+              {notificationItems.map((item) => (
+                <div key={item.id} className="flex items-start space-x-3 p-3 border border-border rounded-lg hover:bg-muted/30 transition-colors">
                   <Checkbox
                     id={item.id}
                     checked={
-                      formData.notifications?.[
-                        item.key as keyof typeof formData.notifications
-                      ] || false
+                      formData.notifications?.[item.key] ?? false
                     }
                     onCheckedChange={(checked) =>
                       handleInputChange("notifications", {
                         ...formData.notifications,
-                        [item.key as keyof typeof formData.notifications]:
-                          checked,
+                        [item.key]: checked === true,
                       })
                     }
+                    className="mt-1"
                   />
                   <Label
                     htmlFor={item.id}
-                    className="flex flex-col items-start"
+                    className="flex-1 cursor-pointer"
                   >
-                    <span>{item.label}</span>
-                    <small className="text-muted-foreground">{item.desc}</small>
+                    <span className="block font-medium text-foreground mb-1">
+                      {item.label}
+                    </span>
+                    <small className="text-muted-foreground text-sm">
+                      {item.desc}
+                    </small>
                   </Label>
                 </div>
               ))}
@@ -319,47 +443,29 @@ const PreferencesSection: React.FC<PreferencesSectionProps> = ({
               Privacy Settings
             </h4>
             <div className="space-y-3">
-              {[
-                {
-                  id: "showProfile",
-                  label: "Show my profile to other students",
-                  desc: "Allow other verified students to see your profile",
-                  key: "showProfile",
-                },
-                {
-                  id: "shareRideHistory",
-                  label: "Share ride history for better matches",
-                  desc: "Help us suggest better ride matches based on your history",
-                  key: "shareRideHistory",
-                },
-                {
-                  id: "shareLocation",
-                  label: "Allow location sharing during rides",
-                  desc: "Share your location with emergency contacts during active rides",
-                  key: "shareLocation",
-                },
-              ].map((item) => (
-                <div key={item.id} className="flex space-x-3">
+              {privacyItems.map((item) => (
+                <div key={item.id} className="flex items-start space-x-3 p-3 border border-border rounded-lg hover:bg-muted/30 transition-colors">
                   <Checkbox
                     id={item.id}
-                    checked={
-                      formData.privacy?.[
-                        item.key as keyof typeof formData.privacy
-                      ] || false
-                    }
+                    checked={formData.privacy?.[item.key] ?? false}
                     onCheckedChange={(checked) =>
                       handleInputChange("privacy", {
                         ...formData.privacy,
-                        [item.key as keyof typeof formData.privacy]: checked,
+                        [item.key]: checked === true,
                       })
                     }
+                    className="mt-1"
                   />
                   <Label
                     htmlFor={item.id}
-                    className="flex flex-col items-start"
+                    className="flex-1 cursor-pointer"
                   >
-                    <span>{item.label}</span>
-                    <small className="text-muted-foreground">{item.desc}</small>
+                    <span className="block font-medium text-foreground mb-1">
+                      {item.label}
+                    </span>
+                    <small className="text-muted-foreground text-sm">
+                      {item.desc}
+                    </small>
                   </Label>
                 </div>
               ))}
@@ -372,41 +478,29 @@ const PreferencesSection: React.FC<PreferencesSectionProps> = ({
               Auto-Accept Settings
             </h4>
             <div className="space-y-3">
-              {[
-                {
-                  id: "highRatedUsers",
-                  label: "Auto-accept rides from highly rated users",
-                  desc: "Automatically accept ride requests from users with 4.5+ rating",
-                  key: "highRatedUsers",
-                },
-                {
-                  id: "sameCollege",
-                  label: "Auto-accept rides from same college",
-                  desc: "Automatically accept requests from students in your college",
-                  key: "sameCollege",
-                },
-              ].map((item) => (
-                <div key={item.id} className="flex space-x-3">
+              {autoAcceptItems.map((item) => (
+                <div key={item.id} className="flex items-start space-x-3 p-3 border border-border rounded-lg hover:bg-muted/30 transition-colors">
                   <Checkbox
                     id={item.id}
-                    checked={
-                      formData.autoAccept?.[
-                        item.key as keyof typeof formData.autoAccept
-                      ] || false
-                    }
+                    checked={formData.autoAccept?.[item.key] ?? false}
                     onCheckedChange={(checked) =>
                       handleInputChange("autoAccept", {
                         ...formData.autoAccept,
-                        [item.key as keyof typeof formData.autoAccept]: checked,
+                        [item.key]: checked === true,
                       })
                     }
+                    className="mt-1"
                   />
                   <Label
                     htmlFor={item.id}
-                    className="flex flex-col items-start"
+                    className="flex-1 cursor-pointer"
                   >
-                    <span>{item.label}</span>
-                    <small className="text-muted-foreground">{item.desc}</small>
+                    <span className="block font-medium text-foreground mb-1">
+                      {item.label}
+                    </span>
+                    <small className="text-muted-foreground text-sm">
+                      {item.desc}
+                    </small>
                   </Label>
                 </div>
               ))}
@@ -414,37 +508,23 @@ const PreferencesSection: React.FC<PreferencesSectionProps> = ({
           </section>
 
           {/* Save Button */}
-          <Button
-            variant="default"
-            onClick={handleSave}
-            disabled={isSaving}
-            className="mt-6 w-full sm:w-auto flex items-center"
-          >
-            {isSaving && (
-              <svg
-                className="animate-spin mr-2 h-4 w-4 text-white"
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                ></circle>
-                <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
-                ></path>
-              </svg>
-            )}
-            <span className="flex items-center"></span>
-            {isSaving ? "Saving..." : "Save Preferences"}
-          </Button>
+          {onSave && (
+            <Button
+              variant="default"
+              onClick={handleSave}
+              disabled={isSaving || isLoading}
+              className="mt-6 w-full sm:w-auto flex items-center"
+            >
+              {isSaving ? (
+                <>
+                  <Icon name="Loader" className="animate-spin mr-2" />
+                  Saving...
+                </>
+              ) : (
+                "Save Preferences"
+              )}
+            </Button>
+          )}
         </div>
       </div>
     </div>

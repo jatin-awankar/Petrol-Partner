@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import Icon from "../AppIcon";
 import Skeleton from "react-loading-skeleton";
 import { Button } from "../ui/button";
-import { Edit } from "lucide-react";
+import { Edit, Save } from "lucide-react";
 import { Input } from "../ui/input";
 import {
   Select,
@@ -12,9 +12,8 @@ import {
   SelectValue,
 } from "../ui/select";
 import { Label } from "../ui/label";
-import { toast } from "sonner";
 
-interface User {
+export interface User {
   name?: string;
   phone?: string;
   dateOfBirth?: string;
@@ -22,36 +21,136 @@ interface User {
   emergencyContact?: string;
   emergencyPhone?: string;
   address?: string;
+  email?: string;
+  [key: string]: unknown;
 }
 
-interface PersonalInfoSectionProps {
-  user: User;
-  onSave: (formData: User) => void;
+export interface PersonalInfoSectionProps {
+  user?: User | null;
+  onSave?: (formData: User) => void | Promise<void>;
   isExpanded: boolean;
   onToggle: () => void;
+  isLoading?: boolean;
+  error?: string | null;
 }
 
+const DEFAULT_USER_FORM: User = {
+  name: "",
+  phone: "",
+  dateOfBirth: "",
+  gender: "",
+  emergencyContact: "",
+  emergencyPhone: "",
+  address: "",
+  email: "",
+};
+
 const PersonalInfoSection: React.FC<PersonalInfoSectionProps> = ({
-  user,
+  user = null,
   onSave,
   isExpanded,
   onToggle,
+  isLoading: externalLoading = false,
+  error: externalError = null,
 }) => {
-  const [formData, setFormData] = useState<User | null>(null); // start with null to trigger skeleton
+  const [formData, setFormData] = useState<User>(DEFAULT_USER_FORM);
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [isInternalLoading, setIsInternalLoading] = useState(true);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [saveSuccess, setSaveSuccess] = useState(false);
 
-  const genderOptions = [
-    { value: "male", label: "Male" },
-    { value: "female", label: "Female" },
-    { value: "other", label: "Other" },
-    { value: "prefer-not-to-say", label: "Prefer not to say" },
-  ];
+  const isLoading = externalLoading || isInternalLoading;
 
-  // Simulate loading delay
+  const genderOptions = useMemo(
+    () => [
+      { value: "male", label: "Male" },
+      { value: "female", label: "Female" },
+      { value: "other", label: "Other" },
+      { value: "prefer-not-to-say", label: "Prefer not to say" },
+    ],
+    []
+  );
+
+  // Initialize from props
   useEffect(() => {
-    const timer = setTimeout(() => {
+    if (user !== null) {
+      const timer = setTimeout(() => {
+        setFormData({
+          ...DEFAULT_USER_FORM,
+          name: user?.name ?? "",
+          phone: user?.phone ?? "",
+          dateOfBirth: user?.dateOfBirth ?? "",
+          gender: user?.gender ?? "",
+          emergencyContact: user?.emergencyContact ?? "",
+          emergencyPhone: user?.emergencyPhone ?? "",
+          address: user?.address ?? "",
+          email: user?.email ?? "",
+        });
+        setIsInternalLoading(false);
+      }, 300);
+      return () => clearTimeout(timer);
+    } else {
+      setIsInternalLoading(false);
+    }
+  }, [user]);
+
+  const handleInputChange = useCallback(
+    (field: keyof User, value: string) => {
+      setFormData((prev) => ({ ...prev, [field]: value }));
+      setFormError(null);
+    },
+    []
+  );
+
+  const validateForm = useCallback((): boolean => {
+    if (!formData.name?.trim()) {
+      setFormError("Name is required");
+      return false;
+    }
+    if (!formData.phone?.trim()) {
+      setFormError("Phone number is required");
+      return false;
+    }
+    // Basic phone validation
+    const phoneRegex = /^[\d\s\-\+\(\)]{10,}$/;
+    if (!phoneRegex.test(formData.phone.trim())) {
+      setFormError("Please enter a valid phone number");
+      return false;
+    }
+    return true;
+  }, [formData]);
+
+  const handleSave = useCallback(async () => {
+    if (!onSave) return;
+
+    setFormError(null);
+
+    if (!validateForm()) {
+      return;
+    }
+
+    setIsSaving(true);
+
+    try {
+      await onSave(formData);
+      setSaveSuccess(true);
+      setIsEditing(false);
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch (err) {
+      setFormError(
+        err instanceof Error ? err.message : "Failed to save profile. Please try again."
+      );
+      console.error("Save personal info error:", err);
+    } finally {
+      setIsSaving(false);
+    }
+  }, [formData, onSave, validateForm]);
+
+  const handleCancel = useCallback(() => {
+    if (user) {
       setFormData({
+        ...DEFAULT_USER_FORM,
         name: user?.name ?? "",
         phone: user?.phone ?? "",
         dateOfBirth: user?.dateOfBirth ?? "",
@@ -59,41 +158,17 @@ const PersonalInfoSection: React.FC<PersonalInfoSectionProps> = ({
         emergencyContact: user?.emergencyContact ?? "",
         emergencyPhone: user?.emergencyPhone ?? "",
         address: user?.address ?? "",
+        email: user?.email ?? "",
       });
-    }, 800); // skeleton for 0.8s
-    return () => clearTimeout(timer);
+    } else {
+      setFormData(DEFAULT_USER_FORM);
+    }
+    setIsEditing(false);
+    setFormError(null);
   }, [user]);
 
-  const handleInputChange = (field: string, value: string) =>
-    setFormData((prev) => ({ ...prev, [field]: value }));
-
-  const handleSave = () => {
-    setIsSaving(true);
-    setTimeout(() => {
-      if (formData) {
-        onSave(formData);
-      }
-      toast.success("Profile saved successfully!")
-      setIsEditing(false);
-      setIsSaving(false);
-    }, 1000);
-  };
-
-  const handleCancel = () => {
-    setFormData({
-      name: user?.name,
-      phone: user?.phone,
-      dateOfBirth: user?.dateOfBirth,
-      gender: user?.gender,
-      emergencyContact: user?.emergencyContact,
-      emergencyPhone: user?.emergencyPhone,
-      address: user?.address,
-    });
-    setIsEditing(false);
-  };
-
-  // Render skeleton when formData is null
-  if (!formData) {
+  // Render skeleton when loading
+  if (isLoading) {
     return (
       <div className="bg-card border border-border rounded-lg shadow-card animate-pulse">
         <button
@@ -142,6 +217,18 @@ const PersonalInfoSection: React.FC<PersonalInfoSectionProps> = ({
         }`}
       >
         <div className="px-4 pb-4 border-t border-border pt-4 space-y-6">
+          {saveSuccess && (
+            <div className="p-3 bg-success/10 border border-success/20 rounded-lg">
+              <p className="text-sm text-success">Profile saved successfully!</p>
+            </div>
+          )}
+
+          {(externalError || formError) && (
+            <div className="p-3 bg-error/10 border border-error/20 rounded-lg">
+              <p className="text-sm text-error">{externalError || formError}</p>
+            </div>
+          )}
+
           {!isEditing ? (
             <>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -149,165 +236,223 @@ const PersonalInfoSection: React.FC<PersonalInfoSectionProps> = ({
                   <label className="text-sm font-medium text-foreground">
                     Full Name
                   </label>
-                  <p className="text-muted-foreground">{formData?.name}</p>
+                  <p className="text-muted-foreground mt-1">
+                    {formData.name || "Not provided"}
+                  </p>
                 </div>
                 <div>
                   <label className="text-sm font-medium text-foreground">
                     Phone Number
                   </label>
-                  <p className="text-muted-foreground">{formData?.phone}</p>
+                  <p className="text-muted-foreground mt-1">
+                    {formData.phone || "Not provided"}
+                  </p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-foreground">
+                    Email
+                  </label>
+                  <p className="text-muted-foreground mt-1">
+                    {formData.email || "Not provided"}
+                  </p>
                 </div>
                 <div>
                   <label className="text-sm font-medium text-foreground">
                     Date of Birth
                   </label>
-                  <p className="text-muted-foreground">
-                    {formData?.dateOfBirth}
+                  <p className="text-muted-foreground mt-1">
+                    {formData.dateOfBirth
+                      ? new Date(formData.dateOfBirth).toLocaleDateString()
+                      : "Not provided"}
                   </p>
                 </div>
                 <div>
                   <label className="text-sm font-medium text-foreground">
                     Gender
                   </label>
-                  <p className="text-muted-foreground capitalize">
-                    {formData?.gender}
+                  <p className="text-muted-foreground mt-1 capitalize">
+                    {formData.gender
+                      ? genderOptions.find((opt) => opt.value === formData.gender)?.label ||
+                        formData.gender
+                      : "Not provided"}
                   </p>
                 </div>
               </div>
 
-              <div className="border-t border-border pt-4 space-y-2">
-                <h4 className="font-medium text-foreground">
-                  Emergency Contact
-                </h4>
-                <p className="text-sm text-muted-foreground">
-                  {formData?.emergencyContact} — {formData?.emergencyPhone}
-                </p>
-              </div>
+              {(formData.emergencyContact || formData.emergencyPhone) && (
+                <div className="border-t border-border pt-4 space-y-2">
+                  <h4 className="font-medium text-foreground">
+                    Emergency Contact
+                  </h4>
+                  <p className="text-sm text-muted-foreground">
+                    {formData.emergencyContact || "Not provided"}
+                    {formData.emergencyContact && formData.emergencyPhone && " — "}
+                    {formData.emergencyPhone || ""}
+                  </p>
+                </div>
+              )}
 
-              <div className="border-t border-border pt-4">
-                <label className="text-sm font-medium text-foreground">
-                  Address
-                </label>
-                <p className="text-muted-foreground">{formData?.address}</p>
-              </div>
+              {formData.address && (
+                <div className="border-t border-border pt-4">
+                  <label className="text-sm font-medium text-foreground">
+                    Address
+                  </label>
+                  <p className="text-muted-foreground mt-1">{formData.address}</p>
+                </div>
+              )}
 
-              <Button
-                variant="outline"
-                onClick={() => setIsEditing(true)}
-                className="mt-4 text-foreground/60"
-              >
-                <Edit />
-                Edit Information
-              </Button>
+              {onSave && (
+                <Button
+                  variant="outline"
+                  onClick={() => setIsEditing(true)}
+                  className="mt-4"
+                >
+                  <Edit />
+                  Edit Information
+                </Button>
+              )}
             </>
           ) : (
             <>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Label>Full Name</Label>
-                <Input
-                  type="text"
-                  value={formData?.name}
-                  onChange={(e) => handleInputChange("name", e?.target?.value)}
-                  required
-                />
+                <div className="space-y-2">
+                  <Label htmlFor="name">Full Name *</Label>
+                  <Input
+                    id="name"
+                    type="text"
+                    value={formData.name ?? ""}
+                    onChange={(e) => handleInputChange("name", e.target.value)}
+                    required
+                    disabled={isSaving}
+                    placeholder="Enter your full name"
+                  />
+                </div>
 
-                <Label>Phone Number</Label>
-                <Input
-                  type="tel"
-                  value={formData?.phone}
-                  onChange={(e) => handleInputChange("phone", e?.target?.value)}
-                  required
-                />
+                <div className="space-y-2">
+                  <Label htmlFor="phone">Phone Number *</Label>
+                  <Input
+                    id="phone"
+                    type="tel"
+                    value={formData.phone ?? ""}
+                    onChange={(e) => handleInputChange("phone", e.target.value)}
+                    required
+                    disabled={isSaving}
+                    placeholder="Enter phone number"
+                  />
+                </div>
 
-                <Label>Date of Birth</Label>
-                <Input
-                  type="date"
-                  value={formData?.dateOfBirth}
-                  onChange={(e) =>
-                    handleInputChange("dateOfBirth", e?.target?.value)
-                  }
-                  required
-                />
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    value={formData.email ?? ""}
+                    onChange={(e) => handleInputChange("email", e.target.value)}
+                    disabled={isSaving}
+                    placeholder="Enter email address"
+                  />
+                </div>
 
-                <Label>Gender Preference</Label>
-                <Select
-                  value={formData?.gender || ""}
-                  onValueChange={(value) => handleInputChange("gender", value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select Gender" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {genderOptions.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div className="space-y-2">
+                  <Label htmlFor="dateOfBirth">Date of Birth</Label>
+                  <Input
+                    id="dateOfBirth"
+                    type="date"
+                    value={formData.dateOfBirth ?? ""}
+                    onChange={(e) =>
+                      handleInputChange("dateOfBirth", e.target.value)
+                    }
+                    disabled={isSaving}
+                    max={new Date().toISOString().split("T")[0]}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="gender">Gender</Label>
+                  <Select
+                    value={formData.gender || ""}
+                    onValueChange={(value) => handleInputChange("gender", value)}
+                    disabled={isSaving}
+                  >
+                    <SelectTrigger id="gender">
+                      <SelectValue placeholder="Select Gender" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {genderOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
               <div className="border-t border-border pt-4 space-y-4">
                 <h4 className="font-medium text-foreground">
                   Emergency Contact
                 </h4>
-                <Label>Contact Name</Label>
-                <Input
-                  type="text"
-                  value={formData?.emergencyContact}
-                  onChange={(e) =>
-                    handleInputChange("emergencyContact", e?.target?.value)
-                  }
-                  required
-                />
+                <div className="space-y-2">
+                  <Label htmlFor="emergencyContact">Contact Name</Label>
+                  <Input
+                    id="emergencyContact"
+                    type="text"
+                    value={formData.emergencyContact ?? ""}
+                    onChange={(e) =>
+                      handleInputChange("emergencyContact", e.target.value)
+                    }
+                    disabled={isSaving}
+                    placeholder="Enter emergency contact name"
+                  />
+                </div>
 
-                <Label>Contact Phone</Label>
+                <div className="space-y-2">
+                  <Label htmlFor="emergencyPhone">Contact Phone</Label>
+                  <Input
+                    id="emergencyPhone"
+                    type="tel"
+                    value={formData.emergencyPhone ?? ""}
+                    onChange={(e) =>
+                      handleInputChange("emergencyPhone", e.target.value)
+                    }
+                    disabled={isSaving}
+                    placeholder="Enter emergency contact phone"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="address">Address</Label>
                 <Input
-                  type="tel"
-                  value={formData?.emergencyPhone}
-                  onChange={(e) =>
-                    handleInputChange("emergencyPhone", e?.target?.value)
-                  }
-                  required
+                  id="address"
+                  type="text"
+                  value={formData.address ?? ""}
+                  onChange={(e) => handleInputChange("address", e.target.value)}
+                  disabled={isSaving}
+                  placeholder="Enter your address"
                 />
               </div>
 
-              <Label>Address</Label>
-              <Input
-                type="text"
-                value={formData?.address}
-                onChange={(e) => handleInputChange("address", e?.target?.value)}
-                className="border-t border-border pt-4"
-              />
-
               <div className="flex space-x-3 pt-4">
-                <Button
-                  variant="default"
-                  onClick={handleSave}
-                  disabled={isSaving}
-                >
-                  {isSaving && (
-                    <span className="animate-spin mr-2 inline-block align-middle">
-                      {/* You can replace this with a spinner icon if you have one */}
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24">
-                        <circle
-                          className="opacity-25"
-                          cx="12"
-                          cy="12"
-                          r="10"
-                          stroke="currentColor"
-                          strokeWidth="4"
-                        ></circle>
-                        <path
-                          className="opacity-75"
-                          fill="currentColor"
-                          d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
-                        ></path>
-                      </svg>
-                    </span>
-                  )}
-                  Save Changes
-                </Button>
+                {onSave && (
+                  <Button
+                    variant="default"
+                    onClick={handleSave}
+                    disabled={isSaving}
+                  >
+                    {isSaving ? (
+                      <>
+                        <Icon name="Loader" className="animate-spin mr-2" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Save />
+                        Save Changes
+                      </>
+                    )}
+                  </Button>
+                )}
                 <Button
                   variant="outline"
                   onClick={handleCancel}
