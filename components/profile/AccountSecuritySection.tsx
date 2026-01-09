@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import Icon from "../AppIcon";
 import Skeleton from "react-loading-skeleton";
 import { Button } from "../ui/button";
@@ -6,25 +6,56 @@ import { Download, Edit, LogOut, Save, Trash2 } from "lucide-react";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 
-interface SecuritySettings {
-  twoFactorEnabled?: boolean;
-  // Add other security settings fields as needed
+export interface LoginActivity {
+  id: number | string;
+  device: string;
+  location?: string;
+  time?: string;
+  current?: boolean;
+  ipAddress?: string;
+  lastActive?: string;
 }
 
-interface AccountSecuritySectionProps {
-  securitySettings: SecuritySettings;
-  onSave: () => void;
+export interface SecuritySettings {
+  twoFactorEnabled?: boolean;
+  twoFactorMethod?: "SMS" | "Email" | "App";
+  passwordLastChanged?: string;
+  [key: string]: unknown;
+}
+
+export interface AccountSecuritySectionProps {
+  securitySettings?: SecuritySettings | null;
+  loginActivity?: LoginActivity[] | null;
+  onSave?: (data: Partial<SecuritySettings>) => void | Promise<void>;
+  onPasswordChange?: (passwords: {
+    currentPassword: string;
+    newPassword: string;
+  }) => void | Promise<void>;
+  onToggle2FA?: (enabled: boolean) => void | Promise<void>;
+  onLogoutDevice?: (deviceId: number | string) => void | Promise<void>;
+  onDownloadData?: () => void | Promise<void>;
+  onDeleteAccount?: () => void | Promise<void>;
   isExpanded: boolean;
   onToggle: () => void;
+  isLoading?: boolean;
+  error?: string | null;
 }
 
 const AccountSecuritySection: React.FC<AccountSecuritySectionProps> = ({
-  securitySettings,
+  securitySettings = null,
+  loginActivity = null,
   onSave,
+  onPasswordChange,
+  onToggle2FA,
+  onLogoutDevice,
+  onDownloadData,
+  onDeleteAccount,
   isExpanded,
   onToggle,
+  isLoading: externalLoading = false,
+  error: externalError = null,
 }) => {
-  const [isLoading, setIsLoading] = useState(true);
+  const [isInternalLoading, setIsInternalLoading] = useState(true);
   const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [passwordData, setPasswordData] = useState({
     currentPassword: "",
@@ -32,94 +63,143 @@ const AccountSecuritySection: React.FC<AccountSecuritySectionProps> = ({
     confirmPassword: "",
   });
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
+  const [twoFactorMethod, setTwoFactorMethod] = useState<"SMS" | "Email" | "App">("SMS");
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [isEnabling2FA, setIsEnabling2FA] = useState(false);
-  const [loginActivity, setLoginActivity] = useState<
-    Array<{
-      id: number;
-      device: string;
-      location?: string;
-      time?: string;
-      current?: boolean;
-    }>
-  >([]);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [passwordSuccess, setPasswordSuccess] = useState(false);
 
-  // Simulated loading for skeleton effect
+  // Derived state
+  const isLoading = externalLoading || isInternalLoading;
+  // Support both separate prop and embedded in securitySettings
+  const displayedLoginActivity = loginActivity ?? 
+    (securitySettings && 'loginActivity' in securitySettings 
+      ? (securitySettings.loginActivity as LoginActivity[]) ?? [] 
+      : []);
+  // Support both naming conventions: passwordLastChanged and lastPasswordChange
+  const passwordLastChanged = securitySettings?.passwordLastChanged ?? 
+    (securitySettings && 'lastPasswordChange' in securitySettings 
+      ? securitySettings.lastPasswordChange as string | undefined 
+      : null);
+
+  // Initialize from props
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setTwoFactorEnabled(securitySettings?.twoFactorEnabled ?? false);
-      setLoginActivity([
-        {
-          id: 1,
-          device: "iPhone 13 Pro",
-          location: "Mumbai, Maharashtra",
-          time: "2 hours ago",
-          current: true,
-        },
-        {
-          id: 2,
-          device: "Chrome on Windows",
-          location: "Mumbai, Maharashtra",
-          time: "1 day ago",
-          current: false,
-        },
-        {
-          id: 3,
-          device: "Safari on MacBook",
-          location: "Pune, Maharashtra",
-          time: "3 days ago",
-          current: false,
-        },
-      ]);
-      setIsLoading(false);
-    }, 800);
+    if (securitySettings !== null || loginActivity !== null) {
+      const timer = setTimeout(() => {
+        setTwoFactorEnabled(securitySettings?.twoFactorEnabled ?? false);
+        setTwoFactorMethod(securitySettings?.twoFactorMethod ?? "SMS");
+        setIsInternalLoading(false);
+      }, 300);
 
-    return () => clearTimeout(timer);
-  }, [securitySettings]);
+      return () => clearTimeout(timer);
+    } else {
+      setIsInternalLoading(false);
+    }
+  }, [securitySettings, loginActivity]);
 
-  const handlePasswordChange = async () => {
-    if (passwordData.newPassword !== passwordData.confirmPassword) {
-      alert("Passwords do not match");
+  const handlePasswordChange = useCallback(async () => {
+    // Validation
+    if (!passwordData.currentPassword.trim()) {
+      setPasswordError("Current password is required");
       return;
     }
+
+    if (!passwordData.newPassword.trim()) {
+      setPasswordError("New password is required");
+      return;
+    }
+
+    if (passwordData.newPassword.length < 8) {
+      setPasswordError("New password must be at least 8 characters");
+      return;
+    }
+
+    if (passwordData.newPassword !== passwordData.confirmPassword) {
+      setPasswordError("Passwords do not match");
+      return;
+    }
+
+    setPasswordError(null);
     setIsChangingPassword(true);
-    setTimeout(() => {
-      setIsChangingPassword(false);
+
+    try {
+      if (onPasswordChange) {
+        await onPasswordChange({
+          currentPassword: passwordData.currentPassword,
+          newPassword: passwordData.newPassword,
+        });
+      }
+      
+      setPasswordSuccess(true);
       setShowPasswordForm(false);
       setPasswordData({
         currentPassword: "",
         newPassword: "",
         confirmPassword: "",
       });
-      alert("Password changed successfully");
-    }, 1500);
-  };
+      
+      // Clear success message after 3 seconds
+      setTimeout(() => setPasswordSuccess(false), 3000);
+    } catch (err) {
+      setPasswordError(err instanceof Error ? err.message : "Failed to change password. Please try again.");
+    } finally {
+      setIsChangingPassword(false);
+    }
+  }, [passwordData, onPasswordChange]);
 
-  const handleToggle2FA = async () => {
+  const handleToggle2FA = useCallback(async () => {
     setIsEnabling2FA(true);
-    setTimeout(() => {
-      const newValue = !twoFactorEnabled;
+    const newValue = !twoFactorEnabled;
+
+    try {
+      if (onToggle2FA) {
+        await onToggle2FA(newValue);
+      }
       setTwoFactorEnabled(newValue);
-      onSave?.();
+      if (onSave) {
+        await onSave({ twoFactorEnabled: newValue });
+      }
+    } catch (err) {
+      console.error("Failed to toggle 2FA:", err);
+      // Optionally show error to user
+    } finally {
       setIsEnabling2FA(false);
-    }, 1000);
-  };
+    }
+  }, [twoFactorEnabled, onToggle2FA, onSave]);
 
-  const handleLogoutDevice = (deviceId: number) => {
-    alert(`Logged out from device ${deviceId}`);
-  };
+  const handleLogoutDevice = useCallback(async (deviceId: number | string) => {
+    if (!deviceId) return;
+    
+    try {
+      if (onLogoutDevice) {
+        await onLogoutDevice(deviceId);
+      }
+    } catch (err) {
+      console.error("Failed to logout device:", err);
+    }
+  }, [onLogoutDevice]);
 
-  const handleDeleteAccount = () => {
+  const handleDeleteAccount = useCallback(() => {
     if (
       window.confirm(
         "Are you sure you want to delete your account? This action cannot be undone."
       )
     ) {
-      alert(
-        "Account deletion process initiated. You will receive an email with further instructions."
-      );
+      if (onDeleteAccount) {
+        onDeleteAccount();
+      }
     }
-  };
+  }, [onDeleteAccount]);
+
+  const handleDownloadData = useCallback(async () => {
+    try {
+      if (onDownloadData) {
+        await onDownloadData();
+      }
+    } catch (err) {
+      console.error("Failed to download data:", err);
+    }
+  }, [onDownloadData]);
 
   // 🔸 Skeleton loader
   if (isLoading) {
@@ -183,17 +263,34 @@ const AccountSecuritySection: React.FC<AccountSecuritySectionProps> = ({
             {/* Password Management */}
             <div>
               <h4 className="font-medium text-foreground mb-4">Password</h4>
+              {passwordSuccess && (
+                <div className="mb-4 p-3 bg-success/10 border border-success/20 rounded-lg">
+                  <p className="text-sm text-success">Password changed successfully!</p>
+                </div>
+              )}
+              
+              {externalError && (
+                <div className="mb-4 p-3 bg-error/10 border border-error/20 rounded-lg">
+                  <p className="text-sm text-error">{externalError}</p>
+                </div>
+              )}
+
               {!showPasswordForm ? (
                 <div className="flex flex-col sm:flex-row gap-2 justify-between p-3 border border-border rounded-lg">
                   <div>
                     <p className="font-medium text-foreground">Password</p>
                     <p className="text-sm text-muted-foreground">
-                      Last changed 30 days ago
+                      {passwordLastChanged 
+                        ? `Last changed ${passwordLastChanged}` 
+                        : "Password has never been changed"}
                     </p>
                   </div>
                   <Button
                     variant="outline"
-                    onClick={() => setShowPasswordForm(true)}
+                    onClick={() => {
+                      setShowPasswordForm(true);
+                      setPasswordError(null);
+                    }}
                   >
                     <Edit />
                     Change Password
@@ -204,51 +301,85 @@ const AccountSecuritySection: React.FC<AccountSecuritySectionProps> = ({
                   <h5 className="font-medium text-foreground mb-3">
                     Change Password
                   </h5>
+                  {passwordError && (
+                    <div className="mb-3 p-2 bg-error/10 border border-error/20 rounded text-sm text-error">
+                      {passwordError}
+                    </div>
+                  )}
                   <div className="space-y-3">
-                    <Label>Current Password</Label>
-                    <Input
-                      type="password"
-                      value={passwordData.currentPassword}
-                      onChange={(e) =>
-                        setPasswordData({
-                          ...passwordData,
-                          currentPassword: e.target.value,
-                        })
-                      }
-                      required
-                    />
-                    <Label>New Password</Label>
-                    <Input
-                      type="password"
-                      value={passwordData.newPassword}
-                      onChange={(e) =>
-                        setPasswordData({
-                          ...passwordData,
-                          newPassword: e.target.value,
-                        })
-                      }
-                      required
-                    />
-                    <Label>Confirm New Password</Label>
-                    <Input
-                      type="password"
-                      value={passwordData.confirmPassword}
-                      onChange={(e) =>
-                        setPasswordData({
-                          ...passwordData,
-                          confirmPassword: e.target.value,
-                        })
-                      }
-                      required
-                    />
+                    <div className="space-y-2">
+                      <Label htmlFor="current-password">Current Password</Label>
+                      <Input
+                        id="current-password"
+                        type="password"
+                        value={passwordData.currentPassword}
+                        onChange={(e) => {
+                          setPasswordData({
+                            ...passwordData,
+                            currentPassword: e.target.value,
+                          });
+                          setPasswordError(null);
+                        }}
+                        required
+                        disabled={isChangingPassword}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="new-password">New Password</Label>
+                      <Input
+                        id="new-password"
+                        type="password"
+                        value={passwordData.newPassword}
+                        onChange={(e) => {
+                          setPasswordData({
+                            ...passwordData,
+                            newPassword: e.target.value,
+                          });
+                          setPasswordError(null);
+                        }}
+                        required
+                        disabled={isChangingPassword}
+                        minLength={8}
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Must be at least 8 characters
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="confirm-password">Confirm New Password</Label>
+                      <Input
+                        id="confirm-password"
+                        type="password"
+                        value={passwordData.confirmPassword}
+                        onChange={(e) => {
+                          setPasswordData({
+                            ...passwordData,
+                            confirmPassword: e.target.value,
+                          });
+                          setPasswordError(null);
+                        }}
+                        required
+                        disabled={isChangingPassword}
+                        minLength={8}
+                      />
+                    </div>
                     <div className="flex space-x-3">
                       <Button
                         variant="default"
                         onClick={handlePasswordChange}
-                        disabled={isChangingPassword}
+                        disabled={isChangingPassword || !passwordData.currentPassword || !passwordData.newPassword}
                       >
-                        <Save />
-                        Update Password
+                        {isChangingPassword ? (
+                          <>
+                            <Icon name="Loader" className="animate-spin mr-2" />
+                            Updating...
+                          </>
+                        ) : (
+                          <>
+                            <Save />
+                            Update Password
+                          </>
+                        )}
                       </Button>
                       <Button
                         variant="outline"
@@ -259,6 +390,7 @@ const AccountSecuritySection: React.FC<AccountSecuritySectionProps> = ({
                             newPassword: "",
                             confirmPassword: "",
                           });
+                          setPasswordError(null);
                         }}
                         disabled={isChangingPassword}
                       >
@@ -280,7 +412,7 @@ const AccountSecuritySection: React.FC<AccountSecuritySectionProps> = ({
                   <p className="font-medium text-foreground">2FA Protection</p>
                   <p className="text-sm text-muted-foreground">
                     {twoFactorEnabled
-                      ? "Enabled via SMS"
+                      ? `Enabled via ${twoFactorMethod}`
                       : "Add an extra layer of security"}
                   </p>
                 </div>
@@ -304,49 +436,70 @@ const AccountSecuritySection: React.FC<AccountSecuritySectionProps> = ({
               <h4 className="font-medium text-foreground mb-4">
                 Login Activity
               </h4>
-              <div className="space-y-3">
-                {loginActivity.map((activity) => (
-                  <div
-                    key={activity.id}
-                    className="flex items-center justify-between p-3 border border-border rounded-lg"
-                  >
-                    <div className="flex items-center space-x-3">
-                      <Icon
-                        name={
-                          activity.device.includes("iPhone")
-                            ? "Smartphone"
-                            : "Monitor"
-                        }
-                        size={20}
-                        className="text-muted-foreground"
-                      />
-                      <div>
-                        <p className="font-medium text-foreground">
-                          {activity.device}
-                          {activity.current && (
-                            <span className="ml-2 text-xs bg-success/10 text-success px-2 py-1 rounded-full">
-                              Current
-                            </span>
-                          )}
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                          {activity.location} • {activity.time}
-                        </p>
-                      </div>
-                    </div>
-                    {!activity.current && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleLogoutDevice(activity.id)}
-                        className="text-error hover:text-error"
+              {displayedLoginActivity.length > 0 ? (
+                <div className="space-y-3">
+                  {displayedLoginActivity.map((activity) => {
+                    if (!activity?.id || !activity?.device) return null;
+                    
+                    const deviceName = activity.device || "Unknown Device";
+                    const isMobile = deviceName.toLowerCase().includes("iphone") || 
+                                   deviceName.toLowerCase().includes("android") ||
+                                   deviceName.toLowerCase().includes("mobile");
+                    
+                    return (
+                      <div
+                        key={activity.id}
+                        className="flex items-center justify-between p-3 border border-border rounded-lg"
                       >
-                        <LogOut className="text-gray-400" />
-                      </Button>
-                    )}
-                  </div>
-                ))}
-              </div>
+                        <div className="flex items-center space-x-3 flex-1 min-w-0">
+                          <Icon
+                            name={isMobile ? "Smartphone" : "Monitor"}
+                            size={20}
+                            className="text-muted-foreground shrink-0"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <p className="font-medium text-foreground truncate">
+                              {deviceName}
+                              {activity.current && (
+                                <span className="ml-2 text-xs bg-success/10 text-success px-2 py-1 rounded-full">
+                                  Current
+                                </span>
+                              )}
+                            </p>
+                            <p className="text-sm text-muted-foreground truncate">
+                              {[activity.location, activity.time]
+                                .filter(Boolean)
+                                .join(" • ") || "No location information"}
+                              {activity.ipAddress && ` • ${activity.ipAddress}`}
+                            </p>
+                            {activity.lastActive && (
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Last active: {activity.lastActive}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        {!activity.current && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleLogoutDevice(activity.id)}
+                            className="text-error hover:text-error shrink-0 ml-2"
+                            title="Logout from this device"
+                          >
+                            <LogOut className="text-gray-400" />
+                          </Button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="text-center py-8 border border-border rounded-lg">
+                  <Icon name="Monitor" size={32} className="text-muted-foreground mx-auto mb-2" />
+                  <p className="text-sm text-muted-foreground">No login activity found</p>
+                </div>
+              )}
             </div>
 
             {/* Account Management */}
@@ -365,7 +518,7 @@ const AccountSecuritySection: React.FC<AccountSecuritySectionProps> = ({
                         Get a copy of your account information and ride history
                       </p>
                     </div>
-                    <Button variant="outline">
+                    <Button variant="outline" onClick={handleDownloadData}>
                       <Download />
                       Download
                     </Button>

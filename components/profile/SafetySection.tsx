@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import Icon from "../AppIcon";
 import Skeleton from "react-loading-skeleton";
 import { Button } from "../ui/button";
@@ -7,124 +7,216 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Checkbox } from "../ui/checkbox";
 
-interface TrustedContact {
-  id: number;
+export interface TrustedContact {
+  id: number | string;
   name: string;
   phone: string;
-  relationship: string;
+  relationship?: string;
+  email?: string;
 }
 
-interface SafetySettings {
-  trustedContacts?: TrustedContact[];
-  settings?: {
-    autoShareRideDetails: boolean;
-    enableLocationTracking: boolean;
-    requireDriverVerification: boolean;
-    safetyCheckIns: boolean;
-    [key: string]: boolean;
-  };
+export interface SafetySettingsData {
+  autoShareRideDetails?: boolean;
+  enableLocationTracking?: boolean;
+  requireDriverVerification?: boolean;
+  safetyCheckIns?: boolean;
+  [key: string]: boolean | undefined;
 }
 
-interface SafetySectionProps {
-  safetySettings: SafetySettings;
-  onSave: (data: {
+export interface SafetySettings {
+  trustedContacts?: TrustedContact[] | null;
+  settings?: SafetySettingsData | null;
+}
+
+export interface SafetySectionProps {
+  safetySettings?: SafetySettings | null;
+  onSave?: (data: {
     trustedContacts: TrustedContact[];
-    settings: SafetySettings["settings"];
-  }) => void;
+    settings: SafetySettingsData;
+  }) => void | Promise<void>;
+  onAddContact?: (contact: Omit<TrustedContact, "id">) => void | Promise<void>;
+  onRemoveContact?: (contactId: number | string) => void | Promise<void>;
   isExpanded: boolean;
   onToggle: () => void;
+  isLoading?: boolean;
+  error?: string | null;
+  maxTrustedContacts?: number;
 }
 
 const SafetySection: React.FC<SafetySectionProps> = ({
-  safetySettings,
+  safetySettings = null,
   onSave,
+  onAddContact,
+  onRemoveContact,
   isExpanded,
   onToggle,
+  isLoading: externalLoading = false,
+  error: externalError = null,
+  maxTrustedContacts = 3,
 }) => {
-  const [trustedContacts, setTrustedContacts] = useState<
-    TrustedContact[] | null
-  >(null);
+  const [isInternalLoading, setIsInternalLoading] = useState(true);
+  const [trustedContacts, setTrustedContacts] = useState<TrustedContact[]>([]);
   const [showAddContact, setShowAddContact] = useState<boolean>(false);
-  const [newContact, setNewContact] = useState<TrustedContact>({
-    id: 0,
+  const [newContact, setNewContact] = useState<Omit<TrustedContact, "id">>({
     name: "",
     phone: "",
     relationship: "",
+    email: "",
   });
-  const [settings, setSettings] = useState<SafetySettings["settings"] | null>(
-    null
-  );
+  const [settings, setSettings] = useState<SafetySettingsData>({
+    autoShareRideDetails: false,
+    enableLocationTracking: false,
+    requireDriverVerification: false,
+    safetyCheckIns: false,
+  });
   const [isSaving, setIsSaving] = useState(false);
+  const [contactError, setContactError] = useState<string | null>(null);
+  const [saveSuccess, setSaveSuccess] = useState(false);
 
-  const safetyPreferences = [
+  // Derived state
+  const isLoading = externalLoading || isInternalLoading;
+  const canAddMoreContacts = (trustedContacts?.length ?? 0) < maxTrustedContacts;
+
+  // Safety preferences configuration
+  const safetyPreferences = useMemo(() => [
     {
       id: "autoShareRide",
       label: "Auto-share ride details with trusted contacts",
       desc: "Automatically share ride information when you start a trip",
-      key: "autoShare"
+      key: "autoShareRideDetails" as const,
     },
     {
       id: "enableLocationTracking",
       label: "Enable location tracking during rides",
       desc: "Allow real-time location tracking for safety purposes",
-      key: "enableLocationTracking"
+      key: "enableLocationTracking" as const,
     },
     {
       id: "reqDriverVerf",
       label: "Require driver verification for rides",
       desc: "Only accept rides from drivers with verified documents",
-      key: "reqDriverVerf"
+      key: "requireDriverVerification" as const,
     },
     {
       id: "sendSafetyChecks",
       label: "Send safety check-ins during long rides",
-      desc: "Receive periodic safety check-ins for rides longer than 1",
-      key: "sendSafetyChecks"
-    }
-  ]
+      desc: "Receive periodic safety check-ins for rides longer than 1 hour",
+      key: "safetyCheckIns" as const,
+    },
+  ], []);
 
-  // Simulate loading delay for skeleton
+  // Initialize from props
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setTrustedContacts(safetySettings?.trustedContacts || []);
-      setSettings(
-        safetySettings?.settings || {
+    if (safetySettings !== null) {
+      const timer = setTimeout(() => {
+        setTrustedContacts(safetySettings?.trustedContacts ?? []);
+        setSettings({
           autoShareRideDetails: false,
           enableLocationTracking: false,
           requireDriverVerification: false,
           safetyCheckIns: false,
-        }
-      );
-    }, 800);
-    return () => clearTimeout(timer);
+          ...(safetySettings?.settings ?? {}),
+        });
+        setIsInternalLoading(false);
+      }, 300);
+      return () => clearTimeout(timer);
+    } else {
+      setIsInternalLoading(false);
+    }
   }, [safetySettings]);
 
-  const handleAddContact = () => {
-    if (newContact?.name && newContact?.phone) {
-      // Never override id from input, always generate a new one
-      const { name, phone, relationship } = newContact;
-      const contact = { id: Date.now(), name, phone, relationship };
-      setTrustedContacts([...(trustedContacts ?? []), contact]);
-      setNewContact({ id: 0, name: "", phone: "", relationship: "" });
-      setShowAddContact(false);
+  // Phone number validation helper
+  const isValidPhone = (phone: string): boolean => {
+    const phoneRegex = /^[\d\s\-\+\(\)]{10,}$/;
+    return phoneRegex.test(phone.trim());
+  };
+
+  const handleAddContact = useCallback(async () => {
+    setContactError(null);
+
+    // Validation
+    if (!newContact?.name?.trim()) {
+      setContactError("Contact name is required");
+      return;
     }
-  };
 
-  const handleRemoveContact = (id: number) => {
-    setTrustedContacts((prev) =>
-      (prev ?? []).filter((contact) => contact?.id !== id)
+    if (!newContact?.phone?.trim()) {
+      setContactError("Phone number is required");
+      return;
+    }
+
+    if (!isValidPhone(newContact.phone)) {
+      setContactError("Please enter a valid phone number");
+      return;
+    }
+
+    // Check if contact already exists
+    const phoneExists = trustedContacts.some(
+      (contact) => contact.phone?.trim() === newContact.phone.trim()
     );
-  };
+    if (phoneExists) {
+      setContactError("This phone number is already in your trusted contacts");
+      return;
+    }
 
-  const handleSettingChange = (field: any, value: any) => {
-    // @ts-expect-error: 'error' prop is custom for our Input component
-    setSettings((prev) => ({ ...prev, [field]: value }));
-  };
+    // Check limit
+    if (!canAddMoreContacts) {
+      setContactError(`Maximum ${maxTrustedContacts} trusted contacts allowed`);
+      return;
+    }
 
-  const handleSave = async () => {
+    try {
+      const contactToAdd: TrustedContact = {
+        id: Date.now(),
+        name: newContact.name.trim(),
+        phone: newContact.phone.trim(),
+        relationship: newContact.relationship?.trim() || undefined,
+        email: newContact.email?.trim() || undefined,
+      };
+
+      if (onAddContact) {
+        await onAddContact(contactToAdd);
+      }
+
+      setTrustedContacts((prev) => [...prev, contactToAdd]);
+      setNewContact({ name: "", phone: "", relationship: "", email: "" });
+      setShowAddContact(false);
+    } catch (err) {
+      setContactError(
+        err instanceof Error ? err.message : "Failed to add contact. Please try again."
+      );
+    }
+  }, [newContact, trustedContacts, canAddMoreContacts, maxTrustedContacts, onAddContact]);
+
+  const handleRemoveContact = useCallback(async (id: number | string) => {
+    if (!id) return;
+
+    try {
+      if (onRemoveContact) {
+        await onRemoveContact(id);
+      }
+      setTrustedContacts((prev) => prev.filter((contact) => contact?.id !== id));
+    } catch (err) {
+      console.error("Failed to remove contact:", err);
+      // Optionally show error to user
+    }
+  }, [onRemoveContact]);
+
+  const handleSettingChange = useCallback((field: keyof SafetySettingsData, value: boolean) => {
+    setSettings((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+  }, []);
+
+  const handleSave = useCallback(async () => {
+    if (!onSave) return;
+
     setIsSaving(true);
-    setTimeout(() => {
-      onSave({
+    setSaveSuccess(false);
+
+    try {
+      await onSave({
         trustedContacts: trustedContacts ?? [],
         settings: settings ?? {
           autoShareRideDetails: false,
@@ -133,12 +225,19 @@ const SafetySection: React.FC<SafetySectionProps> = ({
           safetyCheckIns: false,
         },
       });
+      
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch (err) {
+      console.error("Failed to save safety settings:", err);
+      // Error is handled by parent component via error prop
+    } finally {
       setIsSaving(false);
-    }, 1000);
-  };
+    }
+  }, [onSave, trustedContacts, settings]);
 
   // Skeleton loader
-  if (!trustedContacts || !settings) {
+  if (isLoading) {
     return (
       <div className="bg-card border border-border rounded-lg shadow-card animate-pulse">
         <button
@@ -196,6 +295,18 @@ const SafetySection: React.FC<SafetySectionProps> = ({
       >
         <div className="px-4 pb-4 border-t border-border">
           <div className="pt-4 space-y-6">
+            {saveSuccess && (
+              <div className="p-3 bg-success/10 border border-success/20 rounded-lg">
+                <p className="text-sm text-success">Safety settings saved successfully!</p>
+              </div>
+            )}
+            
+            {externalError && (
+              <div className="p-3 bg-error/10 border border-error/20 rounded-lg">
+                <p className="text-sm text-error">{externalError}</p>
+              </div>
+            )}
+
             {/* Trusted Contacts */}
             <div>
               <h4 className="font-medium text-foreground mb-4">
@@ -206,36 +317,53 @@ const SafetySection: React.FC<SafetySectionProps> = ({
                 use the SOS feature.
               </p>
 
-              {trustedContacts?.length > 0 && (
+              {trustedContacts && trustedContacts.length > 0 ? (
                 <div className="space-y-3 mb-4">
-                  {trustedContacts?.map((contact) => (
-                    <div
-                      key={contact?.id}
-                      className="flex items-center justify-between p-3 border border-border rounded-lg"
-                    >
-                      <div>
-                        <p className="font-medium text-foreground">
-                          {contact?.name}
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                          {contact?.phone}
-                        </p>
-                        {contact?.relationship && (
-                          <p className="text-xs text-blue-500 capitalize">
-                            {contact?.relationship}
-                          </p>
-                        )}
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleRemoveContact(contact?.id)}
-                        className="text-error hover:bg-gray-100"
+                  {trustedContacts.map((contact) => {
+                    if (!contact?.id) return null;
+                    
+                    return (
+                      <div
+                        key={contact.id}
+                        className="flex items-center justify-between p-3 border border-border rounded-lg"
                       >
-                        <Trash2 className="text-gray-400" />
-                      </Button>
-                    </div>
-                  ))}
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-foreground truncate">
+                            {contact.name || "Unknown"}
+                          </p>
+                          <p className="text-sm text-muted-foreground truncate">
+                            {contact.phone || "No phone number"}
+                          </p>
+                          {contact.relationship && (
+                            <p className="text-xs text-blue-500 capitalize mt-1">
+                              {contact.relationship}
+                            </p>
+                          )}
+                          {contact.email && (
+                            <p className="text-xs text-muted-foreground truncate">
+                              {contact.email}
+                            </p>
+                          )}
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleRemoveContact(contact.id)}
+                          className="text-error hover:bg-error/10 shrink-0 ml-2"
+                          title="Remove contact"
+                        >
+                          <Trash2 className="text-gray-400" />
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="mb-4 p-4 border border-border rounded-lg text-center">
+                  <Icon name="UserPlus" size={32} className="text-muted-foreground mx-auto mb-2" />
+                  <p className="text-sm text-muted-foreground">
+                    No trusted contacts added yet
+                  </p>
                 </div>
               )}
 
@@ -244,47 +372,82 @@ const SafetySection: React.FC<SafetySectionProps> = ({
                   <h5 className="font-medium text-foreground mb-3">
                     Add Trusted Contact
                   </h5>
+                  {contactError && (
+                    <div className="mb-3 p-2 bg-error/10 border border-error/20 rounded text-sm text-error">
+                      {contactError}
+                    </div>
+                  )}
                   <div className="space-y-3">
-                    <Label>Contact Name</Label>
-                    <Input
-                      type="text"
-                      placeholder="e.g., John Doe"
-                      value={newContact?.name}
-                      onChange={(e) =>
-                        setNewContact({
-                          ...newContact,
-                          name: e?.target?.value,
-                        })
-                      }
-                      required
-                    />
-                    <Label>Phone Number</Label>
-                    <Input
-                      type="tel"
-                      placeholder="e.g., +91 98765 43210"
-                      value={newContact?.phone}
-                      onChange={(e) =>
-                        setNewContact({
-                          ...newContact,
-                          phone: e?.target?.value,
-                        })
-                      }
-                      required
-                    />
-                    <Label>Relationship (Optional)</Label>
-                    <Input
-                      type="text"
-                      placeholder="e.g., Parent, Friend, Sibling"
-                      value={newContact?.relationship}
-                      onChange={(e) =>
-                        setNewContact({
-                          ...newContact,
-                          relationship: e?.target?.value,
-                        })
-                      }
-                    />
+                    <div className="space-y-2">
+                      <Label htmlFor="contact-name">Contact Name *</Label>
+                      <Input
+                        id="contact-name"
+                        type="text"
+                        placeholder="e.g., John Doe"
+                        value={newContact.name ?? ""}
+                        onChange={(e) => {
+                          setNewContact({
+                            ...newContact,
+                            name: e.target.value,
+                          });
+                          setContactError(null);
+                        }}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="contact-phone">Phone Number *</Label>
+                      <Input
+                        id="contact-phone"
+                        type="tel"
+                        placeholder="e.g., +91 98765 43210"
+                        value={newContact.phone ?? ""}
+                        onChange={(e) => {
+                          setNewContact({
+                            ...newContact,
+                            phone: e.target.value,
+                          });
+                          setContactError(null);
+                        }}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="contact-relationship">Relationship (Optional)</Label>
+                      <Input
+                        id="contact-relationship"
+                        type="text"
+                        placeholder="e.g., Parent, Friend, Sibling"
+                        value={newContact.relationship ?? ""}
+                        onChange={(e) =>
+                          setNewContact({
+                            ...newContact,
+                            relationship: e.target.value,
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="contact-email">Email (Optional)</Label>
+                      <Input
+                        id="contact-email"
+                        type="email"
+                        placeholder="e.g., john@example.com"
+                        value={newContact.email ?? ""}
+                        onChange={(e) =>
+                          setNewContact({
+                            ...newContact,
+                            email: e.target.value,
+                          })
+                        }
+                      />
+                    </div>
                     <div className="flex space-x-3">
-                      <Button variant="default" onClick={handleAddContact}>
+                      <Button 
+                        variant="default" 
+                        onClick={handleAddContact}
+                        disabled={!newContact.name?.trim() || !newContact.phone?.trim()}
+                      >
                         <Plus />
                         Add Contact
                       </Button>
@@ -292,12 +455,8 @@ const SafetySection: React.FC<SafetySectionProps> = ({
                         variant="outline"
                         onClick={() => {
                           setShowAddContact(false);
-                          setNewContact({
-                            id: 0,
-                            name: "",
-                            phone: "",
-                            relationship: "",
-                          });
+                          setNewContact({ name: "", phone: "", relationship: "", email: "" });
+                          setContactError(null);
                         }}
                       >
                         Cancel
@@ -309,11 +468,11 @@ const SafetySection: React.FC<SafetySectionProps> = ({
                 <Button
                   variant="outline"
                   onClick={() => setShowAddContact(true)}
-                  disabled={trustedContacts?.length >= 3}
+                  disabled={!canAddMoreContacts}
                 >
                   <Plus />
                   Add Trusted Contact{" "}
-                  {trustedContacts?.length >= 3 && "(Max 3)"}
+                  {!canAddMoreContacts && `(Max ${maxTrustedContacts})`}
                 </Button>
               )}
             </div>
@@ -323,22 +482,40 @@ const SafetySection: React.FC<SafetySectionProps> = ({
               <h4 className="font-medium text-foreground mb-4">
                 Safety Preferences
               </h4>
-              <div className="space-y-3">
-                {safetyPreferences.map((item) => (
-                  <div key={item.id} className="flex space-x-3">
-                    <Checkbox
-                  id={item.id}
-                  checked={settings?.autoShareRideDetails}
-                  onCheckedChange={(checked) =>
-                    handleSettingChange("autoShareRideDetails", checked)
-                  }
-                  />
-                  <Label htmlFor={item.id} className="flex flex-col items-start">
-                    <span>{item.label}</span>
-                    <small className="text-muted-foreground">{item.desc}</small>
-                  </Label>
-                  </div>
-                ))}
+              <div className="space-y-4">
+                {safetyPreferences.map((item) => {
+                  const settingValue = settings?.[item.key] ?? false;
+                  
+                  return (
+                    <div 
+                      key={item.id} 
+                      className="flex items-start space-x-3 p-3 border border-border rounded-lg hover:bg-muted/30 transition-colors"
+                    >
+                      <Checkbox
+                        id={item.id}
+                        checked={settingValue}
+                        onCheckedChange={(checked) =>
+                          handleSettingChange(
+                            item.key, 
+                            checked === true
+                          )
+                        }
+                        className="mt-1"
+                      />
+                      <Label 
+                        htmlFor={item.id} 
+                        className="flex-1 cursor-pointer"
+                      >
+                        <span className="block font-medium text-foreground mb-1">
+                          {item.label}
+                        </span>
+                        <small className="text-muted-foreground text-sm">
+                          {item.desc}
+                        </small>
+                      </Label>
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
@@ -404,15 +581,26 @@ const SafetySection: React.FC<SafetySectionProps> = ({
               </div>
             </div>
 
-            <Button
-              variant="default"
-              onClick={handleSave}
-              disabled={isSaving}
-              className="mt-6"
-            >
-              <Save />
-              {isSaving ? "Saving..." : "Save Safety Settings"}
-            </Button>
+            {onSave && (
+              <Button
+                variant="default"
+                onClick={handleSave}
+                disabled={isSaving || externalLoading}
+                className="mt-6 w-full sm:w-auto"
+              >
+                {isSaving ? (
+                  <>
+                    <Icon name="Loader" className="animate-spin mr-2" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Save />
+                    Save Safety Settings
+                  </>
+                )}
+              </Button>
+            )}
           </div>
         </div>
       </div>

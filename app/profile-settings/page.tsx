@@ -126,8 +126,17 @@ const DEFAULT_SAFETY_SETTINGS = {
 
 const DEFAULT_SECURITY_SETTINGS = {
   twoFactorEnabled: false,
-  lastPasswordChange: undefined,
-  loginActivity: [],
+  twoFactorMethod: undefined as "SMS" | "Email" | "App" | undefined,
+  lastPasswordChange: undefined as string | undefined,
+  loginActivity: [] as Array<{
+    id: number | string;
+    device: string;
+    location?: string;
+    time?: string;
+    current?: boolean;
+    ipAddress?: string;
+    lastActive?: string;
+  }>,
 };
 
 const DEFAULT_STATISTICS = {
@@ -320,6 +329,12 @@ const ProfileAccountSettings = () => {
         const updateData: any = {};
         if (data.name) updateData.full_name = data.name;
         if (data.phone) updateData.phone = data.phone;
+        if (data.email) updateData.email = data.email;
+        if (data.dateOfBirth) updateData.date_of_birth = data.dateOfBirth;
+        if (data.gender) updateData.gender = data.gender;
+        if (data.address) updateData.address = data.address;
+        if (data.emergencyContact) updateData.emergency_contact = data.emergencyContact;
+        if (data.emergencyPhone) updateData.emergency_phone = data.emergencyPhone;
 
         await updateProfile(updateData);
         refetch.user();
@@ -328,49 +343,99 @@ const ProfileAccountSettings = () => {
       } catch (error: any) {
         console.error("Save personal info error:", error);
         toast.error(error.message || "Failed to update profile");
+        throw error; // Re-throw so component can handle it
       }
     },
     [updateProfile, refetch]
   );
 
-  const handleSavePreferences = useCallback((data: any) => {
-    setPreferences(data);
-    // TODO: Save to API when endpoint is available
-    toast.success("Preferences saved successfully!");
+  const handleSavePreferences = useCallback(async (data: any) => {
+    try {
+      setPreferences(data);
+      // TODO: Save to API when endpoint is available
+      // await fetch('/api/user/preferences', { method: 'POST', body: JSON.stringify(data) });
+      toast.success("Preferences saved successfully!");
+    } catch (error: any) {
+      console.error("Save preferences error:", error);
+      toast.error(error.message || "Failed to save preferences");
+      throw error; // Re-throw so component can handle it
+    }
   }, []);
 
-  const handleSaveSafetySettings = useCallback((data: any) => {
-    setSafetySettings(data);
-    // TODO: Save to API when endpoint is available
-    toast.success("Safety settings saved successfully!");
+  const handleSaveSafetySettings = useCallback(async (data: any) => {
+    try {
+      setSafetySettings(data);
+      // TODO: Save to API when endpoint is available
+      // await fetch('/api/user/safety-settings', { method: 'POST', body: JSON.stringify(data) });
+      toast.success("Safety settings saved successfully!");
+    } catch (error: any) {
+      console.error("Save safety settings error:", error);
+      toast.error(error.message || "Failed to save safety settings");
+      throw error; // Re-throw so component can handle it
+    }
   }, []);
 
-  const handleSaveSecuritySettings = useCallback(() => {
+  const handleSaveSecuritySettings = useCallback((data?: Partial<typeof DEFAULT_SECURITY_SETTINGS>) => {
+    if (data) {
+      setSecuritySettings((prev) => ({
+        ...prev,
+        ...data,
+      }));
+    }
     // TODO: Save to API when endpoint is available
     toast.success("Security settings saved successfully!");
   }, []);
 
-  const handleAddVehicle = useCallback(async () => {
-    // This will trigger the add vehicle flow in VehicleInfoSection
-    toast.info("Use the Add Vehicle button in the Vehicle section");
-  }, []);
+  const handleAddVehicle = useCallback(async (vehicle: any) => {
+    try {
+      // TODO: Implement vehicle add API call
+      const res = await fetch("/api/vehicle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(vehicle),
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to add vehicle");
+      }
+
+      toast.success("Vehicle added successfully!");
+      refetch.vehicles();
+    } catch (error: any) {
+      console.error("Add vehicle error:", error);
+      toast.error(error.message || "Failed to add vehicle");
+      throw error; // Re-throw so component can handle it
+    }
+  }, [refetch]);
 
   const handleEditVehicle = useCallback(
-    async (id: string, vehicle: any) => {
+    async (id: string | number, vehicle: any) => {
       try {
-        // TODO: Implement vehicle edit API call
+        const res = await fetch(`/api/vehicle/${id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify(vehicle),
+        });
+
+        if (!res.ok) {
+          throw new Error("Failed to update vehicle");
+        }
+
         toast.success("Vehicle updated successfully!");
         refetch.vehicles();
       } catch (error: any) {
         console.error("Edit vehicle error:", error);
         toast.error(error.message || "Failed to update vehicle");
+        throw error; // Re-throw so component can handle it
       }
     },
     [refetch]
   );
 
   const handleDeleteVehicle = useCallback(
-    async (id: string) => {
+    async (id: string | number) => {
       try {
         const res = await fetch(`/api/vehicle/${id}`, {
           method: "DELETE",
@@ -394,13 +459,10 @@ const ProfileAccountSettings = () => {
   // Show loading state
   if (dataLoading) {
     return (
-      <div className="page min-h-screen bg-background container mx-auto p-4 space-y-6">
-        <main className="pb-20 md:pb-6">
+      <div className="page min-h-screen bg-background container flex mx-auto p-4 items-center">
           <div className="max-w-4xl mx-auto">
-            <Skeleton height={400} className="mb-6" />
-            <Skeleton height={200} count={5} className="mb-4" />
+            Loading profile-settings...
           </div>
-        </main>
       </div>
     );
   }
@@ -458,7 +520,7 @@ const ProfileAccountSettings = () => {
       <div className="page min-h-screen bg-background container mx-auto p-4 space-y-6">
         <main className="pb-20 md:pb-6">
           <div className="max-w-4xl mx-auto">
-            <Suspense fallback={<Skeleton height={400} />}>
+            <Suspense fallback={<Skeleton height={100} />}>
               <ProfileHeader
                 user={user}
                 onPhotoUpload={handlePhotoUpload}
@@ -471,15 +533,19 @@ const ProfileAccountSettings = () => {
                   onSave={handleSavePersonalInfo}
                   isExpanded={expandedSections.personalInfo}
                   onToggle={() => toggleSection("personalInfo")}
+                  isLoading={dataLoading}
+                  error={dataError}
                 />
 
                 <VehicleInfoSection
-                  vehicles={vehicles || []}
+                  vehicles={vehicles ?? null}
                   onAddVehicle={handleAddVehicle}
                   onEditVehicle={handleEditVehicle}
                   onDeleteVehicle={handleDeleteVehicle}
                   isExpanded={expandedSections.vehicleInfo}
                   onToggle={() => toggleSection("vehicleInfo")}
+                  isLoading={dataLoading}
+                  error={dataError}
                 />
 
                 <PreferencesSection
@@ -487,6 +553,8 @@ const ProfileAccountSettings = () => {
                   onSave={handleSavePreferences}
                   isExpanded={expandedSections.preferences}
                   onToggle={() => toggleSection("preferences")}
+                  isLoading={dataLoading}
+                  error={dataError}
                 />
 
                 <SafetySection
@@ -494,13 +562,22 @@ const ProfileAccountSettings = () => {
                   onSave={handleSaveSafetySettings}
                   isExpanded={expandedSections.safety}
                   onToggle={() => toggleSection("safety")}
+                  isLoading={dataLoading}
+                  error={dataError}
                 />
 
                 <AccountSecuritySection
-                  securitySettings={securitySettings}
+                  securitySettings={{
+                    twoFactorEnabled: securitySettings.twoFactorEnabled,
+                    twoFactorMethod: securitySettings.twoFactorMethod,
+                    passwordLastChanged: securitySettings.lastPasswordChange,
+                  }}
+                  loginActivity={securitySettings.loginActivity}
                   onSave={handleSaveSecuritySettings}
                   isExpanded={expandedSections.security}
                   onToggle={() => toggleSection("security")}
+                  isLoading={dataLoading}
+                  error={dataError}
                 />
 
                 <RideHistorySection
