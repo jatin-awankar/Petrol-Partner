@@ -17,6 +17,7 @@ import SafetyPanel from "@/components/rideDetails/SafetyPanel";
 import BookingConfirmationModal from "@/components/rideDetails/BookingConfirmationModal";
 import { useBookRide } from "@/hooks/bookings/useBookRide";
 import { formatUtcToTodayOrDayMonth } from "@/lib/utils";
+import { toast } from "sonner";
 
 // Types
 interface RideData {
@@ -111,7 +112,7 @@ const transformRideOffer = (apiData: any): RideData => {
   const baseFare = pricePerSeat * 0.7;
   const fuelShare = pricePerSeat * 0.25;
   const platformFee = Math.max(pricePerSeat * 0.05, 15);
-  const joinedAt = formatUtcToTodayOrDayMonth(apiData.created_at || "")
+  const joinedAt = formatUtcToTodayOrDayMonth(apiData.created_at || "");
 
   return {
     id: apiData.id,
@@ -123,11 +124,13 @@ const transformRideOffer = (apiData: any): RideData => {
       college: apiData.driver_college || apiData.college,
       rating: parseFloat(apiData.driver_rating || apiData.avg_rating || "0"),
       reviewCount: apiData.driver_review_count || 0,
-      isVerified: apiData.driver_is_verified !== undefined 
-        ? apiData.driver_is_verified 
-        : apiData.is_verified || false,
+      isVerified:
+        apiData.driver_is_verified !== undefined
+          ? apiData.driver_is_verified
+          : apiData.is_verified || false,
       joinedDate: joinedAt || undefined,
-      totalRides: parseInt(apiData.total_rides || apiData.totalRides || "0", 10) || 0,
+      totalRides:
+        parseInt(apiData.total_rides || apiData.totalRides || "0", 10) || 0,
     },
     route: {
       pickup: {
@@ -154,27 +157,27 @@ const transformRideOffer = (apiData: any): RideData => {
     platformFee: platformFee,
     vehicle: {
       make: vehicleDetails.make || vehicleDetails.make_model?.split(" ")[0],
-      model: vehicleDetails.model || vehicleDetails.make_model?.split(" ").slice(1).join(" "),
+      model:
+        vehicleDetails.model ||
+        vehicleDetails.make_model?.split(" ").slice(1).join(" "),
       year: vehicleDetails.year,
       color: vehicleDetails.color,
       plateNumber: vehicleDetails.plate_number || vehicleDetails.plateNumber,
       image: vehicleDetails.image,
     },
     preferences: vehicleDetails.preferences || {},
-    safetyFeatures: [
-      "GPS Tracking",
-      "Emergency Button",
-      "Driver Verification",
-    ],
+    safetyFeatures: ["GPS Tracking", "Emergency Button", "Driver Verification"],
   };
 };
 
 const transformRideRequest = (apiData: any): RideData => {
-  const pricePerSeat = parseFloat(apiData.price_per_seat || apiData.price_offer || "0");
+  const pricePerSeat = parseFloat(
+    apiData.price_per_seat || apiData.price_offer || "0",
+  );
   const baseFare = pricePerSeat * 0.7;
   const fuelShare = pricePerSeat * 0.25;
   const platformFee = Math.max(pricePerSeat * 0.05, 15);
-  const joinedAt = formatUtcToTodayOrDayMonth(apiData.created_at || "")
+  const joinedAt = formatUtcToTodayOrDayMonth(apiData.created_at || "");
 
   return {
     id: apiData.id,
@@ -186,11 +189,13 @@ const transformRideRequest = (apiData: any): RideData => {
       college: apiData.passenger_college || apiData.college,
       rating: parseFloat(apiData.passenger_rating || apiData.avg_rating || "0"),
       reviewCount: apiData.passenger_review_count || 0,
-      isVerified: apiData.passenger_is_verified !== undefined 
-        ? apiData.passenger_is_verified 
-        : apiData.is_verified || false,
+      isVerified:
+        apiData.passenger_is_verified !== undefined
+          ? apiData.passenger_is_verified
+          : apiData.is_verified || false,
       joinedDate: joinedAt || undefined,
-      totalRides: parseInt(apiData.total_rides || apiData.totalRides || "0", 10) || 0,
+      totalRides:
+        parseInt(apiData.total_rides || apiData.totalRides || "0", 10) || 0,
     },
     route: {
       pickup: {
@@ -239,7 +244,7 @@ const RideDetailsPage = () => {
   const fetchRideData = useCallback(async () => {
     // Handle both string and array cases from useParams
     const rideId = Array.isArray(id) ? id[0] : id;
-    
+
     if (!rideId || typeof rideId !== "string") {
       console.error("Invalid ride ID:", id);
       setError("Invalid ride ID");
@@ -252,7 +257,7 @@ const RideDetailsPage = () => {
 
     try {
       console.log("Fetching ride with ID:", rideId);
-      
+
       // Try ride offer first
       let response = await fetch(`/api/rides/offers/${rideId}`, {
         credentials: "include",
@@ -268,7 +273,9 @@ const RideDetailsPage = () => {
       } else if (response.status !== 404) {
         // If it's not a 404, there might be a server error
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `Failed to fetch ride offer: ${response.status}`);
+        throw new Error(
+          errorData.error || `Failed to fetch ride offer: ${response.status}`,
+        );
       }
 
       // If not found, try ride request
@@ -286,17 +293,21 @@ const RideDetailsPage = () => {
       } else if (response.status !== 404) {
         // If it's not a 404, there might be a server error
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `Failed to fetch ride request: ${response.status}`);
+        throw new Error(
+          errorData.error || `Failed to fetch ride request: ${response.status}`,
+        );
       }
 
       // If neither worked, show error
-      setError("Ride not found. The ride may have been removed or the ID is invalid.");
+      setError(
+        "Ride not found. The ride may have been removed or the ID is invalid.",
+      );
     } catch (err) {
       console.error("Error fetching ride data:", err);
       setError(
         err instanceof Error
           ? err.message || "Failed to load ride data."
-          : "Failed to load ride data."
+          : "Failed to load ride data.",
       );
     } finally {
       setLoading(false);
@@ -330,7 +341,7 @@ const RideDetailsPage = () => {
       setBookingData(fullBookingData);
       setShowConfirmationModal(true);
     },
-    [rideData]
+    [rideData],
   );
 
   const handleConfirmBooking = useCallback(async () => {
@@ -345,6 +356,7 @@ const RideDetailsPage = () => {
 
       if (result) {
         setShowConfirmationModal(false);
+        toast.success("Ride booked, waiting for acceptance");
         router.push("/dashboard");
       }
     } catch (err) {
@@ -355,15 +367,15 @@ const RideDetailsPage = () => {
   // Emergency actions
   const handleEmergencyCall = useCallback(
     () => (window.location.href = "tel:911"),
-    []
+    [],
   );
   const handleShareLocation = useCallback(
     () => alert("Location shared with contacts."),
-    []
+    [],
   );
   const handleContactSupport = useCallback(
     () => alert("Contacting support..."),
-    []
+    [],
   );
 
   // Share functionality
@@ -446,8 +458,8 @@ const RideDetailsPage = () => {
               <ProfileInfo
                 profile={
                   rideData.type === "offer"
-                    ? rideData.driver ?? {}
-                    : rideData.passenger ?? {}
+                    ? (rideData.driver ?? {})
+                    : (rideData.passenger ?? {})
                 }
                 role={rideData.type === "offer" ? "driver" : "passenger"}
                 loading={loading}
