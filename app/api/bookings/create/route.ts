@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { pool, query } from "@/lib/db";
+import { pool } from "@/lib/db";
 import { getAuthenticatedUserId } from "@/lib/auth";
 
 interface RideDetails {
@@ -82,7 +82,7 @@ export async function POST(req: Request) {
       [seats_booked, id]
     );
 
-    await client.query("COMMIT"); // Finalize changes
+    await client.query("COMMIT");
 
     return NextResponse.json({
       message: "Booking successful",
