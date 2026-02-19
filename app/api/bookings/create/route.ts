@@ -8,6 +8,8 @@ interface RideDetails {
   seats: number;
 }
 
+export const runtime = "nodejs";
+
 export async function POST(req: Request) {
   const userId = await getAuthenticatedUserId();
   if (!userId) {
@@ -19,6 +21,7 @@ export async function POST(req: Request) {
 
   const body = await req.json();
   const { ride_offer_id, ride_request_id, seats_booked = 1 } = body;
+  const seatsBooked = Number(seats_booked);
 
   if (!ride_offer_id && !ride_request_id) {
     return NextResponse.json(
@@ -27,7 +30,7 @@ export async function POST(req: Request) {
     );
   }
 
-  if (seats_booked <= 0) {
+  if (!Number.isFinite(seatsBooked) || seatsBooked <= 0) {
     return NextResponse.json(
       { error: "Seats booked must be at least 1" },
       { status: 400 }
@@ -58,11 +61,11 @@ export async function POST(req: Request) {
 
     // 2. Business Logic Checks
     if (ride.owner_id === userId) throw new Error("You cannot book your own ride");
-    if (ride.seats < seats_booked) throw new Error("Not enough seats available");
+    if (ride.seats < seatsBooked) throw new Error("Not enough seats available");
 
     const driver_id = isOffer ? ride.owner_id : userId;
     const passenger_id = isOffer ? userId : ride.owner_id;
-    const totalPrice = parseFloat(ride.price_per_seat) * seats_booked;
+    const totalPrice = parseFloat(ride.price_per_seat) * seatsBooked;
 
     // 3. Create Booking
     const bookingRes = await client.query(
@@ -73,13 +76,13 @@ export async function POST(req: Request) {
       VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7)
       RETURNING id`,
       [driver_id, passenger_id, ride_offer_id || null, ride_request_id || null,
-        seats_booked, totalPrice, isOffer ? "passenger" : "driver"]
+        seatsBooked, totalPrice, isOffer ? "passenger" : "driver"]
     );
 
     // 4. Atomic Decrement
     await client.query(
       `UPDATE ${table} SET ${seatColumn} = ${seatColumn} - $1 WHERE id = $2`,
-      [seats_booked, id]
+      [seatsBooked, id]
     );
 
     await client.query("COMMIT");

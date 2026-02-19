@@ -23,6 +23,8 @@ export async function GET(req: Request) {
       SELECT 
         b.id AS booking_id,
         b.status,
+        b.ride_offer_id,
+        b.ride_request_id,
         b.created_at,
         b.updated_at,
         b.role,

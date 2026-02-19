@@ -352,6 +352,7 @@ const RideDetailsPage = () => {
         ride_offer_id: bookingData.ride_offer_id,
         ride_request_id: bookingData.ride_request_id,
         seats_booked: bookingData.seats || 1,
+        payment_method: bookingData.paymentMethod || "cash",
       });
 
       if (result) {
@@ -361,6 +362,9 @@ const RideDetailsPage = () => {
       }
     } catch (err) {
       console.error("Booking error:", err);
+      toast.error(
+        err instanceof Error ? err.message : "Failed to complete booking",
+      );
     }
   }, [bookingData, bookRide, router]);
 

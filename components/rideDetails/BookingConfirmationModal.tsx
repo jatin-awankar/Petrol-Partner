@@ -209,7 +209,9 @@ const BookingConfirmationModal: React.FC<BookingConfirmationModalProps> = ({
             {showSkeleton ? (
               <SkeletonLine width="1/3" height={16} />
             ) : (
-              "Confirm & Pay"
+              bookingData?.paymentMethodLabel === "Cash"
+                ? "Confirm Booking"
+                : "Confirm & Pay"
             )}
           </Button>
         </div>
