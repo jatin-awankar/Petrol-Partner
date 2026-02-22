@@ -61,12 +61,19 @@ const BookingSection: React.FC<BookingSectionProps> = ({ ride, role = 'passenger
 
     setIsProcessing(true);
 
+    const paymentMethodLabelMap: Record<string, string> = {
+      upi: "UPI (Razorpay)",
+      wallet: "Petrol Partner Wallet",
+      cash: "Cash",
+    };
+
     const bookingData = {
       rideId: ride?.id,
       role,
       seats: selectedSeats,
       specialRequests,
       paymentMethod: selectedPaymentMethod,
+      paymentMethodLabel: paymentMethodLabelMap[selectedPaymentMethod] || "N/A",
       totalAmount: finalAmount,
       commission,
       paymentStatus:
@@ -78,15 +85,6 @@ const BookingSection: React.FC<BookingSectionProps> = ({ ride, role = 'passenger
     };
 
     try {
-      if (selectedPaymentMethod === 'upi') {
-        // Future: integrate Razorpay Checkout flow
-        alert('Redirecting to UPI (mock Razorpay) payment gateway...');
-      } else if (selectedPaymentMethod === 'wallet') {
-        alert('Checking wallet balance & processing (mock)...');
-      } else if (selectedPaymentMethod === 'cash') {
-        alert('Cash selected. Driver will verify payment post-ride.');
-      }
-
       onBookRide(bookingData);
     } catch (error) {
       console.error('Booking error:', error);

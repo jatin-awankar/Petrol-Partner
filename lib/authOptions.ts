@@ -89,19 +89,25 @@ export const authOptions: AuthOptions = {
       }
       return true;
     },
-    async jwt({ token, user, account }) {
+    async jwt({ token, user }) {
       if (user) {
         token.user = user;
-        token.userId = user.id; // Store user ID in token
+        token.userId = user.id;
+        token.email = user.email ?? token.email;
+        token.name = user.name ?? token.name;
       }
       return token;
     },
     async session({ session, token }) {
-      // Optimized: Only update session if token has user data
-      if (token.userId && session.user) {
-        const user = session.user as any;
-        user.id = token.userId as string;
-        // Token already contains user data from jwt callback, no need to re-assign
+      if (session.user) {
+        const user = session.user as typeof session.user & {
+          id: string;
+          email?: string | null;
+          name?: string | null;
+        };
+        user.id = (token.userId as string) || "";
+        user.email = user.email || (token.email as string) || "";
+        user.name = user.name || (token.name as string) || "";
       }
       return session;
     },
