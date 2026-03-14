@@ -6,7 +6,12 @@
     "dev": "next dev --turbopack",
     "build": "next build --turbopack",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "api:dev": "npm --prefix apps/api run dev",
+    "api:build": "npm --prefix apps/api run build",
+    "api:typecheck": "npm --prefix apps/api run typecheck",
+    "worker:dev": "npm --prefix apps/worker run dev",
+    "worker:build": "npm --prefix apps/worker run build"
   },
   "dependencies": {
     "@mapbox/search-js-react": "^1.5.0",
