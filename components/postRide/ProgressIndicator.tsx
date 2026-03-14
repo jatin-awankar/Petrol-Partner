@@ -1,10 +1,9 @@
-"use client";
+﻿"use client";
 
 import React, { useState, useEffect } from "react";
 import Skeleton from "react-loading-skeleton";
 import Icon from "../AppIcon";
 
-// Error Boundary
 class ProgressIndicatorErrorBoundary extends React.Component<
   { children: React.ReactNode },
   { hasError: boolean }
@@ -25,7 +24,7 @@ class ProgressIndicatorErrorBoundary extends React.Component<
   render() {
     if (this.state.hasError) {
       return (
-        <div className="bg-red-100 text-red-800 p-4 rounded-xl">
+        <div className="bg-destructive/10 text-destructive p-4 rounded-xl">
           Something went wrong loading the progress indicator.
         </div>
       );
@@ -34,7 +33,6 @@ class ProgressIndicatorErrorBoundary extends React.Component<
   }
 }
 
-// Props interface
 interface Step {
   id: string | number;
   title: string;
@@ -54,17 +52,17 @@ const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const timer = setTimeout(() => setLoading(false), 300);
+    const timer = setTimeout(() => setLoading(false), 250);
     return () => clearTimeout(timer);
   }, []);
 
   if (loading) {
     return (
-      <div className="bg-card border-b border-border p-4 space-y-2 animate-pulse">
-        <Skeleton height={24} width="30%" />
+      <div className="bg-card border-b border-border p-4 space-y-3 animate-pulse">
+        <Skeleton height={20} width="35%" />
         <div className="flex space-x-2">
           {Array.from({ length: steps.length }).map((_, i) => (
-            <Skeleton key={i} height={32} width={32} circle />
+            <Skeleton key={i} height={28} width={28} circle />
           ))}
         </div>
       </div>
@@ -74,8 +72,8 @@ const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({
   return (
     <div className="bg-card border-b border-border p-4 rounded-sm shadow-soft">
       <div className="flex items-center justify-between mb-2">
-        <h2 className="text-lg font-semibold text-foreground">Post a Ride</h2>
-        <span className="text-sm text-muted-foreground">
+        <h2 className="text-base font-semibold text-foreground">Post a Ride</h2>
+        <span className="text-xs text-muted-foreground">
           Step {currentStep} of {totalSteps}
         </span>
       </div>
@@ -85,7 +83,7 @@ const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({
           <React.Fragment key={step.id}>
             <div className="flex items-center">
               <div
-                className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-colors ${
+                className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium transition-colors ${
                   index + 1 < currentStep
                     ? "bg-success text-success-foreground"
                     : index + 1 === currentStep
@@ -94,7 +92,7 @@ const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({
                 }`}
               >
                 {index + 1 < currentStep ? (
-                  <Icon name="Check" size={16} />
+                  <Icon name="Check" size={14} />
                 ) : (
                   index + 1
                 )}
@@ -124,7 +122,6 @@ const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({
   );
 };
 
-// Export wrapped with error boundary
 export default function ProgressIndicatorWithErrorBoundary(
   props: ProgressIndicatorProps
 ) {

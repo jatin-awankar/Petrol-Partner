@@ -1,46 +1,49 @@
-// app/dashboard/page.tsx
 import { getServerSession } from "next-auth/next";
 import { redirect } from "next/navigation";
-import { authOptions } from "@/lib/authOptions";
-
 import { Suspense } from "react";
+
+import { authOptions } from "@/lib/authOptions";
 import WelcomeCard from "@/components/dashboard/WelcomeCard";
 import QuickActionCards from "@/components/dashboard/QuickActionCards";
-import SafetyReminders from "@/components/dashboard/SafetyReminders";
-import RecentActivitySection from "@/components/dashboard/RecentActivitySection";
 import RideSuggestions from "@/components/dashboard/RideSuggestions";
+import RecentActivitySection from "@/components/dashboard/RecentActivitySection";
+import SafetyReminders from "@/components/dashboard/SafetyReminders";
 import CommunityUpdates from "@/components/dashboard/CommunityUpdates";
 
-// 🚨 Important: remove "use client" (must be a server component)
+const LoadingCard = ({ label }: { label: string }) => (
+  <div className="rounded-xl border border-border bg-card p-5 shadow-card">
+    <p className="text-sm text-muted-foreground">{label}</p>
+  </div>
+);
+
 export default async function DashboardPage() {
-  // 1️⃣ Get the current user's session (server-side)
   const session = await getServerSession(authOptions);
 
-  // 2️⃣ If no session, redirect to the loginpage
   if (!session) {
     redirect("/login");
   }
 
-  // 3️⃣ Optionally use session.user data
-  const userName = session.user?.name ?? "User";
-
   return (
-    <div className="page min-h-screen bg-background container mx-auto p-4 space-y-6">
+    <main className="page min-h-screen bg-background pb-20 md:pb-6 space-y-5">
       <WelcomeCard />
+
       <QuickActionCards />
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* <StatsCard /> */}
-        <SafetyReminders />
-        <Suspense fallback={<div>Loading activities...</div>}>
-          <RecentActivitySection />
-        </Suspense>
-      </div>
-      <Suspense fallback={<div>Loading rides...</div>}>
+
+      <Suspense fallback={<LoadingCard label="Loading suggested rides..." />}>
         <RideSuggestions />
       </Suspense>
-      <Suspense fallback={<div>Loading community updates...</div>}>
+
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1.05fr_0.95fr]">
+        <Suspense fallback={<LoadingCard label="Loading recent activity..." />}>
+          <RecentActivitySection />
+        </Suspense>
+
+        <SafetyReminders />
+      </div>
+
+      <Suspense fallback={<LoadingCard label="Loading community updates..." />}>
         <CommunityUpdates />
       </Suspense>
-    </div>
+    </main>
   );
 }

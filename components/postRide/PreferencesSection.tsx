@@ -1,4 +1,4 @@
-'use client';
+﻿"use client";
 
 import React, { useEffect, useState } from "react";
 import Icon from "../AppIcon";
@@ -25,12 +25,10 @@ const PreferencesSection: React.FC<PreferencesSectionProps> = ({
   updateFormData,
   errors,
 }) => {
-
   const [isLoading, setIsLoading] = useState(true);
 
-  // Simulate loading delay for skeletons
   useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 500);
+    const timer = setTimeout(() => setIsLoading(false), 350);
     return () => clearTimeout(timer);
   }, []);
 
@@ -57,14 +55,26 @@ const PreferencesSection: React.FC<PreferencesSectionProps> = ({
     { value: "female", label: "Female Only" },
   ];
 
-  // const rideRules = [
-  //   { id: "no_smoking", label: "No Smoking", icon: "Ban" },
-  //   { id: "no_food", label: "No Food/Drinks", icon: "Coffee" },
-  //   { id: "no_pets", label: "No Pets", icon: "Dog" },
-  //   { id: "punctual", label: "Be Punctual", icon: "Clock" },
-  //   { id: "verified_only", label: "Verified Students Only", icon: "Shield" },
-  //   { id: "luggage_limit", label: "Limited Luggage", icon: "Luggage" },
-  // ];
+  const conversationOptions = [
+    { value: "any", label: "Any" },
+    { value: "quiet", label: "Quiet Ride" },
+    { value: "chatty", label: "Chatty Ride" },
+  ];
+
+  const musicOptions = [
+    { value: "any", label: "Any" },
+    { value: "low", label: "Low Volume" },
+    { value: "off", label: "No Music" },
+  ];
+
+  const rideRules = [
+    { id: "no_smoking", label: "No Smoking", icon: "Ban" },
+    { id: "no_alcohol", label: "No Alcohol", icon: "WineOff" },
+    { id: "quiet", label: "Quiet Ride", icon: "VolumeX" },
+    { id: "verified_only", label: "Verified Students Only", icon: "Shield" },
+    { id: "luggage_ok", label: "Bags Welcome", icon: "Luggage" },
+    { id: "on_time", label: "Be On Time", icon: "Clock" },
+  ];
 
   if (isLoading) {
     return (
@@ -87,9 +97,7 @@ const PreferencesSection: React.FC<PreferencesSectionProps> = ({
         Ride Preferences
       </h3>
 
-      {/* Passenger Preferences */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Left Column */}
         <div className="space-y-4">
           <div className="space-y-2">
             <Label>Gender Preference</Label>
@@ -98,7 +106,7 @@ const PreferencesSection: React.FC<PreferencesSectionProps> = ({
               onValueChange={(value) => handlePreferenceChange("gender", value)}
             >
               <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select Gender" />
+                <SelectValue placeholder="Select gender" />
               </SelectTrigger>
               <SelectContent>
                 {genderOptions.map((option) => (
@@ -109,11 +117,30 @@ const PreferencesSection: React.FC<PreferencesSectionProps> = ({
               </SelectContent>
             </Select>
           </div>
+
+          <div className="space-y-2">
+            <Label>Conversation Style</Label>
+            <Select
+              value={formData?.preferences?.conversation || ""}
+              onValueChange={(value) =>
+                handlePreferenceChange("conversation", value)
+              }
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select conversation" />
+              </SelectTrigger>
+              <SelectContent>
+                {conversationOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
-        {/* Right Column */}
         <div className="space-y-4">
-          {/* Age Range */}
           <div className="space-y-2">
             <Label>Age Range (Optional)</Label>
             <div className="flex items-center space-x-3">
@@ -144,13 +171,31 @@ const PreferencesSection: React.FC<PreferencesSectionProps> = ({
               />
             </div>
           </div>
+
+          <div className="space-y-2">
+            <Label>Music Preference</Label>
+            <Select
+              value={formData?.preferences?.music || ""}
+              onValueChange={(value) => handlePreferenceChange("music", value)}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select music" />
+              </SelectTrigger>
+              <SelectContent>
+                {musicOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       </div>
 
-      {/* Ride Rules */}
-      {/* <div>
+      <div>
         <Label className="block text-sm font-medium text-foreground mb-3">
-          Ride Rules & Requirements
+          Ride Rules and Requirements
         </Label>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {rideRules.map((rule) => (
@@ -170,9 +215,8 @@ const PreferencesSection: React.FC<PreferencesSectionProps> = ({
             </Button>
           ))}
         </div>
-      </div> */}
+      </div>
 
-      {/* Additional Notes */}
       <div>
         <Label className="block text-sm font-medium text-foreground mb-3">
           Additional Notes (Optional)
@@ -180,7 +224,7 @@ const PreferencesSection: React.FC<PreferencesSectionProps> = ({
         <textarea
           value={formData?.preferences?.notes || ""}
           onChange={(e) => handlePreferenceChange("notes", e.target.value)}
-          placeholder="Any specific instructions or preferences for passengers..."
+          placeholder="Any specific instructions or preferences for riders"
           className="w-full px-3 py-2 border border-border rounded-lg bg-input text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent resize-none h-24"
           maxLength={200}
         />
@@ -189,14 +233,13 @@ const PreferencesSection: React.FC<PreferencesSectionProps> = ({
         </p>
       </div>
 
-      {/* Safety Guidelines */}
       <div className="bg-warning/10 border border-warning/20 rounded-lg p-4 flex items-start space-x-3">
         <Icon name="Shield" size={20} className="text-warning mt-0.5" />
         <div className="text-sm text-muted-foreground space-y-1">
-          <p>• Meet passengers in well-lit, public areas</p>
-          <p>• Verify passenger identity before starting</p>
-          <p>• Share your trip details with a trusted contact</p>
-          <p>• Trust your instincts - cancel if uncomfortable</p>
+          <p>- Meet riders in well-lit, public areas</p>
+          <p>- Confirm identity before starting the ride</p>
+          <p>- Share your trip details with a trusted contact</p>
+          <p>- Trust your instincts and cancel if needed</p>
         </div>
       </div>
     </div>

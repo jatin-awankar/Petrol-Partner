@@ -1,7 +1,7 @@
-"use client";
+﻿"use client";
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { redirect, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 import Icon from "@/components/AppIcon";
@@ -19,26 +19,38 @@ import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, Eye, Home, Trash2 } from "lucide-react";
 import { motion } from "framer-motion";
 import { useCreateRideOffer } from "@/hooks/rides/useRideOffers";
-import { authOptions } from "@/lib/authOptions";
 import { useSession } from "next-auth/react";
 
 const STORAGE_KEY = "postRideFormData";
 
 const PostRide = () => {
   const { status } = useSession();
+  const router = useRouter();
 
   useEffect(() => {
     if (status === "unauthenticated") {
-      redirect("/login");
+      router.replace("/login");
     }
-  }, [status]);
+  }, [router, status]);
 
-  const router = useRouter();
+  if (status === "loading") {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="bg-card rounded-lg p-6 shadow-card text-center">
+          <div className="animate-spin w-6 h-6 border-2 border-primary border-t-transparent rounded-full mx-auto mb-3"></div>
+          <p className="text-sm text-muted-foreground">Loading your form...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (status === "unauthenticated") {
+    return null;
+  }
 
   const { createRideOffer, loading } = useCreateRideOffer();
   const [currentStep, setCurrentStep] = useState(1);
   const [showPreview, setShowPreview] = useState(false);
-  const [isPublishing, setIsPublishing] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formData, setFormData] = useState<any>({
     route: { pickup: "", dropoff: "", via: "" },
@@ -78,7 +90,7 @@ const PostRide = () => {
       { id: 5, title: "Pricing", component: "pricing" },
       { id: 6, title: "Preferences", component: "preferences" },
     ],
-    []
+    [],
   );
 
   // Restore draft
@@ -125,11 +137,43 @@ const PostRide = () => {
           if (formData.pricing.paymentMethods.length === 0)
             newErrors.paymentMethods = "Select at least one payment method";
           break;
+        default:
+          break;
       }
       setErrors(newErrors);
       return Object.keys(newErrors).length === 0;
     },
-    [formData]
+    [formData],
+  );
+
+  const isStepComplete = useCallback(
+    (step: number) => {
+      switch (step) {
+        case 1:
+          return Boolean(
+            formData.route.pickup.trim() && formData.route.dropoff.trim(),
+          );
+        case 2:
+          return Boolean(formData.schedule.date && formData.schedule.time);
+        case 3:
+          return Boolean(
+            formData.availableSeats && formData.availableSeats > 0,
+          );
+        case 4:
+          return Boolean(formData.vehicle.selectedId || formData.vehicle.make);
+        case 5:
+          return Boolean(
+            formData.pricing.farePerSeat &&
+            formData.pricing.farePerSeat > 0 &&
+            formData.pricing.paymentMethods.length > 0,
+          );
+        case 6:
+          return true;
+        default:
+          return false;
+      }
+    },
+    [formData],
   );
 
   // Step navigation
@@ -144,12 +188,12 @@ const PostRide = () => {
 
   const handlePrevious = useCallback(
     () => setCurrentStep((prev) => Math.max(prev - 1, 1)),
-    []
+    [],
   );
 
   // Publish ride API
   const handlePublish = useCallback(async () => {
-    setIsPublishing(true);
+    if (loading) return;
     try {
       const body = {
         pickup_location: formData.route.pickup,
@@ -168,8 +212,6 @@ const PostRide = () => {
         notes: formData.preferences.notes || null,
       };
 
-      console.log("📦 Sending ride data:", body); // Debug log
-
       await createRideOffer(body);
 
       toast.success("Ride published successfully!");
@@ -183,10 +225,8 @@ const PostRide = () => {
         console.error("Publish error: ", err);
         toast.error("Failed to publish ride");
       }
-    } finally {
-      setIsPublishing(false);
     }
-  }, [createRideOffer, formData, router]);
+  }, [createRideOffer, formData, router, loading]);
 
   const renderCurrentStep = useCallback(() => {
     const comp = steps[currentStep - 1]?.component;
@@ -210,29 +250,31 @@ const PostRide = () => {
   }, [currentStep, steps, formData, errors]);
 
   const completedSteps = useMemo(
-    () => steps.filter((_, i) => validateStep(i + 1)).length,
-    [steps, validateStep]
+    () =>
+      steps
+        .slice(0, currentStep)
+        .filter((_, i) => isStepComplete(i + 1)).length,
+    [steps, isStepComplete, currentStep],
   );
 
-  const isFormComplete = completedSteps >= steps.length - 1;
+  const isFormComplete = completedSteps === steps.length;
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      className="page min-h-screen bg-background container mx-auto p-4 space-y-6"
+      className="page min-h-screen bg-background"
     >
       <div className="pb-20 md:pb-6">
-        <ProgressIndicator
-          currentStep={currentStep}
-          totalSteps={steps.length}
-          steps={steps}
-        />
-        <div className="max-w-4xl mx-auto p-4 pt-6 space-y-6">
+        <div className="container mx-auto max-w-5xl p-4 pt-6 space-y-6">
+          <ProgressIndicator
+            currentStep={currentStep}
+            totalSteps={steps.length}
+            steps={steps}
+          />
           {renderCurrentStep()}
 
-          {/* Navigation */}
-          <div className="flex items-center justify-between pt-6 border-t border-border">
+          <div className="flex flex-col gap-4 border-t border-border pt-6 md:flex-row md:items-center md:justify-between">
             <Button
               variant="outline"
               onClick={handlePrevious}
@@ -243,8 +285,8 @@ const PostRide = () => {
               Previous
             </Button>
 
-            <div className="flex items-center space-x-3">
-              <div className="hidden md:flex items-center space-x-2 text-sm text-muted-foreground">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Icon name="CheckCircle" size={16} className="text-success" />
                 <span>
                   {completedSteps}/{steps.length} completed
@@ -264,7 +306,7 @@ const PostRide = () => {
                 <Button
                   variant="default"
                   onClick={() => setShowPreview(true)}
-                  disabled={!isFormComplete}
+                  disabled={!isFormComplete || loading}
                   className="shadow-sm"
                 >
                   <Eye />
@@ -274,40 +316,37 @@ const PostRide = () => {
             </div>
           </div>
 
-          {/* Auto-save info */}
-          <div className="bg-card rounded-lg border border-border p-4 flex items-center justify-between shadow-soft">
+          <div className="bg-card rounded-lg border border-border p-4 flex flex-col gap-4 shadow-soft sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center space-x-3">
               <Icon name="Save" size={20} className="text-muted-foreground" />
               <div>
                 <p className="text-sm font-medium text-foreground">
-                  Auto-saved
+                  Draft saved locally
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  Your progress is automatically saved
+                  Your progress stays on this device until you publish.
                 </p>
               </div>
             </div>
-            <div className="flex flex-col sm:flex-row gap-2 w-fit items-end ">
+            <div className="flex flex-col sm:flex-row gap-2">
               <Button
                 variant="destructive"
                 size="sm"
                 onClick={() => {
-                  if (confirm("Are you sure you want to clear all data?")) {
+                  if (confirm("Clear your saved draft?")) {
                     localStorage.removeItem(STORAGE_KEY);
                     window.location.reload();
                   }
                 }}
-                className=""
               >
                 <Trash2 />
-                Clear All
+                Clear Draft
               </Button>
 
               <Button
-                variant="ghost"
+                variant="outline"
                 size="sm"
                 onClick={() => router.push("/dashboard")}
-                className="bg-accent dark:bg-accent/50"
               >
                 <Home />
                 Save & Exit

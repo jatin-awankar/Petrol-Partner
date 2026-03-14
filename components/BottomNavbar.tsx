@@ -1,68 +1,58 @@
-"use client"
+"use client";
 
 import React from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
+
 import Icon from "./AppIcon";
+import { MOBILE_NAV_ITEMS, isActivePath } from "./navConfig";
 
 const BottomNavbar = () => {
   const pathname = usePathname();
   const router = useRouter();
+  const { data: session, status } = useSession();
 
-  const navigationItems = [
-    { label: "Home", path: "/dashboard", icon: "Home" },
-    { label: "Search", path: "/search-rides", icon: "Search" },
-    { label: "Post", path: "/post-a-ride", icon: "Plus", isCenter: true },
-    { label: "Messages", path: "/messages-chat", icon: "MessageCircle", badge: 2 },
-    { label: "Profile", path: "/profile-settings", icon: "User" },
-  ];
+  if (status !== "authenticated" || !session?.user) {
+    return null;
+  }
 
   return (
     <nav
-      className="fixed bottom-0 left-0 right-0 z-100 md:hidden backdrop-blur-xl bg-card/90 border-t border-border 
-      shadow-lg pb-[env(safe-area-inset-bottom)]"
+      className="fixed bottom-0 left-0 right-0 z-50 border-t border-border/80 bg-card/92 pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_30px_rgba(0,0,0,0.08)] backdrop-blur-xl md:hidden"
+      aria-label="Mobile navigation"
     >
-      <div className="flex items-center justify-around h-16 px-2">
-        {navigationItems.map((item) => {
-          const isActive = pathname === item.path;
+      <div className="mx-auto flex h-16 max-w-[560px] items-center justify-around px-2">
+        {MOBILE_NAV_ITEMS.map((item) => {
+          const active = isActivePath(pathname, item.path);
 
           return (
             <button
               key={item.path}
+              type="button"
               onClick={() => router.push(item.path)}
-              aria-current={isActive ? "page" : undefined}
-              className={`relative flex flex-col items-center justify-center transition-all duration-200 cursor-pointer
-                ${
-                  item.isCenter
-                    ? "translate-y-[-18%]"
-                    : "opacity-90 hover:opacity-100"
-                }
-                ${isActive ? "text-primary scale-105" : "text-muted-foreground"}
-              `}
+              aria-current={active ? "page" : undefined}
+              className={`relative flex min-w-[56px] flex-col items-center justify-center rounded-lg transition-all duration-200 ${
+                item.highlight ? "-translate-y-2" : ""
+              } ${active ? "text-primary" : "text-muted-foreground"}`}
             >
-              <div
-                className={`relative flex items-center justify-center 
-                  ${item.isCenter ? "bg-gradient-hero text-white rounded-full w-14 h-14 shadow-lg" : ""}
-                `}
+              <span
+                className={`inline-flex items-center justify-center ${
+                  item.highlight
+                    ? "h-12 w-12 rounded-full bg-gradient-primary text-white shadow-soft"
+                    : "h-9 w-9 rounded-lg"
+                }`}
               >
                 <Icon
                   name={item.icon}
-                  size={item.isCenter ? 24 : 22}
-                  strokeWidth={isActive ? 2.5 : 2}
+                  size={item.highlight ? 22 : 20}
+                  strokeWidth={active ? 2.4 : 2}
                 />
+              </span>
 
-                {/* 🔴 Notification Badge */}
-                {item.badge && !item.isCenter && (
-                  <span className="absolute -top-1.5 -right-2 min-w-[16px] h-[16px] bg-error text-error-foreground text-[10px] font-semibold rounded-full flex items-center justify-center px-[3px] shadow-md">
-                    {item.badge > 99 ? "99+" : item.badge}
-                  </span>
-                )}
-              </div>
-
-              {/* Label */}
-              {!item.isCenter && (
+              {!item.highlight && (
                 <span
-                  className={`text-[11px] mt-1 font-medium tracking-tight ${
-                    isActive ? "text-primary" : "text-muted-foreground"
+                  className={`mt-0.5 text-[11px] font-medium ${
+                    active ? "text-primary" : "text-muted-foreground"
                   }`}
                 >
                   {item.label}

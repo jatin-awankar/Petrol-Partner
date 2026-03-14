@@ -246,7 +246,7 @@ const StatisticsSection: React.FC<StatisticsSectionProps> = ({
                 <StatCard
                   icon="IndianRupee"
                   title="Money Saved"
-                  value={`₹${safeStats.moneySaved?.toLocaleString() || 0}`}
+                  value={`INR ${safeStats.moneySaved?.toLocaleString() || 0}`}
                   subtitle="Through ride sharing"
                   color="text-success"
                 />
@@ -268,7 +268,7 @@ const StatisticsSection: React.FC<StatisticsSectionProps> = ({
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <StatCard
                   icon="Leaf"
-                  title="CO₂ Saved"
+                  title="CO2 Saved"
                   value={`${safeStats.co2Saved?.toLocaleString() || 0} kg`}
                   subtitle="Carbon footprint reduced"
                   color="text-success"
@@ -295,7 +295,7 @@ const StatisticsSection: React.FC<StatisticsSectionProps> = ({
               <h4 className="font-medium text-foreground mb-4">Achievements</h4>
               <div className="space-y-3">
                 <ProgressBar
-                  label="Eco Warrior (Reduce 100kg CO₂)"
+                  label="Eco Warrior (Reduce 100kg CO2)"
                   current={safeStats.co2Saved}
                   total={100}
                   color="bg-success"
@@ -336,7 +336,7 @@ const StatisticsSection: React.FC<StatisticsSectionProps> = ({
                     icon: "IndianRupee",
                     color: "text-indigo-400",
                     label: "Saved",
-                    value: `₹${safeStats.monthlySavings?.toLocaleString() || 0}`,
+                    value: `INR ${safeStats.monthlySavings?.toLocaleString() || 0}`,
                   },
                   {
                     icon: "MapPin",
@@ -347,7 +347,7 @@ const StatisticsSection: React.FC<StatisticsSectionProps> = ({
                   {
                     icon: "Leaf",
                     color: "text-success",
-                    label: "kg CO₂",
+                    label: "kg CO2",
                     value: safeStats.monthlyCO2?.toLocaleString() || "0",
                   },
                 ].map((item, i) => (

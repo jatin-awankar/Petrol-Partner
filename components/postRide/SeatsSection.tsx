@@ -1,11 +1,10 @@
-"use client";
+﻿"use client";
 
 import React, { useState, useEffect } from "react";
 import Skeleton from "react-loading-skeleton";
 import Icon from "../AppIcon";
 import { Button } from "../ui/button";
 
-// Error Boundary
 class SeatsSectionErrorBoundary extends React.Component<
   { children: React.ReactNode },
   { hasError: boolean }
@@ -26,8 +25,8 @@ class SeatsSectionErrorBoundary extends React.Component<
   render() {
     if (this.state.hasError) {
       return (
-        <div className="bg-red-100 text-red-800 p-4 rounded-xl">
-          Something went wrong loading the Seats section.
+        <div className="bg-destructive/10 text-destructive p-4 rounded-xl">
+          Something went wrong loading the seats section.
         </div>
       );
     }
@@ -35,7 +34,6 @@ class SeatsSectionErrorBoundary extends React.Component<
   }
 }
 
-// Props interface
 interface SeatsSectionProps {
   formData: any;
   updateFormData: (data: any) => void;
@@ -50,7 +48,7 @@ const SeatsSection: React.FC<SeatsSectionProps> = ({
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const timer = setTimeout(() => setLoading(false), 500);
+    const timer = setTimeout(() => setLoading(false), 350);
     return () => clearTimeout(timer);
   }, []);
 
@@ -63,7 +61,7 @@ const SeatsSection: React.FC<SeatsSectionProps> = ({
   if (loading) {
     return (
       <div className="bg-card rounded-lg border border-border p-6 space-y-4 animate-pulse shadow-card">
-        <Skeleton height={30} width={`50%`} className="mb-2" />
+        <Skeleton height={26} width="50%" className="mb-2" />
         <Skeleton height={40} width="100%" count={3} />
         <Skeleton height={120} width="100%" className="rounded-lg" />
       </div>
@@ -78,7 +76,6 @@ const SeatsSection: React.FC<SeatsSectionProps> = ({
       </h3>
 
       <div className="space-y-4">
-        {/* Seat Selection */}
         <div>
           <label className="block text-sm font-medium text-foreground mb-3">
             How many passengers can you accommodate?
@@ -103,14 +100,12 @@ const SeatsSection: React.FC<SeatsSectionProps> = ({
           )}
         </div>
 
-        {/* Seat Layout Preview */}
-        <div className="bg-muted/50 rounded-lg p-4">
+        <div className="bg-muted/40 rounded-lg p-4">
           <h4 className="text-sm font-medium text-foreground mb-3">
             Seat Layout Preview
           </h4>
           <div className="flex items-center justify-center">
             <div className="bg-card border border-border rounded-lg p-4 max-w-xs">
-              {/* Driver Seat */}
               <div className="flex justify-between items-center mb-3">
                 <div className="w-8 h-8 bg-primary rounded flex items-center justify-center">
                   <Icon name="User" size={16} color="white" />
@@ -118,7 +113,6 @@ const SeatsSection: React.FC<SeatsSectionProps> = ({
                 <div className="text-xs text-muted-foreground">Driver</div>
               </div>
 
-              {/* Passenger Seats */}
               <div className="grid grid-cols-2 gap-2">
                 {Array.from(
                   { length: Math.min(formData.availableSeats, 4) },
@@ -148,7 +142,6 @@ const SeatsSection: React.FC<SeatsSectionProps> = ({
                 )}
               </div>
 
-              {/* Extra seats for larger vehicles */}
               {formData.availableSeats > 4 && (
                 <div className="grid grid-cols-2 gap-2 mt-2">
                   {Array.from(
@@ -167,22 +160,19 @@ const SeatsSection: React.FC<SeatsSectionProps> = ({
             </div>
           </div>
           <p className="text-xs text-muted-foreground text-center mt-2">
-            Green seats are available for passengers
+            Green seats are available for passengers.
           </p>
         </div>
 
-        {/* Tips */}
         <div className="bg-accent/10 border border-accent/20 rounded-lg p-3">
           <div className="flex items-start space-x-2">
             <Icon name="Info" size={16} className="text-accent mt-0.5" />
             <div className="text-sm">
-              <p className="font-medium text-foreground">
-                Seat Selection Tips:
-              </p>
+              <p className="font-medium text-foreground">Seat Tips</p>
               <ul className="text-muted-foreground mt-1 space-y-1">
-                <li>• Consider comfort for longer journeys</li>
-                <li>• More seats = lower cost per person</li>
-                <li>• Leave space for luggage if needed</li>
+                <li>- Consider comfort for longer rides</li>
+                <li>- More seats can lower cost per person</li>
+                <li>- Leave room for bags if needed</li>
               </ul>
             </div>
           </div>
@@ -192,7 +182,6 @@ const SeatsSection: React.FC<SeatsSectionProps> = ({
   );
 };
 
-// Export with Error Boundary
 export default function SeatsSectionWithErrorBoundary(
   props: SeatsSectionProps
 ) {

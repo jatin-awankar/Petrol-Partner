@@ -1,16 +1,9 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+﻿import React, { useState, useEffect, useCallback } from "react";
 import Icon from "../AppIcon";
 import Skeleton from "react-loading-skeleton";
 import { Button } from "../ui/button";
 import { Edit, Save } from "lucide-react";
 import { Input } from "../ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../ui/select";
 import { Label } from "../ui/label";
 
 export interface User {
@@ -56,42 +49,26 @@ const PersonalInfoSection: React.FC<PersonalInfoSectionProps> = ({
   const [formData, setFormData] = useState<User>(DEFAULT_USER_FORM);
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [isSaving, setIsSaving] = useState<boolean>(false);
-  const [isInternalLoading, setIsInternalLoading] = useState(true);
   const [formError, setFormError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
-  const isLoading = externalLoading || isInternalLoading;
+  const isLoading = externalLoading;
 
-  const genderOptions = useMemo(
-    () => [
-      { value: "male", label: "Male" },
-      { value: "female", label: "Female" },
-      { value: "other", label: "Other" },
-      { value: "prefer-not-to-say", label: "Prefer not to say" },
-    ],
-    []
-  );
-
-  // Initialize from props
   useEffect(() => {
-    if (user !== null) {
-      const timer = setTimeout(() => {
-        setFormData({
-          ...DEFAULT_USER_FORM,
-          name: user?.name ?? "",
-          phone: user?.phone ?? "",
-          dateOfBirth: user?.dateOfBirth ?? "",
-          gender: user?.gender ?? "",
-          emergencyContact: user?.emergencyContact ?? "",
-          emergencyPhone: user?.emergencyPhone ?? "",
-          address: user?.address ?? "",
-          email: user?.email ?? "",
-        });
-        setIsInternalLoading(false);
-      }, 300);
-      return () => clearTimeout(timer);
+    if (user) {
+      setFormData({
+        ...DEFAULT_USER_FORM,
+        name: user?.name ?? "",
+        phone: user?.phone ?? "",
+        dateOfBirth: user?.dateOfBirth ?? "",
+        gender: user?.gender ?? "",
+        emergencyContact: user?.emergencyContact ?? "",
+        emergencyPhone: user?.emergencyPhone ?? "",
+        address: user?.address ?? "",
+        email: user?.email ?? "",
+      });
     } else {
-      setIsInternalLoading(false);
+      setFormData(DEFAULT_USER_FORM);
     }
   }, [user]);
 
@@ -112,7 +89,6 @@ const PersonalInfoSection: React.FC<PersonalInfoSectionProps> = ({
       setFormError("Phone number is required");
       return false;
     }
-    // Basic phone validation
     const phoneRegex = /^[\d\s\-\+\(\)]{10,}$/;
     if (!phoneRegex.test(formData.phone.trim())) {
       setFormError("Please enter a valid phone number");
@@ -126,14 +102,12 @@ const PersonalInfoSection: React.FC<PersonalInfoSectionProps> = ({
 
     setFormError(null);
 
-    if (!validateForm()) {
-      return;
-    }
+    if (!validateForm()) return;
 
     setIsSaving(true);
 
     try {
-      await onSave(formData);
+      await onSave({ name: formData.name, phone: formData.phone });
       setSaveSuccess(true);
       setIsEditing(false);
       setTimeout(() => setSaveSuccess(false), 3000);
@@ -167,7 +141,6 @@ const PersonalInfoSection: React.FC<PersonalInfoSectionProps> = ({
     setFormError(null);
   }, [user]);
 
-  // Render skeleton when loading
   if (isLoading) {
     return (
       <div className="bg-card border border-border rounded-lg shadow-card animate-pulse">
@@ -177,16 +150,14 @@ const PersonalInfoSection: React.FC<PersonalInfoSectionProps> = ({
         >
           <div className="flex items-center space-x-3">
             <Icon name="User" size={20} className="text-primary" />
-            <Skeleton width={192} height={20} className="rounded animate-bounce" />
+            <Skeleton width={192} height={20} className="rounded" />
           </div>
-          <Skeleton width={20} height={20} className="rounded animate-bounce" />
+          <Skeleton width={20} height={20} className="rounded" />
         </button>
         {isExpanded && (
           <div className="px-4 pb-4 border-t border-border pt-4 space-y-4">
-            <Skeleton width="100%" height={80} className="rounded animate-pulse" />
-            <Skeleton width="100%" height={80} className="rounded animate-pulse" />
-            <Skeleton width="100%" height={80} className="rounded animate-pulse" />
-            <Skeleton width="100%" height={80} className="rounded animate-pulse" />
+            <Skeleton width="100%" height={80} className="rounded" />
+            <Skeleton width="100%" height={80} className="rounded" />
           </div>
         )}
       </div>
@@ -210,7 +181,6 @@ const PersonalInfoSection: React.FC<PersonalInfoSectionProps> = ({
         />
       </button>
 
-      {/* Content */}
       <div
         className={`overflow-hidden transition-[max-height,opacity] duration-500 ease-in-out ${
           isExpanded ? "max-h-[3000px] opacity-100" : "max-h-0 opacity-0"
@@ -271,10 +241,7 @@ const PersonalInfoSection: React.FC<PersonalInfoSectionProps> = ({
                     Gender
                   </label>
                   <p className="text-muted-foreground mt-1 capitalize">
-                    {formData.gender
-                      ? genderOptions.find((opt) => opt.value === formData.gender)?.label ||
-                        formData.gender
-                      : "Not provided"}
+                    {formData.gender || "Not provided"}
                   </p>
                 </div>
               </div>
@@ -286,7 +253,7 @@ const PersonalInfoSection: React.FC<PersonalInfoSectionProps> = ({
                   </h4>
                   <p className="text-sm text-muted-foreground">
                     {formData.emergencyContact || "Not provided"}
-                    {formData.emergencyContact && formData.emergencyPhone && " — "}
+                    {formData.emergencyContact && formData.emergencyPhone && " - "}
                     {formData.emergencyPhone || ""}
                   </p>
                 </div>
@@ -340,97 +307,10 @@ const PersonalInfoSection: React.FC<PersonalInfoSectionProps> = ({
                     placeholder="Enter phone number"
                   />
                 </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={formData.email ?? ""}
-                    onChange={(e) => handleInputChange("email", e.target.value)}
-                    disabled={isSaving}
-                    placeholder="Enter email address"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="dateOfBirth">Date of Birth</Label>
-                  <Input
-                    id="dateOfBirth"
-                    type="date"
-                    value={formData.dateOfBirth ?? ""}
-                    onChange={(e) =>
-                      handleInputChange("dateOfBirth", e.target.value)
-                    }
-                    disabled={isSaving}
-                    max={new Date().toISOString().split("T")[0]}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="gender">Gender</Label>
-                  <Select
-                    value={formData.gender || ""}
-                    onValueChange={(value) => handleInputChange("gender", value)}
-                    disabled={isSaving}
-                  >
-                    <SelectTrigger id="gender">
-                      <SelectValue placeholder="Select Gender" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {genderOptions.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
               </div>
 
-              <div className="border-t border-border pt-4 space-y-4">
-                <h4 className="font-medium text-foreground">
-                  Emergency Contact
-                </h4>
-                <div className="space-y-2">
-                  <Label htmlFor="emergencyContact">Contact Name</Label>
-                  <Input
-                    id="emergencyContact"
-                    type="text"
-                    value={formData.emergencyContact ?? ""}
-                    onChange={(e) =>
-                      handleInputChange("emergencyContact", e.target.value)
-                    }
-                    disabled={isSaving}
-                    placeholder="Enter emergency contact name"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="emergencyPhone">Contact Phone</Label>
-                  <Input
-                    id="emergencyPhone"
-                    type="tel"
-                    value={formData.emergencyPhone ?? ""}
-                    onChange={(e) =>
-                      handleInputChange("emergencyPhone", e.target.value)
-                    }
-                    disabled={isSaving}
-                    placeholder="Enter emergency contact phone"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="address">Address</Label>
-                <Input
-                  id="address"
-                  type="text"
-                  value={formData.address ?? ""}
-                  onChange={(e) => handleInputChange("address", e.target.value)}
-                  disabled={isSaving}
-                  placeholder="Enter your address"
-                />
+              <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm text-muted-foreground">
+                Email, date of birth, gender, and emergency contacts are read-only for now.
               </div>
 
               <div className="flex space-x-3 pt-4">

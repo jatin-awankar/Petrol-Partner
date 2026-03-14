@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+﻿import React, { useState, useEffect, useCallback, useMemo } from "react";
 import Icon from "../AppIcon";
 import Skeleton from "react-loading-skeleton";
 import { Button } from "../ui/button";
@@ -54,7 +54,6 @@ const SafetySection: React.FC<SafetySectionProps> = ({
   error: externalError = null,
   maxTrustedContacts = 3,
 }) => {
-  const [isInternalLoading, setIsInternalLoading] = useState(true);
   const [trustedContacts, setTrustedContacts] = useState<TrustedContact[]>([]);
   const [showAddContact, setShowAddContact] = useState<boolean>(false);
   const [newContact, setNewContact] = useState<Omit<TrustedContact, "id">>({
@@ -73,59 +72,60 @@ const SafetySection: React.FC<SafetySectionProps> = ({
   const [contactError, setContactError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
-  // Derived state
-  const isLoading = externalLoading || isInternalLoading;
+  const isLoading = externalLoading;
   const canAddMoreContacts = (trustedContacts?.length ?? 0) < maxTrustedContacts;
 
-  // Safety preferences configuration
-  const safetyPreferences = useMemo(() => [
-    {
-      id: "autoShareRide",
-      label: "Auto-share ride details with trusted contacts",
-      desc: "Automatically share ride information when you start a trip",
-      key: "autoShareRideDetails" as const,
-    },
-    {
-      id: "enableLocationTracking",
-      label: "Enable location tracking during rides",
-      desc: "Allow real-time location tracking for safety purposes",
-      key: "enableLocationTracking" as const,
-    },
-    {
-      id: "reqDriverVerf",
-      label: "Require driver verification for rides",
-      desc: "Only accept rides from drivers with verified documents",
-      key: "requireDriverVerification" as const,
-    },
-    {
-      id: "sendSafetyChecks",
-      label: "Send safety check-ins during long rides",
-      desc: "Receive periodic safety check-ins for rides longer than 1 hour",
-      key: "safetyCheckIns" as const,
-    },
-  ], []);
+  const safetyPreferences = useMemo(
+    () => [
+      {
+        id: "autoShareRide",
+        label: "Auto-share ride details with trusted contacts",
+        desc: "Automatically share ride information when you start a trip",
+        key: "autoShareRideDetails" as const,
+      },
+      {
+        id: "enableLocationTracking",
+        label: "Enable location tracking during rides",
+        desc: "Allow real-time location tracking for safety purposes",
+        key: "enableLocationTracking" as const,
+      },
+      {
+        id: "reqDriverVerf",
+        label: "Require driver verification for rides",
+        desc: "Only accept rides from drivers with verified documents",
+        key: "requireDriverVerification" as const,
+      },
+      {
+        id: "sendSafetyChecks",
+        label: "Send safety check-ins during long rides",
+        desc: "Receive periodic safety check-ins for rides longer than 1 hour",
+        key: "safetyCheckIns" as const,
+      },
+    ],
+    []
+  );
 
-  // Initialize from props
   useEffect(() => {
     if (safetySettings !== null) {
-      const timer = setTimeout(() => {
-        setTrustedContacts(safetySettings?.trustedContacts ?? []);
-        setSettings({
-          autoShareRideDetails: false,
-          enableLocationTracking: false,
-          requireDriverVerification: false,
-          safetyCheckIns: false,
-          ...(safetySettings?.settings ?? {}),
-        });
-        setIsInternalLoading(false);
-      }, 300);
-      return () => clearTimeout(timer);
+      setTrustedContacts(safetySettings?.trustedContacts ?? []);
+      setSettings({
+        autoShareRideDetails: false,
+        enableLocationTracking: false,
+        requireDriverVerification: false,
+        safetyCheckIns: false,
+        ...(safetySettings?.settings ?? {}),
+      });
     } else {
-      setIsInternalLoading(false);
+      setTrustedContacts([]);
+      setSettings({
+        autoShareRideDetails: false,
+        enableLocationTracking: false,
+        requireDriverVerification: false,
+        safetyCheckIns: false,
+      });
     }
   }, [safetySettings]);
 
-  // Phone number validation helper
   const isValidPhone = (phone: string): boolean => {
     const phoneRegex = /^[\d\s\-\+\(\)]{10,}$/;
     return phoneRegex.test(phone.trim());
@@ -134,7 +134,6 @@ const SafetySection: React.FC<SafetySectionProps> = ({
   const handleAddContact = useCallback(async () => {
     setContactError(null);
 
-    // Validation
     if (!newContact?.name?.trim()) {
       setContactError("Contact name is required");
       return;
@@ -150,7 +149,6 @@ const SafetySection: React.FC<SafetySectionProps> = ({
       return;
     }
 
-    // Check if contact already exists
     const phoneExists = trustedContacts.some(
       (contact) => contact.phone?.trim() === newContact.phone.trim()
     );
@@ -159,7 +157,6 @@ const SafetySection: React.FC<SafetySectionProps> = ({
       return;
     }
 
-    // Check limit
     if (!canAddMoreContacts) {
       setContactError(`Maximum ${maxTrustedContacts} trusted contacts allowed`);
       return;
@@ -198,7 +195,6 @@ const SafetySection: React.FC<SafetySectionProps> = ({
       setTrustedContacts((prev) => prev.filter((contact) => contact?.id !== id));
     } catch (err) {
       console.error("Failed to remove contact:", err);
-      // Optionally show error to user
     }
   }, [onRemoveContact]);
 
@@ -225,18 +221,16 @@ const SafetySection: React.FC<SafetySectionProps> = ({
           safetyCheckIns: false,
         },
       });
-      
+
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (err) {
       console.error("Failed to save safety settings:", err);
-      // Error is handled by parent component via error prop
     } finally {
       setIsSaving(false);
     }
   }, [onSave, trustedContacts, settings]);
 
-  // Skeleton loader
   if (isLoading) {
     return (
       <div className="bg-card border border-border rounded-lg shadow-card animate-pulse">
@@ -246,23 +240,14 @@ const SafetySection: React.FC<SafetySectionProps> = ({
         >
           <div className="flex items-center space-x-3">
             <Icon name="Shield" size={20} className="text-primary" />
-            <Skeleton
-              width={160}
-              height={20}
-              className="rounded animate-bounce"
-            />
+            <Skeleton width={160} height={20} className="rounded" />
           </div>
-          <Skeleton width={20} height={20} className="rounded animate-bounce" />
+          <Skeleton width={20} height={20} className="rounded" />
         </button>
         {isExpanded && (
           <div className="px-4 pb-4 border-t border-border pt-4 space-y-6">
             {[1, 2, 3].map((i) => (
-              <Skeleton
-                key={i}
-                width="100%"
-                height={64}
-                className="rounded-lg animate-pulse"
-              />
+              <Skeleton key={i} width="100%" height={64} className="rounded-lg" />
             ))}
           </div>
         )}
@@ -287,7 +272,6 @@ const SafetySection: React.FC<SafetySectionProps> = ({
         />
       </button>
 
-      {/* Content */}
       <div
         className={`overflow-hidden transition-[max-height,opacity] duration-500 ease-in-out ${
           isExpanded ? "max-h-[3000px] opacity-100" : "max-h-0 opacity-0"
@@ -300,28 +284,24 @@ const SafetySection: React.FC<SafetySectionProps> = ({
                 <p className="text-sm text-success">Safety settings saved successfully!</p>
               </div>
             )}
-            
+
             {externalError && (
               <div className="p-3 bg-error/10 border border-error/20 rounded-lg">
                 <p className="text-sm text-error">{externalError}</p>
               </div>
             )}
 
-            {/* Trusted Contacts */}
             <div>
-              <h4 className="font-medium text-foreground mb-4">
-                Trusted Contacts
-              </h4>
+              <h4 className="font-medium text-foreground mb-4">Trusted Contacts</h4>
               <p className="text-sm text-muted-foreground mb-4">
-                These contacts will be notified in case of emergency or if you
-                use the SOS feature.
+                These contacts will be notified in case of emergency or if you use the SOS feature.
               </p>
 
-              {trustedContacts && trustedContacts.length > 0 ? (
+              {trustedContacts.length > 0 ? (
                 <div className="space-y-3 mb-4">
                   {trustedContacts.map((contact) => {
                     if (!contact?.id) return null;
-                    
+
                     return (
                       <div
                         key={contact.id}
@@ -335,7 +315,7 @@ const SafetySection: React.FC<SafetySectionProps> = ({
                             {contact.phone || "No phone number"}
                           </p>
                           {contact.relationship && (
-                            <p className="text-xs text-blue-500 capitalize mt-1">
+                            <p className="text-xs text-muted-foreground capitalize mt-1">
                               {contact.relationship}
                             </p>
                           )}
@@ -369,9 +349,7 @@ const SafetySection: React.FC<SafetySectionProps> = ({
 
               {showAddContact ? (
                 <div className="border border-border rounded-lg p-4">
-                  <h5 className="font-medium text-foreground mb-3">
-                    Add Trusted Contact
-                  </h5>
+                  <h5 className="font-medium text-foreground mb-3">Add Trusted Contact</h5>
                   {contactError && (
                     <div className="mb-3 p-2 bg-error/10 border border-error/20 rounded text-sm text-error">
                       {contactError}
@@ -443,8 +421,8 @@ const SafetySection: React.FC<SafetySectionProps> = ({
                       />
                     </div>
                     <div className="flex space-x-3">
-                      <Button 
-                        variant="default" 
+                      <Button
+                        variant="default"
                         onClick={handleAddContact}
                         disabled={!newContact.name?.trim() || !newContact.phone?.trim()}
                       >
@@ -471,41 +449,31 @@ const SafetySection: React.FC<SafetySectionProps> = ({
                   disabled={!canAddMoreContacts}
                 >
                   <Plus />
-                  Add Trusted Contact{" "}
-                  {!canAddMoreContacts && `(Max ${maxTrustedContacts})`}
+                  Add Trusted Contact {!canAddMoreContacts && `(Max ${maxTrustedContacts})`}
                 </Button>
               )}
             </div>
 
-            {/* Safety Preferences */}
             <div className="border-t border-border pt-6">
-              <h4 className="font-medium text-foreground mb-4">
-                Safety Preferences
-              </h4>
+              <h4 className="font-medium text-foreground mb-4">Safety Preferences</h4>
               <div className="space-y-4">
                 {safetyPreferences.map((item) => {
                   const settingValue = settings?.[item.key] ?? false;
-                  
+
                   return (
-                    <div 
-                      key={item.id} 
+                    <div
+                      key={item.id}
                       className="flex items-start space-x-3 p-3 border border-border rounded-lg hover:bg-muted/30 transition-colors"
                     >
                       <Checkbox
                         id={item.id}
                         checked={settingValue}
                         onCheckedChange={(checked) =>
-                          handleSettingChange(
-                            item.key, 
-                            checked === true
-                          )
+                          handleSettingChange(item.key, checked === true)
                         }
                         className="mt-1"
                       />
-                      <Label 
-                        htmlFor={item.id} 
-                        className="flex-1 cursor-pointer"
-                      >
+                      <Label htmlFor={item.id} className="flex-1 cursor-pointer">
                         <span className="block font-medium text-foreground mb-1">
                           {item.label}
                         </span>
@@ -519,22 +487,13 @@ const SafetySection: React.FC<SafetySectionProps> = ({
               </div>
             </div>
 
-            {/* Emergency Features */}
             <div className="border-t border-border pt-6">
-              <h4 className="font-medium text-foreground mb-4">
-                Emergency Features
-              </h4>
+              <h4 className="font-medium text-foreground mb-4">Emergency Features</h4>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="p-4 border border-border rounded-lg">
                   <div className="flex items-center space-x-3 mb-2">
-                    <Icon
-                      name="Phone"
-                      size={20}
-                      className="text-error/50 fill-current"
-                    />
-                    <h5 className="font-medium text-foreground">
-                      Emergency Call
-                    </h5>
+                    <Icon name="Phone" size={20} className="text-error/50" />
+                    <h5 className="font-medium text-foreground">Emergency Call</h5>
                   </div>
                   <p className="text-sm text-muted-foreground mb-3">
                     Quick access to emergency services (911/100)
@@ -546,10 +505,8 @@ const SafetySection: React.FC<SafetySectionProps> = ({
 
                 <div className="p-4 border border-border rounded-lg">
                   <div className="flex items-center space-x-3 mb-2">
-                    <Icon name="MapPin" size={20} className="text-success " />
-                    <h5 className="font-medium text-foreground">
-                      Share Location
-                    </h5>
+                    <Icon name="MapPin" size={20} className="text-success" />
+                    <h5 className="font-medium text-foreground">Share Location</h5>
                   </div>
                   <p className="text-sm text-muted-foreground mb-3">
                     Instantly share your location with trusted contacts
@@ -561,22 +518,13 @@ const SafetySection: React.FC<SafetySectionProps> = ({
               </div>
             </div>
 
-            {/* Incident History */}
             <div className="border-t border-border pt-6">
-              <h4 className="font-medium text-foreground mb-4">
-                Safety Incident History
-              </h4>
+              <h4 className="font-medium text-foreground mb-4">Safety Incident History</h4>
               <div className="text-center py-8">
-                <Icon
-                  name="Shield"
-                  size={48}
-                  className="text-green-500 mx-auto mb-3 fill-green-500/60"
-                />
-                <p className="text-muted-foreground">
-                  No safety incidents reported
-                </p>
+                <Icon name="Shield" size={48} className="text-success mx-auto mb-3" />
+                <p className="text-muted-foreground">No safety incidents reported</p>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Keep up the safe riding practices!
+                  Keep up the safe riding practices.
                 </p>
               </div>
             </div>

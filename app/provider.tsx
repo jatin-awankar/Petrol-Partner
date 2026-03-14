@@ -9,7 +9,13 @@ interface ProviderProps extends ThemeProviderProps {
 
 export function ThemeProvider({ children, ...props }: ProviderProps) {
   return (
-    <NextThemeProvider {...props} defaultTheme="system" attribute="class">
+    <NextThemeProvider
+      attribute="class"
+      defaultTheme="light"
+      enableSystem={false}
+      disableTransitionOnChange
+      {...props}
+    >
       {children}
     </NextThemeProvider>
   );

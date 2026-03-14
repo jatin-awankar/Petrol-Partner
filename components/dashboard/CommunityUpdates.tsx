@@ -2,16 +2,34 @@
 
 import React, { useEffect, useState } from "react";
 import Skeleton from "react-loading-skeleton";
-import { Button } from "../ui/button";
 import { ExternalLink } from "lucide-react";
-import Icon from "../AppIcon";
-import AppImage from "../AppImage";
 import { motion } from "framer-motion";
+import Image from "next/image";
+
+import { Button } from "../ui/button";
+import Icon from "../AppIcon";
 import { useCommunityUpdates } from "@/hooks/community/useCommunityUpdates";
 import { formatUtcToTodayOrDayMonth } from "@/lib/utils";
 
+const normalizeImageUrl = (url?: string | null) => {
+  if (!url) return "/assets/images/no_image.png";
+
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname === "github.com" && parsed.pathname.includes("/blob/")) {
+      const rawPath = parsed.pathname.replace("/blob/", "/");
+      return `https://raw.githubusercontent.com${rawPath}`;
+    }
+    return url;
+  } catch {
+    return "/assets/images/no_image.png";
+  }
+};
+
 const CommunityUpdates: React.FC = () => {
-  const { updates, loading, hasMore, loadMore } = useCommunityUpdates({ limit: 3 });
+  const { updates, loading, hasMore, loadMore } = useCommunityUpdates({
+    limit: 3,
+  });
   const [commUpdates, setCommUpdates] = useState<typeof updates>([]);
 
   useEffect(() => {
@@ -19,20 +37,25 @@ const CommunityUpdates: React.FC = () => {
   }, [updates]);
 
   return (
-    <motion.div
+    <motion.section
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.3 }}
-      className="bg-card border border-border rounded-xl p-6 mb-12 md:mb-6 shadow-soft"
+      className="rounded-2xl border border-border bg-card p-5 shadow-soft mb-12"
     >
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold text-foreground">
-          Community Updates
-        </h2>
-        <Button variant="ghost" size="sm">
+      <div className="mb-4 flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-foreground">
+            Community updates
+          </h2>
+          <p className="text-xs text-muted-foreground">
+            Campus notices and ride-sharing tips
+          </p>
+        </div>
+        {/* <Button variant="ghost" size="sm">
           <ExternalLink />
-          View All
-        </Button>
+          View all
+        </Button> */}
       </div>
 
       <div className="space-y-4">
@@ -40,9 +63,9 @@ const CommunityUpdates: React.FC = () => {
           ? Array.from({ length: 3 }).map((_, idx) => (
               <div
                 key={idx}
-                className="border border-border rounded-lg overflow-hidden animate-pulse"
+                className="rounded-xl border border-border overflow-hidden animate-pulse"
               >
-                <div className="relative h-32 bg-gray-200"></div>
+                <div className="relative h-32 bg-muted"></div>
                 <div className="p-4 space-y-2">
                   <Skeleton width="70%" height={16} />
                   <Skeleton width="90%" height={12} />
@@ -54,47 +77,46 @@ const CommunityUpdates: React.FC = () => {
           : commUpdates?.map((update) => (
               <div
                 key={update?.id}
-                className="border border-border rounded-lg overflow-hidden"
+                className="rounded-xl border border-border overflow-hidden bg-background/60"
               >
                 <div className="relative h-32 overflow-hidden">
-                  <AppImage
-                    src={update?.image_url ?? ""}
+                  <Image
+                    src={normalizeImageUrl(update?.image_url)}
                     alt={update?.title ?? "Community Update"}
-                    className="w-full h-full object-cover"
+                    fill
+                    sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                    quality={95}
+                    className="h-full w-full object-cover"
                   />
                 </div>
 
                 <div className="p-4">
-                  <div className="flex items-start justify-between mb-2">
-                    <h3 className="text-sm font-medium text-foreground line-clamp-1">
+                  <div className="mb-2 flex items-start justify-between gap-2">
+                    <h3 className="text-sm font-semibold text-foreground line-clamp-1">
                       {update?.title ?? "Untitled"}
                     </h3>
-                    <span className="text-xs text-muted-foreground whitespace-nowrap ml-2">
+                    <span className="text-xs text-muted-foreground whitespace-nowrap">
                       {formatUtcToTodayOrDayMonth(update?.created_at) ?? "-"}
                     </span>
                   </div>
 
-                  <p className="text-xs text-muted-foreground mb-3 line-clamp-2">
+                  <p className="mb-3 text-xs text-muted-foreground line-clamp-2">
                     {update?.content ?? ""}
                   </p>
 
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-2">
-                      <div className="w-6 h-6 bg-blue-400/10 rounded-full flex items-center justify-center">
-                        <Icon name="User" size={12} className="text-blue-400" />
+                    <div className="flex items-center gap-2">
+                      <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10">
+                        <Icon name="User" size={12} className="text-primary" />
                       </div>
                       <span className="text-xs text-muted-foreground">
                         {update?.author ?? "Unknown"}
                       </span>
                     </div>
 
-                    <div className="flex items-center space-x-2">
+                    <div className="flex items-center gap-2">
                       <Button variant="ghost" size="sm">
-                        <Icon
-                          name="Heart"
-                          size={14}
-                          className="text-red-500 fill-current"
-                        />
+                        <Icon name="Heart" size={14} className="text-error" />
                       </Button>
                       <Button variant="ghost" size="sm">
                         <Icon name="Share2" size={14} />
@@ -106,19 +128,14 @@ const CommunityUpdates: React.FC = () => {
             ))}
       </div>
 
-      {/* Load More Button */}
       {hasMore && (
         <div className="mt-6 flex justify-center">
-          <Button
-            onClick={loadMore}
-            disabled={loading}
-            className="bg-primary text-white hover:bg-primary/90"
-          >
+          <Button onClick={loadMore} disabled={loading}>
             {loading ? "Loading..." : "Load More"}
           </Button>
         </div>
       )}
-    </motion.div>
+    </motion.section>
   );
 };
 

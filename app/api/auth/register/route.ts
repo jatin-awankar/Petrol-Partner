@@ -4,41 +4,46 @@ import { query } from "@/lib/db";
 
 export async function POST(req: Request) {
   try {
-    const { email, password, full_name, phone } = await req.json();
+    const { email, password, full_name, phone, college_name } = await req.json();
 
-    // 1. Validate input
-    if (!email || !password || !full_name) {
+    const normalizedEmail = email?.trim().toLowerCase();
+    const normalizedName = full_name?.trim();
+    const normalizedPhone = phone?.trim() || null;
+    const normalizedCollege = college_name?.trim() || null;
+
+    if (!normalizedEmail || !password || !normalizedName) {
       return NextResponse.json(
         { error: "Missing required fields" },
         { status: 400 }
       );
     }
 
-    // 2. Check if user already exists (optimized: select only id)
-    const existingUser = await query("SELECT id FROM users WHERE email = $1", [
-      email,
-    ]);
+    const existingUser = await query(
+      "SELECT id FROM users WHERE LOWER(email) = $1 LIMIT 1",
+      [normalizedEmail]
+    );
+
     if (existingUser?.rowCount && existingUser.rowCount > 0) {
-      return NextResponse.json(
-        { error: "User already exists" },
-        { status: 409 }
-      );
+      return NextResponse.json({ error: "User already exists" }, { status: 409 });
     }
 
-    // 3. Hash password
     const passwordHash = await bcrypt.hash(password, 10);
 
-    // 4. Insert new user
     const result = await query(
-      `INSERT INTO users (email, password_hash, full_name, phone)
-       VALUES ($1, $2, $3, $4)
-       RETURNING id, email, full_name, phone, created_at`,
-      [email, passwordHash, full_name, phone || null]
+      `INSERT INTO users (email, password_hash, full_name, phone, college)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, email, full_name, phone, college, created_at`,
+      [
+        normalizedEmail,
+        passwordHash,
+        normalizedName,
+        normalizedPhone,
+        normalizedCollege,
+      ]
     );
 
     const user = result.rows[0];
 
-    // 5. Return success
     return NextResponse.json({
       message: "User registered successfully",
       user: {
@@ -46,14 +51,12 @@ export async function POST(req: Request) {
         email: user.email,
         full_name: user.full_name,
         phone: user.phone,
+        college: user.college,
         created_at: user.created_at,
       },
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error("Register error:", error);
-    return NextResponse.json(
-      { error: "Internal Server Error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

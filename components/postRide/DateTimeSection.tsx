@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useState, useEffect } from "react";
 import Icon from "@/components/AppIcon";
@@ -8,7 +8,6 @@ import { Button } from "../ui/button";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { Label } from "../ui/label";
 
-// Error Boundary
 class DateTimeSectionErrorBoundary extends React.Component<
   { children: React.ReactNode },
   { hasError: boolean }
@@ -29,8 +28,8 @@ class DateTimeSectionErrorBoundary extends React.Component<
   render() {
     if (this.state.hasError) {
       return (
-        <div className="bg-red-100 text-red-800 p-4 rounded-xl">
-          Something went wrong loading the Date & Time section.
+        <div className="bg-destructive/10 text-destructive p-4 rounded-xl">
+          Something went wrong loading the Date and Time section.
         </div>
       );
     }
@@ -38,7 +37,6 @@ class DateTimeSectionErrorBoundary extends React.Component<
   }
 }
 
-// Props interface
 interface DateTimeSectionProps {
   formData: any;
   updateFormData: (data: any) => void;
@@ -54,9 +52,13 @@ const DateTimeSection: React.FC<DateTimeSectionProps> = ({
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const timer = setTimeout(() => setLoading(false), 500);
+    const timer = setTimeout(() => setLoading(false), 350);
     return () => clearTimeout(timer);
   }, []);
+
+  useEffect(() => {
+    setShowRecurring(Boolean(formData?.schedule?.recurring?.enabled));
+  }, [formData?.schedule?.recurring?.enabled]);
 
   const handleDateTimeChange = (field: string, value: any) => {
     updateFormData({
@@ -104,7 +106,7 @@ const DateTimeSection: React.FC<DateTimeSectionProps> = ({
   if (loading) {
     return (
       <div className="bg-card rounded-lg border border-border p-6 space-y-4 animate-pulse shadow-card">
-        <Skeleton height={30} width={`50%`} className="mb-2" />
+        <Skeleton height={26} width="50%" className="mb-2" />
         <Skeleton height={40} width="100%" />
         <Skeleton height={40} width="100%" />
         <Skeleton height={40} width="100%" />
@@ -117,39 +119,41 @@ const DateTimeSection: React.FC<DateTimeSectionProps> = ({
     <div className="bg-card rounded-lg border border-border p-6 shadow-card">
       <h3 className="text-lg font-semibold text-foreground flex items-center mb-4">
         <Icon name="Calendar" size={20} className="mr-2 text-primary" />
-        Date & Time
+        Date and Time
       </h3>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="space-y-4">
-          <Label className="mb-2">Departure Date</Label>
-          <Input
-            type="date"
-            placeholder="Specify your date"
-            value={formData.schedule.date}
-            onChange={(e) => handleDateTimeChange("date", e.target.value)}
-            // @ts-expect-error: 'error' prop is custom for our Input component
-            error={errors?.date}
-            min={getMinDate()}
-            required
-          />
+          <div className="space-y-2">
+            <Label>Departure Date</Label>
+            <Input
+              type="date"
+              placeholder="Choose a date"
+              value={formData.schedule.date}
+              onChange={(e) => handleDateTimeChange("date", e.target.value)}
+              // @ts-expect-error: 'error' prop is custom for our Input component
+              error={errors?.date}
+              min={getMinDate()}
+              required
+            />
+          </div>
 
-          <Label className="mb-2">Departure Time</Label>
-          <Input
-            type="time"
-            placeholder="Specify your time"
-            value={formData.schedule.time}
-            onChange={(e) => handleDateTimeChange("time", e.target.value)}
-            // @ts-expect-error: 'error' prop is custom for our Input component
-            error={errors?.time}
-            min={getMinTime()}
-            required
-          />
+          <div className="space-y-2">
+            <Label>Departure Time</Label>
+            <Input
+              type="time"
+              placeholder="Choose a time"
+              value={formData.schedule.time}
+              onChange={(e) => handleDateTimeChange("time", e.target.value)}
+              // @ts-expect-error: 'error' prop is custom for our Input component
+              error={errors?.time}
+              min={getMinTime()}
+              required
+            />
+          </div>
 
           <div>
-            <Label className="mb-2">
-              Quick Time Selection
-            </Label>
+            <Label className="mb-2">Quick Time Selection</Label>
             <div className="grid grid-cols-2 gap-2">
               {quickTimeOptions.map((option) => (
                 <Button
@@ -171,22 +175,26 @@ const DateTimeSection: React.FC<DateTimeSectionProps> = ({
         </div>
 
         <div className="space-y-4">
-          <Label className="flex flex-col items-start">
-          Flexible Timing (minutes)
-              <small>How many minutes early/late you can accommodate</small>
-          </Label>
-          <Input
-            type="number"
-            placeholder="0"
-            value={formData.schedule.flexibility}
-            onChange={(e) =>
-              handleDateTimeChange("flexibility", e.target.value)
-            }
-            min={0}
-            max={60}
-          />
+          <div className="space-y-2">
+            <Label className="flex flex-col items-start">
+              Flexible Timing (minutes)
+              <small className="text-muted-foreground">
+                How many minutes early or late you can accommodate
+              </small>
+            </Label>
+            <Input
+              type="number"
+              placeholder="0"
+              value={formData.schedule.flexibility}
+              onChange={(e) =>
+                handleDateTimeChange("flexibility", Number(e.target.value))
+              }
+              min={0}
+              max={60}
+            />
+          </div>
 
-          <div className="bg-muted/50 rounded-lg p-4">
+          <div className="bg-muted/40 rounded-lg p-4">
             <div className="flex items-center justify-between mb-3">
               <Label className="text-sm font-medium text-foreground">
                 Recurring Ride
@@ -194,9 +202,13 @@ const DateTimeSection: React.FC<DateTimeSectionProps> = ({
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setShowRecurring(!showRecurring)}
+                onClick={() => {
+                  const next = !showRecurring;
+                  setShowRecurring(next);
+                  handleRecurringChange("enabled", next);
+                }}
               >
-                {showRecurring ? "Hide" : "Setup"}
+                {showRecurring ? "Hide" : "Set up"}
                 {showRecurring ? <ChevronUp /> : <ChevronDown />}
               </Button>
             </div>
@@ -204,42 +216,50 @@ const DateTimeSection: React.FC<DateTimeSectionProps> = ({
             {showRecurring && (
               <div className="space-y-3">
                 <div className="grid grid-cols-7 gap-1">
-                  {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map(
-                    (day, index) => (
-                      <Button
-                        key={day}
-                        variant={
+                  {[
+                    "Mon",
+                    "Tue",
+                    "Wed",
+                    "Thu",
+                    "Fri",
+                    "Sat",
+                    "Sun",
+                  ].map((day, index) => (
+                    <Button
+                      key={day}
+                      variant={
+                        formData.schedule.recurring.days.includes(index)
+                          ? "default"
+                          : "outline"
+                      }
+                      size="sm"
+                      onClick={() => {
+                        const days =
                           formData.schedule.recurring.days.includes(index)
-                            ? "default"
-                            : "outline"
-                        }
-                        size="sm"
-                        onClick={() => {
-                          const days =
-                            formData.schedule.recurring.days.includes(index)
-                              ? formData.schedule.recurring.days.filter(
-                                  (d: number) => d !== index
-                                )
-                              : [...formData.schedule.recurring.days, index];
-                          handleRecurringChange("days", days);
-                        }}
-                        className="text-xs p-1"
-                      >
-                        {day}
-                      </Button>
-                    )
-                  )}
+                            ? formData.schedule.recurring.days.filter(
+                                (d: number) => d !== index
+                              )
+                            : [...formData.schedule.recurring.days, index];
+                        handleRecurringChange("days", days);
+                      }}
+                      className="text-xs p-1"
+                    >
+                      {day}
+                    </Button>
+                  ))}
                 </div>
 
-                <Label>End Date (Optional)</Label>
-                <Input
-                  type="date"
-                  value={formData.schedule.recurring.endDate}
-                  onChange={(e) =>
-                    handleRecurringChange("endDate", e.target.value)
-                  }
-                  min={formData.schedule.date}
-                />
+                <div className="space-y-2">
+                  <Label>End Date (Optional)</Label>
+                  <Input
+                    type="date"
+                    value={formData.schedule.recurring.endDate}
+                    onChange={(e) =>
+                      handleRecurringChange("endDate", e.target.value)
+                    }
+                    min={formData.schedule.date}
+                  />
+                </div>
               </div>
             )}
           </div>
@@ -249,7 +269,6 @@ const DateTimeSection: React.FC<DateTimeSectionProps> = ({
   );
 };
 
-// Export wrapped with error boundary
 export default function DateTimeSectionWithErrorBoundary(
   props: DateTimeSectionProps
 ) {

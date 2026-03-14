@@ -1,14 +1,15 @@
-// src/pages/dashboard-home/components/WelcomeCard.tsx
 "use client";
 
 import React from "react";
-import Icon from "@/components/AppIcon";
+import Link from "next/link";
 import Skeleton from "react-loading-skeleton";
-import VerificationBadge from "../ui/VerificationBadge";
 import { motion } from "framer-motion";
+
+import Icon from "@/components/AppIcon";
+import VerificationBadge from "../ui/VerificationBadge";
+import { Button } from "../ui/button";
 import { useUserProfile } from "@/hooks/auth/useUserProfile";
 
-// Error Boundary for this component
 class WelcomeCardErrorBoundary extends React.Component<
   { children: React.ReactNode },
   { hasError: boolean }
@@ -29,8 +30,8 @@ class WelcomeCardErrorBoundary extends React.Component<
   render() {
     if (this.state.hasError) {
       return (
-        <div className="bg-red-100 text-red-800 p-4 rounded-xl">
-          Something went wrong loading the Welcome Card.
+        <div className="rounded-xl border border-border bg-card p-4 text-sm text-muted-foreground">
+          Unable to load welcome data.
         </div>
       );
     }
@@ -38,91 +39,101 @@ class WelcomeCardErrorBoundary extends React.Component<
   }
 }
 
+const getGreeting = (hour: number) => {
+  if (hour < 12) return "Good morning";
+  if (hour < 17) return "Good afternoon";
+  return "Good evening";
+};
+
 const WelcomeCard = () => {
   const currentHour = new Date().getHours();
   const { profile, loading } = useUserProfile();
-
-  // if (error) return <p className="text-red-500">{error}</p>
-
-  const getGreeting = () => {
-    if (currentHour < 12) return "Good morning";
-    if (currentHour < 17) return "Good afternoon";
-    return "Good evening";
-  };
+  const firstName = profile?.full_name?.trim().split(" ")[0] || "Student";
 
   if (loading) {
     return (
       <motion.div
-        initial={{ opacity: 0, x: 8 }}
-        animate={{ opacity: 1, x: 0 }}
-        className="bg-gradient-to-r from-primary to-primary/80 rounded-xl p-6 mb-6 shadow-md"
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="rounded-3xl border border-border/80 bg-gradient-hero p-6 shadow-soft"
       >
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-4">
           <div className="flex-1">
-            <Skeleton
-              height={30}
-              width={`60%`}
-              baseColor="#9cd6fc"
-              className="mb-1"
-            />
-            <Skeleton
-              height={20}
-              width={`40%`}
-              baseColor="#9cd6fc"
-              className="mb-4"
-            />
+            <Skeleton height={28} width="70%" className="mb-2" />
+            <Skeleton height={18} width="45%" />
           </div>
-          <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mb-4">
-            <Icon name="" size={32} color="white" />
-          </div>
+          <div className="h-14 w-14 rounded-2xl bg-muted/60" />
         </div>
-        <Skeleton height={20} width={`100%`} baseColor="#9cd6fc" />
+        <Skeleton height={18} width="100%" className="mt-4" />
       </motion.div>
     );
   }
 
   return (
-    <div className="bg-gradient-to-r from-primary to-primary/80 rounded-xl p-6 text-white mb-6 shadow-md">
-      <div className="flex items-center justify-between">
-        <div className="flex-1">
-          <h1 className="text-2xl font-semibold mb-1">
-            {getGreeting()}, {profile?.full_name?.trim().split(" ")[0] || "Student"}!
+    <motion.section
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="rounded-3xl border border-border/80 bg-gradient-hero p-6 shadow-soft"
+    >
+      <div className="flex items-start justify-between gap-4">
+        <div className="space-y-2">
+          <p className="text-xs font-semibold uppercase tracking-wide text-primary">
+            {getGreeting(currentHour)}
+          </p>
+          <h1 className="text-2xl font-semibold text-foreground md:text-3xl">
+            {firstName}, your campus ride hub is ready.
           </h1>
-          <div className="flex items-center space-x-2">
-            <span className="text-primary-foreground/80 text-sm">
-              {profile?.college || "Your College"}
-              {"  "}
-              {profile?.is_verified && (
-                <VerificationBadge
-                  isVerified={true}
-                  verificationType="college"
-                  size={16}
-                  showTooltip={true}
-                />
-              )}
-            </span>
-          </div>
+          <p className="text-sm text-muted-foreground">
+            Find or offer rides without switching roles. Your student profile keeps
+            everything consistent.
+          </p>
         </div>
-        <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center">
-          <Icon name="GraduationCap" size={32} color="white" />
+
+        <div className="hidden sm:flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+          <Icon name="GraduationCap" size={26} />
         </div>
       </div>
 
-      <div className="mt-4 flex items-center space-x-4 text-sm">
-        <div className="flex items-center space-x-1">
-          <Icon name="MapPin" size={16} />
-          <span>campusArea</span>
-        </div>
-        <div className="flex items-center space-x-1">
-          <Icon name="Users" size={16} />
-          <span>0 active students</span>
-        </div>
+      <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+        <span className="inline-flex items-center gap-2 rounded-full border border-border bg-card/70 px-3 py-1">
+          <Icon name="MapPin" size={14} className="text-primary" />
+          {profile?.college || "Your College"}
+        </span>
+        {profile?.is_verified && (
+          <span className="inline-flex items-center gap-2 rounded-full border border-border bg-card/70 px-3 py-1">
+            <VerificationBadge
+              isVerified={true}
+              verificationType="college"
+              size={16}
+              showTooltip={true}
+            />
+            Verified student
+          </span>
+        )}
+        <span className="inline-flex items-center gap-2 rounded-full border border-border bg-card/70 px-3 py-1">
+          <Icon name="Users" size={14} className="text-primary" />
+          Campus rides active
+        </span>
       </div>
-    </div>
+
+      <div className="mt-5 flex flex-col gap-2 sm:flex-row">
+        <Button asChild className="sm:w-auto">
+          <Link href="/search-rides">
+            <Icon name="Search" size={16} />
+            Find a ride
+          </Link>
+        </Button>
+        <Button asChild variant="outline" className="sm:w-auto">
+          <Link href="/post-a-ride">
+            <Icon name="CarFront" size={16} />
+            Offer a ride
+          </Link>
+        </Button>
+      </div>
+    </motion.section>
   );
 };
 
-// Export wrapped with error boundary
 export default function WelcomeCardWithErrorBoundary() {
   return (
     <WelcomeCardErrorBoundary>

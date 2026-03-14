@@ -1,13 +1,12 @@
-"use client";
+﻿"use client";
 
-import React, { useEffect, useMemo, useState } from "react";
-import RideStatusIndicator from "@/components/ui/RideStatusIndicator";
-import EmergencyAccessButton from "@/components/ui/EmergencyAccessButton";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import ConversationList from "@/components/messages/ConversationList";
 import ChatInterface from "@/components/messages/ChatInterface";
 import Icon from "@/components/AppIcon";
+import EmergencyAccessButton from "@/components/ui/EmergencyAccessButton";
+import { useSession } from "next-auth/react";
 
-/** Types */
 export type Message = {
   id: string;
   senderId: string;
@@ -32,267 +31,245 @@ export type Conversation = {
   lastMessageTime?: string;
   unreadCount?: number;
   isArchived?: boolean;
+  partnerId?: string;
 };
 
-/** Mock conversations (phase 1) */
-const MOCK_CONVERSATIONS: Conversation[] = [
-  {
-    id: "conv_1",
-    name: "Sarah Johnson",
-    avatar:
-      "https://images.unsplash.com/photo-1494790108755-2616b612b786?w=150&h=150&fit=crop&crop=face",
-    isVerified: true,
-    verificationType: "college",
-    isOnline: true,
-    lastSeen: new Date(Date.now() - 300000).toISOString(),
-    rideStatus: "confirmed",
-    rideDate: "Today, 8:15 AM",
-    route: "Main Gate → Downtown Campus",
-    lastMessage: {
-      id: "msg_1",
-      senderId: "conv_1",
-      content: "I'm on my way! Blue Honda Civic, license plate ABC-123",
-      timestamp: new Date(Date.now() - 300000).toISOString(),
-      status: "read",
-      type: "text",
-    },
-    lastMessageTime: new Date(Date.now() - 300000).toISOString(),
-    unreadCount: 2,
-    isArchived: false,
-  },
-  {
-    id: "conv_2",
-    name: "Mike Chen",
-    avatar:
-      "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face",
-    isVerified: true,
-    verificationType: "driver",
-    isOnline: false,
-    lastSeen: new Date(Date.now() - 1800000).toISOString(),
-    rideStatus: "pending",
-    rideDate: "Tomorrow, 9:00 AM",
-    route: "North Campus → Library",
-    lastMessage: {
-      id: "msg_2",
-      senderId: "currentUser",
-      content: "Sounds good! See you tomorrow",
-      timestamp: new Date(Date.now() - 1800000).toISOString(),
-      status: "delivered",
-      type: "text",
-    },
-    lastMessageTime: new Date(Date.now() - 1800000).toISOString(),
-    unreadCount: 0,
-    isArchived: false,
-  },
-  {
-    id: "conv_3",
-    name: "Mike Chen",
-    avatar:
-      "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face",
-    isVerified: true,
-    verificationType: "driver",
-    isOnline: false,
-    lastSeen: new Date(Date.now() - 1800000).toISOString(),
-    rideStatus: "pending",
-    rideDate: "Tomorrow, 9:00 AM",
-    route: "North Campus → Library",
-    lastMessage: {
-      id: "msg_2",
-      senderId: "currentUser",
-      content: "Sounds good! See you tomorrow",
-      timestamp: new Date(Date.now() - 1800000).toISOString(),
-      status: "delivered",
-      type: "text",
-    },
-    lastMessageTime: new Date(Date.now() - 1800000).toISOString(),
-    unreadCount: 0,
-    isArchived: false,
-  },
-  {
-    id: "conv_4",
-    name: "Mike Chen",
-    avatar:
-      "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face",
-    isVerified: true,
-    verificationType: "driver",
-    isOnline: false,
-    lastSeen: new Date(Date.now() - 1800000).toISOString(),
-    rideStatus: "pending",
-    rideDate: "Tomorrow, 9:00 AM",
-    route: "North Campus → Library",
-    lastMessage: {
-      id: "msg_2",
-      senderId: "currentUser",
-      content: "Sounds good! See you tomorrow",
-      timestamp: new Date(Date.now() - 1800000).toISOString(),
-      status: "delivered",
-      type: "text",
-    },
-    lastMessageTime: new Date(Date.now() - 1800000).toISOString(),
-    unreadCount: 0,
-    isArchived: false,
-  },
-  {
-    id: "conv_5",
-    name: "Mike Chen",
-    avatar:
-      "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face",
-    isVerified: true,
-    verificationType: "driver",
-    isOnline: false,
-    lastSeen: new Date(Date.now() - 1800000).toISOString(),
-    rideStatus: "pending",
-    rideDate: "Tomorrow, 9:00 AM",
-    route: "North Campus → Library",
-    lastMessage: {
-      id: "msg_2",
-      senderId: "currentUser",
-      content: "Sounds good! See you tomorrow",
-      timestamp: new Date(Date.now() - 1800000).toISOString(),
-      status: "delivered",
-      type: "text",
-    },
-    lastMessageTime: new Date(Date.now() - 1800000).toISOString(),
-    unreadCount: 0,
-    isArchived: false,
-  },
-];
+type ChatRow = {
+  chat_room_id: string;
+  partner_name: string;
+  partner_id: string;
+  last_message: string | null;
+  last_message_time: string | null;
+};
 
-/** MessagesShell */
+type MessageRow = {
+  id: string;
+  chat_room_id: string;
+  sender_id: string;
+  receiver_id: string;
+  content: string;
+  created_at: string;
+  is_read: boolean;
+};
+
 export default function MessagesShell() {
-  const [conversations, setConversations] = useState<Conversation[] | null>(
-    null
-  );
-  const [selectedConversation, setSelectedConversation] =
-    useState<Conversation | null>(null);
-  const [activeRideStatus, setActiveRideStatus] = useState<
-    | "none"
-    | "searching"
-    | "matched"
-    | "en-route"
-    | "arrived"
-    | "in-progress"
-    | "completed"
-  >("en-route");
-
+  const { data: session } = useSession();
+  const currentUserId = session?.user?.id as string | undefined;
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [selectedConversationId, setSelectedConversationId] = useState<string>("");
+  const [messagesMap, setMessagesMap] = useState<Record<string, Message[]>>({});
   const [isLoading, setIsLoading] = useState(true);
+  const [isFetchingMessages, setIsFetchingMessages] = useState(false);
 
-  // messages stored per conversation
-  const [messagesMap, setMessagesMap] = useState<{
-    [conversationId: string]: Message[];
-  }>({});
+  const mapChatToConversation = useCallback((chat: ChatRow): Conversation => {
+    const lastMessage: Message | undefined = chat.last_message
+      ? {
+          id: `${chat.chat_room_id}-last`,
+          senderId: chat.partner_id,
+          content: chat.last_message,
+          timestamp: chat.last_message_time || new Date().toISOString(),
+          status: "delivered",
+          type: "text",
+        }
+      : undefined;
 
-  // simulate data load
-  useEffect(() => {
-    const t = setTimeout(() => {
-      setConversations(MOCK_CONVERSATIONS);
-
-      // Initialize messagesMap with lastMessage for each conversation
-      const initialMessages: { [id: string]: Message[] } = {};
-      MOCK_CONVERSATIONS.forEach((conv) => {
-        initialMessages[conv.id] = conv.lastMessage ? [conv.lastMessage] : [];
-      });
-      setMessagesMap(initialMessages);
-
-      setIsLoading(false);
-    }, 600);
-
-    return () => clearTimeout(t);
+    return {
+      id: chat.chat_room_id,
+      name: chat.partner_name,
+      partnerId: chat.partner_id,
+      isVerified: true,
+      verificationType: "college",
+      isOnline: false,
+      rideStatus: "pending",
+      rideDate: "",
+      route: "",
+      lastMessage,
+      lastMessageTime: chat.last_message_time || undefined,
+      unreadCount: 0,
+      isArchived: false,
+    };
   }, []);
 
-  // unread messages count
-  const totalUnreadCount = useMemo(() => {
-    if (!conversations) return 0;
-    return conversations.reduce((sum, c) => sum + (c.unreadCount ?? 0), 0);
-  }, [conversations]);
+  const fetchChats = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const res = await fetch("/api/messages/chat", {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (!res.ok) throw new Error("Failed to load chats");
+      const data = await res.json();
+      const rows: ChatRow[] = data.chats || [];
+      const mapped = rows.map(mapChatToConversation);
+      setConversations(mapped);
+      setSelectedConversationId((prev) => prev || mapped[0]?.id || "");
+    } catch (err) {
+      console.error("Fetch chats error:", err);
+      setConversations([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [mapChatToConversation]);
 
-  /** Handlers */
-  const handleConversationSelect = (conv: Conversation) => {
-    setSelectedConversation(conv);
+  const fetchMessages = useCallback(
+    async (chatRoomId: string) => {
+      if (!chatRoomId) return;
+      setIsFetchingMessages(true);
+      try {
+        const res = await fetch(`/api/messages/${chatRoomId}`, {
+          method: "GET",
+          headers: { "Content-Type": "application/json" },
+        });
+        if (!res.ok) throw new Error("Failed to load messages");
+        const data = await res.json();
+        const rows: MessageRow[] = data.messages || [];
+        const mapped: Message[] = rows.map((row) => ({
+          id: row.id,
+          senderId:
+            currentUserId && row.sender_id === currentUserId
+              ? "currentUser"
+              : row.sender_id,
+          content: row.content,
+          timestamp: row.created_at,
+          status: row.is_read ? "read" : "delivered",
+          type: "text",
+        }));
+        setMessagesMap((prev) => ({
+          ...prev,
+          [chatRoomId]: mapped,
+        }));
+      } catch (err) {
+        console.error("Fetch messages error:", err);
+      } finally {
+        setIsFetchingMessages(false);
+      }
+    },
+    [currentUserId]
+  );
+
+  useEffect(() => {
+    fetchChats();
+  }, [fetchChats]);
+
+  useEffect(() => {
+    if (selectedConversationId) {
+      fetchMessages(selectedConversationId);
+    }
+  }, [selectedConversationId, fetchMessages]);
+
+  const selectedConversation = useMemo(
+    () => conversations.find((c) => c.id === selectedConversationId) || null,
+    [conversations, selectedConversationId]
+  );
+
+  const totalUnreadCount = useMemo(
+    () => conversations.reduce((sum, c) => sum + (c.unreadCount ?? 0), 0),
+    [conversations]
+  );
+
+  const handleConversationSelect = (conversationId: string) => {
+    setSelectedConversationId(conversationId);
+    setConversations((prev) =>
+      prev.map((conv) =>
+        conv.id === conversationId ? { ...conv, unreadCount: 0 } : conv
+      )
+    );
   };
-  const handleBackToList = () => setSelectedConversation(null);
-  const handleReportUser = (conv?: Conversation) =>
-    console.log("Report user", conv?.id);
-  const handleBlockUser = (conv?: Conversation) =>
-    console.log("Block user", conv?.id);
+
+  const handleBackToList = () => setSelectedConversationId("");
+  const handleReportUser = () => console.log("Report user");
+  const handleBlockUser = () => console.log("Block user");
   const handleEmergencyCall = () => console.log("Emergency call initiated");
   const handleShareLocation = () => console.log("Share location requested");
   const handleContactSupport = () => console.log("Contacting support...");
-  const handleViewRideDetails = () => console.log("Navigate to ride details");
-  const handleEmergency = () => console.log("Emergency action triggered");
 
-  /** Handle sending message from ChatInterface */
-  const handleSendMessage = (msg: Message) => {
+  const handleSendMessage = async (msg: Message) => {
     if (!selectedConversation) return;
-    setMessagesMap((prev) => ({
-      ...prev,
-      [selectedConversation.id]: [
-        ...(prev[selectedConversation.id] || []),
-        msg,
-      ],
-    }));
+    try {
+      const res = await fetch("/api/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_room_id: selectedConversation.id,
+          content: msg.content,
+        }),
+      });
+      if (!res.ok) throw new Error("Failed to send message");
+      const data = await res.json();
+      const created = data?.data?.created_at || msg.timestamp;
+      const newMessage: Message = {
+        ...msg,
+        id: data?.data?.id || msg.id,
+        timestamp: created,
+        status: "sent",
+      };
+
+      setMessagesMap((prev) => ({
+        ...prev,
+        [selectedConversation.id]: [
+          ...(prev[selectedConversation.id] || []),
+          newMessage,
+        ],
+      }));
+      setConversations((prev) =>
+        prev.map((conv) =>
+          conv.id === selectedConversation.id
+            ? {
+                ...conv,
+                lastMessage: newMessage,
+                lastMessageTime: newMessage.timestamp,
+              }
+            : conv
+        )
+      );
+    } catch (err) {
+      console.error("Send message error:", err);
+    }
   };
 
   return (
     <div className="bg-background">
-      {/* RideStatusIndicator */}
-      {/* <RideStatusIndicator
-        status={activeRideStatus}
-        driverName="Sarah Johnson"
-        estimatedTime="3 mins"
-        onViewDetails={handleViewRideDetails}
-        onEmergency={handleEmergency}
-      /> */}
-
-      {/* Main content */}
       <div className="mb-12 md:mb-0">
         <div className="shadow-md overflow-hidden rounded-md">
           <div className="max-w-7xl mx-auto">
             <div className="md:flex p-0 m-0">
-              {/* Sidebar */}
               <aside
                 className={`${
-                  selectedConversation
+                  selectedConversationId
                     ? "hidden md:flex md:w-1/3 lg:w-1/4"
                     : "flex w-full md:w-1/3 lg:w-1/4"
                 } flex-col border-r border-border bg-card`}
               >
-                <div className="flex">
-                    <ConversationList
-                      conversations={(conversations ?? []).map((conv) => ({
-                        ...conv,
-                        lastMessage: conv.lastMessage && {
-                          ...conv.lastMessage,
-                          type: conv.lastMessage.type ?? "",
-                        },
-                      }))}
-                      onConversationSelect={(conversationId: string) => {
-                        const conv = (conversations ?? []).find(
-                          (c) => c.id === conversationId
-                        );
-                        if (conv) handleConversationSelect(conv);
-                      }}
-                      selectedConversationId={selectedConversation?.id || ""}
-                    />
-                </div>
+                <ConversationList
+                  conversations={conversations.map((conv) => ({
+                    ...conv,
+                    lastMessage: conv.lastMessage && {
+                      ...conv.lastMessage,
+                      type: conv.lastMessage.type ?? "text",
+                    },
+                  }))}
+                  onConversationSelect={handleConversationSelect}
+                  selectedConversationId={selectedConversationId}
+                  isLoading={isLoading}
+                />
               </aside>
 
-              {/* Chat panel */}
               <section
                 className={`${
-                  selectedConversation
+                  selectedConversationId
                     ? "flex w-full md:w-2/3 lg:w-3/4"
                     : "hidden md:flex md:w-2/3 lg:w-3/4"
-                }  flex-col bg-card`}
+                } flex-col bg-card`}
               >
                 {selectedConversation ? (
                   <ChatInterface
                     conversation={selectedConversation}
                     messages={messagesMap[selectedConversation.id] || []}
                     onBack={handleBackToList}
-                    onReport={() => handleReportUser(selectedConversation)}
-                    onBlock={() => handleBlockUser(selectedConversation)}
+                    onReport={handleReportUser}
+                    onBlock={handleBlockUser}
                     onSendMessage={handleSendMessage}
+                    isLoading={isFetchingMessages}
                   />
                 ) : (
                   <div className="hidden md:flex flex-col items-center justify-center h-full p-8 text-center text-muted-foreground">
@@ -307,8 +284,7 @@ export default function MessagesShell() {
                       Select a conversation
                     </h2>
                     <p className="max-w-md">
-                      Select a conversation from the sidebar to view messages.
-                      New messages will appear here.
+                      Pick a conversation from the list to view messages.
                     </p>
                     {totalUnreadCount > 0 && (
                       <div className="mt-4 inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 text-primary text-sm">
@@ -324,7 +300,6 @@ export default function MessagesShell() {
         </div>
       </div>
 
-      {/* Emergency access + bottom nav */}
       <EmergencyAccessButton
         onEmergencyCall={handleEmergencyCall}
         onShareLocation={handleShareLocation}

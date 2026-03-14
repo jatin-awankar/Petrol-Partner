@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useState, useRef, useEffect } from "react";
 import { Message, Conversation } from "./MessagesShell";
@@ -15,6 +15,7 @@ interface ChatInterfaceProps {
   onReport: () => void;
   onBlock: () => void;
   onSendMessage: (msg: Message) => void;
+  isLoading?: boolean;
 }
 
 const ChatInterface: React.FC<ChatInterfaceProps> = ({
@@ -24,10 +25,12 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   onReport,
   onBlock,
   onSendMessage,
+  isLoading = false,
 }) => {
   const [message, setMessage] = useState("");
   const [showQuickReplies, setShowQuickReplies] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -47,6 +50,23 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  useEffect(() => {
+    if (showEmojiPicker) setShowQuickReplies(false);
+    if (showQuickReplies) setShowEmojiPicker(false);
+  }, [showEmojiPicker, showQuickReplies]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (!target.closest("[data-chat-menu]")) {
+        setShowMenu(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const scrollToBottom = () => {
     messagesEndRef?.current?.scrollIntoView({ behavior: "smooth" });
@@ -119,7 +139,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 : "bg-muted text-foreground rounded-bl-md"
             }`}
           >
-            <p className="text-sm">{msg.content}</p>
+            <p className="text-sm whitespace-pre-line">{msg.content}</p>
           </div>
 
           <div
@@ -159,7 +179,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
   return (
     <div className="flex flex-col h-full bg-background">
-      {/* Chat Header */}
       <div className="flex items-center justify-between p-4 border-b border-border bg-card sticky top-0 z-10">
         <div className="flex items-center space-x-3">
           <Button
@@ -181,7 +200,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             {conversation.isOnline && (
               <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-success border-2 border-card rounded-full"></div>
             )}
-            <div className="absolute -top-1 -right-1 text-primary !">
+            <div className="absolute -top-1 -right-1">
               <VerificationBadge
                 isVerified={conversation.isVerified}
                 verificationType={
@@ -206,7 +225,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center space-x-2" data-chat-menu>
           <Button
             variant="ghost"
             size="icon"
@@ -219,19 +238,19 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => setShowQuickReplies(!showQuickReplies)}
+              onClick={() => setShowMenu((prev) => !prev)}
             >
               <Icon name="MoreVertical" size={18} />
             </Button>
 
-            {showQuickReplies && (
-              <div className="absolute right-0 top-12 w-48 bg-popover border border-border rounded-lg shadow-medium z-200">
+            {showMenu && (
+              <div className="absolute right-0 top-12 w-48 bg-popover border border-border rounded-lg shadow-medium z-50">
                 <div className="py-2">
                   <button
                     className="w-full px-4 py-2 text-left text-sm text-foreground hover:bg-muted flex items-center space-x-2"
                     onClick={() => {
                       onReport();
-                      setShowQuickReplies(false);
+                      setShowMenu(false);
                     }}
                   >
                     <Icon name="Flag" size={16} />
@@ -241,7 +260,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                     className="w-full px-4 py-2 text-left text-sm text-error hover:bg-muted flex items-center space-x-2"
                     onClick={() => {
                       onBlock();
-                      setShowQuickReplies(false);
+                      setShowMenu(false);
                     }}
                   >
                     <Icon name="UserX" size={16} />
@@ -254,23 +273,24 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         </div>
       </div>
 
-      {/* Ride Context Banner */}
       <div className="bg-muted/30 border-b border-border p-3">
-        <div className="flex items-center justify-between text-sm">
-          <div className="flex items-center space-x-4">
-            <span className="flex items-center space-x-1 text-muted-foreground">
+        <div className="flex flex-wrap items-center justify-between text-sm gap-2">
+          <div className="flex items-center gap-4 text-muted-foreground">
+            <span className="flex items-center space-x-1">
               <Icon name="Calendar" size={14} />
               <span>{conversation.rideDate}</span>
             </span>
-            <span className="flex items-center space-x-1 text-muted-foreground">
+            <span className="flex items-center space-x-1">
               <Icon name="MapPin" size={14} />
               <span>{conversation.route}</span>
             </span>
           </div>
           <span
-            className={`font-medium ${
+            className={`font-medium capitalize ${
               conversation.rideStatus === "confirmed"
                 ? "text-success"
+                : conversation.rideStatus === "completed"
+                ? "text-muted-foreground"
                 : "text-warning"
             }`}
           >
@@ -279,9 +299,12 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         </div>
       </div>
 
-      {/* Messages Area */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-[53vh] max-h-[53vh] md:min-h-[56vh] md:max-h-[56vh]">
-        {messages.map(renderMessage)}
+        {isLoading ? (
+          <div className="text-sm text-muted-foreground">Loading messages...</div>
+        ) : (
+          messages.map(renderMessage)
+        )}
         {isTyping && (
           <div className="flex justify-start mb-4">
             <div className="w-8 h-8 rounded-full overflow-hidden mr-2 flex-shrink-0">
@@ -309,7 +332,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Quick Replies */}
       {showQuickReplies && (
         <div className="border-t border-border p-3 bg-muted/30">
           <div className="flex flex-wrap gap-2">
@@ -326,7 +348,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         </div>
       )}
 
-      {/* Emoji Picker */}
       {showEmojiPicker && (
         <div className="border-t border-border p-3 bg-muted/30">
           <div className="flex flex-wrap gap-2">
@@ -343,14 +364,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         </div>
       )}
 
-      {/* Message Input */}
       <div className="border-t border-border p-4 bg-card sticky bottom-0">
         <div className="flex items-end space-x-2">
           <div className="flex space-x-1">
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+              onClick={() => setShowEmojiPicker((prev) => !prev)}
               className="text-muted-foreground"
             >
               <Icon name="Smile" size={20} />
@@ -368,7 +388,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => setShowQuickReplies(!showQuickReplies)}
+              onClick={() => setShowQuickReplies((prev) => !prev)}
               className="text-muted-foreground"
             >
               <Icon name="Zap" size={20} />
@@ -382,7 +402,12 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
               placeholder="Type a message..."
               value={message}
               onChange={(e) => setMessage(e.target.value)}
-              onKeyPress={(e) => e.key === "Enter" && handleSendMessage()}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  handleSendMessage();
+                }
+              }}
               className="border-0 bg-muted focus:bg-background"
             />
           </div>

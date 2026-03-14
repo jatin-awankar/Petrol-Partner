@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useState, useEffect } from "react";
 import Skeleton from "react-loading-skeleton";
@@ -15,7 +15,6 @@ import {
 } from "../ui/select";
 import { Label } from "../ui/label";
 
-// 🔹 Error Boundary to isolate crashes
 class VehicleSectionErrorBoundary extends React.Component<
   { children: React.ReactNode },
   { hasError: boolean }
@@ -37,7 +36,7 @@ class VehicleSectionErrorBoundary extends React.Component<
     if (this.state.hasError) {
       return (
         <div className="bg-destructive/10 text-destructive p-4 rounded-xl">
-          Something went wrong loading the Vehicle section.
+          Something went wrong loading the vehicle section.
         </div>
       );
     }
@@ -60,7 +59,7 @@ const VehicleSection: React.FC<VehicleSectionProps> = ({
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const timer = setTimeout(() => setLoading(false), 500);
+    const timer = setTimeout(() => setLoading(false), 350);
     return () => clearTimeout(timer);
   }, []);
 
@@ -145,7 +144,7 @@ const VehicleSection: React.FC<VehicleSectionProps> = ({
   if (loading) {
     return (
       <div className="bg-card rounded-lg border border-border p-6 space-y-4 animate-pulse shadow-card">
-        <Skeleton height={30} width="40%" />
+        <Skeleton height={26} width="40%" />
         <Skeleton height={40} width="100%" count={6} />
         <Skeleton height={120} width="100%" className="rounded-lg" />
       </div>
@@ -159,7 +158,6 @@ const VehicleSection: React.FC<VehicleSectionProps> = ({
         Vehicle Information
       </h3>
 
-      {/* Registered Vehicles */}
       <div>
         <h4 className="text-sm font-medium text-foreground mb-3">
           Select Your Vehicle
@@ -188,7 +186,7 @@ const VehicleSection: React.FC<VehicleSectionProps> = ({
               </div>
               <div className="text-sm text-muted-foreground space-y-1">
                 <p>
-                  {vehicle.year} • {vehicle.color} • {vehicle.fuel}
+                  {vehicle.year} - {vehicle.color} - {vehicle.fuel}
                 </p>
                 <p className="font-mono">{vehicle.plateNumber}</p>
                 <div className="flex flex-wrap gap-1 mt-2">
@@ -215,9 +213,11 @@ const VehicleSection: React.FC<VehicleSectionProps> = ({
             </div>
           ))}
         </div>
+        {errors?.vehicle && (
+          <p className="text-sm text-error mt-2">{errors.vehicle}</p>
+        )}
       </div>
 
-      {/* Add New Vehicle Form */}
       <div className="border-t border-border pt-4">
         <Button
           variant="outline"
@@ -231,7 +231,6 @@ const VehicleSection: React.FC<VehicleSectionProps> = ({
         {showAddVehicle && (
           <div className="bg-muted/30 rounded-lg p-4 space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Make */}
               <div className="space-y-2">
                 <Label>Make</Label>
                 <Input
@@ -242,7 +241,6 @@ const VehicleSection: React.FC<VehicleSectionProps> = ({
                 />
               </div>
 
-              {/* Model */}
               <div className="space-y-2">
                 <Label>Model</Label>
                 <Input
@@ -253,7 +251,6 @@ const VehicleSection: React.FC<VehicleSectionProps> = ({
                 />
               </div>
 
-              {/* Year */}
               <div className="space-y-2">
                 <Label>Year</Label>
                 <Input
@@ -266,7 +263,6 @@ const VehicleSection: React.FC<VehicleSectionProps> = ({
                 />
               </div>
 
-              {/* Vehicle Type */}
               <div className="space-y-2">
                 <Label>Vehicle Type</Label>
                 <Select
@@ -286,7 +282,6 @@ const VehicleSection: React.FC<VehicleSectionProps> = ({
                 </Select>
               </div>
 
-              {/* Fuel Type */}
               <div className="space-y-2">
                 <Label>Fuel Type</Label>
                 <Select
@@ -306,7 +301,6 @@ const VehicleSection: React.FC<VehicleSectionProps> = ({
                 </Select>
               </div>
 
-              {/* Color */}
               <div className="space-y-2">
                 <Label>Color</Label>
                 <Input
@@ -318,7 +312,6 @@ const VehicleSection: React.FC<VehicleSectionProps> = ({
               </div>
             </div>
 
-            {/* Features */}
             <div>
               <Label>Vehicle Features</Label>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-2">
@@ -344,7 +337,6 @@ const VehicleSection: React.FC<VehicleSectionProps> = ({
         )}
       </div>
 
-      {/* Vehicle Photos */}
       <div className="bg-muted/30 rounded-lg p-4">
         <h4 className="text-sm font-medium text-foreground mb-3">
           Vehicle Photos (Optional)
@@ -367,14 +359,13 @@ const VehicleSection: React.FC<VehicleSectionProps> = ({
           ))}
         </div>
         <p className="text-xs text-muted-foreground mt-2">
-          Adding photos helps passengers identify your vehicle.
+          Photos help riders recognize your vehicle.
         </p>
       </div>
     </div>
   );
 };
 
-// ✅ Export wrapped with Error Boundary
 export default function VehicleSectionWithErrorBoundary(
   props: VehicleSectionProps
 ) {

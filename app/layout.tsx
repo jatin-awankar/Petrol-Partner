@@ -1,11 +1,10 @@
 import type { Metadata } from "next";
 import { Poppins } from "next/font/google";
 import "./globals.css";
-// import { Toaster } from "@/components/ui/sonner";
 import React from "react";
 import AuthenticatedNavbars from "@/components/AuthenticatedNavbars";
 import ClientProviders from "./providers/ClientProviders";
-import { Analytics } from '@vercel/analytics/next';
+import { Analytics } from "@vercel/analytics/next";
 
 const poppins = Poppins({
   subsets: ["latin"],
@@ -16,7 +15,10 @@ const poppins = Poppins({
 });
 
 export const metadata: Metadata = {
-  title: "Petrol Partner",
+  title: {
+    default: "Petrol Partner",
+    template: "%s | Petrol Partner",
+  },
   description: "College-centric ride sharing platform",
 };
 
@@ -31,10 +33,12 @@ export default function RootLayout({
       suppressHydrationWarning
       className={`${poppins.variable} font-sans antialiased`}
     >
-      <body>
+      <body className="app-body min-h-screen bg-background text-foreground">
         <ClientProviders>
           <AuthenticatedNavbars />
-          {children}
+          <div className="app-content">
+            <main role="main">{children}</main>
+          </div>
           <Analytics />
         </ClientProviders>
       </body>

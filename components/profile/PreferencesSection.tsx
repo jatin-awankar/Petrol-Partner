@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import Icon from "../AppIcon";
 import {
@@ -74,12 +74,10 @@ const PreferencesSection: React.FC<PreferencesSectionProps> = ({
 }) => {
   const [formData, setFormData] = useState<Preferences>(DEFAULT_PREFERENCES);
   const [isSaving, setIsSaving] = useState(false);
-  const [isInternalLoading, setIsInternalLoading] = useState(true);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
-  const isLoading = externalLoading || isInternalLoading;
+  const isLoading = externalLoading;
 
-  // Configuration arrays
   const musicOptions = useMemo(
     () => [
       { value: "any", label: "Any music is fine" },
@@ -182,31 +180,26 @@ const PreferencesSection: React.FC<PreferencesSectionProps> = ({
     []
   );
 
-  // Initialize from props
   useEffect(() => {
     if (preferences !== null) {
-      const timer = setTimeout(() => {
-        setFormData({
-          ...DEFAULT_PREFERENCES,
-          ...preferences,
-          notifications: {
-            ...DEFAULT_PREFERENCES.notifications,
-            ...(preferences?.notifications ?? {}),
-          },
-          privacy: {
-            ...DEFAULT_PREFERENCES.privacy,
-            ...(preferences?.privacy ?? {}),
-          },
-          autoAccept: {
-            ...DEFAULT_PREFERENCES.autoAccept,
-            ...(preferences?.autoAccept ?? {}),
-          },
-        });
-        setIsInternalLoading(false);
-      }, 300);
-      return () => clearTimeout(timer);
+      setFormData({
+        ...DEFAULT_PREFERENCES,
+        ...preferences,
+        notifications: {
+          ...DEFAULT_PREFERENCES.notifications,
+          ...(preferences?.notifications ?? {}),
+        },
+        privacy: {
+          ...DEFAULT_PREFERENCES.privacy,
+          ...(preferences?.privacy ?? {}),
+        },
+        autoAccept: {
+          ...DEFAULT_PREFERENCES.autoAccept,
+          ...(preferences?.autoAccept ?? {}),
+        },
+      });
     } else {
-      setIsInternalLoading(false);
+      setFormData(DEFAULT_PREFERENCES);
     }
   }, [preferences]);
 
@@ -229,13 +222,11 @@ const PreferencesSection: React.FC<PreferencesSectionProps> = ({
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (err) {
       console.error("Failed to save preferences:", err);
-      // Error is handled by parent component via error prop
     } finally {
       setIsSaving(false);
     }
   }, [formData, onSave]);
 
-  // Render skeleton when loading
   if (isLoading) {
     return (
       <div className="bg-card border border-border rounded-lg shadow-card animate-pulse">
@@ -245,41 +236,37 @@ const PreferencesSection: React.FC<PreferencesSectionProps> = ({
         >
           <div className="flex items-center space-x-3">
             <Icon name="Settings" size={20} className="text-primary" />
-            <Skeleton
-              width={160}
-              height={20}
-              className="rounded animate-bounce"
-            />
+            <Skeleton width={160} height={20} className="rounded" />
           </div>
-          <Skeleton width={20} height={20} className="rounded animate-bounce" />
+          <Skeleton width={20} height={20} className="rounded" />
         </button>
         {isExpanded && (
           <div className="px-4 pb-4 border-t border-border pt-4 space-y-8">
             <Skeleton width="33.33%" height={24} className="mb-3" />
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Skeleton width="100" height={40} className="animate-pulse" />
-              <Skeleton width="100" height={40} className="animate-pulse" />
-              <Skeleton width="100" height={40} className="animate-pulse" />
+              <Skeleton width="100" height={40} />
+              <Skeleton width="100" height={40} />
+              <Skeleton width="100" height={40} />
             </div>
             <Skeleton width="33.33%" height={24} className="mt-6" />
             <div className="space-y-3">
-              <Skeleton width="100%" height={24} className="animate-pulse" />
-              <Skeleton width="100%" height={24} className="animate-pulse" />
-              <Skeleton width="100%" height={24} className="animate-pulse" />
-              <Skeleton width="100%" height={24} className="animate-pulse" />
+              <Skeleton width="100%" height={24} />
+              <Skeleton width="100%" height={24} />
+              <Skeleton width="100%" height={24} />
+              <Skeleton width="100%" height={24} />
             </div>
             <Skeleton width="33.33%" height={24} className="mt-6" />
             <div className="space-y-3">
-              <Skeleton width="100%" height={24} className="animate-pulse" />
-              <Skeleton width="100%" height={24} className="animate-pulse" />
-              <Skeleton width="100%" height={24} className="animate-pulse" />
+              <Skeleton width="100%" height={24} />
+              <Skeleton width="100%" height={24} />
+              <Skeleton width="100%" height={24} />
             </div>
             <Skeleton width="33.33%" height={24} className="mt-6" />
             <div className="space-y-3">
-              <Skeleton width="100%" height={24} className="animate-pulse" />
-              <Skeleton width="100%" height={24} className="animate-pulse" />
+              <Skeleton width="100%" height={24} />
+              <Skeleton width="100%" height={24} />
             </div>
-            <Skeleton width={128} height={40} className="mt-6 animate-pulse" />
+            <Skeleton width={128} height={40} className="mt-6" />
           </div>
         )}
       </div>
@@ -288,7 +275,6 @@ const PreferencesSection: React.FC<PreferencesSectionProps> = ({
 
   return (
     <div className="bg-card border border-border rounded-lg shadow-card">
-      {/* Header */}
       <button
         onClick={onToggle}
         className="w-full flex items-center justify-between p-4 hover:bg-muted/50 transition-colors"
@@ -304,7 +290,6 @@ const PreferencesSection: React.FC<PreferencesSectionProps> = ({
         />
       </button>
 
-      {/* Content */}
       <div
         className={`overflow-hidden transition-[max-height,opacity] duration-500 ease-in-out ${
           isExpanded ? "max-h-[3000px] opacity-100" : "max-h-0 opacity-0"
@@ -323,7 +308,6 @@ const PreferencesSection: React.FC<PreferencesSectionProps> = ({
             </div>
           )}
 
-          {/* Ride Preferences */}
           <section>
             <h4 className="font-medium text-foreground mb-4">
               Ride Preferences
@@ -400,7 +384,6 @@ const PreferencesSection: React.FC<PreferencesSectionProps> = ({
             </div>
           </section>
 
-          {/* Notification Settings */}
           <section className="border-t border-border pt-6">
             <h4 className="font-medium text-foreground mb-4">
               Notification Settings
@@ -410,9 +393,7 @@ const PreferencesSection: React.FC<PreferencesSectionProps> = ({
                 <div key={item.id} className="flex items-start space-x-3 p-3 border border-border rounded-lg hover:bg-muted/30 transition-colors">
                   <Checkbox
                     id={item.id}
-                    checked={
-                      formData.notifications?.[item.key] ?? false
-                    }
+                    checked={formData.notifications?.[item.key] ?? false}
                     onCheckedChange={(checked) =>
                       handleInputChange("notifications", {
                         ...formData.notifications,
@@ -421,10 +402,7 @@ const PreferencesSection: React.FC<PreferencesSectionProps> = ({
                     }
                     className="mt-1"
                   />
-                  <Label
-                    htmlFor={item.id}
-                    className="flex-1 cursor-pointer"
-                  >
+                  <Label htmlFor={item.id} className="flex-1 cursor-pointer">
                     <span className="block font-medium text-foreground mb-1">
                       {item.label}
                     </span>
@@ -437,7 +415,6 @@ const PreferencesSection: React.FC<PreferencesSectionProps> = ({
             </div>
           </section>
 
-          {/* Privacy Settings */}
           <section className="border-t border-border pt-6">
             <h4 className="font-medium text-foreground mb-4">
               Privacy Settings
@@ -456,10 +433,7 @@ const PreferencesSection: React.FC<PreferencesSectionProps> = ({
                     }
                     className="mt-1"
                   />
-                  <Label
-                    htmlFor={item.id}
-                    className="flex-1 cursor-pointer"
-                  >
+                  <Label htmlFor={item.id} className="flex-1 cursor-pointer">
                     <span className="block font-medium text-foreground mb-1">
                       {item.label}
                     </span>
@@ -472,7 +446,6 @@ const PreferencesSection: React.FC<PreferencesSectionProps> = ({
             </div>
           </section>
 
-          {/* Auto-Accept Settings */}
           <section className="border-t border-border pt-6">
             <h4 className="font-medium text-foreground mb-4">
               Auto-Accept Settings
@@ -491,10 +464,7 @@ const PreferencesSection: React.FC<PreferencesSectionProps> = ({
                     }
                     className="mt-1"
                   />
-                  <Label
-                    htmlFor={item.id}
-                    className="flex-1 cursor-pointer"
-                  >
+                  <Label htmlFor={item.id} className="flex-1 cursor-pointer">
                     <span className="block font-medium text-foreground mb-1">
                       {item.label}
                     </span>
@@ -507,7 +477,6 @@ const PreferencesSection: React.FC<PreferencesSectionProps> = ({
             </div>
           </section>
 
-          {/* Save Button */}
           {onSave && (
             <Button
               variant="default"

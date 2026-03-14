@@ -30,17 +30,14 @@ import { useFetchRideRequests } from "@/hooks/rides/useRideRequests";
 
 export const sleep = (ms = 600) => new Promise((r) => setTimeout(r, ms));
 
-/* ----------------------------- Page ----------------------------------- */
 const PAGE_SIZE = 6;
 
 const SearchComponent = () => {
   const router = useRouter();
 
-  // data
   const [offersData, setOffersData] = useState<RideOfferData[]>([]);
   const [requestsData, setRequestsData] = useState<RideRequestData[]>([]);
 
-  // search + filters
   const [pickup, setPickup] = useState("");
   const [dropoff, setDropoff] = useState("");
   const [tab, setTab] = useState<RideType>("offer");
@@ -54,7 +51,6 @@ const SearchComponent = () => {
   const { offers, loading: offerLoading } = useFetchRideOffers();
   const { requests, loading: requestLoading } = useFetchRideRequests();
 
-  // pagination
   const [page, setPage] = useState(1);
 
   useEffect(() => {
@@ -64,40 +60,20 @@ const SearchComponent = () => {
     setRequestsData(requestArr);
   }, [offers, requests]);
 
-  /* -------------------------- Derived data ----------------------------- */
   const currentData = tab === "offer" ? offersData : requestsData;
 
   const filtered = useMemo(() => {
     const arr = currentData;
 
     return arr.filter((r) => {
-      // gender filter
-      // if (filters.gender) {
-      //   const person = r.type === "offer" ? r.driver : r.passenger;
-      //   if (!person?.gender || person.gender !== filters.gender) return false;
-      // }
-      // college filter
       if (filters.college) {
-        // const person = r.type === "offer" ? r.driver : r.passenger;
         if (
           !r?.college ||
           !r.college.toLowerCase().includes(filters.college.toLowerCase())
         )
           return false;
       }
-      // age filter (range)
-      // const from = filters.ageFrom ? Number(filters.ageFrom) : undefined;
-      // const to = filters.ageTo ? Number(filters.ageTo) : undefined;
-      // if (
-      //   (from || to) &&
-      //   (r.type === "offer" ? r.driver?.age : r.passenger?.age)
-      // ) {
-      //   const age =
-      //     (r.type === "offer" ? r.driver?.age : r.passenger?.age) ?? 0;
-      //   if (from && age < from) return false;
-      //   if (to && age > to) return false;
-      // }
-      // search by pickup/dropoff text
+
       if (
         !r.pickup_location?.toLowerCase().includes(pickup.toLowerCase()) &&
         !r.drop_location?.toLowerCase().includes(pickup.toLowerCase())
@@ -118,7 +94,6 @@ const SearchComponent = () => {
     return filtered.slice(start, start + PAGE_SIZE);
   }, [filtered, page]);
 
-  //---------------------------- handlers ------------------------------//
   const handleOpenRide = (ride: CombineRideData) => {
     router.push(`/search-rides/${ride.id}`);
   };
@@ -128,10 +103,10 @@ const SearchComponent = () => {
   };
 
   return (
-    <>
-      <div className="bg-card border border-border rounded-2xl p-4 mb-6">
-        <div className="flex flex-col md:flex-row gap-3 items-center">
-          <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-3 w-full">
+    <section className="space-y-4">
+      <div className="rounded-2xl border border-border bg-card p-4">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center">
+          <div className="flex-1 grid grid-cols-1 gap-3 md:grid-cols-3">
             <Input
               placeholder="Pickup (e.g. College Gate)"
               value={pickup}
@@ -142,16 +117,14 @@ const SearchComponent = () => {
               value={dropoff}
               onChange={(e) => setDropoff(e.target.value)}
             />
-            <div className="flex items-center gap-2">
-              <Button
-                onClick={() => {
-                  setPage(1);
-                }}
-                className="w-full"
-              >
-                <Icon name="Search" /> Search
-              </Button>
-            </div>
+            <Button
+              onClick={() => {
+                setPage(1);
+              }}
+              className="w-full"
+            >
+              <Icon name="Search" /> Search
+            </Button>
           </div>
 
           <div className="flex items-center gap-2">
@@ -227,7 +200,7 @@ const SearchComponent = () => {
                       <Button
                         type="submit"
                         onClick={() => {
-                          setPage(1); /* apply filters */
+                          setPage(1);
                         }}
                       >
                         Apply
@@ -252,8 +225,7 @@ const SearchComponent = () => {
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="bg-card border border-border rounded-2xl p-4 shadow-soft mb-6">
+      <div className="rounded-2xl border border-border bg-card p-4 shadow-soft">
         <Tabs
           value={tab}
           onValueChange={(v: string) => {
@@ -261,7 +233,7 @@ const SearchComponent = () => {
             setPage(1);
           }}
         >
-          <div className="flex flex-col md:flex-row gap-2 items-center justify-between mb-4">
+          <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
             <TabsList className="flex gap-2 w-full md:w-fit px-1">
               <TabsTrigger
                 value="offer"
@@ -289,7 +261,7 @@ const SearchComponent = () => {
                 </div>
               ) : filtered.length === 0 ? (
                 <div className="py-8 text-center text-muted-foreground">
-                  No rides found — try removing filters or widening the search.
+                  No rides found � try removing filters or widening the search.
                 </div>
               ) : (
                 <motion.div
@@ -313,7 +285,7 @@ const SearchComponent = () => {
             <AnimatePresence mode="wait">
               {!offerLoading && !requestLoading && filtered.length === 0 ? (
                 <div className="py-8 text-center text-muted-foreground">
-                  No requests found — try removing filters or widening the
+                  No requests found � try removing filters or widening the
                   search.
                 </div>
               ) : (
@@ -335,7 +307,6 @@ const SearchComponent = () => {
           </TabsContent>
         </Tabs>
 
-        {/* Pagination */}
         <div className="mt-6 flex items-center justify-center gap-3">
           <Button
             variant="outline"
@@ -354,7 +325,7 @@ const SearchComponent = () => {
           </Button>
         </div>
       </div>
-    </>
+    </section>
   );
 };
 

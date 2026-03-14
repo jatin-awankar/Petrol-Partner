@@ -20,10 +20,9 @@ const NearbyRides = () => {
     requests: [],
   });
   const [filteredRides, setFilteredRides] = useState(rides);
-  const [userLocation, setUserLocation] = useState<{
-    lat: number;
-    lng: number;
-  } | null>(null);
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(
+    null
+  );
   const [loadingLocation, setLoadingLocation] = useState(false);
   const [showNearby, setShowNearby] = useState(false);
 
@@ -32,7 +31,6 @@ const NearbyRides = () => {
     longitude: userLocation?.lng,
   });
 
-  // Fetch all rides (mock or Supabase)
   useEffect(() => {
     const offers =
       rideOffers && Array.isArray(rideOffers.rides) ? rideOffers.rides : [];
@@ -41,7 +39,6 @@ const NearbyRides = () => {
         ? rideRequests.rides
         : [];
 
-    // Convert `type` string to correct RideType on mockRides before setting state (or cast as Ride)
     const typedRides = {
       offers: rideOffers?.rides.map(
         (ride) =>
@@ -58,6 +55,7 @@ const NearbyRides = () => {
           } as RideRequestData)
       ),
     };
+
     setRides({ offers: offers ?? [], requests: requests ?? [] });
     setFilteredRides({
       offers: typedRides.offers ?? [],
@@ -65,10 +63,9 @@ const NearbyRides = () => {
     });
   }, [rideOffers, rideRequests]);
 
-  // Filter nearby rides when location changes
   useEffect(() => {
     if (showNearby && userLocation && rides.offers.length > 0) {
-      const radius = 1; // km radius
+      const radius = 1;
       const filterByDistance = (ride: CombineRideData) => {
         const distance = getDistance(
           userLocation.lat,
@@ -82,7 +79,6 @@ const NearbyRides = () => {
       const nearbyOffers = rides.offers.filter(filterByDistance);
       const nearbyRequests = rides.requests.filter(filterByDistance);
 
-      // If no nearby rides found, fallback to showing all for demo/mock
       if (nearbyOffers.length === 0 && nearbyRequests.length === 0) {
         setFilteredRides(rides);
       } else {
@@ -91,7 +87,6 @@ const NearbyRides = () => {
     }
   }, [userLocation, showNearby, rides]);
 
-  //---------------------------- handlers ------------------------------//
   const handleShowNearby = async () => {
     if (!showNearby) {
       setLoadingLocation(true);
@@ -113,7 +108,6 @@ const NearbyRides = () => {
         }
       );
     } else {
-      // Reset filter
       setShowNearby(false);
     }
   };
@@ -123,41 +117,41 @@ const NearbyRides = () => {
   };
 
   return (
-    <motion.div
-      className="container mx-auto space-y-8"
+    <motion.section
+      className="space-y-4"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.5 }}
     >
-      {/* Filter Button */}
-      <motion.div
-        initial={{ y: -10, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ delay: 0.2 }}
-        className="flex flex-row justify-between items-center gap-4"
-      >
-        <Button variant="ghost" size="sm" onClick={() => router.back()}>
-          <ArrowLeft /> Back
-        </Button>
-        <Button
-          onClick={handleShowNearby}
-          variant={showNearby ? "secondary" : "default"}
-          className="flex items-center gap-2"
-        >
-          {loadingLocation ? (
-            <Loader2 className="animate-spin w-4 h-4" />
-          ) : null}
-          {showNearby ? "Showing Nearby Rides" : "Show Nearby Rides"}
-        </Button>
-      </motion.div>
+      <div className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-foreground">Nearby rides</h2>
+          <p className="text-xs text-muted-foreground">
+            Turn on location to see pickups near you
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="ghost" size="sm" onClick={() => router.back()}>
+            <ArrowLeft /> Back
+          </Button>
+          <Button
+            onClick={handleShowNearby}
+            variant={showNearby ? "secondary" : "default"}
+            className="flex items-center gap-2"
+          >
+            {loadingLocation ? <Loader2 className="animate-spin w-4 h-4" /> : null}
+            {showNearby ? "Showing Nearby" : "Show Nearby"}
+          </Button>
+        </div>
+      </div>
+
       {showNearby && (
         <>
-          {/* Ride Offers */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            transition={{ delay: 0.3 }}
-            className="bg-card border border-border rounded-2xl p-6 shadow-soft mb-4"
+            transition={{ delay: 0.2 }}
+            className="rounded-2xl border border-border bg-card p-5 shadow-soft"
           >
             <h3 className="text-lg font-semibold text-foreground mb-4">
               Ride Offers
@@ -169,12 +163,7 @@ const NearbyRides = () => {
             ) : filteredRides.offers.length ? (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {filteredRides.offers.map((s) => (
-                  <RideCard
-                    key={s.id}
-                    ride={s}
-                    onClick={handleOpenRide}
-                    loading={loading}
-                  />
+                  <RideCard key={s.id} ride={s} onClick={handleOpenRide} loading={loading} />
                 ))}
               </div>
             ) : (
@@ -184,12 +173,11 @@ const NearbyRides = () => {
             )}
           </motion.div>
 
-          {/* Ride Requests */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            transition={{ delay: 0.4 }}
-            className="bg-card border border-border rounded-2xl p-6 shadow-soft mb-4"
+            transition={{ delay: 0.3 }}
+            className="rounded-2xl border border-border bg-card p-5 shadow-soft"
           >
             <h3 className="text-lg font-semibold text-foreground mb-4">
               Ride Requests
@@ -201,12 +189,7 @@ const NearbyRides = () => {
             ) : filteredRides.requests.length ? (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {filteredRides.requests.map((s) => (
-                  <RideCard
-                    key={s.id}
-                    ride={s}
-                    onClick={handleOpenRide}
-                    loading={loading}
-                  />
+                  <RideCard key={s.id} ride={s} onClick={handleOpenRide} loading={loading} />
                 ))}
               </div>
             ) : (
@@ -217,7 +200,7 @@ const NearbyRides = () => {
           </motion.div>
         </>
       )}
-    </motion.div>
+    </motion.section>
   );
 };
 

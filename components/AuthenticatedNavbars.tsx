@@ -3,25 +3,26 @@
 import Navbar from "@/components/Navbar";
 import BottomNavbar from "@/components/BottomNavbar";
 import { useSession } from "next-auth/react";
+import { usePathname } from "next/navigation";
+
+const HIDDEN_AUTH_ROUTES = new Set(["/login", "/register"]);
 
 export default function AuthenticatedNavbars() {
   const { data: session, status } = useSession();
+  const pathname = usePathname();
 
-  // Don't render anything while session is loading
-  if (status === "loading") {
+  if (status !== "authenticated" || !session?.user) {
     return null;
   }
 
-  // Only render navbars if user is authenticated
-  if (session && session.user) {
-    return (
-      <>
-        <Navbar />
-        <BottomNavbar />
-      </>
-    );
+  if (HIDDEN_AUTH_ROUTES.has(pathname)) {
+    return null;
   }
 
-  // Return null if not authenticated
-  return null;
+  return (
+    <>
+      <Navbar />
+      <BottomNavbar />
+    </>
+  );
 }

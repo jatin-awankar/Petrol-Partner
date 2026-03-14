@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import Icon from "../AppIcon";
 import { Button } from "../ui/button";
 import RideCard from "./RideCard";
@@ -28,39 +28,32 @@ const SuggestedRides = () => {
     setSuggestions([...offers, ...requests]);
   }, [rideOffers, rideRequests]);
 
-  //---------------------------- handlers ------------------------------//
   const handleOpenRide = (ride: CombineRideData) => {
     router.push(`/search-rides/${ride.id}`);
   };
 
   return (
-    <motion.div
+    <motion.section
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      className="bg-card border border-border rounded-2xl p-6 shadow-soft mb-12 md:mb-6"
+      className="rounded-2xl border border-border bg-card p-5 mb-12 shadow-soft"
     >
-      <div className="flex items-center justify-between mb-4">
+      <div className="mb-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Icon name="Sparkles" size={18} className="text-primary" />
-          <h3 className="text-lg font-semibold text-foreground">
-            Smart Suggestions
-          </h3>
-          <div className="text-xs text-muted-foreground">
-            Based on your recent activity & location
+          <div>
+            <h3 className="text-lg font-semibold text-foreground">
+              Smart suggestions
+            </h3>
+            <p className="text-xs text-muted-foreground">
+              Based on your recent activity and location
+            </p>
           </div>
         </div>
 
-        <div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              /* could shuffle suggestions */
-            }}
-          >
-            Refresh
-          </Button>
-        </div>
+        <Button variant="ghost" size="sm">
+          Refresh
+        </Button>
       </div>
 
       {loading ? (
@@ -83,7 +76,7 @@ const SuggestedRides = () => {
           ))}
         </div>
       )}
-    </motion.div>
+    </motion.section>
   );
 };
 

@@ -1,26 +1,26 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Search } from "lucide-react";
+import Image from "next/image";
+import { motion } from "framer-motion";
+
 import { Button } from "../ui/button";
 import Icon from "../AppIcon";
 import Skeleton from "react-loading-skeleton";
-import { motion } from "framer-motion";
 import { useFetchSuggestedRides } from "@/hooks/rides/useFetchSuggestedRides";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
 import { formatTimeToAmPm, todaysDate } from "@/lib/utils";
 
 const RideSuggestions: React.FC = () => {
   const router = useRouter();
-
   const [suggestions, setSuggestions] = useState<CombineRideData[] | null>(
-    null
+    null,
   );
   const [dismissedSuggestions, setDismissedSuggestions] = useState<string[]>(
-    []
+    [],
   );
+
   const { rideOffers, rideRequests, loading } = useFetchSuggestedRides({
     limit: 2,
     date: todaysDate.toISOString(),
@@ -44,38 +44,45 @@ const RideSuggestions: React.FC = () => {
     router.push(`/search-rides/${ride.id}`);
   };
 
-  const visibleSuggestions = suggestions?.filter(
-    (s) => !dismissedSuggestions.includes(s.id)
+  const visibleSuggestions = useMemo(
+    () => suggestions?.filter((s) => !dismissedSuggestions.includes(s.id)),
+    [dismissedSuggestions, suggestions],
   );
 
-  if (!loading && (!visibleSuggestions || visibleSuggestions.length === 0))
+  if (!loading && (!visibleSuggestions || visibleSuggestions.length === 0)) {
     return null;
+  }
 
   return (
-    <motion.div
+    <motion.section
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.3 }}
-      className="bg-card border border-border rounded-xl p-6 mb-6 shadow-soft"
+      className="rounded-2xl border border-border bg-card p-5 shadow-soft"
     >
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center space-x-2">
-          <Icon name="Zap" size={20} className="text-yellow-400 fill-current" />
-          <h2 className="text-lg font-semibold text-foreground">
-            Suggested Rides
-          </h2>
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <Icon name="Zap" size={18} />
+          </span>
+          <div>
+            <h2 className="text-lg font-semibold text-foreground">
+              Suggested rides
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              Based on your recent routes
+            </p>
+          </div>
         </div>
-        <Button variant="ghost" size="sm">
-          Customize
-        </Button>
+        <p className="px-2">Customize</p>
       </div>
 
-      <div className="space-y-4">
+      <div className="space-y-3">
         {loading
           ? Array.from({ length: 2 }).map((_, idx) => (
               <div
                 key={idx}
-                className="border border-border rounded-lg p-4 animate-pulse"
+                className="rounded-xl border border-border p-4 animate-pulse"
               >
                 <Skeleton width="100%" height={16} className="mb-2" />
                 <Skeleton width="80%" height={12} className="mb-2" />
@@ -86,103 +93,91 @@ const RideSuggestions: React.FC = () => {
           : visibleSuggestions?.map((suggestion) => (
               <div
                 key={suggestion.id}
-                className="border border-border rounded-lg p-4 hover:shadow-soft transition-shadow cursor-pointer"
+                className="rounded-xl border border-border bg-background/60 p-4 transition hover:shadow-soft cursor-pointer"
                 onClick={() => handleOpenRide(suggestion)}
               >
-                <div className="flex items-start justify-between mb-3">
+                <div className="mb-3 flex items-start justify-between gap-3">
                   <div className="flex-1">
-                    <div className="flex items-center space-x-2 mb-1 flex-wrap">
-                      <h3 className="text-sm font-medium text-muted-foreground">
+                    <div className="mb-1 flex flex-wrap items-center gap-2">
+                      <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                         {suggestion.driver_id
                           ? suggestion.available_seats &&
                             suggestion.available_seats > 1
-                            ? "Need Commuters"
-                            : "Need a Commuter"
-                          : "Need a Rider"}
-                      </h3>
-                      <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded">
+                            ? "Need commuters"
+                            : "Need a commuter"
+                          : "Need a rider"}
+                      </span>
+                      <span className="rounded-full bg-muted px-2 py-1 text-[11px] text-muted-foreground">
                         {suggestion.driver_id ? "offer" : "request"}
                       </span>
                     </div>
 
-                    <div className="flex items-center space-x-2 text-sm text-foreground mb-2">
-                      <Icon
-                        name="MapPin"
-                        size={14}
-                        className="text-green-600"
-                      />
+                    <div className="mb-2 flex items-center gap-2 text-sm text-foreground">
+                      <Icon name="MapPin" size={14} className="text-success" />
                       <span>
-                        {suggestion.pickup_location}&nbsp; → &nbsp;
+                        {suggestion.pickup_location} →{" "}
                         {suggestion.drop_location}
                       </span>
                     </div>
 
-                    <div className="flex items-center space-x-4 text-xs text-muted-foreground">
-                      <div className="flex items-center space-x-1">
+                    <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                      <span className="inline-flex items-center gap-1">
                         <Icon name="Clock" size={12} />
-                        <span>{formatTimeToAmPm(suggestion.time)}</span>
-                      </div>
-                      <div className="flex items-center space-x-1">
+                        {formatTimeToAmPm(suggestion.time)}
+                      </span>
+                      <span className="inline-flex items-center gap-1">
                         <Icon name="Users" size={12} />
-                        <span>
-                          {suggestion.available_seats ||
-                            suggestion.seats_required}{" "}
-                          seats
-                        </span>
-                      </div>
+                        {suggestion.available_seats ||
+                          suggestion.seats_required}{" "}
+                        seats
+                      </span>
                     </div>
                   </div>
 
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => dismissSuggestion(suggestion.id)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      dismissSuggestion(suggestion.id);
+                    }}
                   >
                     <Icon name="X" size={14} />
                   </Button>
                 </div>
 
-                {/* Info */}
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-8 h-8 bg-blue-400/10 rounded-full flex items-center justify-center">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-primary/10">
                       {suggestion.profile_image ? (
                         <Image
                           src={suggestion.profile_image}
                           alt={suggestion?.full_name?.[0]?.toUpperCase() ?? "?"}
                           width={36}
                           height={36}
-                          className="w-full rounded-full overflow-hidden"
+                          className="h-full w-full rounded-full object-cover"
                         />
                       ) : (
-                        <Icon name="User" size={14} className="text-blue-400" />
+                        <Icon name="User" size={14} className="text-primary" />
                       )}
                     </div>
                     <div>
-                      <div className="flex items-center space-x-2">
-                        <span className="text-sm font-medium text-foreground">
-                          {suggestion.full_name}
-                        </span>
-                      </div>
-                      <div className="flex items-center space-x-1">
-                        <Icon
-                          name="Star"
-                          size={12}
-                          className="text-warning fill-current"
-                        />
-                        <span className="text-xs text-muted-foreground">
-                          {suggestion.avg_rating}
-                        </span>
+                      <p className="text-sm font-medium text-foreground">
+                        {suggestion.full_name}
+                      </p>
+                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <Icon name="Star" size={12} className="text-warning" />
+                        {suggestion.avg_rating}
                       </div>
                     </div>
                   </div>
 
-                  <div className="flex items-center space-x-3">
-                    <span className="text-lg font-bold text-foreground">
-                      ₹{suggestion.price_per_seat}
+                  <div className="flex items-center gap-3">
+                    <span className="text-lg font-semibold text-foreground">
+                      INR {suggestion.price_per_seat}
                     </span>
                     <Button variant="default" size="sm">
-                      Book Now
+                      View
                     </Button>
                   </div>
                 </div>
@@ -190,15 +185,15 @@ const RideSuggestions: React.FC = () => {
             ))}
       </div>
 
-      <div className="mt-4 pt-4 border-t border-border">
+      <div className="mt-4 border-t border-border pt-4">
         <Link href="/search-rides">
           <Button variant="outline" className="w-full">
-            <Search />
-            Browse All Available Rides
+            <Icon name="Search" size={16} />
+            Browse all rides
           </Button>
         </Link>
       </div>
-    </motion.div>
+    </motion.section>
   );
 };
 

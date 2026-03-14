@@ -1,11 +1,12 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import Skeleton from "react-loading-skeleton";
+import { motion } from "framer-motion";
+
 import { Button } from "../ui/button";
 import Icon from "../AppIcon";
-import Link from "next/link";
-import { motion } from "framer-motion";
 import { useFetchRideOffers } from "@/hooks/rides/useRideOffers";
 import { useFetchRideRequests } from "@/hooks/rides/useRideRequests";
 
@@ -14,90 +15,91 @@ const QuickActionCards: React.FC = () => {
   const { offers } = useFetchRideOffers();
   const { requests } = useFetchRideRequests();
 
+  const totalRides = useMemo(
+    () => (offers?.totalCount ?? 0) + (requests?.totalCount ?? 0),
+    [offers?.totalCount, requests?.totalCount]
+  );
+
   useEffect(() => {
     setActions([
       {
         id: "find-ride",
         title: "Find a Ride",
-        description: "Search for available rides",
+        description: "Browse campus routes and reserve a seat",
         icon: "Search",
-        color: "bg-success",
-        textColor: "text-success-foreground",
+        color: "bg-primary/10",
+        textColor: "text-primary",
         route: "/search-rides",
-        stats: `${
-          (offers?.totalCount ?? 0) + (requests?.totalCount ?? 0)
-        } rides available`,
+        stats: `${totalRides} rides near you`,
       },
       {
         id: "post-ride",
-        title: "Offer/Request a Ride",
-        description: "Share your journey",
-        icon: "Bike",
-        color: "bg-warning",
-        textColor: "text-warning-foreground",
+        title: "Offer a Ride",
+        description: "Post your commute and open seats",
+        icon: "CarFront",
+        color: "bg-accent/70",
+        textColor: "text-accent-foreground",
         route: "/post-a-ride",
-        stats: "Earn ₹10-100 per ride",
+        stats: "Set your own per-seat fare",
       },
     ]);
-  }, [offers?.totalCount, requests?.totalCount]);
+  }, [totalRides]);
 
   return (
-    <motion.div
+    <motion.section
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.3 }}
-      className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 "
+      transition={{ delay: 0.2 }}
+      className="grid grid-cols-1 gap-4 md:grid-cols-2"
     >
       {actions?.map((action) => (
-            <div
-              key={action?.id ?? Math.random()}
-              className="bg-card border border-border rounded-xl p-6 hover:shadow-medium transition-shadow cursor-pointer shadow-card"
-            >
-              <Link href={action?.route}>
-                <div className="flex items-start justify-between mb-4">
-                  <div
-                    className={`w-12 h-12 ${
-                      action?.color ?? "bg-gray-300"
-                    } rounded-lg flex items-center justify-center`}
-                  >
-                    {action?.icon ? (
-                      <Icon name={action.icon} size={24} color="white" />
-                    ) : (
-                      <Skeleton width={24} height={24} />
-                    )}
-                  </div>
-                  <Icon
-                    name="ArrowRight"
-                    size={20}
-                    className="text-muted-foreground"
-                  />
-                </div>
+        <Link
+          key={action?.id}
+          href={action?.route}
+          className="group rounded-2xl border border-border bg-card p-5 shadow-card transition hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-soft"
+        >
+          <div className="flex items-start justify-between gap-4">
+            <div className="space-y-3">
+              <div
+                className={`inline-flex h-11 w-11 items-center justify-center rounded-xl ${
+                  action?.color ?? "bg-muted"
+                }`}
+              >
+                {action?.icon ? (
+                  <Icon name={action.icon} size={22} className={action.textColor} />
+                ) : (
+                  <Skeleton width={22} height={22} />
+                )}
+              </div>
 
-                <h3 className="text-lg font-semibold text-foreground mb-1">
+              <div>
+                <h3 className="text-lg font-semibold text-foreground">
                   {action?.title ?? <Skeleton width="60%" />}
                 </h3>
-                <p className="text-muted-foreground text-sm mb-3">
+                <p className="mt-1 text-sm text-muted-foreground">
                   {action?.description ?? <Skeleton width="80%" />}
                 </p>
-
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-muted-foreground animate-pulse">
-                    {action?.stats ?? <Skeleton width="50%" />}
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                    }}
-                  >
-                    Get Started
-                  </Button>
-                </div>
-              </Link>
+              </div>
             </div>
-          ))}
-    </motion.div>
+
+            <Icon
+              name="ArrowUpRight"
+              size={18}
+              className="text-muted-foreground transition group-hover:text-primary"
+            />
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+            <span className="text-xs text-muted-foreground">
+              {action?.stats ?? <Skeleton width="50%" />}
+            </span>
+            <Button variant="ghost" size="sm">
+              Get Started
+            </Button>
+          </div>
+        </Link>
+      ))}
+    </motion.section>
   );
 };
 

@@ -329,12 +329,6 @@ const ProfileAccountSettings = () => {
         const updateData: any = {};
         if (data.name) updateData.full_name = data.name;
         if (data.phone) updateData.phone = data.phone;
-        if (data.email) updateData.email = data.email;
-        if (data.dateOfBirth) updateData.date_of_birth = data.dateOfBirth;
-        if (data.gender) updateData.gender = data.gender;
-        if (data.address) updateData.address = data.address;
-        if (data.emergencyContact) updateData.emergency_contact = data.emergencyContact;
-        if (data.emergencyPhone) updateData.emergency_phone = data.emergencyPhone;
 
         await updateProfile(updateData);
         refetch.user();
@@ -388,12 +382,13 @@ const ProfileAccountSettings = () => {
 
   const handleAddVehicle = useCallback(async (vehicle: any) => {
     try {
-      // TODO: Implement vehicle add API call
-      const res = await fetch("/api/vehicle", {
+      const res = await fetch("/api/vehicle/add", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify(vehicle),
+        body: JSON.stringify({
+          vehicle_number: vehicle.licensePlate,
+        }),
       });
 
       if (!res.ok) {
@@ -409,52 +404,13 @@ const ProfileAccountSettings = () => {
     }
   }, [refetch]);
 
-  const handleEditVehicle = useCallback(
-    async (id: string | number, vehicle: any) => {
-      try {
-        const res = await fetch(`/api/vehicle/${id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify(vehicle),
-        });
+  const handleEditVehicle = useCallback(async () => {
+    toast.info("Vehicle editing is not available yet.");
+  }, []);
 
-        if (!res.ok) {
-          throw new Error("Failed to update vehicle");
-        }
-
-        toast.success("Vehicle updated successfully!");
-        refetch.vehicles();
-      } catch (error: any) {
-        console.error("Edit vehicle error:", error);
-        toast.error(error.message || "Failed to update vehicle");
-        throw error; // Re-throw so component can handle it
-      }
-    },
-    [refetch]
-  );
-
-  const handleDeleteVehicle = useCallback(
-    async (id: string | number) => {
-      try {
-        const res = await fetch(`/api/vehicle/${id}`, {
-          method: "DELETE",
-          credentials: "include",
-        });
-
-        if (!res.ok) {
-          throw new Error("Failed to delete vehicle");
-        }
-
-        toast.success("Vehicle deleted successfully!");
-        refetch.vehicles();
-      } catch (error: any) {
-        console.error("Delete vehicle error:", error);
-        toast.error(error.message || "Failed to delete vehicle");
-      }
-    },
-    [refetch]
-  );
+  const handleDeleteVehicle = useCallback(async () => {
+    toast.info("Vehicle deletion is not available yet.");
+  }, []);
 
   // Show loading state
   if (dataLoading) {
@@ -523,6 +479,7 @@ const ProfileAccountSettings = () => {
             <Suspense fallback={<Skeleton height={100} />}>
               <ProfileHeader
                 user={user}
+                isLoading={dataLoading}
                 onPhotoUpload={handlePhotoUpload}
                 onEditProfile={handleEditProfile}
               />

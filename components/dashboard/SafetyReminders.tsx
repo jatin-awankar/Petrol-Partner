@@ -1,27 +1,22 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import Skeleton from "react-loading-skeleton";
+import { motion } from "framer-motion";
+
 import { Button } from "../ui/button";
 import Icon from "../AppIcon";
-import { motion } from "framer-motion";
 
 const SafetyReminders: React.FC = () => {
   const [dismissedReminders, setDismissedReminders] = useState<string[]>([]);
   const [reminders, setReminders] = useState<Reminder[] | null>(null);
-  // const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // const timer = setTimeout(() => {
-    //   setLoading(false);
-    // }, 500);
-    
     setReminders([
       {
         id: "verify-driver",
-        title: "Verify Driver Details",
+        title: "Verify your vehicle",
         message:
-          "Add a vehicle for driver verification badge to post your offer.",
+          "Add your vehicle details to get a driver verification badge.",
         icon: "Shield",
         color: "text-primary",
         bgColor: "bg-primary/10",
@@ -29,9 +24,9 @@ const SafetyReminders: React.FC = () => {
       },
       {
         id: "share-location",
-        title: "Share Your Trip",
+        title: "Share trip details",
         message:
-          "Share your ride details with friends or family for added safety.",
+          "Send your ride link to a friend or family before departure.",
         icon: "MapPin",
         color: "text-success",
         bgColor: "bg-success/10",
@@ -39,16 +34,14 @@ const SafetyReminders: React.FC = () => {
       },
       {
         id: "emergency-contacts",
-        title: "Emergency Contacts",
-        message: "Keep emergency contacts updated in your profile settings.",
+        title: "Update emergency contacts",
+        message: "Keep emergency contacts current inside your profile.",
         icon: "Phone",
-        color: "text-error",
-        bgColor: "bg-error/10",
+        color: "text-warning",
+        bgColor: "bg-warning/10",
         priority: "high",
       },
     ]);
-
-    // return () => clearTimeout(timer);
   }, []);
 
   const visibleReminders = reminders?.filter(
@@ -59,54 +52,30 @@ const SafetyReminders: React.FC = () => {
     if (reminderId) setDismissedReminders((prev) => [...prev, reminderId]);
   };
 
-  // if (loading) {
-  //   return (
-  //     <div className="bg-card border border-border rounded-xl p-6 mb-6">
-  //       <div className="flex items-center space-x-2 mb-4">
-  //         <Skeleton width={20} height={20} circle />
-  //         <Skeleton width={120} height={20} />
-  //       </div>
-  //       <div className="space-y-3">
-  //         {Array.from({ length: 3 }).map((_, idx) => (
-  //           <div key={idx} className="border border-border/50 rounded-lg p-4">
-  //             <div className="flex items-start space-x-3">
-  //               <Skeleton width={32} height={32} circle />
-  //               <div className="flex-1 space-y-1">
-  //                 <Skeleton width="60%" height={14} />
-  //                 <Skeleton width="90%" height={12} />
-  //               </div>
-  //             </div>
-  //             <Skeleton width="80%" height={20} className="mt-2" />
-  //           </div>
-  //         ))}
-  //       </div>
-  //     </div>
-  //   );
-  // }
-
   if (!visibleReminders?.length) return null;
 
   return (
-    <motion.div
+    <motion.section
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.3 }}
-      className="bg-card border border-border rounded-xl p-6 mb-6 shadow-soft"
+      className="rounded-2xl border border-border bg-card p-5 shadow-soft"
     >
-      <div className="flex items-center space-x-2 mb-4">
-        <Icon name="AlertTriangle" size={20} className="text-warning" />
-        <h2 className="text-lg font-semibold text-foreground">
-          Safety Reminders
-        </h2>
+      <div className="mb-4 flex items-center gap-2">
+        <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-warning/10 text-warning">
+          <Icon name="AlertTriangle" size={18} />
+        </span>
+        <div>
+          <h2 className="text-lg font-semibold text-foreground">Safety reminders</h2>
+          <p className="text-xs text-muted-foreground">Quick checks before each ride</p>
+        </div>
       </div>
 
       <div className="space-y-3">
         {visibleReminders?.map((reminder) => (
           <div
             key={reminder?.id}
-            className={`${
-              reminder?.bgColor ?? "bg-muted"
-            } border border-border/50 rounded-lg p-4`}
+            className="rounded-xl border border-border bg-muted/40 p-4"
           >
             <div className="flex items-start justify-between">
               <div className="flex items-start space-x-3 flex-1">
@@ -149,7 +118,7 @@ const SafetyReminders: React.FC = () => {
           </div>
         ))}
       </div>
-    </motion.div>
+    </motion.section>
   );
 };
 

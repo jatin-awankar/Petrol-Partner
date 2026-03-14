@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+﻿import React, { useState, useEffect, useCallback } from "react";
 import Icon from "../AppIcon";
 import Skeleton from "react-loading-skeleton";
 import { Button } from "../ui/button";
@@ -55,7 +55,6 @@ const AccountSecuritySection: React.FC<AccountSecuritySectionProps> = ({
   isLoading: externalLoading = false,
   error: externalError = null,
 }) => {
-  const [isInternalLoading, setIsInternalLoading] = useState(true);
   const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [passwordData, setPasswordData] = useState({
     currentPassword: "",
@@ -69,36 +68,24 @@ const AccountSecuritySection: React.FC<AccountSecuritySectionProps> = ({
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [passwordSuccess, setPasswordSuccess] = useState(false);
 
-  // Derived state
-  const isLoading = externalLoading || isInternalLoading;
-  // Support both separate prop and embedded in securitySettings
-  const displayedLoginActivity = loginActivity ?? 
-    (securitySettings && 'loginActivity' in securitySettings 
-      ? (securitySettings.loginActivity as LoginActivity[]) ?? [] 
+  const isLoading = externalLoading;
+  const displayedLoginActivity = loginActivity ??
+    (securitySettings && "loginActivity" in securitySettings
+      ? (securitySettings.loginActivity as LoginActivity[]) ?? []
       : []);
-  // Support both naming conventions: passwordLastChanged and lastPasswordChange
-  const passwordLastChanged = securitySettings?.passwordLastChanged ?? 
-    (securitySettings && 'lastPasswordChange' in securitySettings 
-      ? securitySettings.lastPasswordChange as string | undefined 
+  const passwordLastChanged = securitySettings?.passwordLastChanged ??
+    (securitySettings && "lastPasswordChange" in securitySettings
+      ? (securitySettings.lastPasswordChange as string | undefined)
       : null);
 
-  // Initialize from props
   useEffect(() => {
     if (securitySettings !== null || loginActivity !== null) {
-      const timer = setTimeout(() => {
-        setTwoFactorEnabled(securitySettings?.twoFactorEnabled ?? false);
-        setTwoFactorMethod(securitySettings?.twoFactorMethod ?? "SMS");
-        setIsInternalLoading(false);
-      }, 300);
-
-      return () => clearTimeout(timer);
-    } else {
-      setIsInternalLoading(false);
+      setTwoFactorEnabled(securitySettings?.twoFactorEnabled ?? false);
+      setTwoFactorMethod(securitySettings?.twoFactorMethod ?? "SMS");
     }
   }, [securitySettings, loginActivity]);
 
   const handlePasswordChange = useCallback(async () => {
-    // Validation
     if (!passwordData.currentPassword.trim()) {
       setPasswordError("Current password is required");
       return;
@@ -129,7 +116,7 @@ const AccountSecuritySection: React.FC<AccountSecuritySectionProps> = ({
           newPassword: passwordData.newPassword,
         });
       }
-      
+
       setPasswordSuccess(true);
       setShowPasswordForm(false);
       setPasswordData({
@@ -137,8 +124,6 @@ const AccountSecuritySection: React.FC<AccountSecuritySectionProps> = ({
         newPassword: "",
         confirmPassword: "",
       });
-      
-      // Clear success message after 3 seconds
       setTimeout(() => setPasswordSuccess(false), 3000);
     } catch (err) {
       setPasswordError(err instanceof Error ? err.message : "Failed to change password. Please try again.");
@@ -161,7 +146,6 @@ const AccountSecuritySection: React.FC<AccountSecuritySectionProps> = ({
       }
     } catch (err) {
       console.error("Failed to toggle 2FA:", err);
-      // Optionally show error to user
     } finally {
       setIsEnabling2FA(false);
     }
@@ -169,7 +153,6 @@ const AccountSecuritySection: React.FC<AccountSecuritySectionProps> = ({
 
   const handleLogoutDevice = useCallback(async (deviceId: number | string) => {
     if (!deviceId) return;
-    
     try {
       if (onLogoutDevice) {
         await onLogoutDevice(deviceId);
@@ -201,7 +184,6 @@ const AccountSecuritySection: React.FC<AccountSecuritySectionProps> = ({
     }
   }, [onDownloadData]);
 
-  // 🔸 Skeleton loader
   if (isLoading) {
     return (
       <div className="bg-card border border-border rounded-lg shadow-card animate-pulse">
@@ -211,23 +193,14 @@ const AccountSecuritySection: React.FC<AccountSecuritySectionProps> = ({
         >
           <div className="flex items-center space-x-3">
             <Icon name="Lock" size={20} className="text-primary" />
-            <Skeleton
-              width={160}
-              height={20}
-              className="rounded animate-bounce"
-            />
+            <Skeleton width={160} height={20} className="rounded" />
           </div>
-          <Skeleton width={20} height={20} className="rounded animate-bounce" />
+          <Skeleton width={20} height={20} className="rounded" />
         </button>
         {isExpanded && (
           <div className="px-4 pb-4 border-t border-border pt-4 space-y-4">
             {[1, 2, 3].map((i) => (
-              <Skeleton
-                key={i}
-                width="100%"
-                height={80}
-                className="rounded-lg animate-pulse"
-              />
+              <Skeleton key={i} width="100%" height={80} className="rounded-lg" />
             ))}
           </div>
         )}
@@ -235,7 +208,6 @@ const AccountSecuritySection: React.FC<AccountSecuritySectionProps> = ({
     );
   }
 
-  // 🔹 Main section
   return (
     <div className="bg-card border border-border rounded-lg shadow-card">
       <button
@@ -252,7 +224,6 @@ const AccountSecuritySection: React.FC<AccountSecuritySectionProps> = ({
           className="text-muted-foreground"
         />
       </button>
-      {/* Content */}
       <div
         className={`overflow-hidden transition-[max-height,opacity] duration-500 ease-in-out ${
           isExpanded ? "max-h-[3000px] opacity-100" : "max-h-0 opacity-0"
@@ -260,7 +231,6 @@ const AccountSecuritySection: React.FC<AccountSecuritySectionProps> = ({
       >
         <div className="px-4 pb-4 border-t border-border">
           <div className="pt-4 space-y-6">
-            {/* Password Management */}
             <div>
               <h4 className="font-medium text-foreground mb-4">Password</h4>
               {passwordSuccess && (
@@ -268,7 +238,7 @@ const AccountSecuritySection: React.FC<AccountSecuritySectionProps> = ({
                   <p className="text-sm text-success">Password changed successfully!</p>
                 </div>
               )}
-              
+
               {externalError && (
                 <div className="mb-4 p-3 bg-error/10 border border-error/20 rounded-lg">
                   <p className="text-sm text-error">{externalError}</p>
@@ -280,8 +250,8 @@ const AccountSecuritySection: React.FC<AccountSecuritySectionProps> = ({
                   <div>
                     <p className="font-medium text-foreground">Password</p>
                     <p className="text-sm text-muted-foreground">
-                      {passwordLastChanged 
-                        ? `Last changed ${passwordLastChanged}` 
+                      {passwordLastChanged
+                        ? `Last changed ${passwordLastChanged}`
                         : "Password has never been changed"}
                     </p>
                   </div>
@@ -402,11 +372,8 @@ const AccountSecuritySection: React.FC<AccountSecuritySectionProps> = ({
               )}
             </div>
 
-            {/* Two-Factor Authentication */}
             <div className="border-t border-border pt-6">
-              <h4 className="font-medium text-foreground mb-4">
-                Two-Factor Authentication
-              </h4>
+              <h4 className="font-medium text-foreground mb-4">Two-Factor Authentication</h4>
               <div className="flex items-center justify-between p-3 border border-border rounded-lg">
                 <div>
                   <p className="font-medium text-foreground">2FA Protection</p>
@@ -431,21 +398,18 @@ const AccountSecuritySection: React.FC<AccountSecuritySectionProps> = ({
               </div>
             </div>
 
-            {/* Login Activity */}
             <div className="border-t border-border pt-6">
-              <h4 className="font-medium text-foreground mb-4">
-                Login Activity
-              </h4>
+              <h4 className="font-medium text-foreground mb-4">Login Activity</h4>
               {displayedLoginActivity.length > 0 ? (
                 <div className="space-y-3">
                   {displayedLoginActivity.map((activity) => {
                     if (!activity?.id || !activity?.device) return null;
-                    
+
                     const deviceName = activity.device || "Unknown Device";
-                    const isMobile = deviceName.toLowerCase().includes("iphone") || 
-                                   deviceName.toLowerCase().includes("android") ||
-                                   deviceName.toLowerCase().includes("mobile");
-                    
+                    const isMobile = deviceName.toLowerCase().includes("iphone") ||
+                      deviceName.toLowerCase().includes("android") ||
+                      deviceName.toLowerCase().includes("mobile");
+
                     return (
                       <div
                         key={activity.id}
@@ -469,8 +433,8 @@ const AccountSecuritySection: React.FC<AccountSecuritySectionProps> = ({
                             <p className="text-sm text-muted-foreground truncate">
                               {[activity.location, activity.time]
                                 .filter(Boolean)
-                                .join(" • ") || "No location information"}
-                              {activity.ipAddress && ` • ${activity.ipAddress}`}
+                                .join(" - ") || "No location information"}
+                              {activity.ipAddress && ` - ${activity.ipAddress}`}
                             </p>
                             {activity.lastActive && (
                               <p className="text-xs text-muted-foreground mt-1">
@@ -502,18 +466,13 @@ const AccountSecuritySection: React.FC<AccountSecuritySectionProps> = ({
               )}
             </div>
 
-            {/* Account Management */}
             <div className="border-t border-border pt-6">
-              <h4 className="font-medium text-foreground mb-4">
-                Account Management
-              </h4>
+              <h4 className="font-medium text-foreground mb-4">Account Management</h4>
               <div className="space-y-3">
                 <div className="p-3 border border-border rounded-lg">
                   <div className="flex flex-col sm:flex-row gap-2 justify-between">
                     <div>
-                      <p className="font-medium text-foreground">
-                        Download Account Data
-                      </p>
+                      <p className="font-medium text-foreground">Download Account Data</p>
                       <p className="text-sm text-muted-foreground">
                         Get a copy of your account information and ride history
                       </p>

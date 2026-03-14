@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { signIn } from "next-auth/react";
+import { getProviders, signIn } from "next-auth/react";
 
 export default function LoginForm() {
   const router = useRouter();
@@ -11,41 +12,91 @@ export default function LoginForm() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+  const [hasGoogleProvider, setHasGoogleProvider] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadProviders = async () => {
+      try {
+        const providers = await getProviders();
+        if (active) {
+          setHasGoogleProvider(Boolean(providers?.google));
+        }
+      } catch {
+        if (active) {
+          setHasGoogleProvider(false);
+        }
+      }
+    };
+
+    loadProviders();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setErrorMsg("");
 
-    const res = await signIn("credentials", {
-      redirect: false,
-      email,
-      password,
-    });
+    try {
+      const res = await signIn("credentials", {
+        redirect: false,
+        email: email.trim().toLowerCase(),
+        password,
+        callbackUrl: "/dashboard",
+      });
 
-    if (res?.error) {
-      setErrorMsg(res.error);
+      if (res?.error) {
+        setErrorMsg(res.error);
+        return;
+      }
+
+      if (!res?.ok) {
+        setErrorMsg("Unable to sign in right now. Please try again.");
+        return;
+      }
+
+      router.replace(res?.url || "/dashboard");
+      router.refresh();
+    } catch {
+      setErrorMsg("Unable to sign in right now. Please try again.");
+    } finally {
       setLoading(false);
-    } else if (res?.ok) {
-      router.push("/dashboard");
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    setLoading(true);
+    setErrorMsg("");
+
+    try {
+      await signIn("google", { callbackUrl: "/dashboard" });
+    } catch {
+      setErrorMsg("Google sign-in failed. Please try again.");
+      setLoading(false);
     }
   };
 
   return (
-    <div className="shadow-lg rounded-2xl p-6">
-      <h1 className="text-2xl font-semibold text-center mb-6">
+    <div className="rounded-2xl border border-border bg-card p-6 shadow-soft">
+      <h1 className="mb-6 text-center text-2xl font-semibold text-foreground">
         Sign in to Petrol Partner
       </h1>
 
       {errorMsg && (
-        <p className="text-red-500 text-sm text-center mb-4">{errorMsg}</p>
+        <p className="mb-4 rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2 text-center text-sm text-destructive">
+          {errorMsg}
+        </p>
       )}
 
-      <form onSubmit={handleSubmit}>
+      <form onSubmit={handleSubmit} className="space-y-3">
         <input
           type="email"
           placeholder="Email"
-          className="border border-gray-300 rounded-md p-2 w-full mb-3 focus:ring-1 focus:ring-blue-400 outline-none"
+          className="w-full rounded-md border border-border bg-background p-2.5 text-foreground outline-none transition focus:ring-2 focus:ring-ring"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           disabled={loading}
@@ -55,7 +106,7 @@ export default function LoginForm() {
         <input
           type="password"
           placeholder="Password"
-          className="border border-gray-300 rounded-md p-2 w-full mb-4 focus:ring-1 focus:ring-blue-400 outline-none"
+          className="w-full rounded-md border border-border bg-background p-2.5 text-foreground outline-none transition focus:ring-2 focus:ring-ring"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           disabled={loading}
@@ -65,32 +116,40 @@ export default function LoginForm() {
         <button
           type="submit"
           disabled={loading}
-          className={`w-full py-2 rounded-md text-white font-semibold transition cursor-pointer ${
+          className={`w-full rounded-md py-2.5 font-semibold text-white transition ${
             loading
-              ? "bg-blue-400 cursor-not-allowed"
-              : "bg-blue-600 hover:bg-blue-700"
+              ? "cursor-not-allowed bg-primary/60"
+              : "cursor-pointer bg-primary hover:bg-primary/90"
           }`}
         >
-          {loading ? "Signing in..." : "Sign In"}
+          {loading ? "Signing in..." : "Sign in"}
         </button>
-        <p className="text-center text-muted-foreground my-2">or</p>
-        <button
-          onClick={() => signIn("google", { callbackUrl: "/dashboard" })}
-          className={`w-full py-2 rounded-md text-white font-semibold transition border cursor-pointer ${
-            loading
-              ? "cursor-not-allowed"
-              : "hover:bg-accent"
-          }`}
-        >
-          Sign in with Google
-        </button>
+
+        {hasGoogleProvider && (
+          <>
+            <p className="my-2 text-center text-sm text-muted-foreground">or</p>
+
+            <button
+              type="button"
+              onClick={handleGoogleSignIn}
+              disabled={loading}
+              className={`w-full rounded-md border py-2.5 font-semibold transition ${
+                loading
+                  ? "cursor-not-allowed border-border text-muted-foreground"
+                  : "cursor-pointer border-border text-foreground hover:bg-accent"
+              }`}
+            >
+              Sign in with Google
+            </button>
+          </>
+        )}
       </form>
 
-      <p className="text-sm text-gray-500 mt-4 text-center">
-        Don’t have an account?{" "}
-        <a href="/register" className="text-blue-600 hover:underline">
+      <p className="mt-4 text-center text-sm text-muted-foreground">
+        Don&apos;t have an account?{" "}
+        <Link href="/register" className="text-primary hover:underline">
           Create one
-        </a>
+        </Link>
       </p>
     </div>
   );
