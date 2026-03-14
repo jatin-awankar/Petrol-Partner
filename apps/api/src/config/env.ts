@@ -5,8 +5,8 @@ config();
 
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
-  API_HOST: z.string().default("0.0.0.0"),
-  API_PORT: z.coerce.number().int().positive().default(4000),
+  HOST: z.string().default("0.0.0.0"),
+  PORT: z.coerce.number().int().positive().default(4000),
   APP_ORIGIN: z.string().url(),
   DATABASE_URL: z.string().min(1),
   ACCESS_TOKEN_SECRET: z.string().min(32),

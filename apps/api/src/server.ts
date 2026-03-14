@@ -5,11 +5,11 @@ import { pool } from "./db/pool";
 
 const app = createApp();
 
-const server = app.listen(env.API_PORT, env.API_HOST, () => {
+const server = app.listen(env.PORT, env.HOST, () => {
   logger.info(
     {
-      host: env.API_HOST,
-      port: env.API_PORT,
+      host: env.HOST,
+      port: env.PORT,
     },
     "API server listening",
   );
