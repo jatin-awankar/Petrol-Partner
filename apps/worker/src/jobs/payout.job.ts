@@ -11,7 +11,7 @@ export function createPayoutWorker() {
       logger.info({ jobId: job.id, data: job.data }, "TODO: create payout batches and update payout ledger rows");
     },
     {
-      connection: redisConnection,
+      connection: redisConnection as any,
       concurrency: env.WORKER_CONCURRENCY,
     },
   );

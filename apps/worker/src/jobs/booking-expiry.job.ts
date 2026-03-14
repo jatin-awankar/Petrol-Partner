@@ -11,7 +11,7 @@ export function createBookingExpiryWorker() {
       logger.info({ jobId: job.id, data: job.data }, "TODO: expire unpaid bookings and restore seats");
     },
     {
-      connection: redisConnection,
+      connection: redisConnection as any,
       concurrency: env.WORKER_CONCURRENCY,
     },
   );

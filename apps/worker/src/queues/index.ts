@@ -12,13 +12,13 @@ export const paymentReconcileQueueName = "payment-reconcile";
 export const payoutQueueName = "payout";
 
 export const bookingExpiryQueue = new Queue(bookingExpiryQueueName, {
-  connection: redisConnection,
+  connection: redisConnection as any,
 });
 
 export const paymentReconcileQueue = new Queue(paymentReconcileQueueName, {
-  connection: redisConnection,
+  connection: redisConnection as any,
 });
 
 export const payoutQueue = new Queue(payoutQueueName, {
-  connection: redisConnection,
+  connection: redisConnection as any,
 });

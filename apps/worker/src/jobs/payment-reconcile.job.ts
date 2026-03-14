@@ -14,7 +14,7 @@ export function createPaymentReconcileWorker() {
       );
     },
     {
-      connection: redisConnection,
+      connection: redisConnection as any,
       concurrency: env.WORKER_CONCURRENCY,
     },
   );

@@ -15,6 +15,6 @@ export type DbClient = PoolClient;
 export async function dbQuery<T = unknown>(
   text: string,
   params: unknown[] = [],
-): Promise<QueryResult<T>> {
-  return pool.query<T>(text, params);
+): Promise<QueryResult<any>> {
+  return pool.query(text, params);
 }
