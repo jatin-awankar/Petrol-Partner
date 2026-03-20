@@ -1,58 +1,61 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Petrol Partner Backend Runbook
 
-## Getting Started
+This repo now contains three runtime surfaces:
 
-First, run the development server:
+- `web`: the existing Next.js application
+- `apps/api`: the production Express API
+- `apps/worker`: the background worker for expiry, overdue, reconcile, and recovery sweeps
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## Production Shape
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+- Platform target: `Render`
+- Database: `Supabase Postgres`
+- Queue/runtime state: `managed Redis`
+- Auth transport: `httpOnly` cookies, so the web app and API should live under the same parent domain
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Local Development
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. Copy:
+   - `apps/api/.env.example` -> `apps/api/.env`
+   - `apps/worker/.env.example` -> `apps/worker/.env`
+2. Start local Postgres and Redis.
+3. Apply the schema from `apps/api/src/db/migrations/0001_init.sql`.
+4. Run:
+   - `npm run api:dev`
+   - `npm run worker:dev`
+   - `npm run dev`
 
-## Learn More
+## Verification Model
 
-To learn more about Next.js, take a look at the following resources:
+- Student verification submissions are `pending_review` until approved by an admin.
+- Driver eligibility submissions are `pending_review` until approved by an admin.
+- Vehicles are `pending_review` until approved by an admin.
+- Only verified students can create ride requests, bookings, or settlements.
+- Only users with approved driver eligibility and an approved vehicle can create ride offers.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Critical Execution Flow
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+1. User registers and logs in.
+2. User submits student verification, driver eligibility, and vehicle details.
+3. Admin reviews pending verification items through the API.
+4. Verified students create ride offers or requests.
+5. Match refresh requests are persisted and processed by the API background processor.
+6. Bookings are created and expiry jobs are recovered by worker sweeps if queue dispatch was missed.
+7. Completed bookings open settlements.
+8. Overdue settlements are recovered by worker sweeps if queue dispatch was missed.
+9. Online payments flow through Razorpay order creation, client verify intake, webhook persistence, and worker-driven reconcile.
+10. Stale webhook or client-verify states are recovered by worker sweeps.
 
-## Deploy on Vercel
+## Deployment
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- Use `render.yaml` as the baseline blueprint.
+- Deploy `apps/api` and `apps/worker` as separate services.
+- Do not deploy production without Redis configured.
+- Keep `ENABLE_CHAT=false` and `ENABLE_TRACKING=false` until those runtimes are implemented.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Verification Commands
 
-
-
-dependencies > npm i @clerk/nextjs @supabase/supabase-js @supabase/ssr mapbox-gl razorpay clsx zod date-fns
-dev dependencies > npm install -D @types/mapbox-gl
-ui components > npx shadcn@latest init 
-npm i framer-motion
-npm i tailwindcss-animate  
-npm install lottie-react
-npm install motion
-
-backend install:
-npm i pg
-npm i bcrypt
-npm i jsonwebtoken
-npm install --save-dev @types/bcrypt
-npm install --save-dev @types/jsonwebtoken
-npm i dotenv
-npm install jwt-decode
-npm install @tanstack/react-query @supabase/supabase-js
-
-generate random hex: node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
+- API typecheck: `npm --prefix apps/api run typecheck`
+- API tests: `npm --prefix apps/api run test`
+- Worker typecheck: `npm --prefix apps/worker run typecheck`
+- Worker tests: `npm --prefix apps/worker run test`

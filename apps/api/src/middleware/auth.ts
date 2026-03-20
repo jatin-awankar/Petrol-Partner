@@ -22,6 +22,10 @@ export const optionalAuth: RequestHandler = (req, _res, next) => {
       email: payload.email,
       role: payload.role,
     };
+    req.log = req.log.child({
+      userId: payload.sub,
+      role: payload.role,
+    });
   } catch {
     req.user = undefined;
   }
@@ -32,6 +36,18 @@ export const optionalAuth: RequestHandler = (req, _res, next) => {
 export const requireAuth: RequestHandler = (req, _res, next) => {
   if (!req.user) {
     return next(new AppError(401, "Unauthorized", "UNAUTHORIZED"));
+  }
+
+  next();
+};
+
+export const requireAdmin: RequestHandler = (req, _res, next) => {
+  if (!req.user) {
+    return next(new AppError(401, "Unauthorized", "UNAUTHORIZED"));
+  }
+
+  if (req.user.role !== "admin") {
+    return next(new AppError(403, "Admin access required", "FORBIDDEN"));
   }
 
   next();
