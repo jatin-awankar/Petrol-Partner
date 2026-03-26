@@ -2,21 +2,26 @@
 
 import React, { useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { signOut } from "next-auth/react";
+
 import Icon from "./AppIcon";
 import { Button } from "./ui/button";
+import { useCurrentUser } from "@/hooks/auth/useCurrentUser";
+import { frontendConfig } from "@/lib/frontend-config";
 
 const Navbar = () => {
   const pathname = usePathname();
   const router = useRouter();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const { logout } = useCurrentUser();
 
   const navigationItems = [
     { label: "Home", path: "/dashboard", icon: "Home" },
     { label: "Search", path: "/search-rides", icon: "Search" },
     { label: "Post", path: "/post-a-ride", icon: "Plus" },
-    { label: "Messages", path: "/messages-chat", icon: "MessageCircle" },
     { label: "Payments", path: "/payment-transactions", icon: "CreditCard" },
+    ...(frontendConfig.flags.enableChatUi
+      ? [{ label: "Messages", path: "/messages-chat", icon: "MessageCircle" as const }]
+      : []),
   ];
 
   const isActive = (path: string) => pathname === path;
@@ -40,12 +45,12 @@ const Navbar = () => {
     }
   };
 
-  // ✅ Logout logic
   const handleLogout = async () => {
     try {
       setIsMenuOpen(false);
-      // End NextAuth session + redirect home
-      await signOut({ callbackUrl: "/" });
+      await logout();
+      router.push("/login");
+      router.refresh();
     } catch (err) {
       console.error("Logout failed:", err);
     }
@@ -54,7 +59,6 @@ const Navbar = () => {
   return (
     <header className="sticky top-0 left-0 right-0 z-100 backdrop-blur-md bg-card/70 border-b border-border shadow-[0_1px_8px_rgba(0,0,0,0.08)]">
       <div className="flex items-center justify-between h-16 px-4 md:px-6 xl:px-12">
-        {/* Left — Always show logo + dynamic text */}
         <div
           className="flex items-center space-x-2 cursor-pointer select-none"
           onClick={() => router.push("/dashboard")}
@@ -67,7 +71,6 @@ const Navbar = () => {
           </span>
         </div>
 
-        {/* Center — Desktop NavItems */}
         <nav className="hidden md:flex items-center space-x-6">
           {navigationItems.map((item) => (
             <button
@@ -89,9 +92,7 @@ const Navbar = () => {
           ))}
         </nav>
 
-        {/* Right — Notifications + Profile */}
         <div className="flex items-center space-x-3 md:space-x-4">
-          {/* Notification */}
           <Button
             variant="ghost"
             size="icon"
@@ -101,7 +102,6 @@ const Navbar = () => {
             <span className="absolute -top-1 -right-1 w-2 h-2 bg-error rounded-full" />
           </Button>
 
-          {/* Profile dropdown */}
           <div className="relative">
             <Button
               variant="ghost"
@@ -115,7 +115,6 @@ const Navbar = () => {
             {isMenuOpen && (
               <div className="absolute right-0 top-12 w-48 bg-popover/90 backdrop-blur-md border border-border rounded-lg shadow-md z-200">
                 <div className="py-2">
-                  {/* Settings */}
                   <button
                     className="w-full px-4 py-2 text-left text-sm text-foreground hover:bg-muted flex items-center space-x-2"
                     onClick={() => {
@@ -129,7 +128,6 @@ const Navbar = () => {
 
                   <hr className="my-2 border-border" />
 
-                  {/* ✅ Logout */}
                   <button
                     className="w-full px-4 py-2 text-left text-sm text-error hover:bg-muted flex items-center space-x-2"
                     onClick={handleLogout}
@@ -144,7 +142,6 @@ const Navbar = () => {
         </div>
       </div>
 
-      {/* Overlay to close dropdown */}
       {isMenuOpen && (
         <div
           className="fixed inset-0 z-60"

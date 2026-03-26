@@ -1,48 +1,37 @@
-// /hooks/rides/useFetchRideOfferById.ts
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
+
+import { getRideOffer } from "@/lib/api/backend";
 
 export function useFetchRideOfferById(id: string | null) {
   const [rideOffer, setRideOffer] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchRideOffer = useCallback(
-    async () => {
-      if (!id) {
-        setRideOffer(null);
-        setLoading(false);
-        return;
-      }
-      setLoading(true);
-      setError(null);
+  const fetchRideOffer = useCallback(async () => {
+    if (!id) {
+      setRideOffer(null);
+      setLoading(false);
+      return;
+    }
 
-      try {
-        const res = await fetch(`/api/rides/offers/${id}`, {
-          credentials: "include", // Include cookies for NextAuth session
-        });
+    setLoading(true);
+    setError(null);
 
-        if (!res.ok) {
-          if (res.status === 404) {
-            throw new Error("Ride offer not found");
-          }
-          throw new Error("Failed to fetch ride offer");
-        }
-        const data = await res.json();
-        setRideOffer(data.ride || data);
-      } catch (err: any) {
-        setError(err?.message ?? "Unknown error");
-        setRideOffer(null);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [id]
-  );
+    try {
+      const data = await getRideOffer(id);
+      setRideOffer(data);
+    } catch (err: any) {
+      setError(err?.message ?? "Unknown error");
+      setRideOffer(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [id]);
 
   useEffect(() => {
-    fetchRideOffer();
+    void fetchRideOffer();
   }, [fetchRideOffer]);
 
   return { rideOffer, loading, error, refetch: fetchRideOffer };

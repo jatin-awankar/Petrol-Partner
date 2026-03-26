@@ -2,13 +2,12 @@ import React from "react";
 import SearchComponent from "@/components/searchRides/SearchComponent";
 import SuggestedRides from "@/components/searchRides/SuggestedRides";
 import NearbyRides from "@/components/searchRides/NearbyRides";
-import { authOptions } from "@/lib/authOptions";
-import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
+import { getServerCurrentUser } from "@/lib/server-auth";
 
 const SearchRidesPage = async () => {
-  const session = await getServerSession(authOptions);
-  if (!session) {
+  const user = await getServerCurrentUser();
+  if (!user) {
     redirect("/login");
   }
   return (

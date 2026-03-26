@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from "react";
+import { frontendConfig } from "@/lib/frontend-config";
 
 interface UseCommunityUpdatesOptions {
   limit?: number;
@@ -15,6 +16,13 @@ export function useCommunityUpdates(options: UseCommunityUpdatesOptions = {}) {
 
   const fetchCommUpdates = useCallback(
     async (append = false) => {
+      if (!frontendConfig.flags.enableCommunityUi) {
+        setUpdates([]);
+        setHasMore(false);
+        setLoading(false);
+        return;
+      }
+
       setLoading(true);
       setError(null);
 

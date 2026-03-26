@@ -3,6 +3,7 @@
 import React from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Icon from "./AppIcon";
+import { frontendConfig } from "@/lib/frontend-config";
 
 const BottomNavbar = () => {
   const pathname = usePathname();
@@ -12,7 +13,9 @@ const BottomNavbar = () => {
     { label: "Home", path: "/dashboard", icon: "Home" },
     { label: "Search", path: "/search-rides", icon: "Search" },
     { label: "Post", path: "/post-a-ride", icon: "Plus", isCenter: true },
-    { label: "Messages", path: "/messages-chat", icon: "MessageCircle", badge: 2 },
+    ...(frontendConfig.flags.enableChatUi
+      ? [{ label: "Messages", path: "/messages-chat", icon: "MessageCircle", badge: 2 }]
+      : [{ label: "Payments", path: "/payment-transactions", icon: "CreditCard" }]),
     { label: "Profile", path: "/profile-settings", icon: "User" },
   ];
 

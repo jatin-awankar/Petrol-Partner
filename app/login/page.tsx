@@ -1,21 +1,34 @@
-import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
-import { authOptions } from "@/lib/authOptions";
+import Link from "next/link";
+
+import AuthSplitLayout from "@/components/auth/AuthSplitLayout";
 import LoginForm from "@/components/LoginForm";
+import { getServerCurrentUser } from "@/lib/server-auth";
 
 export default async function LoginPage() {
-  const session = await getServerSession(authOptions);
+  const user = await getServerCurrentUser();
 
-  // 🚀 Instant redirect if user already authenticated
-  if (session) {
+  if (user) {
     redirect("/dashboard");
   }
 
   return (
-    <div className="flex justify-center items-center min-h-screen px-4">
-      <div className="w-full max-w-md">
+    <AuthSplitLayout
+      badge="Student Ride Access"
+      title="Welcome back to your campus ride network"
+      description="Sign in to manage ride offers, booking requests, and post-trip settlements with one secure account."
+      footer={
+        <p>
+          New here?{" "}
+          <Link href="/register" className="font-medium text-primary hover:underline">
+            Create your account
+          </Link>
+        </p>
+      }
+    >
+      <div className="mx-auto w-full max-w-md">
         <LoginForm />
       </div>
-    </div>
+    </AuthSplitLayout>
   );
 }

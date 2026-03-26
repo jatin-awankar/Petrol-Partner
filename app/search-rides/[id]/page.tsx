@@ -18,6 +18,7 @@ import BookingConfirmationModal from "@/components/rideDetails/BookingConfirmati
 import { useBookRide } from "@/hooks/bookings/useBookRide";
 import { formatUtcToTodayOrDayMonth } from "@/lib/utils";
 import { toast } from "sonner";
+import { getRideOffer, getRideRequest } from "@/lib/api/backend";
 
 // Types
 interface RideData {
@@ -119,8 +120,8 @@ const transformRideOffer = (apiData: any): RideData => {
     type: "offer",
     driver: {
       id: apiData.driver_id,
-      name: apiData.driver_name || "Unknown Driver",
-      avatar: apiData.driver_image,
+      name: apiData.driver_name || apiData.full_name || "Unknown Driver",
+      avatar: apiData.driver_image || apiData.profile_image,
       college: apiData.driver_college || apiData.college,
       rating: parseFloat(apiData.driver_rating || apiData.avg_rating || "0"),
       reviewCount: apiData.driver_review_count || 0,
@@ -184,8 +185,8 @@ const transformRideRequest = (apiData: any): RideData => {
     type: "request",
     passenger: {
       id: apiData.passenger_id,
-      name: apiData.passenger_name || "Unknown Passenger",
-      avatar: apiData.passenger_image,
+      name: apiData.passenger_name || apiData.full_name || "Unknown Passenger",
+      avatar: apiData.passenger_image || apiData.profile_image,
       college: apiData.passenger_college || apiData.college,
       rating: parseFloat(apiData.passenger_rating || apiData.avg_rating || "0"),
       reviewCount: apiData.passenger_review_count || 0,
@@ -258,44 +259,36 @@ const RideDetailsPage = () => {
     try {
       console.log("Fetching ride with ID:", rideId);
 
-      // Try ride offer first
-      let response = await fetch(`/api/rides/offers/${rideId}`, {
-        credentials: "include",
-      });
+      let offerData: any = null;
 
-      if (response.ok) {
-        const data = await response.json();
-        if (data.ride && data.ride.driver_id) {
-          setRideData(transformRideOffer(data.ride));
-          setLoading(false);
-          return;
+      try {
+        offerData = await getRideOffer(rideId);
+      } catch (offerError: any) {
+        if (offerError?.status && offerError.status !== 404) {
+          throw offerError;
         }
-      } else if (response.status !== 404) {
-        // If it's not a 404, there might be a server error
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(
-          errorData.error || `Failed to fetch ride offer: ${response.status}`,
-        );
       }
 
-      // If not found, try ride request
-      response = await fetch(`/api/rides/requests/${rideId}`, {
-        credentials: "include",
-      });
+      if (offerData?.driver_id) {
+        setRideData(transformRideOffer(offerData));
+        setLoading(false);
+        return;
+      }
 
-      if (response.ok) {
-        const data = await response.json();
-        if (data.ride && data.ride.passenger_id) {
-          setRideData(transformRideRequest(data.ride));
+      let requestData: any = null;
+
+      try {
+        requestData = await getRideRequest(rideId);
+      } catch (requestError: any) {
+        if (requestError?.status && requestError.status !== 404) {
+          throw requestError;
+        }
+      }
+
+      if (requestData?.passenger_id) {
+        setRideData(transformRideRequest(requestData));
           setLoading(false);
           return;
-        }
-      } else if (response.status !== 404) {
-        // If it's not a 404, there might be a server error
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(
-          errorData.error || `Failed to fetch ride request: ${response.status}`,
-        );
       }
 
       // If neither worked, show error
@@ -357,7 +350,7 @@ const RideDetailsPage = () => {
 
       if (result) {
         setShowConfirmationModal(false);
-        toast.success("Ride booked, waiting for acceptance");
+        toast.success("Booking request sent successfully");
         router.push("/dashboard");
       }
     } catch (err) {

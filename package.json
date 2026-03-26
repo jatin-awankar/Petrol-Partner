@@ -11,7 +11,8 @@
     "api:build": "npm --prefix apps/api run build",
     "api:typecheck": "npm --prefix apps/api run typecheck",
     "worker:dev": "npm --prefix apps/worker run dev",
-    "worker:build": "npm --prefix apps/worker run build"
+    "worker:build": "npm --prefix apps/worker run build",
+    "smoke:staging": "node scripts/staging-smoke-express.mjs"
   },
   "dependencies": {
     "@mapbox/search-js-react": "^1.5.0",

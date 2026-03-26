@@ -59,3 +59,58 @@ This repo now contains three runtime surfaces:
 - API tests: `npm --prefix apps/api run test`
 - Worker typecheck: `npm --prefix apps/worker run typecheck`
 - Worker tests: `npm --prefix apps/worker run test`
+
+## Frontend Cutover Flags
+
+Create `.env.local` from `.env.local.example` and set:
+
+- `NEXT_PUBLIC_API_BASE_URL`
+- `NEXT_PUBLIC_USE_NEW_AUTH=true`
+- `NEXT_PUBLIC_USE_NEW_VERIFICATION=true`
+- `NEXT_PUBLIC_USE_NEW_RIDES=true`
+- `NEXT_PUBLIC_USE_NEW_BOOKINGS=true`
+- `NEXT_PUBLIC_USE_NEW_SETTLEMENTS=true`
+- `NEXT_PUBLIC_USE_NEW_PAYMENTS=true`
+- `NEXT_PUBLIC_ENABLE_COMMUNITY_UI=false`
+- `NEXT_PUBLIC_ENABLE_RATINGS_UI=false`
+- `NEXT_PUBLIC_ENABLE_CHAT_UI=false`
+- `NEXT_PUBLIC_ENABLE_TRACKING_UI=false`
+
+Legacy Next.js auth endpoints are deprecated and return `410`. Frontend auth must use Express `/v1/auth/*`.
+
+## Staging Smoke Gate (Before Full Frontend Cutover)
+
+1. Login on web and confirm `GET /v1/auth/me` returns authenticated user.
+2. Submit verification and approve it from backend/admin flow.
+3. Create ride offer/request and confirm listing/detail pages work from `/v1/rides/*`.
+4. Create booking, confirm, complete ride, and confirm settlement is opened.
+5. Complete one offline settlement and one Razorpay sandbox online settlement.
+6. Verify overdue hold is applied when unpaid and removed after successful payment.
+
+## Automated Staging Smoke Script
+
+Run:
+
+- `npm run smoke:staging`
+
+Required environment variables:
+
+- `SMOKE_API_BASE_URL`
+- `SMOKE_PASSENGER_EMAIL`
+- `SMOKE_PASSENGER_PASSWORD`
+- `SMOKE_DRIVER_EMAIL`
+- `SMOKE_DRIVER_PASSWORD`
+
+Optional (recommended for auto-approval):
+
+- `SMOKE_ADMIN_EMAIL`
+- `SMOKE_ADMIN_PASSWORD`
+
+What it verifies:
+
+- Express auth cookie flow (`/v1/auth/*`)
+- Verification submission + optional admin approval
+- Ride offer creation with approved vehicle
+- Booking create -> confirm -> complete
+- Settlement creation after completion
+- Online payment order creation + payment status read

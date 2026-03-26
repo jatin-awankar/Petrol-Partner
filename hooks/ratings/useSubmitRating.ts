@@ -1,13 +1,7 @@
 "use client";
 
 import { useState } from "react";
-
-const getToken = () => {
-  if (typeof window !== "undefined") {
-    return localStorage.getItem("token");
-  }
-  return null;
-};
+import { frontendConfig } from "@/lib/frontend-config";
 
 export function useSubmitRating() {
   const [loading, setLoading] = useState(false);
@@ -15,6 +9,11 @@ export function useSubmitRating() {
   const [success, setSuccess] = useState(false);
 
   const submitRating = async (rideId: string, ratedUserId: string, rating: number, feedback?: string) => {
+    if (!frontendConfig.flags.enableRatingsUi) {
+      setError("Ratings are disabled.");
+      return;
+    }
+
     setLoading(true);
     setError(null);
     setSuccess(false);
@@ -24,7 +23,6 @@ export function useSubmitRating() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${getToken()}`,
         },
         body: JSON.stringify({ rideId, ratedUserId, rating, feedback }),
       });

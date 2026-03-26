@@ -1,9 +1,9 @@
-// /hooks/rides/useRideOffers.ts
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 
-/* ------------------------------- FETCH ALL OFFERS ------------------------------- */
+import { createRideOfferRecord, listRideOffers } from "@/lib/api/backend";
+
 export function useFetchRideOffers() {
   const [offers, setOffers] = useState<FetchRides | null>();
   const [loading, setLoading] = useState(true);
@@ -12,29 +12,24 @@ export function useFetchRideOffers() {
   const fetchRideOffers = useCallback(async () => {
     setLoading(true);
     setError(null);
-    try {
-      const res = await fetch("/api/rides/offers", {
-        credentials: "include", // Include cookies for NextAuth session
-      });
 
-      if (!res.ok) throw new Error("Failed to fetch ride offers");
-      const data = await res.json();
+    try {
+      const data = await listRideOffers({});
       setOffers(data);
     } catch (err: any) {
-      setError(err.message);
+      setError(err?.message || "Failed to fetch ride offers");
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchRideOffers();
+    void fetchRideOffers();
   }, [fetchRideOffers]);
 
   return { offers, loading, error, refetch: fetchRideOffers };
 }
 
-/* ------------------------------- CREATE OFFER ------------------------------- */
 export function useCreateRideOffer() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -44,21 +39,14 @@ export function useCreateRideOffer() {
     setLoading(true);
     setError(null);
     setSuccess(false);
-    try {
-      const res = await fetch("/api/rides/offers", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include", // Include cookies for NextAuth session
-        body: JSON.stringify(rideData),
-      });
 
-      if (!res.ok) throw new Error("Failed to create ride offer");
+    try {
+      const payload = await createRideOfferRecord(rideData);
       setSuccess(true);
-      return await res.json();
+      return payload;
     } catch (err: any) {
-      setError(err.message);
+      setError(err?.message || "Failed to create ride offer");
+      throw err;
     } finally {
       setLoading(false);
     }
@@ -67,57 +55,29 @@ export function useCreateRideOffer() {
   return { createRideOffer, loading, error, success };
 }
 
-/* ------------------------------- UPDATE OFFER ------------------------------- */
 export function useUpdateRideOffer() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const updateRideOffer = async (id: string, updates: any) => {
+  const updateRideOffer = async () => {
     setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/rides/offers/${id}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include", // Include cookies for NextAuth session
-        body: JSON.stringify(updates),
-      });
-
-      if (!res.ok) throw new Error("Failed to update ride offer");
-      return await res.json();
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
+    setError("Ride offer editing has not been migrated yet.");
+    setLoading(false);
+    throw new Error("Ride offer editing has not been migrated yet.");
   };
 
   return { updateRideOffer, loading, error };
 }
 
-/* ------------------------------- DELETE OFFER ------------------------------- */
 export function useDeleteRideOffer() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const deleteRideOffer = async (id: string) => {
+  const deleteRideOffer = async () => {
     setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/rides/offers/${id}`, {
-        method: "DELETE",
-        credentials: "include", // Include cookies for NextAuth session
-      });
-
-      if (!res.ok) throw new Error("Failed to delete ride offer");
-      return await res.json();
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
+    setError("Ride offer deletion has not been migrated yet.");
+    setLoading(false);
+    throw new Error("Ride offer deletion has not been migrated yet.");
   };
 
   return { deleteRideOffer, loading, error };

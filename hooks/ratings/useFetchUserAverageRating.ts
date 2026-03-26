@@ -1,13 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-
-const getToken = () => {
-  if (typeof window !== "undefined") {
-    return localStorage.getItem("token");
-  }
-  return null;
-};
+import { frontendConfig } from "@/lib/frontend-config";
 
 export function useFetchUserAverageRating(userId: string | null) {
   const [avgRating, setAvgRating] = useState<number | null>(null);
@@ -16,15 +10,18 @@ export function useFetchUserAverageRating(userId: string | null) {
 
   const fetchAvgRating = async () => {
     if (!userId) return;
+    if (!frontendConfig.flags.enableRatingsUi) {
+      setAvgRating(null);
+      setLoading(false);
+      setError("Ratings are disabled.");
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
     try {
-      const res = await fetch(`/api/ratings/user/${userId}/average`, {
-        headers: {
-          Authorization: `Bearer ${getToken()}`,
-        },
-      });
+      const res = await fetch(`/api/ratings/user/${userId}/average`);
 
       if (!res.ok) throw new Error("Failed to fetch user average rating");
       const data = await res.json();

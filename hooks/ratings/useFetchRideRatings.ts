@@ -1,13 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-
-const getToken = () => {
-  if (typeof window !== "undefined") {
-    return localStorage.getItem("token");
-  }
-  return null;
-};
+import { frontendConfig } from "@/lib/frontend-config";
 
 export function useFetchRideRatings(rideId: string | null) {
   const [ratings, setRatings] = useState<any[]>([]);
@@ -21,15 +15,18 @@ export function useFetchRideRatings(rideId: string | null) {
         setLoading(false);
         return;
       }
+      if (!frontendConfig.flags.enableRatingsUi) {
+        setRatings([]);
+        setLoading(false);
+        setError("Ratings are disabled.");
+        return;
+      }
+
       setLoading(true);
       setError(null);
 
       try {
-        const res = await fetch(`/api/ratings/ride/${rideId}`, {
-          headers: {
-            Authorization: `Bearer ${getToken()}`,
-          },
-        });
+        const res = await fetch(`/api/ratings/ride/${rideId}`);
 
         if (!res.ok) throw new Error("Failed to fetch ride ratings");
         const data = await res.json();

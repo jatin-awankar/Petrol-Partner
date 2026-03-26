@@ -184,9 +184,9 @@ const RecentActivitySection: React.FC = () => {
                       </div>
                     )}
                     {activity.status === "confirmed" && (
-                      <Button variant="outline" size="sm">
+                      <Button variant="outline" size="sm" disabled>
                         <MessageCircle className="w-4 h-4 mr-1" />
-                        Chat
+                        Chat unavailable
                       </Button>
                     )}
                   </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { frontendConfig } from "@/lib/frontend-config";
 
 export function useFetchChatRooms() {
   const [chatRooms, setChatRooms] = useState<any[]>([]);
@@ -8,6 +9,13 @@ export function useFetchChatRooms() {
   const [error, setError] = useState<string | null>(null);
 
   const fetchChatRooms = async () => {
+    if (!frontendConfig.flags.enableChatUi) {
+      setChatRooms([]);
+      setLoading(false);
+      setError("Chat is disabled.");
+      return;
+    }
+
     setLoading(true);
     setError(null);
     try {

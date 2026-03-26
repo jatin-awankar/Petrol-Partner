@@ -7,6 +7,7 @@ import Skeleton from "react-loading-skeleton";
 import { toast } from "sonner";
 import { useProfileData } from "@/hooks/profile/useProfileData";
 import { useUserProfile } from "@/hooks/auth/useUserProfile";
+import { createVehicleRecord, updateVehicleRecord } from "@/lib/api/backend";
 
 // Lazy load large components to improve page load time
 const ProfileHeader = dynamic(
@@ -157,6 +158,30 @@ const DEFAULT_STATISTICS = {
   communityRank: 0,
 };
 
+function mapVehicleFormToBackend(vehicle: any) {
+  const licensePlate = String(vehicle?.licensePlate ?? "").trim();
+  const normalizedFuelType = String(vehicle?.fuelType ?? "petrol").toLowerCase();
+
+  return {
+    vehicle_type:
+      normalizedFuelType === "diesel" || normalizedFuelType === "petrol"
+        ? "car"
+        : normalizedFuelType === "electric"
+          ? "car"
+          : "other",
+    make: vehicle?.make || undefined,
+    model: vehicle?.model || undefined,
+    color: vehicle?.color || undefined,
+    registration_number_last4: licensePlate.slice(-4),
+    seat_capacity: Number(vehicle?.seats || 0),
+    metadata: {
+      year: vehicle?.year || null,
+      fuelType: vehicle?.fuelType || null,
+      photo: vehicle?.photo || null,
+    },
+  };
+}
+
 // Transform booking data to ride history format
 const transformBookingToRideHistory = (booking: any): {
   id: string;
@@ -289,28 +314,9 @@ const ProfileAccountSettings = () => {
 
   // Handlers for data updates
   const handlePhotoUpload = useCallback(
-    async (file: File) => {
+    async (_file: File) => {
       try {
-        // TODO: Implement actual file upload to API
-        const formData = new FormData();
-        formData.append("file", file);
-
-        const res = await fetch("/api/user/upload-photo", {
-          method: "POST",
-          body: formData,
-          credentials: "include",
-        });
-
-        if (!res.ok) {
-          throw new Error("Failed to upload photo");
-        }
-
-        const data = await res.json();
-        if (data.profile_image) {
-          await updateProfile({ profile_image: data.profile_image });
-          refetch.user();
-          toast.success("Photo uploaded successfully!");
-        }
+        throw new Error("Profile photo upload is not available in the new backend yet.");
       } catch (error: any) {
         console.error("Photo upload error:", error);
         toast.error(error.message || "Failed to upload photo");
@@ -324,22 +330,9 @@ const ProfileAccountSettings = () => {
   }, [toggleSection]);
 
   const handleSavePersonalInfo = useCallback(
-    async (data: any) => {
+    async (_data: any) => {
       try {
-        const updateData: any = {};
-        if (data.name) updateData.full_name = data.name;
-        if (data.phone) updateData.phone = data.phone;
-        if (data.email) updateData.email = data.email;
-        if (data.dateOfBirth) updateData.date_of_birth = data.dateOfBirth;
-        if (data.gender) updateData.gender = data.gender;
-        if (data.address) updateData.address = data.address;
-        if (data.emergencyContact) updateData.emergency_contact = data.emergencyContact;
-        if (data.emergencyPhone) updateData.emergency_phone = data.emergencyPhone;
-
-        await updateProfile(updateData);
-        refetch.user();
-        toast.success("Profile updated successfully!");
-        setExpandedSections((prev) => ({ ...prev, personalInfo: false }));
+        await updateProfile();
       } catch (error: any) {
         console.error("Save personal info error:", error);
         toast.error(error.message || "Failed to update profile");
@@ -388,17 +381,7 @@ const ProfileAccountSettings = () => {
 
   const handleAddVehicle = useCallback(async (vehicle: any) => {
     try {
-      // TODO: Implement vehicle add API call
-      const res = await fetch("/api/vehicle", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify(vehicle),
-      });
-
-      if (!res.ok) {
-        throw new Error("Failed to add vehicle");
-      }
+      await createVehicleRecord(mapVehicleFormToBackend(vehicle));
 
       toast.success("Vehicle added successfully!");
       refetch.vehicles();
@@ -412,16 +395,7 @@ const ProfileAccountSettings = () => {
   const handleEditVehicle = useCallback(
     async (id: string | number, vehicle: any) => {
       try {
-        const res = await fetch(`/api/vehicle/${id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify(vehicle),
-        });
-
-        if (!res.ok) {
-          throw new Error("Failed to update vehicle");
-        }
+        await updateVehicleRecord(String(id), mapVehicleFormToBackend(vehicle));
 
         toast.success("Vehicle updated successfully!");
         refetch.vehicles();
@@ -435,19 +409,9 @@ const ProfileAccountSettings = () => {
   );
 
   const handleDeleteVehicle = useCallback(
-    async (id: string | number) => {
+    async (_id: string | number) => {
       try {
-        const res = await fetch(`/api/vehicle/${id}`, {
-          method: "DELETE",
-          credentials: "include",
-        });
-
-        if (!res.ok) {
-          throw new Error("Failed to delete vehicle");
-        }
-
-        toast.success("Vehicle deleted successfully!");
-        refetch.vehicles();
+        throw new Error("Vehicle deletion is not available in the new backend yet.");
       } catch (error: any) {
         console.error("Delete vehicle error:", error);
         toast.error(error.message || "Failed to delete vehicle");

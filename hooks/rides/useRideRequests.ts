@@ -1,9 +1,9 @@
-// /hooks/rides/useRideRequests.ts
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 
-/* ------------------------------- FETCH ALL REQUESTS ------------------------------- */
+import { listRideRequests } from "@/lib/api/backend";
+
 export function useFetchRideRequests() {
   const [requests, setRequests] = useState<FetchRides | null>();
   const [loading, setLoading] = useState(true);
@@ -12,112 +12,63 @@ export function useFetchRideRequests() {
   const fetchRideRequests = useCallback(async () => {
     setLoading(true);
     setError(null);
-    try {
-      const res = await fetch("/api/rides/requests", {
-        credentials: "include", // Include cookies for NextAuth session
-      });
 
-      if (!res.ok) throw new Error("Failed to fetch ride requests");
-      const data = await res.json();
+    try {
+      const data = await listRideRequests({});
       setRequests(data);
     } catch (err: any) {
-      setError(err.message);
+      setError(err?.message || "Failed to fetch ride requests");
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchRideRequests();
+    void fetchRideRequests();
   }, [fetchRideRequests]);
 
   return { requests, loading, error, refetch: fetchRideRequests };
 }
 
-/* ------------------------------- CREATE REQUEST ------------------------------- */
 export function useCreateRideRequest() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
-  const createRideRequest = async (requestData: any) => {
+  const createRideRequest = async () => {
     setLoading(true);
-    setError(null);
+    setError("Ride request creation UI has not been migrated yet.");
     setSuccess(false);
-    try {
-      const res = await fetch("/api/rides/requests", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include", // Include cookies for NextAuth session
-        body: JSON.stringify(requestData),
-      });
-
-      if (!res.ok) throw new Error("Failed to create ride request");
-      setSuccess(true);
-      return await res.json();
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
+    setLoading(false);
+    throw new Error("Ride request creation UI has not been migrated yet.");
   };
 
   return { createRideRequest, loading, error, success };
 }
 
-/* ------------------------------- UPDATE REQUEST ------------------------------- */
 export function useUpdateRideRequest() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const updateRideRequest = async (id: string, updates: any) => {
+  const updateRideRequest = async () => {
     setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/rides/requests/${id}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include", // Include cookies for NextAuth session
-        body: JSON.stringify(updates),
-      });
-
-      if (!res.ok) throw new Error("Failed to update ride request");
-      return await res.json();
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
+    setError("Ride request editing has not been migrated yet.");
+    setLoading(false);
+    throw new Error("Ride request editing has not been migrated yet.");
   };
 
   return { updateRideRequest, loading, error };
 }
 
-/* ------------------------------- DELETE REQUEST ------------------------------- */
 export function useDeleteRideRequest() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const deleteRideRequest = async (id: string) => {
+  const deleteRideRequest = async () => {
     setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/rides/requests/${id}`, {
-        method: "DELETE",
-        credentials: "include", // Include cookies for NextAuth session
-      });
-
-      if (!res.ok) throw new Error("Failed to delete ride request");
-      return await res.json();
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
+    setError("Ride request deletion has not been migrated yet.");
+    setLoading(false);
+    throw new Error("Ride request deletion has not been migrated yet.");
   };
 
   return { deleteRideRequest, loading, error };

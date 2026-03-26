@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { frontendConfig } from "@/lib/frontend-config";
 
 export function useFetchMessages(chatRoomId: string | null) {
   const [messages, setMessages] = useState<any[]>([]);
@@ -10,6 +11,13 @@ export function useFetchMessages(chatRoomId: string | null) {
   const fetchMessages = useCallback(
     async () => {
       if (!chatRoomId) return;
+      if (!frontendConfig.flags.enableChatUi) {
+        setMessages([]);
+        setLoading(false);
+        setError("Chat is disabled.");
+        return;
+      }
+
       setLoading(true);
       setError(null);
 

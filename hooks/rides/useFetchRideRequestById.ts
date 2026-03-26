@@ -1,7 +1,8 @@
-// /hooks/rides/useFetchRideRequestById.ts
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
+
+import { getRideRequest } from "@/lib/api/backend";
 
 export function useFetchRideRequestById(id: string | null) {
   const [rideRequest, setRideRequest] = useState<any | null>(null);
@@ -15,22 +16,13 @@ export function useFetchRideRequestById(id: string | null) {
       setError(null);
       return;
     }
+
     setLoading(true);
     setError(null);
 
     try {
-      const res = await fetch(`/api/rides/requests/${id}`, {
-        credentials: "include", // Include cookies for NextAuth session
-      });
-
-      if (!res.ok) {
-        if (res.status === 404) {
-          throw new Error("Ride request not found");
-        }
-        throw new Error("Failed to fetch ride request");
-      }
-      const data = await res.json();
-      setRideRequest(data.ride || data);
+      const data = await getRideRequest(id);
+      setRideRequest(data);
     } catch (err: any) {
       setError(err?.message || "Unknown error occurred");
       setRideRequest(null);
@@ -40,8 +32,8 @@ export function useFetchRideRequestById(id: string | null) {
   }, [id]);
 
   useEffect(() => {
-    fetchRideRequest();
-  }, [fetchRideRequest, id]);
+    void fetchRideRequest();
+  }, [fetchRideRequest]);
 
   return { rideRequest, loading, error, refetch: fetchRideRequest };
 }

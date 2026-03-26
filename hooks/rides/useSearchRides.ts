@@ -1,7 +1,8 @@
-// /hooks/rides/useSearchRides.ts
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
+
+import { listRideOffers, listRideRequests } from "@/lib/api/backend";
 
 interface SearchFilters {
   pickup?: string;
@@ -20,37 +21,29 @@ export function useSearchRides(filters: SearchFilters) {
     setLoading(true);
     setError(null);
 
-    const query = new URLSearchParams();
-    if (filters.pickup) query.append("pickup", filters.pickup);
-    if (filters.drop) query.append("drop", filters.drop);
-    query.append("page", String(filters.page || 1));
-    query.append("limit", String(filters.limit || 5));
-
     try {
-      // Fetch ride offers
-      const offersRes = await fetch(`/api/rides/offers?${query}`, {
-        credentials: "include", // Include cookies for NextAuth session
-      });
-      if (!offersRes.ok) throw new Error("Failed to fetch ride offers");
-      const offersData = await offersRes.json();
-      setRideOffers(offersData.rides || offersData);
+      const [offersData, requestsData] = await Promise.all([
+        listRideOffers({
+          page: filters.page,
+          limit: filters.limit,
+        }),
+        listRideRequests({
+          page: filters.page,
+          limit: filters.limit,
+        }),
+      ]);
 
-      // Fetch ride requests
-      const requestsRes = await fetch(`/api/rides/requests?${query}`, {
-        credentials: "include", // Include cookies for NextAuth session
-      });
-      if (!requestsRes.ok) throw new Error("Failed to fetch ride requests");
-      const requestsData = await requestsRes.json();
-      setRideRequests(requestsData);
+      setRideOffers(offersData.rides || []);
+      setRideRequests(requestsData.rides || []);
     } catch (err: any) {
-      setError(err.message);
+      setError(err?.message || "Failed to fetch rides");
     } finally {
       setLoading(false);
     }
-  }, [filters.pickup, filters.drop, filters.page, filters.limit]);
+  }, [filters.page, filters.limit]);
 
   useEffect(() => {
-    fetchRides();
+    void fetchRides();
   }, [fetchRides]);
 
   return { rideOffers, rideRequests, loading, error, refetch: fetchRides };

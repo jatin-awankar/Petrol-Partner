@@ -1,12 +1,18 @@
 "use client";
 
 import { useState } from "react";
+import { frontendConfig } from "@/lib/frontend-config";
 
 export function useSendMessage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const sendMessage = async (chatRoomId: string, content: string) => {
+    if (!frontendConfig.flags.enableChatUi) {
+      setError("Chat is disabled.");
+      return;
+    }
+
     setLoading(true);
     setError(null);
 

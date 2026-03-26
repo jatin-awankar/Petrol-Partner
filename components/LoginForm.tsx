@@ -1,11 +1,18 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { signIn } from "next-auth/react";
+
+import { ApiError } from "@/lib/api/client";
+import { useCurrentUser } from "@/hooks/auth/useCurrentUser";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 export default function LoginForm() {
   const router = useRouter();
+  const { login } = useCurrentUser();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -17,80 +24,96 @@ export default function LoginForm() {
     setLoading(true);
     setErrorMsg("");
 
-    const res = await signIn("credentials", {
-      redirect: false,
-      email,
-      password,
-    });
-
-    if (res?.error) {
-      setErrorMsg(res.error);
-      setLoading(false);
-    } else if (res?.ok) {
+    try {
+      await login({ email, password });
       router.push("/dashboard");
+      router.refresh();
+    } catch (error) {
+      setErrorMsg(
+        error instanceof ApiError || error instanceof Error
+          ? error.message
+          : "Unable to sign in",
+      );
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <div className="shadow-lg rounded-2xl p-6">
-      <h1 className="text-2xl font-semibold text-center mb-6">
-        Sign in to Petrol Partner
-      </h1>
+    <div>
+      <div className="space-y-1">
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+          Sign in
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          Continue with your registered student account.
+        </p>
+      </div>
 
       {errorMsg && (
-        <p className="text-red-500 text-sm text-center mb-4">{errorMsg}</p>
+        <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          {errorMsg}
+        </div>
       )}
 
-      <form onSubmit={handleSubmit}>
-        <input
-          type="email"
-          placeholder="Email"
-          className="border border-gray-300 rounded-md p-2 w-full mb-3 focus:ring-1 focus:ring-blue-400 outline-none"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          disabled={loading}
-          required
-        />
+      <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="login-email">Email</Label>
+          <Input
+            id="login-email"
+            type="email"
+            placeholder="you@college.edu"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            disabled={loading}
+            required
+            autoComplete="email"
+          />
+        </div>
 
-        <input
-          type="password"
-          placeholder="Password"
-          className="border border-gray-300 rounded-md p-2 w-full mb-4 focus:ring-1 focus:ring-blue-400 outline-none"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          disabled={loading}
-          required
-        />
+        <div className="space-y-2">
+          <Label htmlFor="login-password">Password</Label>
+          <Input
+            id="login-password"
+            type="password"
+            placeholder="Your password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            disabled={loading}
+            required
+            autoComplete="current-password"
+          />
+        </div>
 
-        <button
-          type="submit"
-          disabled={loading}
-          className={`w-full py-2 rounded-md text-white font-semibold transition cursor-pointer ${
-            loading
-              ? "bg-blue-400 cursor-not-allowed"
-              : "bg-blue-600 hover:bg-blue-700"
-          }`}
-        >
+        <Button type="submit" disabled={loading} className="h-10 w-full rounded-md">
           {loading ? "Signing in..." : "Sign In"}
-        </button>
-        <p className="text-center text-muted-foreground my-2">or</p>
-        <button
-          onClick={() => signIn("google", { callbackUrl: "/dashboard" })}
-          className={`w-full py-2 rounded-md text-white font-semibold transition border cursor-pointer ${
-            loading
-              ? "cursor-not-allowed"
-              : "hover:bg-accent"
-          }`}
+        </Button>
+
+        <div className="relative py-1">
+          <div className="absolute inset-0 top-1/2 h-px bg-border" />
+          <p className="relative mx-auto w-fit bg-card px-3 text-xs uppercase tracking-[0.15em] text-muted-foreground">
+            Alternative
+          </p>
+        </div>
+
+        <Button
+          type="button"
+          onClick={() =>
+            setErrorMsg("Google sign-in is not available during the backend cutover.")
+          }
+          variant="outline"
+          disabled={loading}
+          className="h-10 w-full rounded-md"
         >
           Sign in with Google
-        </button>
+        </Button>
       </form>
 
-      <p className="text-sm text-gray-500 mt-4 text-center">
-        Don’t have an account?{" "}
-        <a href="/register" className="text-blue-600 hover:underline">
+      <p className="mt-6 text-center text-sm text-muted-foreground">
+        Don&apos;t have an account?{" "}
+        <Link href="/register" className="font-medium text-primary hover:underline">
           Create one
-        </a>
+        </Link>
       </p>
     </div>
   );

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { redirect, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 import Icon from "@/components/AppIcon";
@@ -19,21 +19,19 @@ import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, Eye, Home, Trash2 } from "lucide-react";
 import { motion } from "framer-motion";
 import { useCreateRideOffer } from "@/hooks/rides/useRideOffers";
-import { authOptions } from "@/lib/authOptions";
-import { useSession } from "next-auth/react";
+import { useCurrentUser } from "@/hooks/auth/useCurrentUser";
 
 const STORAGE_KEY = "postRideFormData";
 
 const PostRide = () => {
-  const { status } = useSession();
+  const { isAuthenticated, loading: authLoading } = useCurrentUser();
+  const router = useRouter();
 
   useEffect(() => {
-    if (status === "unauthenticated") {
-      redirect("/login");
+    if (!authLoading && !isAuthenticated) {
+      router.replace("/login");
     }
-  }, [status]);
-
-  const router = useRouter();
+  }, [authLoading, isAuthenticated, router]);
 
   const { createRideOffer, loading } = useCreateRideOffer();
   const [currentStep, setCurrentStep] = useState(1);
@@ -116,8 +114,8 @@ const PostRide = () => {
             newErrors.availableSeats = "Select at least 1 seat";
           break;
         case 4:
-          if (!formData.vehicle.selectedId && !formData.vehicle.make)
-            newErrors.vehicle = "Select or add a vehicle";
+          if (!formData.vehicle.selectedId)
+            newErrors.vehicle = "Select an approved vehicle from your profile";
           break;
         case 5:
           if (!formData.pricing.farePerSeat || formData.pricing.farePerSeat < 1)
@@ -162,9 +160,23 @@ const PostRide = () => {
         price_per_seat: formData.pricing.farePerSeat,
         date: formData.schedule.date,
         time: formData.schedule.time,
+        vehicle_id: formData.vehicle.selectedId,
         vehicle_details: formData.vehicle.make
-          ? `${formData.vehicle.make} ${formData.vehicle.model || ""}`.trim()
+          ? {
+              make: formData.vehicle.make,
+              model: formData.vehicle.model || "",
+              year: formData.vehicle.year || "",
+              color: formData.vehicle.color || "",
+              fuelType: formData.vehicle.fuel || formData.vehicle.fuelType || "",
+              features: formData.vehicle.features || [],
+            }
           : null,
+        counterparty_gender_preference:
+          formData.preferences.gender === "female"
+            ? "female_only"
+            : formData.preferences.gender === "male"
+              ? "male_only"
+              : "any",
         notes: formData.preferences.notes || null,
       };
 
@@ -215,6 +227,10 @@ const PostRide = () => {
   );
 
   const isFormComplete = completedSteps >= steps.length - 1;
+
+  if (authLoading) {
+    return null;
+  }
 
   return (
     <motion.div

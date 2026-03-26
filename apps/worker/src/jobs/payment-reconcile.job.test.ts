@@ -296,4 +296,65 @@ describe("payment-reconcile.job", () => {
     expect(removeMock).toHaveBeenCalledOnce();
     expect(loggerInfoMock).toHaveBeenCalledOnce();
   });
+
+  it("recovers a previously failed payment order when provider later reports captured", async () => {
+    const queryMock = mockTransactionResponses([
+      createQueryResult([
+        {
+          id: "payment-order-4",
+          booking_id: "booking-4",
+          user_id: "user-1",
+          provider_order_id: "order_provider_4",
+          status: "failed",
+        },
+      ]),
+      createQueryResult([
+        {
+          settlement_id: "settlement-4",
+          settlement_status: "overdue",
+          total_due_paise: 10400,
+          payer_user_id: "user-1",
+          payee_user_id: "user-2",
+          booking_id: "booking-4",
+          booking_payment_state: "failed",
+        },
+      ]),
+      createQueryResult([
+        {
+          id: "attempt-4",
+          provider_payment_id: "pay_captured_4",
+          status: "failed",
+        },
+      ]),
+      createQueryResult(),
+      createQueryResult(),
+      createQueryResult(),
+      createQueryResult(),
+      createQueryResult(),
+      createQueryResult(),
+      createQueryResult(),
+    ]);
+
+    fetchPaymentMock.mockResolvedValue({
+      id: "pay_captured_4",
+      order_id: "order_provider_4",
+      status: "captured",
+    });
+
+    const result = await reconcilePayment({
+      paymentOrderId: "payment-order-4",
+    });
+
+    expect(result).toEqual({
+      outcome: "captured",
+      paymentOrderId: "payment-order-4",
+      settlementId: "settlement-4",
+    });
+    expect(fetchPaymentMock).toHaveBeenCalledWith("pay_captured_4");
+    expect(queryMock).toHaveBeenCalledTimes(10);
+    expect(hasSqlCall(queryMock, "UPDATE payment_orders")).toBe(true);
+    expect(hasSqlCall(queryMock, "SET status = 'settled'")).toBe(true);
+    expect(hasSqlCall(queryMock, "UPDATE outstanding_balances")).toBe(true);
+    expect(hasSqlCall(queryMock, "SET payment_state = 'paid_escrow'")).toBe(true);
+  });
 });

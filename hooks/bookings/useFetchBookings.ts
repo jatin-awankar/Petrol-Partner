@@ -1,6 +1,8 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
+
+import { listBookings } from "@/lib/api/backend";
 
 interface BookingsProps {
   bookings: BookingsData[];
@@ -8,6 +10,7 @@ interface BookingsProps {
     count: number;
     limit: number;
     offset: number;
+    total?: number;
   };
 }
 
@@ -20,20 +23,8 @@ export function useFetchBookings(limit: number) {
     setLoading(true);
     setError(null);
 
-    const query = new URLSearchParams();
-    if (limit !== undefined && limit !== null)
-      query.append("limit", String(limit));
-
     try {
-      const res = await fetch(
-        `/api/bookings/getUserBookings?${query.toString()}`,
-        {
-          method: "GET",
-          credentials: "include", // Include cookies for NextAuth session
-        }
-      );
-      if (!res.ok) throw new Error("Failed to fetch driver bookings");
-      const data = await res.json();
+      const data = await listBookings({ limit, offset: 0 });
       setBookingsData(data);
     } catch (err: any) {
       setError(err?.message ?? "Unknown error");
@@ -43,7 +34,7 @@ export function useFetchBookings(limit: number) {
   }, [limit]);
 
   useEffect(() => {
-    fetchBookings();
+    void fetchBookings();
   }, [fetchBookings]);
 
   return { bookingsData, loading, error, refetch: fetchBookings };

@@ -2,18 +2,16 @@
 
 import Navbar from "@/components/Navbar";
 import BottomNavbar from "@/components/BottomNavbar";
-import { useSession } from "next-auth/react";
+import { useCurrentUser } from "@/hooks/auth/useCurrentUser";
 
 export default function AuthenticatedNavbars() {
-  const { data: session, status } = useSession();
+  const { user, loading } = useCurrentUser();
 
-  // Don't render anything while session is loading
-  if (status === "loading") {
+  if (loading) {
     return null;
   }
 
-  // Only render navbars if user is authenticated
-  if (session && session.user) {
+  if (user) {
     return (
       <>
         <Navbar />
@@ -22,6 +20,5 @@ export default function AuthenticatedNavbars() {
     );
   }
 
-  // Return null if not authenticated
   return null;
 }

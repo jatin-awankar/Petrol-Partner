@@ -1,14 +1,8 @@
-// /hooks/rides/useFetchSuggestedRides.ts
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 
-const getToken = () => {
-  if (typeof window !== "undefined") {
-    return localStorage.getItem("access_token");
-  }
-  return null;
-};
+import { listRideOffers, listRideRequests } from "@/lib/api/backend";
 
 interface SuggestedRidesOptions {
   latitude?: number;
@@ -27,37 +21,33 @@ export function useFetchSuggestedRides(options: SuggestedRidesOptions = {}) {
     setLoading(true);
     setError(null);
 
-    const query = new URLSearchParams();
-    if (options.latitude) query.append("pickup_lat", String(options.latitude));
-    if (options.longitude) query.append("pickup_lng", String(options.longitude));
-    if (options.limit) query.append("limit", String(options.limit));
-    // if (options.date) query.append("date", String(options.date));
-
     try {
-      // Fetch suggested ride offers
-      const offersRes = await fetch(`/api/rides/offers?${query}`, {
-        headers: { Authorization: `Bearer ${getToken()}` },
-      });
-      if (!offersRes.ok) throw new Error("Failed to fetch suggested ride offers");
-      const offersData = await offersRes.json();
-      setRideOffers(offersData);
+      const [offersData, requestsData] = await Promise.all([
+        listRideOffers({
+          pickup_lat: options.latitude,
+          pickup_lng: options.longitude,
+          limit: options.limit,
+          date: options.date,
+        }),
+        listRideRequests({
+          pickup_lat: options.latitude,
+          pickup_lng: options.longitude,
+          limit: options.limit,
+          date: options.date,
+        }),
+      ]);
 
-      // Fetch suggested ride requests
-      const requestsRes = await fetch(`/api/rides/requests?${query}`, {
-        headers: { Authorization: `Bearer ${getToken()}` },
-      });
-      if (!requestsRes.ok) throw new Error("Failed to fetch suggested ride requests");
-      const requestsData = await requestsRes.json();
+      setRideOffers(offersData);
       setRideRequests(requestsData);
     } catch (err: any) {
-      setError(err.message);
+      setError(err?.message || "Failed to fetch suggested rides");
     } finally {
       setLoading(false);
     }
   }, [options.latitude, options.longitude, options.limit, options.date]);
 
   useEffect(() => {
-    fetchSuggestedRides();
+    void fetchSuggestedRides();
   }, [fetchSuggestedRides]);
 
   return { rideOffers, rideRequests, loading, error, refetch: fetchSuggestedRides };

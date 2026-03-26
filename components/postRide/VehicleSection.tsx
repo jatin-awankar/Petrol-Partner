@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from "../ui/select";
 import { Label } from "../ui/label";
+import { getVerificationOverview } from "@/lib/api/backend";
 
 // 🔹 Error Boundary to isolate crashes
 class VehicleSectionErrorBoundary extends React.Component<
@@ -58,10 +59,40 @@ const VehicleSection: React.FC<VehicleSectionProps> = ({
 }) => {
   const [showAddVehicle, setShowAddVehicle] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [registeredVehicles, setRegisteredVehicles] = useState<any[]>([]);
+  const [vehicleLoadError, setVehicleLoadError] = useState<string | null>(null);
 
   useEffect(() => {
-    const timer = setTimeout(() => setLoading(false), 500);
-    return () => clearTimeout(timer);
+    const loadVehicles = async () => {
+      try {
+        const overview = await getVerificationOverview();
+        setRegisteredVehicles(
+          overview.vehicles
+            .filter((vehicle) => vehicle.isVerified && vehicle.status === "active")
+            .map((vehicle) => ({
+              id: vehicle.id,
+              make: vehicle.make,
+              model: vehicle.model,
+              year: vehicle.year,
+              type: "car",
+              fuel: vehicle.fuelType,
+              color: vehicle.color,
+              plateNumber: vehicle.licensePlate,
+              features: [],
+            })),
+        );
+        setVehicleLoadError(null);
+      } catch (error: any) {
+        setVehicleLoadError(
+          error?.message || "Unable to load your approved vehicles.",
+        );
+        setRegisteredVehicles([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void loadVehicles();
   }, []);
 
   const handleVehicleChange = (field: string, value: any) => {
@@ -107,31 +138,6 @@ const VehicleSection: React.FC<VehicleSectionProps> = ({
     { id: "bluetooth", label: "Bluetooth", icon: "Bluetooth" },
   ];
 
-  const registeredVehicles = [
-    {
-      id: 1,
-      make: "Honda",
-      model: "City",
-      year: "2022",
-      type: "sedan",
-      fuel: "petrol",
-      color: "White",
-      plateNumber: "DL 01 AB 1234",
-      features: ["ac", "music", "charging"],
-    },
-    {
-      id: 2,
-      make: "Maruti",
-      model: "Swift",
-      year: "2021",
-      type: "hatchback",
-      fuel: "petrol",
-      color: "Red",
-      plateNumber: "DL 02 CD 5678",
-      features: ["ac", "music"],
-    },
-  ];
-
   const selectVehicle = (vehicle: any) => {
     updateFormData({
       ...formData,
@@ -164,6 +170,9 @@ const VehicleSection: React.FC<VehicleSectionProps> = ({
         <h4 className="text-sm font-medium text-foreground mb-3">
           Select Your Vehicle
         </h4>
+        {vehicleLoadError ? (
+          <p className="text-sm text-red-500 mb-3">{vehicleLoadError}</p>
+        ) : null}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {registeredVehicles.map((vehicle) => (
             <div
@@ -192,7 +201,7 @@ const VehicleSection: React.FC<VehicleSectionProps> = ({
                 </p>
                 <p className="font-mono">{vehicle.plateNumber}</p>
                 <div className="flex flex-wrap gap-1 mt-2">
-                  {vehicle.features.map((feature) => {
+                  {vehicle.features.map((feature: string) => {
                     const info = availableFeatures.find(
                       (f) => f.id === feature
                     );
@@ -215,6 +224,11 @@ const VehicleSection: React.FC<VehicleSectionProps> = ({
             </div>
           ))}
         </div>
+        {!registeredVehicles.length && !vehicleLoadError ? (
+          <p className="text-sm text-muted-foreground mt-3">
+            No approved vehicles found. Add and get a vehicle approved from profile settings before posting a ride.
+          </p>
+        ) : null}
       </div>
 
       {/* Add New Vehicle Form */}
@@ -222,10 +236,11 @@ const VehicleSection: React.FC<VehicleSectionProps> = ({
         <Button
           variant="outline"
           onClick={() => setShowAddVehicle(!showAddVehicle)}
+          disabled
           className="mb-4"
         >
           {showAddVehicle ? <ChevronUp /> : <Plus />}
-          {showAddVehicle ? "Hide Form" : "Add New Vehicle"}
+          Manage vehicles in profile settings
         </Button>
 
         {showAddVehicle && (

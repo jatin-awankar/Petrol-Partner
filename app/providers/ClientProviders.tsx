@@ -1,10 +1,10 @@
 // app/providers/ClientProviders.tsx
 "use client";
 
-import { SessionProvider } from "next-auth/react";
 import { ThemeProvider } from "../provider";
 import { Toaster } from "@/components/ui/sonner";
 import React from "react";
+import { AuthProvider } from "./AuthProvider";
 
 export default function ClientProviders({
   children,
@@ -12,11 +12,11 @@ export default function ClientProviders({
   children: React.ReactNode;
 }) {
   return (
-    <SessionProvider>
+    <AuthProvider>
       <ThemeProvider>
         {children}
         <Toaster richColors={true} />
       </ThemeProvider>
-    </SessionProvider>
+    </AuthProvider>
   );
 }
