@@ -25,8 +25,6 @@ export default function AuthenticatedNavbars() {
       <>
         <Navbar />
         <BottomNavbar />
-        <div aria-hidden className="h-16" />
-        <div aria-hidden className="h-16 md:hidden" />
       </>
     );
   }
