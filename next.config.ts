@@ -2,14 +2,16 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  async rewrites() {
+    return [
+      {
+        source: "/v1/:path*",
+        destination: "https://petrol-partner.onrender.com/v1/:path*",
+      },
+    ];
+  },
   images: {
     remotePatterns: [
-      {
-        protocol: 'https',
-        hostname: '*',
-        port: '',
-        pathname: '/**',
-      },
       {
         protocol: 'https',
         hostname: 'images.unsplash.com',
@@ -26,10 +28,6 @@ const nextConfig: NextConfig = {
         protocol: 'https',
         hostname: "avatars.githubusercontent.com",
       },
-      {
-        protocol: 'https',
-        hostname: "example.com"
-      }
     ],
   },
 };
