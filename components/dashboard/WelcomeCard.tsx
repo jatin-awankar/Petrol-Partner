@@ -1,46 +1,14 @@
-// src/pages/dashboard-home/components/WelcomeCard.tsx
 "use client";
 
-import React from "react";
-import Icon from "@/components/AppIcon";
-import Skeleton from "react-loading-skeleton";
-import VerificationBadge from "../ui/VerificationBadge";
-import { motion } from "framer-motion";
+import Link from "next/link";
+import { CalendarClock, CarFront, ShieldCheck } from "lucide-react";
+
 import { useUserProfile } from "@/hooks/auth/useUserProfile";
-
-// Error Boundary for this component
-class WelcomeCardErrorBoundary extends React.Component<
-  { children: React.ReactNode },
-  { hasError: boolean }
-> {
-  constructor(props: { children: React.ReactNode }) {
-    super(props);
-    this.state = { hasError: false };
-  }
-
-  static getDerivedStateFromError(_: Error) {
-    return { hasError: true };
-  }
-
-  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error("WelcomeCard Error:", error, errorInfo);
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div className="bg-red-100 text-red-800 p-4 rounded-xl">
-          Something went wrong loading the Welcome Card.
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
+import { Button } from "../ui/button";
 
 const WelcomeCard = () => {
-  const currentHour = new Date().getHours();
   const { profile, loading } = useUserProfile();
+  const currentHour = new Date().getHours();
 
   // if (error) return <p className="text-red-500">{error}</p>
 
@@ -52,81 +20,88 @@ const WelcomeCard = () => {
 
   if (loading) {
     return (
-      <motion.div
-        initial={{ opacity: 0, x: 8 }}
-        animate={{ opacity: 1, x: 0 }}
-        className="bg-gradient-to-r from-primary to-primary/80 rounded-xl p-6 mb-6 shadow-md"
-      >
-        <div className="flex items-center justify-between">
-          <div className="flex-1">
-            <Skeleton
-              height={30}
-              width={`60%`}
-              baseColor="#9cd6fc"
-              className="mb-1"
-            />
-            <Skeleton
-              height={20}
-              width={`40%`}
-              baseColor="#9cd6fc"
-              className="mb-4"
-            />
-          </div>
-          <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mb-4">
-            <Icon name="" size={32} color="white" />
-          </div>
+      <section className="overflow-hidden rounded-2xl border border-border/70 bg-gradient-to-br from-sky-50 via-card to-blue-50 p-6 shadow-card md:p-7">
+        <div className="h-7 w-48 animate-pulse rounded-md bg-slate-200" />
+        <div className="mt-2 h-4 w-72 animate-pulse rounded-md bg-slate-200" />
+        <div className="mt-5 grid gap-3 sm:grid-cols-3">
+          <div className="h-16 animate-pulse rounded-xl bg-slate-200" />
+          <div className="h-16 animate-pulse rounded-xl bg-slate-200" />
+          <div className="h-16 animate-pulse rounded-xl bg-slate-200" />
         </div>
-        <Skeleton height={20} width={`100%`} baseColor="#9cd6fc" />
-      </motion.div>
+        <div className="mt-5 h-9 w-40 animate-pulse rounded-md bg-slate-200" />
+      </section>
     );
   }
 
+  const firstName = profile?.full_name?.trim().split(" ")[0] || "Rider";
+
   return (
-    <div className="bg-gradient-to-r from-primary to-primary/80 rounded-xl p-6 text-white mb-6 shadow-md">
-      <div className="flex items-center justify-between">
-        <div className="flex-1">
-          <h1 className="text-2xl font-semibold mb-1">
-            {getGreeting()}, {profile?.full_name?.trim().split(" ")[0] || "Student"}!
+    <section className="overflow-hidden rounded-2xl border border-border/70 bg-gradient-to-br from-accent via-card/50 to-accent p-6 shadow-card md:p-7">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="inline-flex items-center gap-1 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-semiboald uppercase tracking-[0.12em] text-primary">
+            Campus commute control center
+          </p>
+          <h1 className="mt-3 text-2xl font-semibold tracking-tight text-foreground md:text-3xl">
+            {getGreeting()}, {firstName}
           </h1>
-          <div className="flex items-center space-x-2">
-            <span className="text-primary-foreground/80 text-sm">
-              {profile?.college || "Your College"}
-              {"  "}
-              {profile?.is_verified && (
-                <VerificationBadge
-                  isVerified={true}
-                  verificationType="college"
-                  size={16}
-                  showTooltip={true}
-                />
-              )}
-            </span>
-          </div>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Plan, post, and manage rides for today in one place.
+          </p>
         </div>
-        <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center">
-          <Icon name="GraduationCap" size={32} color="white" />
+
+        <div className="rounded-xl border border-border/70 bg-card px-3 py-2 text-right">
+          <p className="text-xs text-muted-foreground">Account</p>
+          <p className="mt-0.5 text-sm font-medium text-foreground">
+            {profile?.is_verified ? "Verified student" : "Verification pending"}
+          </p>
         </div>
       </div>
 
-      <div className="mt-4 flex items-center space-x-4 text-sm">
-        <div className="flex items-center space-x-1">
-          <Icon name="MapPin" size={16} />
-          <span>campusArea</span>
-        </div>
-        <div className="flex items-center space-x-1">
-          <Icon name="Users" size={16} />
-          <span>0 active students</span>
-        </div>
+      <div className="mt-5 grid gap-3 sm:grid-cols-3">
+        <article className="rounded-xl border border-border/70 bg-card p-3">
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <ShieldCheck className="size-4 text-primary" />
+            <span className="text-xs uppercase tracking-[0.08em]">Status</span>
+          </div>
+          <p className="mt-1 text-sm font-semibold text-foreground">
+            {profile?.is_verified
+              ? "Ready for ride posting"
+              : "Complete verification flow"}
+          </p>
+        </article>
+
+        <article className="rounded-xl border border-border/70 bg-card p-3">
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <CarFront className="size-4 text-primary" />
+            <span className="text-xs uppercase tracking-[0.08em]">Mode</span>
+          </div>
+          <p className="mt-1 text-sm font-semibold text-foreground">
+            Offer rides or request seats as needed
+          </p>
+        </article>
+
+        <article className="rounded-xl border border-border/70 bg-card p-3">
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <CalendarClock className="size-4 text-primary" />
+            <span className="text-xs uppercase tracking-[0.08em]">Campus</span>
+          </div>
+          <p className="mt-1 line-clamp-1 text-sm font-semibold text-foreground">
+            {profile?.college || "Add your college details in profile settings"}
+          </p>
+        </article>
       </div>
-    </div>
+
+      <div className="mt-5 flex flex-wrap gap-2">
+        <Button asChild size="sm" className="h-9 rounded-md">
+          <Link href="/search-rides">Find Available Rides</Link>
+        </Button>
+        <Button asChild size="sm" variant="outline" className="h-9 rounded-md">
+          <Link href="/post-a-ride">Post Ride Offer or Request</Link>
+        </Button>
+      </div>
+    </section>
   );
 };
 
-// Export wrapped with error boundary
-export default function WelcomeCardWithErrorBoundary() {
-  return (
-    <WelcomeCardErrorBoundary>
-      <WelcomeCard />
-    </WelcomeCardErrorBoundary>
-  );
-}
+export default WelcomeCard;

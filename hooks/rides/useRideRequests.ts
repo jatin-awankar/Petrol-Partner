@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { listRideRequests } from "@/lib/api/backend";
+import { createRideRequestRecord, listRideRequests } from "@/lib/api/backend";
 
 export function useFetchRideRequests() {
   const [requests, setRequests] = useState<FetchRides | null>();
@@ -35,12 +35,21 @@ export function useCreateRideRequest() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
-  const createRideRequest = async () => {
+  const createRideRequest = async (rideData: any) => {
     setLoading(true);
-    setError("Ride request creation UI has not been migrated yet.");
+    setError(null);
     setSuccess(false);
-    setLoading(false);
-    throw new Error("Ride request creation UI has not been migrated yet.");
+
+    try {
+      const payload = await createRideRequestRecord(rideData);
+      setSuccess(true);
+      return payload;
+    } catch (err: any) {
+      setError(err?.message || "Failed to create ride request");
+      throw err;
+    } finally {
+      setLoading(false);
+    }
   };
 
   return { createRideRequest, loading, error, success };

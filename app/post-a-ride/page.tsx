@@ -1,11 +1,12 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { motion } from "framer-motion";
+import { ChevronLeft, ChevronRight, Eye, Home, Trash2 } from "lucide-react";
 
 import Icon from "@/components/AppIcon";
-
 import RouteSection from "@/components/postRide/RouteSection";
 import DateTimeSection from "@/components/postRide/DateTimeSection";
 import SeatsSection from "@/components/postRide/SeatsSection";
@@ -14,18 +15,89 @@ import ProgressIndicator from "@/components/postRide/ProgressIndicator";
 import PreviewModal from "@/components/postRide/PreviewModal";
 import PricingSection from "@/components/postRide/PricingSection";
 import PreferencesSection from "@/components/postRide/PreferencesSection";
-
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight, Eye, Home, Trash2 } from "lucide-react";
-import { motion } from "framer-motion";
 import { useCreateRideOffer } from "@/hooks/rides/useRideOffers";
+import { useCreateRideRequest } from "@/hooks/rides/useRideRequests";
 import { useCurrentUser } from "@/hooks/auth/useCurrentUser";
 
 const STORAGE_KEY = "postRideFormData";
+type PostMode = "offer" | "request";
+
+const initialFormData = {
+  mode: "offer" as PostMode,
+  route: {
+    pickup: "",
+    dropoff: "",
+    pickup_lat: null as number | null,
+    pickup_lng: null as number | null,
+    drop_lat: null as number | null,
+    drop_lng: null as number | null,
+  },
+  schedule: {
+    date: "",
+    time: "",
+    flexibility: 0,
+    recurring: { enabled: false, days: [], endDate: "" },
+  },
+  availableSeats: 1,
+  seatsRequired: 1,
+  vehicle: {
+    selectedId: null as string | null,
+    make: "",
+    model: "",
+    year: "",
+    type: "",
+    fuel: "",
+    color: "",
+    features: [] as string[],
+  },
+  pricing: { farePerSeat: 0, paymentMethods: ["upi"] as string[] },
+  preferences: {
+    gender: "any",
+    conversation: "any",
+    music: "any",
+    ageRange: [18, 25],
+    rules: [] as string[],
+    notes: "",
+  },
+};
+
+function getFriendlyBusinessError(error: unknown) {
+  const fallback = "Failed to publish. Please try again.";
+  const details = error as { code?: string; message?: string };
+
+  switch (details?.code) {
+    case "STUDENT_VERIFICATION_REQUIRED":
+      return "Student verification is required before posting rides.";
+    case "STUDENT_VERIFICATION_INACTIVE":
+      return "Your student verification is not active right now.";
+    case "DRIVER_ELIGIBILITY_NOT_APPROVED":
+      return "Driver eligibility must be approved before posting a ride offer.";
+    case "VEHICLE_NOT_APPROVED":
+    case "VEHICLE_REQUIRED_FOR_RIDE_OFFER":
+      return "Please select an approved active vehicle.";
+    case "FINANCIAL_HOLD_ACTIVE":
+      return "You have an overdue balance. Clear it before posting a new ride.";
+    default:
+      return details?.message || fallback;
+  }
+}
 
 const PostRide = () => {
   const { isAuthenticated, loading: authLoading } = useCurrentUser();
   const router = useRouter();
+
+  const { createRideOffer, loading: offerLoading } = useCreateRideOffer();
+  const { createRideRequest, loading: requestLoading } = useCreateRideRequest();
+
+  const [currentStep, setCurrentStep] = useState(1);
+  const [showPreview, setShowPreview] = useState(false);
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [formData, setFormData] = useState(initialFormData);
+
+  const mode = formData.mode;
+  const loading = offerLoading || requestLoading;
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -33,204 +105,219 @@ const PostRide = () => {
     }
   }, [authLoading, isAuthenticated, router]);
 
-  const { createRideOffer, loading } = useCreateRideOffer();
-  const [currentStep, setCurrentStep] = useState(1);
-  const [showPreview, setShowPreview] = useState(false);
-  const [isPublishing, setIsPublishing] = useState(false);
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const [formData, setFormData] = useState<any>({
-    route: { pickup: "", dropoff: "", via: "" },
-    schedule: {
-      date: "",
-      time: "",
-      flexibility: 0,
-      recurring: { enabled: false, days: [], endDate: "" },
-    },
-    availableSeats: 1,
-    vehicle: {
-      selectedId: null,
-      make: "",
-      model: "",
-      year: "",
-      type: "",
-      fuel: "",
-      color: "",
-      features: [],
-    },
-    pricing: { farePerSeat: 0, paymentMethods: ["upi"] },
-    preferences: {
-      gender: "any",
-      conversation: "any",
-      music: "any",
-      ageRange: [18, 25],
-      rules: [],
-      notes: "",
-    },
-  });
-  const steps = useMemo(
-    () => [
-      { id: 1, title: "Route", component: "route" },
-      { id: 2, title: "Schedule", component: "schedule" },
-      { id: 3, title: "Seats", component: "seats" },
-      { id: 4, title: "Vehicle", component: "vehicle" },
-      { id: 5, title: "Pricing", component: "pricing" },
-      { id: 6, title: "Preferences", component: "preferences" },
-    ],
-    []
-  );
+  const steps = useMemo(() => {
+    const modeSteps =
+      mode === "offer"
+        ? [
+            { id: 1, title: "Route", component: "route" },
+            { id: 2, title: "Schedule", component: "schedule" },
+            { id: 3, title: "Seats", component: "seats" },
+            { id: 4, title: "Vehicle", component: "vehicle" },
+            { id: 5, title: "Pricing", component: "pricing" },
+            { id: 6, title: "Preferences", component: "preferences" },
+          ]
+        : [
+            { id: 1, title: "Route", component: "route" },
+            { id: 2, title: "Schedule", component: "schedule" },
+            { id: 3, title: "Seats", component: "seats" },
+            { id: 4, title: "Pricing", component: "pricing" },
+            { id: 5, title: "Preferences", component: "preferences" },
+          ];
 
-  // Restore draft
+    return modeSteps;
+  }, [mode]);
+
   useEffect(() => {
     try {
       const savedData = localStorage.getItem(STORAGE_KEY);
-      if (savedData) setFormData(JSON.parse(savedData));
-    } catch (err) {
-      console.error("Error restoring draft:", err);
+      if (!savedData) return;
+      const parsed = JSON.parse(savedData);
+      setFormData({ ...initialFormData, ...parsed });
+    } catch {
+      setFormData(initialFormData);
     }
   }, []);
 
-  // Auto-save
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(formData));
   }, [formData]);
 
-  // Step validation
   const validateStep = useCallback(
     (step: number) => {
       const newErrors: Record<string, string> = {};
+
       switch (step) {
         case 1:
-          if (!formData.route.pickup.trim())
-            newErrors.pickup = "Pickup required";
-          if (!formData.route.dropoff.trim())
-            newErrors.dropoff = "Drop-off required";
+          if (!formData.route.pickup.trim()) newErrors.pickup = "Pickup required";
+          if (!formData.route.dropoff.trim()) newErrors.dropoff = "Drop-off required";
+          if (
+            formData.route.pickup_lat === null ||
+            formData.route.pickup_lng === null ||
+            formData.route.drop_lat === null ||
+            formData.route.drop_lng === null
+          ) {
+            newErrors.routeCoordinates = "Please select both pickup and drop from map/search.";
+          }
           break;
         case 2:
           if (!formData.schedule.date) newErrors.date = "Date required";
           if (!formData.schedule.time) newErrors.time = "Time required";
           break;
         case 3:
-          if (!formData.availableSeats || formData.availableSeats < 1)
+          if (mode === "offer" && formData.availableSeats < 1) {
             newErrors.availableSeats = "Select at least 1 seat";
+          }
+          if (mode === "request" && formData.seatsRequired < 1) {
+            newErrors.seatsRequired = "Select at least 1 seat";
+          }
           break;
         case 4:
-          if (!formData.vehicle.selectedId)
+          if (mode === "offer" && !formData.vehicle.selectedId) {
             newErrors.vehicle = "Select an approved vehicle from your profile";
+          }
+          if (mode === "request" && formData.pricing.farePerSeat < 1) {
+            newErrors.farePerSeat = "Set your max price per seat";
+          }
           break;
         case 5:
-          if (!formData.pricing.farePerSeat || formData.pricing.farePerSeat < 1)
-            newErrors.farePerSeat = "Set a fare amount";
-          if (formData.pricing.paymentMethods.length === 0)
-            newErrors.paymentMethods = "Select at least one payment method";
+          if (mode === "offer") {
+            if (formData.pricing.farePerSeat < 1) newErrors.farePerSeat = "Set a fare amount";
+            if (!formData.pricing.paymentMethods.length) {
+              newErrors.paymentMethods = "Select at least one payment method";
+            }
+          }
+          break;
+        default:
           break;
       }
+
       setErrors(newErrors);
       return Object.keys(newErrors).length === 0;
     },
-    [formData]
+    [formData, mode],
   );
 
-  // Step navigation
   const handleNext = useCallback(() => {
-    if (validateStep(currentStep)) {
-      if (currentStep < steps.length) setCurrentStep((prev) => prev + 1);
-      else setShowPreview(true);
-    } else {
+    if (!validateStep(currentStep)) {
       toast.error("Please complete all required fields");
+      return;
     }
+
+    if (currentStep < steps.length) {
+      setCurrentStep((prev) => prev + 1);
+      return;
+    }
+
+    setShowPreview(true);
   }, [currentStep, steps.length, validateStep]);
 
-  const handlePrevious = useCallback(
-    () => setCurrentStep((prev) => Math.max(prev - 1, 1)),
-    []
-  );
+  const handlePrevious = useCallback(() => {
+    setCurrentStep((prev) => Math.max(prev - 1, 1));
+  }, []);
 
-  // Publish ride API
+  const handleModeChange = (nextMode: PostMode) => {
+    if (nextMode === mode) return;
+
+    setFormData((prev) => ({
+      ...prev,
+      mode: nextMode,
+      seatsRequired: nextMode === "request" ? Math.max(1, prev.seatsRequired) : prev.seatsRequired,
+      availableSeats: nextMode === "offer" ? Math.max(1, prev.availableSeats) : prev.availableSeats,
+    }));
+    setCurrentStep(1);
+    setErrors({});
+  };
+
   const handlePublish = useCallback(async () => {
+    const allValid = steps.every((_, idx) => validateStep(idx + 1));
+    if (!allValid) {
+      toast.error("Please complete required details before publishing.");
+      return;
+    }
+
     setIsPublishing(true);
     try {
-      const body = {
+      const sharedPayload = {
         pickup_location: formData.route.pickup,
         drop_location: formData.route.dropoff,
-        pickup_lat: formData.route.pickup_lat || "23.33",
-        pickup_lng: formData.route.pickup_lng || "22.22",
-        drop_lat: formData.route.drop_lat || "18.88",
-        drop_lng: formData.route.drop_lng || "19.99",
-        available_seats: formData.availableSeats,
-        price_per_seat: formData.pricing.farePerSeat,
+        pickup_lat: Number(formData.route.pickup_lat),
+        pickup_lng: Number(formData.route.pickup_lng),
+        drop_lat: Number(formData.route.drop_lat),
+        drop_lng: Number(formData.route.drop_lng),
         date: formData.schedule.date,
         time: formData.schedule.time,
-        vehicle_id: formData.vehicle.selectedId,
-        vehicle_details: formData.vehicle.make
-          ? {
-              make: formData.vehicle.make,
-              model: formData.vehicle.model || "",
-              year: formData.vehicle.year || "",
-              color: formData.vehicle.color || "",
-              fuelType: formData.vehicle.fuel || formData.vehicle.fuelType || "",
-              features: formData.vehicle.features || [],
-            }
-          : null,
+        price_per_seat: Number(formData.pricing.farePerSeat),
         counterparty_gender_preference:
           formData.preferences.gender === "female"
             ? "female_only"
             : formData.preferences.gender === "male"
               ? "male_only"
               : "any",
-        notes: formData.preferences.notes || null,
+        notes: formData.preferences.notes || undefined,
       };
 
-      console.log("📦 Sending ride data:", body); // Debug log
+      if (mode === "offer") {
+        await createRideOffer({
+          ...sharedPayload,
+          available_seats: Number(formData.availableSeats),
+          vehicle_id: formData.vehicle.selectedId,
+          vehicle_details: formData.vehicle.make
+            ? {
+                make: formData.vehicle.make,
+                model: formData.vehicle.model || "",
+                year: formData.vehicle.year || "",
+                color: formData.vehicle.color || "",
+                fuelType: formData.vehicle.fuel || "",
+                features: formData.vehicle.features || [],
+              }
+            : undefined,
+        });
+      } else {
+        await createRideRequest({
+          ...sharedPayload,
+          seats_required: Number(formData.seatsRequired),
+        });
+      }
 
-      await createRideOffer(body);
-
-      toast.success("Ride published successfully!");
+      toast.success(mode === "offer" ? "Ride offer published." : "Ride request published.");
       localStorage.removeItem(STORAGE_KEY);
       router.push("/dashboard");
-    } catch (err) {
-      if (err instanceof Error) {
-        console.error("Publish error: ", err);
-        toast.error(err.message || "Failed to publish ride");
-      } else {
-        console.error("Publish error: ", err);
-        toast.error("Failed to publish ride");
-      }
+    } catch (error) {
+      toast.error(getFriendlyBusinessError(error));
     } finally {
       setIsPublishing(false);
     }
-  }, [createRideOffer, formData, router]);
+  }, [createRideOffer, createRideRequest, formData, mode, router, steps, validateStep]);
 
   const renderCurrentStep = useCallback(() => {
-    const comp = steps[currentStep - 1]?.component;
-    const props = { formData, updateFormData: setFormData, errors };
-    switch (comp) {
+    const component = steps[currentStep - 1]?.component;
+    const commonProps = { formData, updateFormData: setFormData, errors };
+
+    switch (component) {
       case "route":
-        return <RouteSection {...props} />;
+        return <RouteSection {...commonProps} />;
       case "schedule":
-        return <DateTimeSection {...props} />;
+        return <DateTimeSection {...commonProps} />;
       case "seats":
-        return <SeatsSection {...props} />;
+        return <SeatsSection {...commonProps} mode={mode} />;
       case "vehicle":
-        return <VehicleSection {...props} />;
+        return <VehicleSection {...commonProps} />;
       case "pricing":
-        return <PricingSection {...props} />;
+        return <PricingSection {...commonProps} />;
       case "preferences":
-        return <PreferencesSection {...props} />;
+        return <PreferencesSection {...commonProps} />;
       default:
         return null;
     }
-  }, [currentStep, steps, formData, errors]);
+  }, [currentStep, steps, formData, errors, mode]);
 
   const completedSteps = useMemo(
-    () => steps.filter((_, i) => validateStep(i + 1)).length,
-    [steps, validateStep]
+    () => steps.filter((_, index) => validateStep(index + 1)).length,
+    [steps, validateStep],
   );
-
   const isFormComplete = completedSteps >= steps.length - 1;
 
-  if (authLoading) {
-    return null;
-  }
+  if (authLoading) return null;
 
   return (
     <motion.div
@@ -238,16 +325,33 @@ const PostRide = () => {
       animate={{ opacity: 1, y: 0 }}
       className="page min-h-screen bg-background container mx-auto p-4 space-y-6"
     >
+      <div className="rounded-xl border border-border bg-card p-4 shadow-card">
+        <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Posting mode</p>
+        <div className="mt-3 grid max-w-md grid-cols-2 gap-2">
+          <Button
+            type="button"
+            variant={mode === "offer" ? "default" : "outline"}
+            onClick={() => handleModeChange("offer")}
+          >
+            <Icon name="Car" size={16} />
+            Ride Offer
+          </Button>
+          <Button
+            type="button"
+            variant={mode === "request" ? "default" : "outline"}
+            onClick={() => handleModeChange("request")}
+          >
+            <Icon name="Hand" size={16} />
+            Ride Request
+          </Button>
+        </div>
+      </div>
+
       <div className="pb-20 md:pb-6">
-        <ProgressIndicator
-          currentStep={currentStep}
-          totalSteps={steps.length}
-          steps={steps}
-        />
+        <ProgressIndicator currentStep={currentStep} totalSteps={steps.length} steps={steps} />
         <div className="max-w-4xl mx-auto p-4 pt-6 space-y-6">
           {renderCurrentStep()}
 
-          {/* Navigation */}
           <div className="flex items-center justify-between pt-6 border-t border-border">
             <Button
               variant="outline"
@@ -268,11 +372,7 @@ const PostRide = () => {
               </div>
 
               {currentStep < steps.length ? (
-                <Button
-                  variant="default"
-                  onClick={handleNext}
-                  className="shadow-sm"
-                >
+                <Button variant="default" onClick={handleNext} className="shadow-sm">
                   Next
                   <ChevronRight />
                 </Button>
@@ -290,20 +390,16 @@ const PostRide = () => {
             </div>
           </div>
 
-          {/* Auto-save info */}
           <div className="bg-card rounded-lg border border-border p-4 flex items-center justify-between shadow-soft">
             <div className="flex items-center space-x-3">
               <Icon name="Save" size={20} className="text-muted-foreground" />
               <div>
-                <p className="text-sm font-medium text-foreground">
-                  Auto-saved
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Your progress is automatically saved
-                </p>
+                <p className="text-sm font-medium text-foreground">Auto-saved</p>
+                <p className="text-xs text-muted-foreground">Your progress is automatically saved</p>
               </div>
             </div>
-            <div className="flex flex-col sm:flex-row gap-2 w-fit items-end ">
+
+            <div className="flex flex-col sm:flex-row gap-2 w-fit items-end">
               <Button
                 variant="destructive"
                 size="sm"
@@ -313,7 +409,6 @@ const PostRide = () => {
                     window.location.reload();
                   }
                 }}
-                className=""
               >
                 <Trash2 />
                 Clear All
@@ -337,19 +432,18 @@ const PostRide = () => {
         isOpen={showPreview}
         onClose={() => setShowPreview(false)}
         formData={formData}
+        mode={mode}
         onPublish={handlePublish}
       />
 
-      {loading && (
+      {(loading || isPublishing) && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-card rounded-lg p-8 text-center">
-            <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full mx-auto mb-4"></div>
+            <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full mx-auto mb-4" />
             <p className="text-lg font-medium text-foreground">
-              Publishing your ride...
+              {mode === "offer" ? "Publishing ride offer..." : "Publishing ride request..."}
             </p>
-            <p className="text-sm text-muted-foreground mt-2">
-              This may take a few moments
-            </p>
+            <p className="text-sm text-muted-foreground mt-2">This may take a few moments</p>
           </div>
         </div>
       )}

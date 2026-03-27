@@ -1,199 +1,197 @@
 "use client";
 
 import React from "react";
-import Skeleton from "react-loading-skeleton";
-import "react-loading-skeleton/dist/skeleton.css";
-import { Button } from "../ui/button";
-import Icon from "../AppIcon";
-import { MessageCircle } from "lucide-react";
 import Link from "next/link";
-import { motion } from "framer-motion";
-import { useFetchBookings } from "@/hooks/bookings/useFetchBookings";
-import { useCancelBooking } from "@/hooks/bookings/useCancelBooking";
-import { cn, formatTimeToAmPm, formatUtcToTodayOrDayMonth } from "@/lib/utils";
+import {
+  CalendarClock,
+  CheckCircle2,
+  CircleX,
+  Clock3,
+  MessageCircle,
+  Route,
+} from "lucide-react";
 import { toast } from "sonner";
 
-const RecentActivitySection: React.FC = () => {
-  const { bookingsData, loading, refetch } = useFetchBookings(4);
-  const { cancelBooking, loading: isUpdating } = useCancelBooking();
+import { useFetchBookings } from "@/hooks/bookings/useFetchBookings";
+import { useCancelBooking } from "@/hooks/bookings/useCancelBooking";
+import { formatTimeToAmPm, formatUtcToTodayOrDayMonth } from "@/lib/utils";
+import { Button } from "../ui/button";
 
-  const activities =
-    bookingsData?.bookings?.map((booking: any) => {
-      const isDriver = booking.user_role === "driver";
-      const rideTitle = `Ride with ${booking.other_user_name}`;
-      const rideSubtitle = `${booking.pickup_location} -> ${booking.drop_location}`;
-      const rideStatus = booking.status || "pending";
-
-      // Accept/Decline should only be visible to ride giver:
-      // 1) Ride offer flow: giver is driver
-      // 2) Ride request flow: giver is passenger
-      const isRideOfferFlow = Boolean(booking.ride_offer_id);
-      const isRideRequestFlow = Boolean(booking.ride_request_id);
-      const canRespondToPending =
-        (isRideOfferFlow && isDriver) ||
-        (isRideRequestFlow && booking.user_role === "passenger");
-
-      let text = "pending";
-      let icon = "Calendar";
-      let color = "text-primary";
-      let bgColor = "bg-primary/10";
-
-      switch (rideStatus) {
-        case "completed":
-          text = "completed";
-          icon = "CheckCircle";
-          color = "text-success";
-          bgColor = "bg-success/10";
-          break;
-        case "pending":
-          text = "pending";
-          icon = "Clock";
-          color = "text-warning";
-          bgColor = "bg-warning/10";
-          break;
-        case "cancelled":
-          text = "cancelled";
-          icon = "XCircle";
-          color = "text-error";
-          bgColor = "bg-error/10";
-          break;
-        case "confirmed":
-          text = "confirmed";
-          icon = "Bike";
-          color = "text-violet-400";
-          bgColor = "bg-violet-400/10";
-          break;
-      }
-
+function statusUi(status: string) {
+  switch (status) {
+    case "confirmed":
       return {
-        id: booking.booking_id,
-        title: rideTitle,
-        subtitle: rideSubtitle,
-        date: formatUtcToTodayOrDayMonth(booking.date),
-        time: formatTimeToAmPm(booking.time),
-        status: rideStatus,
-        text,
-        icon,
-        color,
-        bgColor,
-        canRespondToPending,
+        label: "Confirmed",
+        icon: CheckCircle2,
+        className: "bg-emerald-100 text-emerald-700",
       };
-    }) ?? [];
+    case "completed":
+      return {
+        label: "Completed",
+        icon: CheckCircle2,
+        className: "bg-blue-100 text-blue-700",
+      };
+    case "cancelled":
+      return {
+        label: "Cancelled",
+        icon: CircleX,
+        className: "bg-red-100 text-red-700",
+      };
+    default:
+      return {
+        label: "Pending",
+        icon: Clock3,
+        className: "bg-amber-100 text-amber-700",
+      };
+  }
+}
+
+const RecentActivitySection: React.FC = () => {
+  const { bookingsData, loading, refetch } = useFetchBookings(6);
+  const { cancelBooking, loading: updating } = useCancelBooking();
+
+  const activities = bookingsData?.bookings ?? [];
 
   const handleUpdateStatus = async (
     bookingId: string,
-    newStatus: "confirmed" | "cancelled",
+    nextStatus: "confirmed" | "cancelled",
+    successMessage: string,
   ) => {
-    const response = await cancelBooking(bookingId, newStatus);
-    if (!response) {
-      throw new Error("Failed to update booking status");
+    try {
+      await cancelBooking(bookingId, nextStatus);
+      toast.success(successMessage);
+      refetch();
+    } catch (error: any) {
+      toast.error(error?.message || "Unable to update booking");
     }
   };
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.3 }}
-      className="bg-card border border-border rounded-xl p-6 mb-6 shadow-soft"
-    >
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold text-foreground">Recent Activity</h2>
-        <Link href="/profile-settings">
-          <Button variant="ghost" size="sm">
-            View All
-          </Button>
-        </Link>
-      </div>
+    <section className="rounded-2xl border border-border/70 bg-card p-5 shadow-card">
+      <header className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <span className="rounded-md bg-primary/10 p-1.5 text-primary">
+            <Route className="size-4" />
+          </span>
+          <h2 className="text-base font-semibold text-foreground">
+            Recent bookings
+          </h2>
+        </div>
+        <Button asChild variant="ghost" size="sm" className="h-8 rounded-md">
+          <Link href="/profile-settings">View all</Link>
+        </Button>
+      </header>
 
-      <div className="space-y-4">
-        {loading
-          ? Array.from({ length: 4 }).map((_, idx) => (
-              <div key={idx} className="flex items-start space-x-3 animate-pulse">
-                <Skeleton width={40} height={40} className="rounded-lg flex-shrink-0" />
-                <div className="flex-1 min-w-0 space-y-1">
-                  <Skeleton width="60%" height={16} />
-                  <Skeleton width="50%" height={12} />
-                  <Skeleton width="40%" height={12} />
-                </div>
-              </div>
-            ))
-          : activities.length === 0
-            ? <div className="text-xl">No Recent Activities</div>
-            : activities.map((activity: any) => (
-                <div
-                  key={activity.id}
-                  className="flex items-start space-x-3 border-b border-border pb-3 last:border-0"
-                >
-                  <div
-                    className={`w-10 h-10 ${activity.bgColor} rounded-lg flex items-center justify-center flex-shrink-0`}
-                  >
-                    <Icon name={activity.icon} size={16} className={activity.color} />
-                  </div>
+      <div className="mt-4 space-y-3">
+        {loading ? (
+          Array.from({ length: 4 }).map((_, index) => (
+            <div
+              key={index}
+              className="h-20 animate-pulse rounded-xl border border-border/70 bg-background"
+            />
+          ))
+        ) : activities.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-border p-5 text-center">
+            <p className="text-sm font-medium text-foreground">
+              No bookings yet
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Book a ride or post one to see activity updates here.
+            </p>
+          </div>
+        ) : (
+          activities.map((booking) => {
+            const ui = statusUi(booking.status || "pending");
+            const StatusIcon = ui.icon;
+            const isDriver = booking.user_role === "driver";
+            const isOfferFlow = Boolean((booking as any).ride_offer_id);
+            const isRequestFlow = Boolean((booking as any).ride_request_id);
+            const canRespondToPending =
+              booking.status === "pending" &&
+              ((isOfferFlow && isDriver) ||
+                (isRequestFlow && booking.user_role === "passenger"));
 
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center space-x-2 mb-1 flex-wrap">
-                      <h3 className="text-sm font-medium text-foreground truncate">
-                        {activity.title}
-                      </h3>
-                      <span className={cn("text-xs text-muted-foreground bg-muted px-2 py-1 rounded")}>
-                        {activity.text}
+            return (
+              <article
+                key={booking.booking_id}
+                className="rounded-xl border border-border/70 bg-background p-3.5"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-semibold text-foreground">
+                        {booking.pickup_location} ➟ {booking.drop_location}
+                      </p>
+                      <span
+                        className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${ui.className}`}
+                      >
+                        <StatusIcon className="size-3.5" />
+                        {ui.label}
                       </span>
                     </div>
-                    <p className="text-xs text-muted-foreground truncate">{activity.subtitle}</p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      On: {activity.date}{" - "}{activity.time}
-                    </p>
+
+                    <div className="mt-1 flex items-center gap-4 text-xs text-muted-foreground">
+                      <span className="inline-flex items-center gap-1">
+                        <CalendarClock className="size-3.5" />
+                        {formatUtcToTodayOrDayMonth(booking.date)}
+                      </span>
+                      <span>{formatTimeToAmPm(booking.time)}</span>
+                      <span>with {booking.other_user_name}</span>
+                    </div>
                   </div>
 
-                  <div className="flex items-center space-x-2">
-                    {activity.status === "pending" && activity.canRespondToPending && (
-                      <div className="flex space-x-1">
+                  <div className="flex items-center gap-2">
+                    {canRespondToPending ? (
+                      <>
                         <Button
-                          variant="outline"
                           size="sm"
-                          disabled={isUpdating}
-                          onClick={async () => {
-                            try {
-                              await handleUpdateStatus(activity.id, "cancelled");
-                              toast.success("Booking declined");
-                              refetch();
-                            } catch (error: any) {
-                              toast.error(error?.message || "Failed to update booking status");
-                            }
-                          }}
+                          variant="outline"
+                          disabled={updating}
+                          className="h-8 rounded-md"
+                          onClick={() =>
+                            handleUpdateStatus(
+                              booking.booking_id,
+                              "cancelled",
+                              "Booking declined",
+                            )
+                          }
                         >
                           Decline
                         </Button>
                         <Button
-                          variant="default"
                           size="sm"
-                          disabled={isUpdating}
-                          onClick={async () => {
-                            try {
-                              await handleUpdateStatus(activity.id, "confirmed");
-                              toast.success("Booking accepted");
-                              refetch();
-                            } catch (error: any) {
-                              toast.error(error?.message || "Failed to update booking status");
-                            }
-                          }}
+                          disabled={updating}
+                          className="h-8 rounded-md"
+                          onClick={() =>
+                            handleUpdateStatus(
+                              booking.booking_id,
+                              "confirmed",
+                              "Booking accepted",
+                            )
+                          }
                         >
                           Accept
                         </Button>
-                      </div>
-                    )}
-                    {activity.status === "confirmed" && (
-                      <Button variant="outline" size="sm" disabled>
-                        <MessageCircle className="w-4 h-4 mr-1" />
+                      </>
+                    ) : booking.status === "confirmed" ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled
+                        className="h-8 rounded-md"
+                      >
+                        <MessageCircle className="mr-1 size-3.5" />
                         Chat unavailable
                       </Button>
-                    )}
+                    ) : null}
                   </div>
                 </div>
-              ))}
+              </article>
+            );
+          })
+        )}
       </div>
-    </motion.div>
+    </section>
   );
 };
 

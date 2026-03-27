@@ -40,12 +40,14 @@ interface SeatsSectionProps {
   formData: any;
   updateFormData: (data: any) => void;
   errors: Record<string, string>;
+  mode?: "offer" | "request";
 }
 
 const SeatsSection: React.FC<SeatsSectionProps> = ({
   formData,
   updateFormData,
   errors,
+  mode = "offer",
 }) => {
   const [loading, setLoading] = useState(true);
 
@@ -55,10 +57,16 @@ const SeatsSection: React.FC<SeatsSectionProps> = ({
   }, []);
 
   const handleSeatsChange = (seats: number) => {
-    updateFormData({ ...formData, availableSeats: seats });
+    if (mode === "offer") {
+      updateFormData({ ...formData, availableSeats: seats });
+      return;
+    }
+
+    updateFormData({ ...formData, seatsRequired: seats });
   };
 
   const seatOptions = [1, 2, 3, 4, 5, 6];
+  const seatValue = mode === "offer" ? formData.availableSeats : formData.seatsRequired;
 
   if (loading) {
     return (
@@ -74,22 +82,22 @@ const SeatsSection: React.FC<SeatsSectionProps> = ({
     <div className="bg-card rounded-lg border border-border p-6 shadow-card">
       <h3 className="text-lg font-semibold text-foreground flex items-center mb-4">
         <Icon name="Users" size={20} className="mr-2 text-primary" />
-        Available Seats
+        {mode === "offer" ? "Available Seats" : "Seats Needed"}
       </h3>
 
       <div className="space-y-4">
         {/* Seat Selection */}
         <div>
           <label className="block text-sm font-medium text-foreground mb-3">
-            How many passengers can you accommodate?
+            {mode === "offer"
+              ? "How many passengers can you accommodate?"
+              : "How many seats do you need?"}
           </label>
           <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
             {seatOptions.map((seats) => (
               <Button
                 key={seats}
-                variant={
-                  formData.availableSeats === seats ? "default" : "outline"
-                }
+                variant={seatValue === seats ? "default" : "outline"}
                 onClick={() => handleSeatsChange(seats)}
                 className="h-16 flex flex-col items-center justify-center"
               >
@@ -98,8 +106,10 @@ const SeatsSection: React.FC<SeatsSectionProps> = ({
               </Button>
             ))}
           </div>
-          {errors?.availableSeats && (
-            <p className="text-sm text-error mt-2">{errors.availableSeats}</p>
+          {(errors?.availableSeats || errors?.seatsRequired) && (
+            <p className="text-sm text-error mt-2">
+              {errors.availableSeats || errors.seatsRequired}
+            </p>
           )}
         </div>
 
@@ -121,7 +131,7 @@ const SeatsSection: React.FC<SeatsSectionProps> = ({
               {/* Passenger Seats */}
               <div className="grid grid-cols-2 gap-2">
                 {Array.from(
-                  { length: Math.min(formData.availableSeats, 4) },
+                  { length: Math.min(seatValue, 4) },
                   (_, index) => (
                     <div
                       key={index}
@@ -132,7 +142,7 @@ const SeatsSection: React.FC<SeatsSectionProps> = ({
                   )
                 )}
                 {Array.from(
-                  { length: Math.max(0, 4 - formData.availableSeats) },
+                  { length: Math.max(0, 4 - seatValue) },
                   (_, index) => (
                     <div
                       key={`empty-${index}`}
@@ -149,10 +159,10 @@ const SeatsSection: React.FC<SeatsSectionProps> = ({
               </div>
 
               {/* Extra seats for larger vehicles */}
-              {formData.availableSeats > 4 && (
+              {seatValue > 4 && (
                 <div className="grid grid-cols-2 gap-2 mt-2">
                   {Array.from(
-                    { length: formData.availableSeats - 4 },
+                    { length: seatValue - 4 },
                     (_, index) => (
                       <div
                         key={`extra-${index}`}
@@ -167,7 +177,9 @@ const SeatsSection: React.FC<SeatsSectionProps> = ({
             </div>
           </div>
           <p className="text-xs text-muted-foreground text-center mt-2">
-            Green seats are available for passengers
+            {mode === "offer"
+              ? "Green seats are available for passengers"
+              : "Green seats are the seats you want to book"}
           </p>
         </div>
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import React, { useEffect, useState } from "react";
+import { useMemo } from "react";
 import Icon from "../AppIcon";
 import { Button } from "../ui/button";
 import RideCard from "./RideCard";
@@ -11,79 +11,78 @@ import { todaysDate } from "@/lib/utils";
 
 const SuggestedRides = () => {
   const router = useRouter();
+  const { rideOffers, rideRequests, loading, refetch } = useFetchSuggestedRides(
+    {
+      limit: 4,
+      date: todaysDate.toISOString(),
+    },
+  );
 
-  const { rideOffers, rideRequests, loading } = useFetchSuggestedRides({
-    limit: 3,
-    date: todaysDate.toISOString(),
-  });
-  const [suggestions, setSuggestions] = useState<CombineRideData[]>([]);
-
-  useEffect(() => {
-    const offers =
-      rideOffers && Array.isArray(rideOffers.rides) ? rideOffers.rides : [];
-    const requests =
-      rideRequests && Array.isArray(rideRequests.rides)
-        ? rideRequests.rides
-        : [];
-    setSuggestions([...offers, ...requests]);
+  const suggestions = useMemo(() => {
+    const offers = Array.isArray(rideOffers?.rides)
+      ? (rideOffers?.rides as CombineRideData[])
+      : [];
+    const requests = Array.isArray(rideRequests?.rides)
+      ? (rideRequests?.rides as CombineRideData[])
+      : [];
+    return [...offers, ...requests].slice(0, 4);
   }, [rideOffers, rideRequests]);
 
-  //---------------------------- handlers ------------------------------//
   const handleOpenRide = (ride: CombineRideData) => {
     router.push(`/search-rides/${ride.id}`);
   };
 
   return (
-    <motion.div
+    <motion.section
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      className="bg-card border border-border rounded-2xl p-6 shadow-soft mb-12 md:mb-6"
+      className="rounded-3xl border border-border/70 bg-card p-4 md:p-5 shadow-card h-full"
     >
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-3">
-          <Icon name="Sparkles" size={18} className="text-primary" />
-          <h3 className="text-lg font-semibold text-foreground">
-            Smart Suggestions
-          </h3>
-          <div className="text-xs text-muted-foreground">
-            Based on your recent activity & location
+      <div className="flex items-start justify-between gap-3 mb-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <Icon name="Lightbulb" size={20} className="text-primary" />
+            <h3 className="text-lg font-semibold text-foreground">
+              Suggested now
+            </h3>
           </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Matching today&apos;s active routes
+          </p>
         </div>
 
-        <div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              /* could shuffle suggestions */
-            }}
-          >
-            Refresh
-          </Button>
-        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8"
+          onClick={() => void refetch()}
+        >
+          <Icon name="RefreshCw" size={14} />
+          Refresh
+        </Button>
       </div>
 
       {loading ? (
         <div className="py-8 text-center text-muted-foreground">
-          Loading smart suggestions...
+          Loading suggestions...
         </div>
       ) : suggestions.length === 0 ? (
         <div className="py-8 text-center text-muted-foreground">
-          No suggestions found.
+          No suggestions right now.
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {suggestions.map((s) => (
+        <div className="space-y-3">
+          {suggestions.map((ride) => (
             <RideCard
-              key={s.id}
-              ride={s}
+              key={ride.id}
+              ride={ride}
               onClick={handleOpenRide}
-              loading={loading}
+              loading={false}
             />
           ))}
         </div>
       )}
-    </motion.div>
+    </motion.section>
   );
 };
 

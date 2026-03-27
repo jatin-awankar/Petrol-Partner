@@ -1,204 +1,131 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useMemo } from "react";
 import Link from "next/link";
-import { Search } from "lucide-react";
-import { Button } from "../ui/button";
-import Icon from "../AppIcon";
-import Skeleton from "react-loading-skeleton";
-import { motion } from "framer-motion";
-import { useFetchSuggestedRides } from "@/hooks/rides/useFetchSuggestedRides";
-import { useRouter } from "next/navigation";
 import Image from "next/image";
+import { ArrowRight, Clock3, Search, Star, Users } from "lucide-react";
+import { useRouter } from "next/navigation";
+
+import { useFetchSuggestedRides } from "@/hooks/rides/useFetchSuggestedRides";
 import { formatTimeToAmPm, todaysDate } from "@/lib/utils";
+import { Button } from "../ui/button";
 
 const RideSuggestions: React.FC = () => {
   const router = useRouter();
-
-  const [suggestions, setSuggestions] = useState<CombineRideData[] | null>(
-    null
-  );
-  const [dismissedSuggestions, setDismissedSuggestions] = useState<string[]>(
-    []
-  );
   const { rideOffers, rideRequests, loading } = useFetchSuggestedRides({
-    limit: 2,
+    limit: 3,
     date: todaysDate.toISOString(),
   });
 
-  useEffect(() => {
-    const offers =
-      rideOffers && Array.isArray(rideOffers.rides) ? rideOffers.rides : [];
-    const requests =
-      rideRequests && Array.isArray(rideRequests.rides)
-        ? rideRequests.rides
-        : [];
-    setSuggestions([...offers, ...requests]);
-  }, [rideOffers, rideRequests]);
+  const suggestions = useMemo(() => {
+    const offers = rideOffers?.rides ?? [];
+    const requests = rideRequests?.rides ?? [];
+    return [...offers, ...requests].slice(0, 5);
+  }, [rideOffers?.rides, rideRequests?.rides]);
 
-  const dismissSuggestion = (suggestionId: string) => {
-    setDismissedSuggestions((prev) => [...prev, suggestionId]);
-  };
-
-  const handleOpenRide = (ride: CombineRideData) => {
-    router.push(`/search-rides/${ride.id}`);
-  };
-
-  const visibleSuggestions = suggestions?.filter(
-    (s) => !dismissedSuggestions.includes(s.id)
-  );
-
-  if (!loading && (!visibleSuggestions || visibleSuggestions.length === 0))
+  if (!loading && suggestions.length === 0) {
     return null;
+  }
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.3 }}
-      className="bg-card border border-border rounded-xl p-6 mb-6 shadow-soft"
-    >
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center space-x-2">
-          <Icon name="Zap" size={20} className="text-yellow-400 fill-current" />
-          <h2 className="text-lg font-semibold text-foreground">
-            Suggested Rides
+    <section className="rounded-2xl border border-border/70 bg-card p-5 shadow-card">
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <span className="rounded-md bg-primary/10 p-1.5 text-primary">
+            <Search className="size-4" />
+          </span>
+          <h2 className="text-base font-semibold text-foreground">
+            Suggested rides nearby
           </h2>
         </div>
-        <Button variant="ghost" size="sm">
-          Customize
-        </Button>
-      </div>
 
-      <div className="space-y-4">
+        <Button asChild variant="outline" size="sm" className="h-8 rounded-md">
+          <Link href="/search-rides">Browse all</Link>
+        </Button>
+      </header>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
         {loading
-          ? Array.from({ length: 2 }).map((_, idx) => (
+          ? Array.from({ length: 4 }).map((_, idx) => (
               <div
                 key={idx}
-                className="border border-border rounded-lg p-4 animate-pulse"
-              >
-                <Skeleton width="100%" height={16} className="mb-2" />
-                <Skeleton width="80%" height={12} className="mb-2" />
-                <Skeleton width="90%" height={12} className="mb-2" />
-                <Skeleton width="100%" height={20} />
-              </div>
+                className="h-36 animate-pulse rounded-xl border border-border/70 bg-background"
+              />
             ))
-          : visibleSuggestions?.map((suggestion) => (
-              <div
-                key={suggestion.id}
-                className="border border-border rounded-lg p-4 hover:shadow-soft transition-shadow cursor-pointer"
-                onClick={() => handleOpenRide(suggestion)}
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex-1">
-                    <div className="flex items-center space-x-2 mb-1 flex-wrap">
-                      <h3 className="text-sm font-medium text-muted-foreground">
-                        {suggestion.driver_id
-                          ? suggestion.available_seats &&
-                            suggestion.available_seats > 1
-                            ? "Need Commuters"
-                            : "Need a Commuter"
-                          : "Need a Rider"}
-                      </h3>
-                      <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded">
-                        {suggestion.driver_id ? "offer" : "request"}
-                      </span>
-                    </div>
+          : suggestions.map((ride: CombineRideData) => {
+              const rideType = ride.driver_id ? "Offer" : "Request";
+              const seatCount =
+                ride.available_seats ?? ride.seats_required ?? 1;
+              const rating = Number(ride.avg_rating ?? 0).toFixed(1);
+              const avatar = ride.profile_image;
 
-                    <div className="flex items-center space-x-2 text-sm text-foreground mb-2">
-                      <Icon
-                        name="MapPin"
-                        size={14}
-                        className="text-green-600"
-                      />
-                      <span>
-                        {suggestion.pickup_location}&nbsp; → &nbsp;
-                        {suggestion.drop_location}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center space-x-4 text-xs text-muted-foreground">
-                      <div className="flex items-center space-x-1">
-                        <Icon name="Clock" size={12} />
-                        <span>{formatTimeToAmPm(suggestion.time)}</span>
-                      </div>
-                      <div className="flex items-center space-x-1">
-                        <Icon name="Users" size={12} />
-                        <span>
-                          {suggestion.available_seats ||
-                            suggestion.seats_required}{" "}
-                          seats
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => dismissSuggestion(suggestion.id)}
-                  >
-                    <Icon name="X" size={14} />
-                  </Button>
-                </div>
-
-                {/* Info */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-8 h-8 bg-blue-400/10 rounded-full flex items-center justify-center">
-                      {suggestion.profile_image ? (
-                        <Image
-                          src={suggestion.profile_image}
-                          alt={suggestion?.full_name?.[0]?.toUpperCase() ?? "?"}
-                          width={36}
-                          height={36}
-                          className="w-full rounded-full overflow-hidden"
-                        />
-                      ) : (
-                        <Icon name="User" size={14} className="text-blue-400" />
-                      )}
-                    </div>
-                    <div>
-                      <div className="flex items-center space-x-2">
-                        <span className="text-sm font-medium text-foreground">
-                          {suggestion.full_name}
-                        </span>
-                      </div>
-                      <div className="flex items-center space-x-1">
-                        <Icon
-                          name="Star"
-                          size={12}
-                          className="text-warning fill-current"
-                        />
-                        <span className="text-xs text-muted-foreground">
-                          {suggestion.avg_rating}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center space-x-3">
-                    <span className="text-lg font-bold text-foreground">
-                      ₹{suggestion.price_per_seat}
+              return (
+                <article
+                  key={ride.id}
+                  className="rounded-xl border border-border/70 bg-background p-3.5"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                      {rideType}
                     </span>
-                    <Button variant="default" size="sm">
-                      Book Now
+                    <span className="text-sm font-semibold text-foreground">
+                      Rs {ride.price_per_seat}
+                    </span>
+                  </div>
+
+                  <p className="mt-2 line-clamp-1 text-sm font-semibold text-foreground">
+                    {ride.pickup_location} → {ride.drop_location}
+                  </p>
+
+                  <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground">
+                    <span className="inline-flex items-center gap-1">
+                      <Clock3 className="size-3.5" />
+                      {formatTimeToAmPm(ride.time)}
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                      <Users className="size-3.5" />
+                      {seatCount} seat{seatCount > 1 ? "s" : ""}
+                    </span>
+                  </div>
+
+                  <div className="mt-3 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="relative size-8 overflow-hidden rounded-full border border-border bg-muted">
+                        {avatar ? (
+                          <Image
+                            src={avatar}
+                            alt={ride.full_name}
+                            fill
+                            sizes="32px"
+                            className="object-cover"
+                          />
+                        ) : null}
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium text-foreground">
+                          {ride.full_name}
+                        </p>
+                        <p className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                          <Star className="size-3 fill-current text-amber-500" />
+                          {Number.isNaN(Number(rating)) ? "N/A" : rating}
+                        </p>
+                      </div>
+                    </div>
+
+                    <Button
+                      size="sm"
+                      className="h-8 rounded-md"
+                      onClick={() => router.push(`/search-rides/${ride.id}`)}
+                    >
+                      View
+                      <ArrowRight className="ml-1 size-3.5" />
                     </Button>
                   </div>
-                </div>
-              </div>
-            ))}
+                </article>
+              );
+            })}
       </div>
-
-      <div className="mt-4 pt-4 border-t border-border">
-        <Link href="/search-rides">
-          <Button variant="outline" className="w-full">
-            <Search />
-            Browse All Available Rides
-          </Button>
-        </Link>
-      </div>
-    </motion.div>
+    </section>
   );
 };
 

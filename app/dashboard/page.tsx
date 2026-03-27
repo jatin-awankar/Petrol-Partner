@@ -18,20 +18,44 @@ export default async function DashboardPage() {
   }
 
   return (
-    <div className="page min-h-screen bg-background container mx-auto p-4 space-y-6">
+    <div className="page min-h-screen bg-background space-y-6">
       <WelcomeCard />
+
       <QuickActionCards />
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <SafetyReminders />
-        <Suspense fallback={<div>Loading activities...</div>}>
+
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+        <div className="space-y-6">
+          <SafetyReminders />
+        </div>
+        <Suspense
+          fallback={
+            <div className="h-64 rounded-2xl border border-border/70 bg-card p-5">
+              Loading recent bookings...
+            </div>
+          }
+        >
           <RecentActivitySection />
         </Suspense>
       </div>
-      <Suspense fallback={<div>Loading rides...</div>}>
+
+      <Suspense
+        fallback={
+          <div className="h-64 rounded-2xl border border-border/70 bg-card p-5">
+            Loading ride suggestions...
+          </div>
+        }
+      >
         <RideSuggestions />
       </Suspense>
+
       {frontendConfig.flags.enableCommunityUi ? (
-        <Suspense fallback={<div>Loading community updates...</div>}>
+        <Suspense
+          fallback={
+            <div className="h-64 rounded-2xl border border-border/70 bg-card p-5">
+              Loading community updates...
+            </div>
+          }
+        >
           <CommunityUpdates />
         </Suspense>
       ) : null}

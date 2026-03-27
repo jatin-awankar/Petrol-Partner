@@ -217,6 +217,15 @@ export async function createRideOfferRecord(input: Record<string, unknown>) {
   return payload.ride_offer;
 }
 
+export async function createRideRequestRecord(input: Record<string, unknown>) {
+  const payload = await apiRequest<{ ride_request: any }>("/v1/rides/requests", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+
+  return payload.ride_request;
+}
+
 export async function listBookings(input: { limit?: number; offset?: number }) {
   const query = new URLSearchParams();
 

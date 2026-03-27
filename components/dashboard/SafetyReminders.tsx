@@ -1,155 +1,98 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import Skeleton from "react-loading-skeleton";
+import React, { useMemo, useState } from "react";
+import Link from "next/link";
+import { AlertTriangle, MapPinned, Shield, UserRoundCheck, X } from "lucide-react";
+
 import { Button } from "../ui/button";
-import Icon from "../AppIcon";
-import { motion } from "framer-motion";
 
 const SafetyReminders: React.FC = () => {
-  const [dismissedReminders, setDismissedReminders] = useState<string[]>([]);
-  const [reminders, setReminders] = useState<Reminder[] | null>(null);
-  // const [loading, setLoading] = useState(true);
+  const [dismissed, setDismissed] = useState<string[]>([]);
 
-  useEffect(() => {
-    // const timer = setTimeout(() => {
-    //   setLoading(false);
-    // }, 500);
-    
-    setReminders([
+  const reminders = useMemo(
+    () => [
       {
-        id: "verify-driver",
-        title: "Verify Driver Details",
-        message:
-          "Add a vehicle for driver verification badge to post your offer.",
-        icon: "Shield",
-        color: "text-primary",
-        bgColor: "bg-primary/10",
-        priority: "high",
+        id: "identity",
+        title: "Complete verification profile",
+        message: "Student and vehicle checks improve trust for bookings.",
+        icon: UserRoundCheck,
+        ctaLabel: "Review profile",
+        ctaHref: "/profile-settings",
       },
       {
-        id: "share-location",
-        title: "Share Your Trip",
-        message:
-          "Share your ride details with friends or family for added safety.",
-        icon: "MapPin",
-        color: "text-success",
-        bgColor: "bg-success/10",
-        priority: "medium",
+        id: "pickup-point",
+        title: "Use clear pickup landmarks",
+        message: "Avoid confusion by using gates, bus stops, or known points.",
+        icon: MapPinned,
+        ctaLabel: "Post ride",
+        ctaHref: "/post-a-ride",
       },
       {
-        id: "emergency-contacts",
-        title: "Emergency Contacts",
-        message: "Keep emergency contacts updated in your profile settings.",
-        icon: "Phone",
-        color: "text-error",
-        bgColor: "bg-error/10",
-        priority: "high",
+        id: "trip-sharing",
+        title: "Share trip updates with a trusted contact",
+        message: "Share booking details before departure for safer travel.",
+        icon: Shield,
+        ctaLabel: "Open settings",
+        ctaHref: "/profile-settings",
       },
-    ]);
-
-    // return () => clearTimeout(timer);
-  }, []);
-
-  const visibleReminders = reminders?.filter(
-    (reminder) => !dismissedReminders.includes(reminder?.id ?? "")
+    ],
+    [],
   );
 
-  const dismissReminder = (reminderId?: string) => {
-    if (reminderId) setDismissedReminders((prev) => [...prev, reminderId]);
-  };
+  const visibleReminders = reminders.filter((item) => !dismissed.includes(item.id));
 
-  // if (loading) {
-  //   return (
-  //     <div className="bg-card border border-border rounded-xl p-6 mb-6">
-  //       <div className="flex items-center space-x-2 mb-4">
-  //         <Skeleton width={20} height={20} circle />
-  //         <Skeleton width={120} height={20} />
-  //       </div>
-  //       <div className="space-y-3">
-  //         {Array.from({ length: 3 }).map((_, idx) => (
-  //           <div key={idx} className="border border-border/50 rounded-lg p-4">
-  //             <div className="flex items-start space-x-3">
-  //               <Skeleton width={32} height={32} circle />
-  //               <div className="flex-1 space-y-1">
-  //                 <Skeleton width="60%" height={14} />
-  //                 <Skeleton width="90%" height={12} />
-  //               </div>
-  //             </div>
-  //             <Skeleton width="80%" height={20} className="mt-2" />
-  //           </div>
-  //         ))}
-  //       </div>
-  //     </div>
-  //   );
-  // }
-
-  if (!visibleReminders?.length) return null;
+  if (visibleReminders.length === 0) {
+    return null;
+  }
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.3 }}
-      className="bg-card border border-border rounded-xl p-6 mb-6 shadow-soft"
-    >
-      <div className="flex items-center space-x-2 mb-4">
-        <Icon name="AlertTriangle" size={20} className="text-warning" />
-        <h2 className="text-lg font-semibold text-foreground">
-          Safety Reminders
-        </h2>
-      </div>
+    <section className="rounded-2xl border border-border/70 bg-card p-5 shadow-card">
+      <header className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <span className="rounded-md bg-amber-100 p-1.5 text-amber-700">
+            <AlertTriangle className="size-4" />
+          </span>
+          <h2 className="text-base font-semibold text-foreground">Safety checklist</h2>
+        </div>
+      </header>
 
-      <div className="space-y-3">
-        {visibleReminders?.map((reminder) => (
-          <div
-            key={reminder?.id}
-            className={`${
-              reminder?.bgColor ?? "bg-muted"
-            } border border-border/50 rounded-lg p-4`}
+      <div className="mt-4 space-y-3">
+        {visibleReminders.map((reminder) => (
+          <article
+            key={reminder.id}
+            className="rounded-xl border border-border/70 bg-background p-3.5"
           >
-            <div className="flex items-start justify-between">
-              <div className="flex items-start space-x-3 flex-1">
-                <div className="w-8 h-8 bg-card rounded-lg flex items-center justify-center flex-shrink-0">
-                  <Icon
-                    name={reminder?.icon ?? "Info"}
-                    size={16}
-                    className={reminder?.color ?? "text-foreground"}
-                  />
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex gap-3">
+                <div className="rounded-md bg-primary/10 p-2 text-primary">
+                  <reminder.icon className="size-4" />
                 </div>
-                <div className="flex-1">
-                  <h3 className="text-sm font-medium text-foreground mb-1">
-                    {reminder?.title ?? "-"}
-                  </h3>
-                  <p className="text-xs text-muted-foreground">
-                    {reminder?.message ?? ""}
+                <div>
+                  <h3 className="text-sm font-semibold text-foreground">{reminder.title}</h3>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    {reminder.message}
                   </p>
                 </div>
               </div>
               <Button
                 variant="ghost"
-                size="sm"
-                onClick={() => dismissReminder(reminder?.id)}
-                className="ml-2 flex-shrink-0"
+                size="icon"
+                className="size-7"
+                onClick={() => setDismissed((prev) => [...prev, reminder.id])}
               >
-                <Icon name="X" size={14} />
+                <X className="size-4" />
               </Button>
             </div>
 
-            {reminder?.priority === "high" && (
-              <div className="mt-3 flex space-x-2">
-                <Button variant="outline" size="sm">
-                  Learn More
-                </Button>
-                <Button variant="default" size="sm">
-                  Update Now
-                </Button>
-              </div>
-            )}
-          </div>
+            <div className="mt-3">
+              <Button asChild size="sm" variant="outline" className="h-8 rounded-md">
+                <Link href={reminder.ctaHref}>{reminder.ctaLabel}</Link>
+              </Button>
+            </div>
+          </article>
         ))}
       </div>
-    </motion.div>
+    </section>
   );
 };
 

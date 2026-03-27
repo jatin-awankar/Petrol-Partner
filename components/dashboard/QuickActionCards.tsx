@@ -1,103 +1,106 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import Skeleton from "react-loading-skeleton";
-import { Button } from "../ui/button";
-import Icon from "../AppIcon";
+import React from "react";
 import Link from "next/link";
-import { motion } from "framer-motion";
+import { ArrowRight, Bike, Search, Wallet } from "lucide-react";
+
 import { useFetchRideOffers } from "@/hooks/rides/useRideOffers";
 import { useFetchRideRequests } from "@/hooks/rides/useRideRequests";
+import { useFetchBookings } from "@/hooks/bookings/useFetchBookings";
+import { Button } from "../ui/button";
 
 const QuickActionCards: React.FC = () => {
-  const [actions, setActions] = useState<Action[] | null>(null);
   const { offers } = useFetchRideOffers();
   const { requests } = useFetchRideRequests();
+  const { bookingsData } = useFetchBookings(20);
 
-  useEffect(() => {
-    setActions([
-      {
-        id: "find-ride",
-        title: "Find a Ride",
-        description: "Search for available rides",
-        icon: "Search",
-        color: "bg-success",
-        textColor: "text-success-foreground",
-        route: "/search-rides",
-        stats: `${
-          (offers?.totalCount ?? 0) + (requests?.totalCount ?? 0)
-        } rides available`,
-      },
-      {
-        id: "post-ride",
-        title: "Offer/Request a Ride",
-        description: "Share your journey",
-        icon: "Bike",
-        color: "bg-warning",
-        textColor: "text-warning-foreground",
-        route: "/post-a-ride",
-        stats: "Earn ₹10-100 per ride",
-      },
-    ]);
-  }, [offers?.totalCount, requests?.totalCount]);
+  const openMarketCount =
+    (offers?.totalCount ?? 0) + (requests?.totalCount ?? 0);
+  const activeBookings =
+    bookingsData?.bookings?.filter((item) =>
+      ["pending", "confirmed"].includes(item.status),
+    ).length ?? 0;
+
+  const cards = [
+    {
+      id: "find-rides",
+      title: "Find rides on your route",
+      description: "Browse live offers and requests near your pickup corridor.",
+      metricLabel: "Live market",
+      metricValue: `${openMarketCount} listings`,
+      href: "/search-rides",
+      icon: Search,
+      accentClass: "from-emerald-50 to-green-100",
+    },
+    {
+      id: "post-ride",
+      title: "Post ride offer or request",
+      description:
+        "Create a new trip in seconds and wait for matching students.",
+      metricLabel: "Your active bookings",
+      metricValue: `${activeBookings} active`,
+      href: "/post-a-ride",
+      icon: Bike,
+      accentClass: "from-amber-50 to-orange-100",
+    },
+    {
+      id: "payments",
+      title: "Track post-trip payments",
+      description:
+        "Monitor due, overdue, and completed settlements in one place.",
+      metricLabel: "Finance hub",
+      metricValue: "Settlement board",
+      href: "/payment-transactions",
+      icon: Wallet,
+      accentClass: "from-sky-50 to-blue-100",
+    },
+  ];
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.3 }}
-      className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 "
-    >
-      {actions?.map((action) => (
-            <div
-              key={action?.id ?? Math.random()}
-              className="bg-card border border-border rounded-xl p-6 hover:shadow-medium transition-shadow cursor-pointer shadow-card"
-            >
-              <Link href={action?.route}>
-                <div className="flex items-start justify-between mb-4">
-                  <div
-                    className={`w-12 h-12 ${
-                      action?.color ?? "bg-gray-300"
-                    } rounded-lg flex items-center justify-center`}
-                  >
-                    {action?.icon ? (
-                      <Icon name={action.icon} size={24} color="white" />
-                    ) : (
-                      <Skeleton width={24} height={24} />
-                    )}
-                  </div>
-                  <Icon
-                    name="ArrowRight"
-                    size={20}
-                    className="text-muted-foreground"
-                  />
-                </div>
-
-                <h3 className="text-lg font-semibold text-foreground mb-1">
-                  {action?.title ?? <Skeleton width="60%" />}
-                </h3>
-                <p className="text-muted-foreground text-sm mb-3">
-                  {action?.description ?? <Skeleton width="80%" />}
-                </p>
-
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-muted-foreground animate-pulse">
-                    {action?.stats ?? <Skeleton width="50%" />}
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                    }}
-                  >
-                    Get Started
-                  </Button>
-                </div>
-              </Link>
+    <section className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+      {cards.map((card) => (
+        <article
+          key={card.id}
+          className={`rounded-2xl border border-border/70 bg-gradient-to-br ${card.accentClass} p-5 shadow-card`}
+        >
+          <div className="flex items-center justify-between">
+            <div className="rounded-lg border border-border/70 p-2 text-primary">
+              <card.icon className="size-5" />
             </div>
-          ))}
-    </motion.div>
+            <span className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
+              {card.metricLabel}
+            </span>
+          </div>
+
+          <h2 className="mt-4 text-lg font-semibold tracking-tight text-slate-800/90">
+            {card.title}
+          </h2>
+          <p className="mt-1 text-sm leading-6 text-muted-foreground">
+            {card.description}
+          </p>
+
+          <div className="mt-4 flex items-center justify-between border-t border-border/70 pt-3">
+            <span className="text-sm font-semibold text-slate-800/90">
+              {card.metricValue}
+            </span>
+            <Button
+              asChild
+              size="sm"
+              variant="ghost"
+              className="h-8 rounded-md px-2.5"
+            >
+              <Link
+                href={card.href}
+                className="inline-flex items-center gap-1 text-slate-800/90"
+              >
+                Open
+                <ArrowRight className="size-3.5" />
+              </Link>
+            </Button>
+          </div>
+        </article>
+      ))}
+    </section>
   );
 };
 
