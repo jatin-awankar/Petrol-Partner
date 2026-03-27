@@ -1,203 +1,86 @@
-'use client';
+"use client";
 
-import React, { useEffect, useState } from "react";
+import React from "react";
 import Icon from "../AppIcon";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../ui/select";
 import { Label } from "../ui/label";
-import { Input } from "../ui/input";
-import { Button } from "../ui/button";
-import Skeleton from "react-loading-skeleton";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
+import { Badge } from "../ui/badge";
 
 interface PreferencesSectionProps {
   formData: any;
   updateFormData: (data: any) => void;
-  errors: any;
+  errors: Record<string, string>;
+  mode?: "offer" | "request";
 }
+
+const genderOptions = [
+  { value: "any", label: "Any" },
+  { value: "male", label: "Male only" },
+  { value: "female", label: "Female only" },
+];
 
 const PreferencesSection: React.FC<PreferencesSectionProps> = ({
   formData,
   updateFormData,
-  errors,
+  mode = "offer",
 }) => {
-
-  const [isLoading, setIsLoading] = useState(true);
-
-  // Simulate loading delay for skeletons
-  useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 500);
-    return () => clearTimeout(timer);
-  }, []);
-
-  const handlePreferenceChange = (field: string, value: any) => {
+  const updatePreference = (field: string, value: unknown) => {
     updateFormData({
       ...formData,
       preferences: {
-        ...formData?.preferences,
+        ...formData.preferences,
         [field]: value,
       },
     });
   };
 
-  const handleRuleToggle = (rule: string) => {
-    const rules = formData?.preferences?.rules?.includes(rule)
-      ? formData?.preferences?.rules?.filter((r: string) => r !== rule)
-      : [...(formData?.preferences?.rules || []), rule];
-    handlePreferenceChange("rules", rules);
-  };
-
-  const genderOptions = [
-    { value: "any", label: "Any Gender" },
-    { value: "male", label: "Male Only" },
-    { value: "female", label: "Female Only" },
-  ];
-
-  // const rideRules = [
-  //   { id: "no_smoking", label: "No Smoking", icon: "Ban" },
-  //   { id: "no_food", label: "No Food/Drinks", icon: "Coffee" },
-  //   { id: "no_pets", label: "No Pets", icon: "Dog" },
-  //   { id: "punctual", label: "Be Punctual", icon: "Clock" },
-  //   { id: "verified_only", label: "Verified Students Only", icon: "Shield" },
-  //   { id: "luggage_limit", label: "Limited Luggage", icon: "Luggage" },
-  // ];
-
-  if (isLoading) {
-    return (
-      <div className="bg-card rounded-lg border border-border p-6 space-y-6 shadow-card animate-pulse">
-        <Skeleton className="h-6 w-1/3" />
-        <div className="space-y-4">
-          <Skeleton className="h-24 w-full rounded-md" />
-          <Skeleton className="h-12 w-full rounded-md" />
-          <Skeleton className="h-32 w-full rounded-md" />
-          <Skeleton className="h-32 w-full rounded-md" />
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="bg-card rounded-lg border border-border p-6 space-y-6 shadow-card">
-      <h3 className="text-lg font-semibold text-foreground flex items-center mb-4">
-        <Icon name="Settings" size={20} className="mr-2 text-primary" />
-        Ride Preferences
-      </h3>
-
-      {/* Passenger Preferences */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Left Column */}
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label>Gender Preference</Label>
-            <Select
-              value={formData?.preferences?.gender || ""}
-              onValueChange={(value) => handlePreferenceChange("gender", value)}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select Gender" />
-              </SelectTrigger>
-              <SelectContent>
-                {genderOptions.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+    <div className="space-y-3 sm:space-y-4">
+      <div className="rounded-xl border border-border/70 bg-card p-4 md:p-5">
+        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <h3 className="text-base md:text-lg font-semibold text-foreground flex items-center gap-2">
+            <Icon name="ShieldCheck" size={18} className="text-primary" />
+            Ride preferences
+          </h3>
+          <Badge variant="outline">{mode === "offer" ? "Host settings" : "Rider settings"}</Badge>
         </div>
 
-        {/* Right Column */}
-        <div className="space-y-4">
-          {/* Age Range */}
-          <div className="space-y-2">
-            <Label>Age Range (Optional)</Label>
-            <div className="flex items-center space-x-3">
-              <Input
-                type="number"
-                min={18}
-                max={30}
-                value={formData?.preferences?.ageRange?.[0] || ""}
-                onChange={(e) => {
-                  const min = parseInt(e.target.value);
-                  const max = formData?.preferences?.ageRange?.[1] || min;
-                  handlePreferenceChange("ageRange", [Math.min(min, max), max]);
-                }}
-                className="flex-1"
-              />
-              <span className="text-sm text-foreground font-medium">-</span>
-              <Input
-                type="number"
-                min={18}
-                max={30}
-                value={formData?.preferences?.ageRange?.[1] || ""}
-                onChange={(e) => {
-                  const max = parseInt(e.target.value);
-                  const min = formData?.preferences?.ageRange?.[0] || max;
-                  handlePreferenceChange("ageRange", [min, Math.max(min, max)]);
-                }}
-                className="flex-1"
-              />
-            </div>
-          </div>
+        <div className="space-y-2">
+          <Label>Preferred co-rider gender</Label>
+          <Select
+            value={formData.preferences.gender || "any"}
+            onValueChange={(value) => updatePreference("gender", value)}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="Select preference" />
+            </SelectTrigger>
+            <SelectContent>
+              {genderOptions.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
-      {/* Ride Rules */}
-      {/* <div>
-        <Label className="block text-sm font-medium text-foreground mb-3">
-          Ride Rules & Requirements
-        </Label>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {rideRules.map((rule) => (
-            <Button
-              key={rule.id}
-              variant={
-                formData?.preferences?.rules?.includes(rule.id)
-                  ? "default"
-                  : "outline"
-              }
-              size="sm"
-              onClick={() => handleRuleToggle(rule.id)}
-              className="justify-start"
-            >
-              <Icon name={rule.icon} size={20} className="mr-2" />
-              {rule.label}
-            </Button>
-          ))}
-        </div>
-      </div> */}
-
-      {/* Additional Notes */}
-      <div>
-        <Label className="block text-sm font-medium text-foreground mb-3">
-          Additional Notes (Optional)
-        </Label>
+      <div className="rounded-xl border border-border/70 bg-card p-4 md:p-5">
+        <Label>Notes for other student (optional)</Label>
         <textarea
-          value={formData?.preferences?.notes || ""}
-          onChange={(e) => handlePreferenceChange("notes", e.target.value)}
-          placeholder="Any specific instructions or preferences for passengers..."
-          className="w-full px-3 py-2 border border-border rounded-lg bg-input text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent resize-none h-24"
-          maxLength={200}
+          value={formData.preferences.notes || ""}
+          onChange={(e) => updatePreference("notes", e.target.value)}
+          placeholder={
+            mode === "offer"
+              ? "Pickup landmark, luggage info, or any ride rule..."
+              : "Any flexibility or pickup guidance..."
+          }
+          className="mt-2 w-full h-28 rounded-lg border border-border bg-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+          maxLength={300}
         />
-        <p className="text-xs text-muted-foreground mt-1">
-          {formData?.preferences?.notes?.length || 0}/200 characters
+        <p className="mt-1 text-xs text-muted-foreground">
+          {(formData.preferences.notes || "").length}/300
         </p>
-      </div>
-
-      {/* Safety Guidelines */}
-      <div className="bg-warning/10 border border-warning/20 rounded-lg p-4 flex items-start space-x-3">
-        <Icon name="Shield" size={20} className="text-warning mt-0.5" />
-        <div className="text-sm text-muted-foreground space-y-1">
-          <p>• Meet passengers in well-lit, public areas</p>
-          <p>• Verify passenger identity before starting</p>
-          <p>• Share your trip details with a trusted contact</p>
-          <p>• Trust your instincts - cancel if uncomfortable</p>
-        </div>
       </div>
     </div>
   );

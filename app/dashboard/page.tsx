@@ -18,7 +18,7 @@ export default async function DashboardPage() {
   }
 
   return (
-    <div className="page min-h-screen bg-background space-y-6">
+    <div className="page min-h-screen bg-background space-y-6 !mb-12 !md:mb-auto">
       <WelcomeCard />
 
       <QuickActionCards />

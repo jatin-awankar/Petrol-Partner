@@ -287,8 +287,8 @@ const RideDetailsPage = () => {
 
       if (requestData?.passenger_id) {
         setRideData(transformRideRequest(requestData));
-          setLoading(false);
-          return;
+        setLoading(false);
+        return;
       }
 
       // If neither worked, show error

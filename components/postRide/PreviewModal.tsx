@@ -1,281 +1,204 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import Skeleton from "react-loading-skeleton";
-import { Button } from "../ui/button";
-import Icon from "../AppIcon";
+import React, { useEffect, useMemo, useState } from "react";
 import { Send } from "lucide-react";
+
+import Icon from "../AppIcon";
+import { Badge } from "../ui/badge";
+import { Button } from "../ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "../ui/dialog";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+} from "../ui/drawer";
 
 interface PreviewModalProps {
   isOpen: boolean;
   onClose: () => void;
-  formData: any; // You can replace 'any' with your FormData type
+  formData: any;
+  mode: "offer" | "request";
   onPublish: () => void;
 }
 
-// Error Boundary
-class PreviewModalErrorBoundary extends React.Component<
-  { children: React.ReactNode },
-  { hasError: boolean }
-> {
-  constructor(props: { children: React.ReactNode }) {
-    super(props);
-    this.state = { hasError: false };
-  }
+const checklistBase = [
+  "Pickup and drop locations selected",
+  "Date and time confirmed",
+  "Price per seat set",
+];
 
-  static getDerivedStateFromError(_: Error) {
-    return { hasError: true };
-  }
-
-  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error("PreviewModal Error:", error, errorInfo);
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div className="bg-red-100 text-red-800 p-4 rounded-xl">
-          Something went wrong while rendering the preview.
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
-
-const PreviewModal: React.FC<PreviewModalProps> = ({
-  isOpen,
-  onClose,
+const PreviewBody = ({
   formData,
-  onPublish,
+  mode,
+}: {
+  formData: any;
+  mode: "offer" | "request";
 }) => {
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (isOpen) {
-      setLoading(true);
-      const timer = setTimeout(() => setLoading(false), 300);
-      return () => clearTimeout(timer);
-    }
-  }, [isOpen]);
-
-  if (!isOpen) return null;
-
-  const formatDate = (date: string) =>
-    new Date(date)?.toLocaleDateString("en-IN", {
-      weekday: "long",
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
-
-  const formatTime = (time: string) =>
-    new Date(`2000-01-01T${time}`)?.toLocaleTimeString("en-IN", {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: true,
-    });
-
-  if (loading) {
-    return (
-      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-pulse">
-        <div className="bg-card rounded-lg border border-border max-w-2xl w-full h-[80vh] p-6 space-y-4">
-          <Skeleton height={30} width="40%" className="mb-4" />
-          <Skeleton count={6} height={60} className="mb-3"/>
-        </div>
-      </div>
-    );
-  }
+  const checklist = useMemo(
+    () =>
+      mode === "offer"
+        ? [...checklistBase, "Approved vehicle selected"]
+        : checklistBase,
+    [mode],
+  );
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center z-50 justify-center p-4">
-      <div className="bg-card rounded-lg border border-border max-w-2xl w-full max-h-[75vh] overflow-y-auto transition-all duration-200">
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-border">
-          <h2 className="text-xl font-semibold text-foreground">
-            Ride Preview
-          </h2>
-          <Button variant="ghost" size="icon" onClick={onClose}>
-            <Icon name="X" size={20} />
-          </Button>
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 sm:gap-3">
+        <div className="rounded-lg border border-border/70 bg-muted/20 p-3">
+          <p className="text-xs text-muted-foreground">Pickup</p>
+          <p className="mt-1 text-sm text-foreground">
+            {formData.route.pickup || "-"}
+          </p>
         </div>
-
-        {/* Content */}
-        <div className="p-6 space-y-6">
-          {/* Route Information */}
-          <div className="bg-muted/60 shadow-soft rounded-lg p-4">
-            <h3 className="font-semibold text-foreground mb-3 flex items-center">
-              <Icon name="MapPin" size={18} className="mr-2 text-primary" />
-              Route Details
-            </h3>
-            <div className="space-y-2">
-              <div className="flex items-center space-x-3">
-                <div className="w-3 h-3 bg-success rounded-full"></div>
-                <span className="text-sm text-foreground">{formData?.route?.pickup}</span>
-              </div>
-              {formData?.route?.via && (
-                <div className="flex items-center space-x-3 ml-1.5">
-                  <div className="w-1 h-8 bg-border"></div>
-                  <span className="text-sm text-muted-foreground">Via: {formData?.route?.via}</span>
-                </div>
-              )}
-              <div className="flex items-center space-x-3">
-                <div className="w-3 h-3 bg-error rounded-full"></div>
-                <span className="text-sm text-foreground">{formData?.route?.dropoff}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Schedule */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-muted/60 shadow-soft rounded-lg p-4">
-              <h3 className="font-semibold text-foreground mb-2 flex items-center">
-                <Icon name="Calendar" size={18} className="mr-2 text-primary" />
-                Date & Time
-              </h3>
-              <p className="text-sm text-foreground">{formatDate(formData?.schedule?.date)}</p>
-              <p className="text-sm text-foreground">{formatTime(formData?.schedule?.time)}</p>
-              {formData?.schedule?.flexibility > 0 && (
-                <p className="text-xs text-muted-foreground mt-1">
-                  ±{formData?.schedule?.flexibility} minutes flexible
-                </p>
-              )}
-            </div>
-
-            <div className="bg-muted/60 shadow-soft rounded-lg p-4">
-              <h3 className="font-semibold text-foreground mb-2 flex items-center">
-                <Icon name="Users" size={18} className="mr-2 text-primary" />
-                Available Seats
-              </h3>
-              <p className="text-2xl font-bold text-primary">{formData?.availableSeats}</p>
-              <p className="text-xs text-muted-foreground">passengers</p>
-            </div>
-          </div>
-
-          {/* Vehicle & Pricing */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-muted/60 shadow-soft rounded-lg p-4">
-              <h3 className="font-semibold text-foreground mb-2 flex items-center">
-                <Icon name="Car" size={18} className="mr-2 text-primary" />
-                Vehicle
-              </h3>
-              {formData?.vehicle?.selectedId ? (
-                <div>
-                  <p className="text-sm text-foreground">Honda City 2022</p>
-                  <p className="text-xs text-muted-foreground">White • Petrol • DL 01 AB 1234</p>
-                </div>
-              ) : (
-                <div>
-                  <p className="text-sm text-foreground">
-                    {formData?.vehicle?.make} {formData?.vehicle?.model}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {formData?.vehicle?.color} • {formData?.vehicle?.fuel}
-                  </p>
-                </div>
-              )}
-            </div>
-
-            <div className="bg-muted/60 shadow-soft rounded-lg p-4">
-              <h3 className="font-semibold text-foreground mb-2 flex items-center">
-                <Icon name="IndianRupee" size={18} className="mr-2 text-primary" />
-                Pricing
-              </h3>
-              <p className="text-2xl font-bold text-success">₹{formData?.pricing?.farePerSeat}</p>
-              <p className="text-xs text-muted-foreground">per seat</p>
-            </div>
-          </div>
-
-          {/* Preferences */}
-          <div className="bg-muted/60 shadow-soft rounded-lg p-4">
-            <h3 className="font-semibold text-foreground mb-3 flex items-center">
-              <Icon name="Settings" size={18} className="mr-2 text-primary" />
-              Preferences & Rules
-            </h3>
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <span className="text-muted-foreground">Gender:</span>
-                <span className="ml-2 text-foreground capitalize">{formData?.preferences?.gender}</span>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Conversation:</span>
-                <span className="ml-2 text-foreground capitalize">{formData?.preferences?.conversation}</span>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Music:</span>
-                <span className="ml-2 text-foreground capitalize">{formData?.preferences?.music}</span>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Age Range:</span>
-                <span className="ml-2 text-foreground">
-                  {formData?.preferences?.ageRange?.[0]}-{formData?.preferences?.ageRange?.[1]}
-                </span>
-              </div>
-            </div>
-            
-            {formData?.preferences?.rules?.length > 0 && (
-              <div className="mt-3">
-                <p className="text-xs text-muted-foreground mb-2">Rules:</p>
-                <div className="flex flex-wrap gap-2">
-                  {formData?.preferences?.rules?.map((rule: string | number | null | undefined) => (
-                    <span key={rule} className="px-2 py-1 bg-primary/10 text-primary text-xs rounded-full">
-                      {typeof rule === 'string' ? rule.replace(/_/g, ' ') : rule}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Payment Methods */}
-          <div className="bg-muted/60 shadow-soft rounded-lg p-4">
-            <h3 className="font-semibold text-foreground mb-2 flex items-center">
-              <Icon name="CreditCard" size={18} className="mr-2 text-primary" />
-              Payment Methods
-            </h3>
-            <div className="flex flex-wrap gap-2">
-              {formData?.pricing?.paymentMethods?.map((method: string, index: number) => (
-                <span key={index} className="px-3 py-1 bg-success/10 text-success text-sm rounded-full capitalize">
-                  {method}
-                </span>
-              ))}
-            </div>
-          </div>
-
-          {/* Additional Notes */}
-          {formData?.preferences?.notes && (
-            <div className="bg-muted/60 shadow-soft rounded-lg p-4">
-              <h3 className="font-semibold text-foreground mb-2 flex items-center">
-                <Icon name="MessageSquare" size={18} className="mr-2 text-primary" />
-                Additional Notes
-              </h3>
-              <p className="text-sm text-muted-foreground">{formData?.preferences?.notes}</p>
-            </div>
-          )}
+        <div className="rounded-lg border border-border/70 bg-muted/20 p-3">
+          <p className="text-xs text-muted-foreground">Dropoff</p>
+          <p className="mt-1 text-sm text-foreground">
+            {formData.route.dropoff || "-"}
+          </p>
         </div>
-
-        {/* Footer */}
-        <div className="flex items-center justify-between p-6 border-t border-border">
-          <Button variant="outline" onClick={onClose}>
-            Edit Details
-          </Button>
-          <Button variant="default" onClick={onPublish}>
-            Publish Ride
-            <Send />
-          </Button>
+        <div className="rounded-lg border border-border/70 bg-muted/20 p-3">
+          <p className="text-xs text-muted-foreground">Date and time</p>
+          <p className="mt-1 text-sm text-foreground">
+            {formData.schedule.date || "-"} {formData.schedule.time || ""}
+          </p>
         </div>
+        <div className="rounded-lg border border-border/70 bg-muted/20 p-3">
+          <p className="text-xs text-muted-foreground">
+            {mode === "offer" ? "Available seats" : "Seats needed"}
+          </p>
+          <p className="mt-1 text-sm text-foreground">
+            {mode === "offer"
+              ? formData.availableSeats
+              : formData.seatsRequired}
+          </p>
+        </div>
+      </div>
+
+      {mode === "offer" ? (
+        <div className="rounded-lg border border-border/70 bg-muted/20 p-3">
+          <p className="text-xs text-muted-foreground">Vehicle</p>
+          <p className="mt-1 text-sm text-foreground">
+            {formData.vehicle.make} {formData.vehicle.model}
+          </p>
+        </div>
+      ) : null}
+
+      <div className="rounded-lg border border-border/70 bg-muted/20 p-3">
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-muted-foreground">Price per seat</p>
+          <Badge variant="secondary">
+            Rs {formData.pricing.farePerSeat || 0}
+          </Badge>
+        </div>
+        <p className="mt-2 text-xs text-muted-foreground">
+          Preference: {formData.preferences.gender || "any"}
+        </p>
+      </div>
+
+      <div className="rounded-lg border border-border/70 p-3">
+        <p className="text-sm font-semibold text-foreground mb-2">Checklist</p>
+        <ul className="space-y-1">
+          {checklist.map((item) => (
+            <li
+              key={item}
+              className="text-sm text-muted-foreground flex items-center gap-2"
+            >
+              <Icon name="CheckCircle2" size={14} className="text-success" />
+              {item}
+            </li>
+          ))}
+        </ul>
       </div>
     </div>
   );
 };
 
-// Export with error boundary
-export default function PreviewModalWithErrorBoundary(
-  props: PreviewModalProps
-) {
+const PreviewModal: React.FC<PreviewModalProps> = ({
+  isOpen,
+  onClose,
+  formData,
+  mode,
+  onPublish,
+}) => {
+  const [isMobile, setIsMobile] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    return window.innerWidth < 768;
+  });
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+
+  if (isMobile) {
+    return (
+      <Drawer open={isOpen} onOpenChange={(open) => (!open ? onClose() : null)}>
+        <DrawerContent className="max-h-[88vh] mb-16 md:mb-auto">
+          <DrawerHeader>
+            <DrawerTitle>
+              {mode === "offer" ? "Review offer" : "Review request"}
+            </DrawerTitle>
+            <DrawerDescription>
+              Final check before publishing.
+            </DrawerDescription>
+          </DrawerHeader>
+          <div className="px-3 sm:px-4 pb-2 overflow-y-auto">
+            <PreviewBody formData={formData} mode={mode} />
+          </div>
+          <DrawerFooter>
+            <Button variant="outline" className="w-full" onClick={onClose}>
+              Edit
+            </Button>
+            <Button className="w-full" onClick={onPublish}>
+              {mode === "offer" ? "Publish Offer" : "Publish Request"}
+              <Send />
+            </Button>
+          </DrawerFooter>
+        </DrawerContent>
+      </Drawer>
+    );
+  }
+
   return (
-    <PreviewModalErrorBoundary>
-      <PreviewModal {...props} />
-    </PreviewModalErrorBoundary>
+    <Dialog open={isOpen} onOpenChange={(open) => (!open ? onClose() : null)}>
+      <DialogContent className="max-w-2xl mx-3 sm:mx-0">
+        <DialogHeader>
+          <DialogTitle>
+            {mode === "offer" ? "Review ride offer" : "Review ride request"}
+          </DialogTitle>
+          <DialogDescription>Confirm details and publish.</DialogDescription>
+        </DialogHeader>
+
+        <PreviewBody formData={formData} mode={mode} />
+
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-2 pt-2">
+          <Button
+            variant="outline"
+            className="w-full sm:w-auto"
+            onClick={onClose}
+          >
+            Edit
+          </Button>
+          <Button className="w-full sm:w-auto" onClick={onPublish}>
+            {mode === "offer" ? "Publish Offer" : "Publish Request"}
+            <Send />
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
-}
+};
+
+export default PreviewModal;

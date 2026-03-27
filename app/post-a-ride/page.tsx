@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { ChevronLeft, ChevronRight, Eye, Home, Trash2 } from "lucide-react";
 
 import Icon from "@/components/AppIcon";
@@ -15,7 +15,11 @@ import ProgressIndicator from "@/components/postRide/ProgressIndicator";
 import PreviewModal from "@/components/postRide/PreviewModal";
 import PricingSection from "@/components/postRide/PricingSection";
 import PreferencesSection from "@/components/postRide/PreferencesSection";
+
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useCreateRideOffer } from "@/hooks/rides/useRideOffers";
 import { useCreateRideRequest } from "@/hooks/rides/useRideRequests";
 import { useCurrentUser } from "@/hooks/auth/useCurrentUser";
@@ -54,10 +58,6 @@ const initialFormData = {
   pricing: { farePerSeat: 0, paymentMethods: ["upi"] as string[] },
   preferences: {
     gender: "any",
-    conversation: "any",
-    music: "any",
-    ageRange: [18, 25],
-    rules: [] as string[],
     notes: "",
   },
 };
@@ -83,10 +83,16 @@ function getFriendlyBusinessError(error: unknown) {
   }
 }
 
+type StepMeta = {
+  id: number;
+  title: string;
+  component: string;
+  subtitle: string;
+};
+
 const PostRide = () => {
   const { isAuthenticated, loading: authLoading } = useCurrentUser();
   const router = useRouter();
-
   const { createRideOffer, loading: offerLoading } = useCreateRideOffer();
   const { createRideRequest, loading: requestLoading } = useCreateRideRequest();
 
@@ -105,26 +111,78 @@ const PostRide = () => {
     }
   }, [authLoading, isAuthenticated, router]);
 
-  const steps = useMemo(() => {
-    const modeSteps =
-      mode === "offer"
-        ? [
-            { id: 1, title: "Route", component: "route" },
-            { id: 2, title: "Schedule", component: "schedule" },
-            { id: 3, title: "Seats", component: "seats" },
-            { id: 4, title: "Vehicle", component: "vehicle" },
-            { id: 5, title: "Pricing", component: "pricing" },
-            { id: 6, title: "Preferences", component: "preferences" },
-          ]
-        : [
-            { id: 1, title: "Route", component: "route" },
-            { id: 2, title: "Schedule", component: "schedule" },
-            { id: 3, title: "Seats", component: "seats" },
-            { id: 4, title: "Pricing", component: "pricing" },
-            { id: 5, title: "Preferences", component: "preferences" },
-          ];
-
-    return modeSteps;
+  const steps = useMemo<StepMeta[]>(() => {
+    return mode === "offer"
+      ? [
+          {
+            id: 1,
+            title: "Route",
+            component: "route",
+            subtitle: "Pickup and drop",
+          },
+          {
+            id: 2,
+            title: "Schedule",
+            component: "schedule",
+            subtitle: "When you leave",
+          },
+          {
+            id: 3,
+            title: "Seats",
+            component: "seats",
+            subtitle: "Passenger capacity",
+          },
+          {
+            id: 4,
+            title: "Vehicle",
+            component: "vehicle",
+            subtitle: "Approved vehicle",
+          },
+          {
+            id: 5,
+            title: "Pricing",
+            component: "pricing",
+            subtitle: "Fare per seat",
+          },
+          {
+            id: 6,
+            title: "Preferences",
+            component: "preferences",
+            subtitle: "Ride conditions",
+          },
+        ]
+      : [
+          {
+            id: 1,
+            title: "Route",
+            component: "route",
+            subtitle: "Pickup and drop",
+          },
+          {
+            id: 2,
+            title: "Schedule",
+            component: "schedule",
+            subtitle: "When you need ride",
+          },
+          {
+            id: 3,
+            title: "Seats",
+            component: "seats",
+            subtitle: "Seats needed",
+          },
+          {
+            id: 4,
+            title: "Pricing",
+            component: "pricing",
+            subtitle: "Your max price",
+          },
+          {
+            id: 5,
+            title: "Preferences",
+            component: "preferences",
+            subtitle: "Ride conditions",
+          },
+        ];
   }, [mode]);
 
   useEffect(() => {
@@ -132,7 +190,34 @@ const PostRide = () => {
       const savedData = localStorage.getItem(STORAGE_KEY);
       if (!savedData) return;
       const parsed = JSON.parse(savedData);
-      setFormData({ ...initialFormData, ...parsed });
+      setFormData({
+        ...initialFormData,
+        ...parsed,
+        route: {
+          ...initialFormData.route,
+          ...(parsed?.route ?? {}),
+        },
+        schedule: {
+          ...initialFormData.schedule,
+          ...(parsed?.schedule ?? {}),
+          recurring: {
+            ...initialFormData.schedule.recurring,
+            ...(parsed?.schedule?.recurring ?? {}),
+          },
+        },
+        vehicle: {
+          ...initialFormData.vehicle,
+          ...(parsed?.vehicle ?? {}),
+        },
+        pricing: {
+          ...initialFormData.pricing,
+          ...(parsed?.pricing ?? {}),
+        },
+        preferences: {
+          ...initialFormData.preferences,
+          ...(parsed?.preferences ?? {}),
+        },
+      });
     } catch {
       setFormData(initialFormData);
     }
@@ -142,94 +227,118 @@ const PostRide = () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(formData));
   }, [formData]);
 
+  const getStepErrors = (
+    step: number,
+    state: typeof formData,
+    currentMode: PostMode,
+  ): Record<string, string> => {
+    const nextErrors: Record<string, string> = {};
+    const seatsOffer = Number(state.availableSeats);
+    const seatsRequest = Number(state.seatsRequired);
+    const fareValue = Number(state.pricing.farePerSeat);
+    const pickupLat = Number(state.route.pickup_lat);
+    const pickupLng = Number(state.route.pickup_lng);
+    const dropLat = Number(state.route.drop_lat);
+    const dropLng = Number(state.route.drop_lng);
+
+    if (step === 1) {
+      if (!state.route.pickup.trim()) nextErrors.pickup = "Pickup required";
+      if (!state.route.dropoff.trim()) nextErrors.dropoff = "Drop-off required";
+      if (
+        !Number.isFinite(pickupLat) ||
+        !Number.isFinite(pickupLng) ||
+        !Number.isFinite(dropLat) ||
+        !Number.isFinite(dropLng)
+      ) {
+        nextErrors.routeCoordinates =
+          "Select pickup and drop from search or map.";
+      }
+    }
+
+    if (step === 2) {
+      if (!state.schedule.date) nextErrors.date = "Date required";
+      if (!state.schedule.time) nextErrors.time = "Time required";
+    }
+
+    if (step === 3) {
+      if (
+        currentMode === "offer" &&
+        (!Number.isFinite(seatsOffer) || seatsOffer < 1)
+      ) {
+        nextErrors.availableSeats = "Select at least 1 seat";
+      }
+      if (
+        currentMode === "request" &&
+        (!Number.isFinite(seatsRequest) || seatsRequest < 1)
+      ) {
+        nextErrors.seatsRequired = "Select at least 1 seat";
+      }
+    }
+
+    if (step === 4) {
+      if (currentMode === "offer" && !state.vehicle.selectedId) {
+        nextErrors.vehicle = "Select an approved vehicle from your profile";
+      }
+      if (
+        currentMode === "request" &&
+        (!Number.isFinite(fareValue) || fareValue < 1)
+      ) {
+        nextErrors.farePerSeat = "Set your max price per seat";
+      }
+    }
+
+    if (
+      step === 5 &&
+      currentMode === "offer" &&
+      (!Number.isFinite(fareValue) || fareValue < 1)
+    ) {
+      nextErrors.farePerSeat = "Set a fare amount";
+    }
+
+    return nextErrors;
+  };
+
   const validateStep = useCallback(
     (step: number) => {
-      const newErrors: Record<string, string> = {};
-
-      switch (step) {
-        case 1:
-          if (!formData.route.pickup.trim()) newErrors.pickup = "Pickup required";
-          if (!formData.route.dropoff.trim()) newErrors.dropoff = "Drop-off required";
-          if (
-            formData.route.pickup_lat === null ||
-            formData.route.pickup_lng === null ||
-            formData.route.drop_lat === null ||
-            formData.route.drop_lng === null
-          ) {
-            newErrors.routeCoordinates = "Please select both pickup and drop from map/search.";
-          }
-          break;
-        case 2:
-          if (!formData.schedule.date) newErrors.date = "Date required";
-          if (!formData.schedule.time) newErrors.time = "Time required";
-          break;
-        case 3:
-          if (mode === "offer" && formData.availableSeats < 1) {
-            newErrors.availableSeats = "Select at least 1 seat";
-          }
-          if (mode === "request" && formData.seatsRequired < 1) {
-            newErrors.seatsRequired = "Select at least 1 seat";
-          }
-          break;
-        case 4:
-          if (mode === "offer" && !formData.vehicle.selectedId) {
-            newErrors.vehicle = "Select an approved vehicle from your profile";
-          }
-          if (mode === "request" && formData.pricing.farePerSeat < 1) {
-            newErrors.farePerSeat = "Set your max price per seat";
-          }
-          break;
-        case 5:
-          if (mode === "offer") {
-            if (formData.pricing.farePerSeat < 1) newErrors.farePerSeat = "Set a fare amount";
-            if (!formData.pricing.paymentMethods.length) {
-              newErrors.paymentMethods = "Select at least one payment method";
-            }
-          }
-          break;
-        default:
-          break;
-      }
-
-      setErrors(newErrors);
-      return Object.keys(newErrors).length === 0;
+      const next = getStepErrors(step, formData, mode);
+      setErrors(next);
+      return Object.keys(next).length === 0;
     },
     [formData, mode],
   );
 
-  const handleNext = useCallback(() => {
+  const completedSteps = useMemo(
+    () =>
+      steps.filter(
+        (step) =>
+          Object.keys(getStepErrors(step.id, formData, mode)).length === 0,
+      ).length,
+    [steps, formData, mode],
+  );
+
+  const handleNext = () => {
     if (!validateStep(currentStep)) {
-      toast.error("Please complete all required fields");
+      toast.error("Please complete required fields.");
       return;
     }
+    if (currentStep < steps.length) setCurrentStep((prev) => prev + 1);
+    else setShowPreview(true);
+  };
 
-    if (currentStep < steps.length) {
-      setCurrentStep((prev) => prev + 1);
-      return;
-    }
-
-    setShowPreview(true);
-  }, [currentStep, steps.length, validateStep]);
-
-  const handlePrevious = useCallback(() => {
-    setCurrentStep((prev) => Math.max(prev - 1, 1));
-  }, []);
+  const handlePrevious = () => setCurrentStep((prev) => Math.max(1, prev - 1));
 
   const handleModeChange = (nextMode: PostMode) => {
     if (nextMode === mode) return;
-
     setFormData((prev) => ({
       ...prev,
       mode: nextMode,
-      seatsRequired: nextMode === "request" ? Math.max(1, prev.seatsRequired) : prev.seatsRequired,
-      availableSeats: nextMode === "offer" ? Math.max(1, prev.availableSeats) : prev.availableSeats,
     }));
     setCurrentStep(1);
     setErrors({});
   };
 
-  const handlePublish = useCallback(async () => {
-    const allValid = steps.every((_, idx) => validateStep(idx + 1));
+  const handlePublish = async () => {
+    const allValid = steps.every((step) => validateStep(step.id));
     if (!allValid) {
       toast.error("Please complete required details before publishing.");
       return;
@@ -237,29 +346,55 @@ const PostRide = () => {
 
     setIsPublishing(true);
     try {
+      const pickupLat = Number(formData.route.pickup_lat);
+      const pickupLng = Number(formData.route.pickup_lng);
+      const dropLat = Number(formData.route.drop_lat);
+      const dropLng = Number(formData.route.drop_lng);
+      const pricePerSeat = Number(formData.pricing.farePerSeat);
+      const seatsRequired = Number(formData.seatsRequired);
+      const availableSeats = Number(formData.availableSeats);
+
+      if (
+        !Number.isFinite(pickupLat) ||
+        !Number.isFinite(pickupLng) ||
+        !Number.isFinite(dropLat) ||
+        !Number.isFinite(dropLng) ||
+        !Number.isFinite(pricePerSeat)
+      ) {
+        toast.error(
+          "Route and pricing fields are invalid. Please reselect values.",
+        );
+        return;
+      }
+
       const sharedPayload = {
         pickup_location: formData.route.pickup,
         drop_location: formData.route.dropoff,
-        pickup_lat: Number(formData.route.pickup_lat),
-        pickup_lng: Number(formData.route.pickup_lng),
-        drop_lat: Number(formData.route.drop_lat),
-        drop_lng: Number(formData.route.drop_lng),
+        pickup_lat: pickupLat,
+        pickup_lng: pickupLng,
+        drop_lat: dropLat,
+        drop_lng: dropLng,
         date: formData.schedule.date,
         time: formData.schedule.time,
-        price_per_seat: Number(formData.pricing.farePerSeat),
+        price_per_seat: pricePerSeat,
         counterparty_gender_preference:
           formData.preferences.gender === "female"
             ? "female_only"
             : formData.preferences.gender === "male"
               ? "male_only"
               : "any",
+        notification_enabled: true,
         notes: formData.preferences.notes || undefined,
       };
 
       if (mode === "offer") {
+        if (!Number.isFinite(availableSeats) || availableSeats < 1) {
+          toast.error("Invalid seat count. Please update seats.");
+          return;
+        }
         await createRideOffer({
           ...sharedPayload,
-          available_seats: Number(formData.availableSeats),
+          available_seats: availableSeats,
           vehicle_id: formData.vehicle.selectedId,
           vehicle_details: formData.vehicle.make
             ? {
@@ -273,13 +408,19 @@ const PostRide = () => {
             : undefined,
         });
       } else {
+        if (!Number.isFinite(seatsRequired) || seatsRequired < 1) {
+          toast.error("Invalid seat requirement. Please update seats.");
+          return;
+        }
         await createRideRequest({
           ...sharedPayload,
-          seats_required: Number(formData.seatsRequired),
+          seats_required: seatsRequired,
         });
       }
 
-      toast.success(mode === "offer" ? "Ride offer published." : "Ride request published.");
+      toast.success(
+        mode === "offer" ? "Ride offer published." : "Ride request published.",
+      );
       localStorage.removeItem(STORAGE_KEY);
       router.push("/dashboard");
     } catch (error) {
@@ -287,143 +428,210 @@ const PostRide = () => {
     } finally {
       setIsPublishing(false);
     }
-  }, [createRideOffer, createRideRequest, formData, mode, router, steps, validateStep]);
+  };
 
-  const renderCurrentStep = useCallback(() => {
-    const component = steps[currentStep - 1]?.component;
+  const activeStep = steps[currentStep - 1];
+  const routeReady =
+    formData.route.pickup_lat !== null &&
+    formData.route.pickup_lng !== null &&
+    formData.route.drop_lat !== null &&
+    formData.route.drop_lng !== null;
+
+  const renderCurrentStep = () => {
     const commonProps = { formData, updateFormData: setFormData, errors };
-
-    switch (component) {
+    switch (activeStep?.component) {
       case "route":
         return <RouteSection {...commonProps} />;
       case "schedule":
-        return <DateTimeSection {...commonProps} />;
+        return <DateTimeSection {...commonProps} mode={mode} />;
       case "seats":
         return <SeatsSection {...commonProps} mode={mode} />;
       case "vehicle":
         return <VehicleSection {...commonProps} />;
       case "pricing":
-        return <PricingSection {...commonProps} />;
+        return <PricingSection {...commonProps} mode={mode} />;
       case "preferences":
-        return <PreferencesSection {...commonProps} />;
+        return <PreferencesSection {...commonProps} mode={mode} />;
       default:
         return null;
     }
-  }, [currentStep, steps, formData, errors, mode]);
-
-  const completedSteps = useMemo(
-    () => steps.filter((_, index) => validateStep(index + 1)).length,
-    [steps, validateStep],
-  );
-  const isFormComplete = completedSteps >= steps.length - 1;
+  };
 
   if (authLoading) return null;
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="page min-h-screen bg-background container mx-auto p-4 space-y-6"
-    >
-      <div className="rounded-xl border border-border bg-card p-4 shadow-card">
-        <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Posting mode</p>
-        <div className="mt-3 grid max-w-md grid-cols-2 gap-2">
-          <Button
-            type="button"
-            variant={mode === "offer" ? "default" : "outline"}
-            onClick={() => handleModeChange("offer")}
-          >
-            <Icon name="Car" size={16} />
-            Ride Offer
-          </Button>
-          <Button
-            type="button"
-            variant={mode === "request" ? "default" : "outline"}
-            onClick={() => handleModeChange("request")}
-          >
-            <Icon name="Hand" size={16} />
-            Ride Request
-          </Button>
-        </div>
-      </div>
-
-      <div className="pb-20 md:pb-6">
-        <ProgressIndicator currentStep={currentStep} totalSteps={steps.length} steps={steps} />
-        <div className="max-w-4xl mx-auto p-4 pt-6 space-y-6">
-          {renderCurrentStep()}
-
-          <div className="flex items-center justify-between pt-6 border-t border-border">
-            <Button
-              variant="outline"
-              onClick={handlePrevious}
-              disabled={currentStep === 1}
-              className="shadow-sm"
-            >
-              <ChevronLeft />
-              Previous
-            </Button>
-
-            <div className="flex items-center space-x-3">
-              <div className="hidden md:flex items-center space-x-2 text-sm text-muted-foreground">
-                <Icon name="CheckCircle" size={16} className="text-success" />
-                <span>
-                  {completedSteps}/{steps.length} completed
-                </span>
-              </div>
-
-              {currentStep < steps.length ? (
-                <Button variant="default" onClick={handleNext} className="shadow-sm">
-                  Next
-                  <ChevronRight />
-                </Button>
-              ) : (
-                <Button
-                  variant="default"
-                  onClick={() => setShowPreview(true)}
-                  disabled={!isFormComplete}
-                  className="shadow-sm"
-                >
-                  <Eye />
-                  Preview & Publish
-                </Button>
-              )}
-            </div>
-          </div>
-
-          <div className="bg-card rounded-lg border border-border p-4 flex items-center justify-between shadow-soft">
-            <div className="flex items-center space-x-3">
-              <Icon name="Save" size={20} className="text-muted-foreground" />
+    <div className="min-h-screen bg-background">
+      <div className="container mx-auto px-3 py-4 sm:px-4 md:py-8 mb-16 md:mb-auto">
+        <div className="flex flex-col gap-4 md:gap-6">
+          <header className="rounded-2xl border border-border/70 bg-card px-4 py-4 sm:px-5 sm:py-5 shadow-card">
+            <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
               <div>
-                <p className="text-sm font-medium text-foreground">Auto-saved</p>
-                <p className="text-xs text-muted-foreground">Your progress is automatically saved</p>
+                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                  Ride Publishing
+                </p>
+                <h1 className="mt-1 text-xl sm:text-2xl md:text-3xl font-semibold text-foreground">
+                  {mode === "offer" ? "Offer a ride" : "Request a ride"}
+                </h1>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Post in minutes with clean route, schedule and pricing
+                  details.
+                </p>
               </div>
-            </div>
 
-            <div className="flex flex-col sm:flex-row gap-2 w-fit items-end">
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={() => {
-                  if (confirm("Are you sure you want to clear all data?")) {
-                    localStorage.removeItem(STORAGE_KEY);
-                    window.location.reload();
-                  }
-                }}
+              <Tabs
+                value={mode}
+                onValueChange={(value) => handleModeChange(value as PostMode)}
               >
-                <Trash2 />
-                Clear All
-              </Button>
-
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => router.push("/dashboard")}
-                className="bg-accent dark:bg-accent/50"
-              >
-                <Home />
-                Save & Exit
-              </Button>
+                <TabsList className="h-11 w-full sm:w-auto p-1">
+                  <TabsTrigger value="offer" className="px-3 sm:px-5">
+                    <Icon name="Car" size={16} />
+                    Offer
+                  </TabsTrigger>
+                  <TabsTrigger value="request" className="px-3 sm:px-5">
+                    <Icon name="Hand" size={16} />
+                    Request
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
             </div>
+          </header>
+
+          <div className="grid grid-cols-1 xl:grid-cols-[320px_1fr] gap-4 md:gap-6">
+            <aside className="space-y-4 xl:sticky xl:top-6 self-start">
+              <Card className="border-border/70 py-4">
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center justify-between text-base">
+                    Journey Progress
+                    <Badge variant="outline">
+                      {completedSteps}/{steps.length}
+                    </Badge>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ProgressIndicator
+                    currentStep={currentStep}
+                    totalSteps={steps.length}
+                    steps={steps}
+                  />
+                </CardContent>
+              </Card>
+
+              <Card className="border-border/70 py-4">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">Trip Snapshot</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3 text-sm">
+                  <div className="rounded-lg border border-border/70 bg-muted/20 p-3">
+                    <p className="text-xs text-muted-foreground">Route</p>
+                    <p className="mt-1 text-foreground truncate">
+                      {formData.route.pickup || "Pickup not selected"}
+                    </p>
+                    <p className="mt-1 text-foreground truncate">
+                      {formData.route.dropoff || "Dropoff not selected"}
+                    </p>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Route locked</span>
+                    <Badge variant={routeReady ? "secondary" : "outline"}>
+                      {routeReady ? "Ready" : "Pending"}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Fare / seat</span>
+                    <span className="font-semibold text-foreground">
+                      Rs {formData.pricing.farePerSeat || 0}
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="border-border/70">
+                <CardContent className="py-4 text-sm text-muted-foreground">
+                  Use clear pickup points, realistic pricing, and accurate
+                  timings to get faster matches.
+                </CardContent>
+              </Card>
+            </aside>
+
+            <section className="rounded-2xl border border-border/70 bg-card shadow-card">
+              <div className="border-b border-border/70 px-4 py-4 sm:px-5 md:px-6">
+                <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                  Step {currentStep}
+                </p>
+                <h2 className="mt-1 text-lg md:text-xl font-semibold text-foreground">
+                  {activeStep?.title}
+                </h2>
+                <p className="text-sm text-muted-foreground">
+                  {activeStep?.subtitle}
+                </p>
+              </div>
+
+              <div className="p-3 sm:p-4 md:p-6">
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    key={`${mode}-${currentStep}`}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -8 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    {renderCurrentStep()}
+                  </motion.div>
+                </AnimatePresence>
+              </div>
+
+              <div className="border-t border-border/70 px-3 py-4 sm:px-4 md:px-6">
+                <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <Button
+                    variant="outline"
+                    onClick={handlePrevious}
+                    disabled={currentStep === 1}
+                    className="w-full sm:w-auto"
+                  >
+                    <ChevronLeft />
+                    Previous
+                  </Button>
+
+                  <div className="grid grid-cols-1 sm:flex sm:flex-wrap items-center gap-2 w-full sm:w-auto">
+                    <Button
+                      variant="ghost"
+                      onClick={() => router.push("/dashboard")}
+                      className="bg-accent/70 w-full sm:w-auto"
+                    >
+                      <Home />
+                      Save & Exit
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      className="w-full sm:w-auto"
+                      onClick={() => {
+                        if (confirm("Clear all ride draft data?")) {
+                          localStorage.removeItem(STORAGE_KEY);
+                          window.location.reload();
+                        }
+                      }}
+                    >
+                      <Trash2 />
+                      Clear
+                    </Button>
+                    {currentStep < steps.length ? (
+                      <Button onClick={handleNext} className="w-full sm:w-auto">
+                        Next
+                        <ChevronRight />
+                      </Button>
+                    ) : (
+                      <Button
+                        onClick={() => setShowPreview(true)}
+                        className="w-full sm:w-auto"
+                      >
+                        <Eye />
+                        Preview
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </section>
           </div>
         </div>
       </div>
@@ -438,16 +646,17 @@ const PostRide = () => {
 
       {(loading || isPublishing) && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-card rounded-lg p-8 text-center">
+          <div className="bg-card rounded-lg p-6 sm:p-8 text-center mx-3">
             <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full mx-auto mb-4" />
             <p className="text-lg font-medium text-foreground">
-              {mode === "offer" ? "Publishing ride offer..." : "Publishing ride request..."}
+              {mode === "offer"
+                ? "Publishing ride offer..."
+                : "Publishing ride request..."}
             </p>
-            <p className="text-sm text-muted-foreground mt-2">This may take a few moments</p>
           </div>
         </div>
       )}
-    </motion.div>
+    </div>
   );
 };
 

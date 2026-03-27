@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 import React from "react";
 import { usePathname, useRouter } from "next/navigation";
@@ -14,8 +14,21 @@ const BottomNavbar = () => {
     { label: "Search", path: "/search-rides", icon: "Search" },
     { label: "Post", path: "/post-a-ride", icon: "Plus", isCenter: true },
     ...(frontendConfig.flags.enableChatUi
-      ? [{ label: "Messages", path: "/messages-chat", icon: "MessageCircle", badge: 2 }]
-      : [{ label: "Payments", path: "/payment-transactions", icon: "CreditCard" }]),
+      ? [
+          {
+            label: "Messages",
+            path: "/messages-chat",
+            icon: "MessageCircle",
+            badge: 2,
+          },
+        ]
+      : [
+          {
+            label: "Payments",
+            path: "/payment-transactions",
+            icon: "CreditCard",
+          },
+        ]),
     { label: "Profile", path: "/profile-settings", icon: "User" },
   ];
 

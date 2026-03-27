@@ -16,7 +16,7 @@ const SearchRidesPage = async () => {
 
   return (
     <div className="page min-h-screen bg-background">
-      <div className="container mx-auto px-4 pb-12 pt-5 space-y-6">
+      <div className="container mx-auto mb-12 md:mb-auto px-4 pt-5 space-y-6">
         <section className="rounded-3xl border border-border/70 bg-card p-5 md:p-7 shadow-card">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>

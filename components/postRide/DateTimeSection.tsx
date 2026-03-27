@@ -1,64 +1,45 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import Icon from "@/components/AppIcon";
-import Skeleton from "react-loading-skeleton";
-import { Input } from "../ui/input";
+import React from "react";
+import { CalendarDays, Clock3 } from "lucide-react";
+
 import { Button } from "../ui/button";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import { Badge } from "../ui/badge";
 
-// Error Boundary
-class DateTimeSectionErrorBoundary extends React.Component<
-  { children: React.ReactNode },
-  { hasError: boolean }
-> {
-  constructor(props: { children: React.ReactNode }) {
-    super(props);
-    this.state = { hasError: false };
-  }
-
-  static getDerivedStateFromError(_: Error) {
-    return { hasError: true };
-  }
-
-  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error("DateTimeSection Error:", error, errorInfo);
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div className="bg-red-100 text-red-800 p-4 rounded-xl">
-          Something went wrong loading the Date & Time section.
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
-
-// Props interface
 interface DateTimeSectionProps {
   formData: any;
   updateFormData: (data: any) => void;
   errors: Record<string, string>;
+  mode?: "offer" | "request";
 }
+
+const quickTimeOptions = [
+  { label: "08:00", note: "Morning" },
+  { label: "14:00", note: "Afternoon" },
+  { label: "18:00", note: "Evening" },
+  { label: "22:00", note: "Night" },
+];
+
+const weekdayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 const DateTimeSection: React.FC<DateTimeSectionProps> = ({
   formData,
   updateFormData,
   errors,
+  mode = "offer",
 }) => {
-  const [showRecurring, setShowRecurring] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const getMinDate = () => new Date().toISOString().split("T")[0];
 
-  useEffect(() => {
-    const timer = setTimeout(() => setLoading(false), 500);
-    return () => clearTimeout(timer);
-  }, []);
+  const getMinTime = () => {
+    const selectedDate = new Date(formData.schedule.date);
+    const now = new Date();
+    if (selectedDate.toDateString() !== now.toDateString()) return "00:00";
+    return now.toTimeString().slice(0, 5);
+  };
 
-  const handleDateTimeChange = (field: string, value: any) => {
+  const setScheduleField = (field: string, value: unknown) => {
     updateFormData({
       ...formData,
       schedule: {
@@ -68,7 +49,7 @@ const DateTimeSection: React.FC<DateTimeSectionProps> = ({
     });
   };
 
-  const handleRecurringChange = (field: string, value: any) => {
+  const setRecurringField = (field: string, value: unknown) => {
     updateFormData({
       ...formData,
       schedule: {
@@ -81,181 +62,119 @@ const DateTimeSection: React.FC<DateTimeSectionProps> = ({
     });
   };
 
-  const getMinDate = () => new Date().toISOString().split("T")[0];
-
-  const getMinTime = () => {
-    const now = new Date();
-    const selectedDate = new Date(formData.schedule.date);
-    const today = new Date();
-
-    if (selectedDate.toDateString() === today.toDateString()) {
-      return now.toTimeString().slice(0, 5);
-    }
-    return "00:00";
-  };
-
-  const quickTimeOptions = [
-    { label: "Morning (8:00 AM)", value: "08:00" },
-    { label: "Afternoon (2:00 PM)", value: "14:00" },
-    { label: "Evening (6:00 PM)", value: "18:00" },
-    { label: "Night (10:00 PM)", value: "22:00" },
-  ];
-
-  if (loading) {
-    return (
-      <div className="bg-card rounded-lg border border-border p-6 space-y-4 animate-pulse shadow-card">
-        <Skeleton height={30} width={`50%`} className="mb-2" />
-        <Skeleton height={40} width="100%" />
-        <Skeleton height={40} width="100%" />
-        <Skeleton height={40} width="100%" />
-        <Skeleton height={120} width="100%" className="rounded-lg" />
-      </div>
-    );
-  }
-
   return (
-    <div className="bg-card rounded-lg border border-border p-6 shadow-card">
-      <h3 className="text-lg font-semibold text-foreground flex items-center mb-4">
-        <Icon name="Calendar" size={20} className="mr-2 text-primary" />
-        Date & Time
-      </h3>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="space-y-4">
-          <Label className="mb-2">Departure Date</Label>
-          <Input
-            type="date"
-            placeholder="Specify your date"
-            value={formData.schedule.date}
-            onChange={(e) => handleDateTimeChange("date", e.target.value)}
-            // @ts-expect-error: 'error' prop is custom for our Input component
-            error={errors?.date}
-            min={getMinDate()}
-            required
-          />
-
-          <Label className="mb-2">Departure Time</Label>
-          <Input
-            type="time"
-            placeholder="Specify your time"
-            value={formData.schedule.time}
-            onChange={(e) => handleDateTimeChange("time", e.target.value)}
-            // @ts-expect-error: 'error' prop is custom for our Input component
-            error={errors?.time}
-            min={getMinTime()}
-            required
-          />
-
-          <div>
-            <Label className="mb-2">
-              Quick Time Selection
-            </Label>
-            <div className="grid grid-cols-2 gap-2">
-              {quickTimeOptions.map((option) => (
-                <Button
-                  key={option.value}
-                  variant={
-                    formData.schedule.time === option.value
-                      ? "default"
-                      : "outline"
-                  }
-                  size="sm"
-                  onClick={() => handleDateTimeChange("time", option.value)}
-                  className="text-xs"
-                >
-                  {option.label}
-                </Button>
-              ))}
-            </div>
-          </div>
+    <div className="space-y-3 sm:space-y-4">
+      <div className="rounded-xl border border-border/70 bg-card p-4 md:p-5">
+        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <h3 className="text-base md:text-lg font-semibold text-foreground flex items-center gap-2">
+            <CalendarDays className="h-5 w-5 text-primary" />
+            Date and Time
+          </h3>
+          <Badge variant="outline">{mode === "offer" ? "Departure" : "Pickup request"}</Badge>
         </div>
 
-        <div className="space-y-4">
-          <Label className="flex flex-col items-start">
-          Flexible Timing (minutes)
-              <small>How many minutes early/late you can accommodate</small>
-          </Label>
-          <Input
-            type="number"
-            placeholder="0"
-            value={formData.schedule.flexibility}
-            onChange={(e) =>
-              handleDateTimeChange("flexibility", e.target.value)
-            }
-            min={0}
-            max={60}
-          />
-
-          <div className="bg-muted/50 rounded-lg p-4">
-            <div className="flex items-center justify-between mb-3">
-              <Label className="text-sm font-medium text-foreground">
-                Recurring Ride
-              </Label>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowRecurring(!showRecurring)}
-              >
-                {showRecurring ? "Hide" : "Setup"}
-                {showRecurring ? <ChevronUp /> : <ChevronDown />}
-              </Button>
-            </div>
-
-            {showRecurring && (
-              <div className="space-y-3">
-                <div className="grid grid-cols-7 gap-1">
-                  {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map(
-                    (day, index) => (
-                      <Button
-                        key={day}
-                        variant={
-                          formData.schedule.recurring.days.includes(index)
-                            ? "default"
-                            : "outline"
-                        }
-                        size="sm"
-                        onClick={() => {
-                          const days =
-                            formData.schedule.recurring.days.includes(index)
-                              ? formData.schedule.recurring.days.filter(
-                                  (d: number) => d !== index
-                                )
-                              : [...formData.schedule.recurring.days, index];
-                          handleRecurringChange("days", days);
-                        }}
-                        className="text-xs p-1"
-                      >
-                        {day}
-                      </Button>
-                    )
-                  )}
-                </div>
-
-                <Label>End Date (Optional)</Label>
-                <Input
-                  type="date"
-                  value={formData.schedule.recurring.endDate}
-                  onChange={(e) =>
-                    handleRecurringChange("endDate", e.target.value)
-                  }
-                  min={formData.schedule.date}
-                />
-              </div>
-            )}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label>Date</Label>
+            <Input
+              type="date"
+              value={formData.schedule.date}
+              onChange={(e) => setScheduleField("date", e.target.value)}
+              min={getMinDate()}
+            />
+            {errors?.date ? <p className="text-xs text-destructive">{errors.date}</p> : null}
+          </div>
+          <div className="space-y-2">
+            <Label>Time</Label>
+            <Input
+              type="time"
+              value={formData.schedule.time}
+              onChange={(e) => setScheduleField("time", e.target.value)}
+              min={getMinTime()}
+            />
+            {errors?.time ? <p className="text-xs text-destructive">{errors.time}</p> : null}
           </div>
         </div>
       </div>
+
+      <div className="rounded-xl border border-border/70 bg-card p-4 md:p-5">
+        <div className="mb-3 flex items-center gap-2">
+          <Clock3 className="h-5 w-5 text-primary" />
+          <h4 className="text-sm font-semibold text-foreground">Quick time picks</h4>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          {quickTimeOptions.map((option) => (
+            <Button
+              key={option.label}
+              variant={formData.schedule.time === option.label ? "default" : "outline"}
+              className="h-auto py-2 px-2"
+              onClick={() => setScheduleField("time", option.label)}
+            >
+              <div className="flex flex-col leading-tight text-left">
+                <span className="text-xs sm:text-sm">{option.label}</span>
+                <span className="text-[11px] opacity-80">{option.note}</span>
+              </div>
+            </Button>
+          ))}
+        </div>
+      </div>
+
+      <details className="rounded-xl border border-border/70 bg-card p-4 md:p-5">
+        <summary className="cursor-pointer list-none flex items-center justify-between">
+          <span className="text-sm font-semibold text-foreground">Advanced timing</span>
+          <Badge variant="outline">Optional</Badge>
+        </summary>
+
+        <div className="mt-4 space-y-4">
+          <div className="space-y-2">
+            <Label>Flexibility (minutes)</Label>
+            <Input
+              type="number"
+              value={formData.schedule.flexibility}
+              onChange={(e) => setScheduleField("flexibility", Number(e.target.value) || 0)}
+              min={0}
+              max={60}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Recurring days</Label>
+            <div className="grid grid-cols-4 sm:grid-cols-7 gap-1.5">
+              {weekdayLabels.map((day, index) => {
+                const active = formData.schedule.recurring.days.includes(index);
+                return (
+                  <Button
+                    key={day}
+                    variant={active ? "default" : "outline"}
+                    size="sm"
+                    className="px-0 text-xs"
+                    onClick={() => {
+                      const days = active
+                        ? formData.schedule.recurring.days.filter((d: number) => d !== index)
+                        : [...formData.schedule.recurring.days, index];
+                      setRecurringField("days", days);
+                    }}
+                  >
+                    {day}
+                  </Button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Recurring end date</Label>
+            <Input
+              type="date"
+              value={formData.schedule.recurring.endDate}
+              onChange={(e) => setRecurringField("endDate", e.target.value)}
+              min={formData.schedule.date || getMinDate()}
+            />
+          </div>
+        </div>
+      </details>
     </div>
   );
 };
 
-// Export wrapped with error boundary
-export default function DateTimeSectionWithErrorBoundary(
-  props: DateTimeSectionProps
-) {
-  return (
-    <DateTimeSectionErrorBoundary>
-      <DateTimeSection {...props} />
-    </DateTimeSectionErrorBoundary>
-  );
-}
+export default DateTimeSection;

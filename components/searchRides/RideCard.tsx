@@ -86,7 +86,7 @@ const RideCard: React.FC<{
                   {ride.pickup_location || "Pickup not set"}
                 </p>
               </div>
-              <div className="my-2 ml-1 h-4 border-l border-dashed border-border" />
+              <div className="my-2 ml-1 h-4 border-l-4 border-dotted border-border" />
               <div className="flex items-start gap-2">
                 <Icon
                   name="MapPin"
