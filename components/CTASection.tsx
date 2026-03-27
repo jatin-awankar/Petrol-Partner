@@ -4,7 +4,7 @@ import Link from "next/link";
 
 const CTASection = () => {
   return (
-    <section className="py-20 bg-accent">
+    <section className="py-20 mb-6 bg-accent">
       <div className="container mx-auto px-4 text-center">
         <h2 className="text-4xl font-bold text-accent-foreground mb-6">
           Ready to Start Sharing Rides?

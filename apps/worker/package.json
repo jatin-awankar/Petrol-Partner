@@ -1,0 +1,26 @@
+{
+  "name": "@petrol-partner/worker",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node ../api/node_modules/vitest/vitest.mjs run --pool threads --maxWorkers 1"
+  },
+  "dependencies": {
+    "bullmq": "latest",
+    "dotenv": "^17.2.3",
+    "ioredis": "latest",
+    "pg": "^8.16.3",
+    "pino": "latest",
+    "razorpay": "^2.9.6",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "tsx": "latest",
+    "typescript": "^5"
+  }
+}

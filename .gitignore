@@ -2,6 +2,8 @@
 
 # dependencies
 /node_modules
+/apps/api/node_modules
+apps/worker/node_modules
 /.pnp
 .pnp.*
 .yarn/*
@@ -32,6 +34,9 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+.env
+apps/api/.env
+apps/worker/.env
 
 # vercel
 .vercel
@@ -39,6 +44,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+/apps/api/dist
+/apps/worker/dist
+/packages/shared-types/dist
 
 # clerk configuration (can include secrets)
 /.clerk/

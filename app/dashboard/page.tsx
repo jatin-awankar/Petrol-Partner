@@ -1,39 +1,64 @@
-"use client";
+import { redirect } from "next/navigation";
+import { Suspense } from "react";
 
-import { useAuth } from "@clerk/nextjs";
-import { redirect, useRouter } from "next/navigation";
-import { useEffect } from "react";
+import WelcomeCard from "@/components/dashboard/WelcomeCard";
+import QuickActionCards from "@/components/dashboard/QuickActionCards";
+import SafetyReminders from "@/components/dashboard/SafetyReminders";
+import RecentActivitySection from "@/components/dashboard/RecentActivitySection";
+import RideSuggestions from "@/components/dashboard/RideSuggestions";
+import CommunityUpdates from "@/components/dashboard/CommunityUpdates";
+import { frontendConfig } from "@/lib/frontend-config";
+import { getServerCurrentUser } from "@/lib/server-auth";
 
-import DashboardStats from "@/components/dashboard/DashboardStats";
-import ActiveRide from "@/components/ActiveRide";
-import MapComponent from "@/components/dashboard/Map";
-import DisplayAllRides from "@/components/dashboard/DisplayAllRides";
+export default async function DashboardPage() {
+  const user = await getServerCurrentUser();
 
-const Page = () => {
-  const { isLoaded, isSignedIn, userId } = useAuth();
-  const router = useRouter();
-
-  if (!userId) {
-    redirect("/");
+  if (!user) {
+    redirect("/login");
   }
 
-  useEffect(() => {
-    if (isLoaded && !isSignedIn) {
-      router.replace("/"); // home page
-    } else {
-      // Sync user with Supabase
-      fetch("/api/sync-user", { method: "POST" }).catch(console.error);
-    }
-  }, [isLoaded, isSignedIn, router]);
-
   return (
-    <div className="page min-h-screen bg-background container mx-auto p-4 space-y-6">
-      <DashboardStats />
-      <ActiveRide />
-      <MapComponent className="h-64" />
-      <DisplayAllRides />
+    <div className="page min-h-screen bg-background space-y-6 !mb-12 !md:mb-auto">
+      <WelcomeCard />
+
+      <QuickActionCards />
+
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+        <div className="space-y-6">
+          <SafetyReminders />
+        </div>
+        <Suspense
+          fallback={
+            <div className="h-64 rounded-2xl border border-border/70 bg-card p-5">
+              Loading recent bookings...
+            </div>
+          }
+        >
+          <RecentActivitySection />
+        </Suspense>
+      </div>
+
+      <Suspense
+        fallback={
+          <div className="h-64 rounded-2xl border border-border/70 bg-card p-5">
+            Loading ride suggestions...
+          </div>
+        }
+      >
+        <RideSuggestions />
+      </Suspense>
+
+      {frontendConfig.flags.enableCommunityUi ? (
+        <Suspense
+          fallback={
+            <div className="h-64 rounded-2xl border border-border/70 bg-card p-5">
+              Loading community updates...
+            </div>
+          }
+        >
+          <CommunityUpdates />
+        </Suspense>
+      ) : null}
     </div>
   );
-};
-
-export default Page;
+}

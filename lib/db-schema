@@ -1,0 +1,588 @@
+-- =========================================
+-- Petrol Partner - Full DB Schema (from scratch)
+-- Compatible with Clerk auth (auth.uid() -> Clerk user id string)
+-- =========================================
+
+/* ===============================
+   1. EXTENSIONS
+   =============================== */
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
+/* ===============================
+   2. ENUM TYPES
+   =============================== */
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'booking_status') THEN
+    CREATE TYPE public.booking_status AS ENUM ('pending', 'active', 'confirmed', 'cancelled');
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'ride_offer_status') THEN
+    CREATE TYPE public.ride_offer_status AS ENUM ('scheduled', 'active', 'completed', 'cancelled');
+  END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'ride_request_status') THEN
+    CREATE TYPE public.ride_request_status AS ENUM ('scheduled', 'active', 'completed', 'cancelled');
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'payment_status') THEN
+    CREATE TYPE public.payment_status AS ENUM ('pending', 'completed', 'failed');
+  END IF;
+END
+$$ LANGUAGE plpgsql;
+
+/* ===============================
+   3. USER PROFILES (Clerk mapping)
+   - internal UUID `id` used across DB as FK
+   - clerk_id TEXT stores Clerk user id (auth.uid())
+   =============================== */
+CREATE TABLE IF NOT EXISTS public.user_profiles (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    password TEXT,
+    full_name TEXT NOT NULL,
+    email TEXT UNIQUE NOT NULL,
+    college TEXT,
+    avatar_url TEXT,
+    is_verified BOOLEAN DEFAULT FALSE,
+    avg_rating NUMERIC(3,2) DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+/* ===============================
+   4. VEHICLES
+   =============================== */
+CREATE TABLE IF NOT EXISTS public.vehicles (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    owner_id UUID REFERENCES public.user_profiles(id) ON DELETE CASCADE,
+    make TEXT NOT NULL,
+    model TEXT NOT NULL,
+    year INT,
+    color TEXT,
+    license_plate TEXT,
+    vehicle_type TEXT,
+    seats INT,
+    is_verified BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+/* ===============================
+   5. RIDE OFFERS
+   =============================== */
+CREATE TABLE IF NOT EXISTS public.ride_offers (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    driver_id UUID REFERENCES public.user_profiles(id) ON DELETE CASCADE,
+    vehicle_id UUID REFERENCES public.vehicles(id) ON DELETE SET NULL,
+    origin_lat DECIMAL,
+    origin_lng DECIMAL,
+    origin_address TEXT,
+    destination_lat DECIMAL,
+    destination_lng DECIMAL,
+    destination_address TEXT,
+    departure_time TIMESTAMP WITH TIME ZONE,
+    available_seats INT,
+    price_per_seat DECIMAL,
+    total_distance_km DECIMAL,
+    estimated_duration_minutes INT,
+    ride_offer_description TEXT,
+    ride_offer_status public.ride_offer_status DEFAULT 'active',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+/* ===============================
+   6. RIDE REQUESTS
+   =============================== */
+CREATE TABLE IF NOT EXISTS public.ride_requests (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    passenger_id UUID REFERENCES public.user_profiles(id) ON DELETE CASCADE,
+    origin_lat DECIMAL,
+    origin_lng DECIMAL,
+    origin_address TEXT,
+    destination_lat DECIMAL,
+    destination_lng DECIMAL,
+    destination_address TEXT,
+    departure_time TIMESTAMP WITH TIME ZONE,
+    seats_needed INT,
+    price_offer DECIMAL,
+    total_distance_km DECIMAL,
+    estimated_duration_minutes INT,
+    ride_request_description TEXT,
+    ride_request_status public.ride_request_status DEFAULT 'active',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+/* ===============================
+   7. BOOKINGS
+   =============================== */
+CREATE TABLE IF NOT EXISTS public.bookings (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    rider_id UUID REFERENCES public.user_profiles(id) ON DELETE CASCADE,
+    ride_offer_id UUID REFERENCES public.ride_offers(id) ON DELETE CASCADE,
+    ride_request_id UUID REFERENCES public.ride_requests(id) ON DELETE CASCADE,
+    seats_booked INT,
+    total_price DECIMAL,
+    booking_status public.booking_status DEFAULT 'pending',
+    can_review BOOLEAN DEFAULT FALSE,
+    pickup_address TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+/* ===============================
+   8. PAYMENT METHODS
+   =============================== */
+CREATE TABLE IF NOT EXISTS public.payments (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES public.user_profiles(id) ON DELETE CASCADE,
+    booking_id UUID REFERENCES public.bookings(id) ON DELETE CASCADE,
+    ride_offer_id UUID REFERENCES public.ride_offers(id) ON DELETE CASCADE,
+    ride_request_id UUID REFERENCES public.ride_requests(id) ON DELETE CASCADE,
+    
+    razorpay_order_id TEXT UNIQUE,   -- created via Razorpay API
+    razorpay_payment_id TEXT,        -- returned after payment success
+    razorpay_signature TEXT,         -- returned for verification
+    
+    amount NUMERIC(10,2) NOT NULL,
+    currency TEXT DEFAULT 'INR',
+    
+    status TEXT DEFAULT 'pending' CHECK (status IN ('pending','success','failed','refunded')),
+    payment_method TEXT,             -- e.g. 'UPI', 'Card', 'Wallet' (from Razorpay response)
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+
+/* ===============================
+   9. TRANSACTIONS
+   =============================== */
+CREATE TABLE IF NOT EXISTS public.transactions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    booking_id UUID REFERENCES public.bookings(id) ON DELETE CASCADE,
+    payer_id UUID REFERENCES public.user_profiles(id) ON DELETE CASCADE,
+    payee_id UUID REFERENCES public.user_profiles(id) ON DELETE CASCADE,
+    payments_id UUID REFERENCES public.payments(id) ON DELETE SET NULL,
+    amount DECIMAL,
+    platform_fee DECIMAL,
+    driver_earnings DECIMAL,
+    payment_status public.payment_status DEFAULT 'pending',
+    transaction_reference TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+/* ===============================
+   10. RIDE REVIEWS
+   =============================== */
+CREATE TABLE IF NOT EXISTS public.ride_reviews (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    booking_id UUID REFERENCES public.bookings(id) ON DELETE CASCADE,
+    reviewer_id UUID REFERENCES public.user_profiles(id) ON DELETE CASCADE,
+    reviewee_id UUID REFERENCES public.user_profiles(id) ON DELETE CASCADE,
+    rating INT CHECK (rating BETWEEN 1 AND 5),
+    review_text TEXT,
+    is_driver_review BOOLEAN,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+/* ===============================
+   11. EMERGENCY CONTACTS
+   =============================== */
+CREATE TABLE IF NOT EXISTS public.emergency_contacts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES public.user_profiles(id) ON DELETE CASCADE,
+    name TEXT,
+    phone TEXT,
+    relationship TEXT,
+    is_primary BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+/* ===============================
+   12. CONVERSATIONS & MESSAGES
+   =============================== */
+CREATE TABLE IF NOT EXISTS public.conversations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    ride_offer_id UUID REFERENCES public.ride_offers(id),
+    ride_request_id UUID REFERENCES public.ride_requests(id),
+    participant_1 UUID REFERENCES public.user_profiles(id),
+    participant_2 UUID REFERENCES public.user_profiles(id),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.messages (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    conversation_id UUID REFERENCES public.conversations(id) ON DELETE CASCADE,
+    sender_id UUID REFERENCES public.user_profiles(id),
+    content TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.sos_logs (
+  id uuid primary key default gen_random_uuid(),
+  user_profile_id uuid references user_profiles(id),
+  ride_offer_id uuid references ride_offers(id),
+  location_lat decimal,
+  location_lng decimal,
+  message text,
+  created_at timestamptz default now()
+);
+
+
+/* ===============================
+   13. INDEXES
+   =============================== */
+CREATE INDEX IF NOT EXISTS idx_user_profiles_email ON public.user_profiles(email);
+CREATE INDEX IF NOT EXISTS idx_vehicles_owner_id ON public.vehicles(owner_id);
+CREATE INDEX IF NOT EXISTS idx_ride_offers_driver_id ON public.ride_offers(driver_id);
+CREATE INDEX IF NOT EXISTS idx_ride_requests_passenger_id ON public.ride_requests(passenger_id);
+CREATE INDEX IF NOT EXISTS idx_bookings_ride_offer_id ON public.bookings(ride_offer_id);
+CREATE INDEX IF NOT EXISTS idx_bookings_ride_request_id ON public.bookings(ride_request_id);
+CREATE INDEX IF NOT EXISTS idx_bookings_rider_id ON public.bookings(rider_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_booking_id ON public.transactions(booking_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_status ON public.transactions(payment_status);
+CREATE INDEX IF NOT EXISTS idx_ride_reviews_booking_id ON public.ride_reviews(booking_id);
+CREATE INDEX IF NOT EXISTS idx_emergency_contacts_user_id ON public.emergency_contacts(user_id);
+CREATE INDEX IF NOT EXISTS idx_conversations_participants ON public.conversations(participant_1, participant_2);
+CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON public.messages(conversation_id);
+
+/* ===============================
+   14. FUNCTIONS
+   =============================== */
+
+-- update seats after booking
+CREATE OR REPLACE FUNCTION public.update_seats_after_booking()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $func$
+BEGIN
+    IF NEW.ride_offer_id IS NOT NULL THEN
+        UPDATE public.ride_offers
+        SET available_seats = GREATEST(COALESCE(available_seats,0) - COALESCE(NEW.seats_booked,0), 0),
+            updated_at = now()
+        WHERE id = NEW.ride_offer_id;
+    END IF;
+
+    IF NEW.ride_request_id IS NOT NULL THEN
+        UPDATE public.ride_requests
+        SET seats_needed = GREATEST(COALESCE(seats_needed,0) - COALESCE(NEW.seats_booked,0), 0),
+            updated_at = now()
+        WHERE id = NEW.ride_request_id;
+    END IF;
+
+    RETURN NEW;
+END;
+$func$;
+
+-- enable reviews after ride completion (we'll trigger via ride status update triggers)
+CREATE OR REPLACE FUNCTION public.enable_reviews_after_completion()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $func$
+BEGIN
+    -- When a ride_offer is marked completed, enable review on bookings connected to it
+    IF TG_TABLE_NAME = 'ride_offers' THEN
+      UPDATE public.bookings
+      SET can_review = TRUE, updated_at = now()
+      WHERE ride_offer_id = NEW.id;
+    ELSIF TG_TABLE_NAME = 'ride_requests' THEN
+      UPDATE public.bookings
+      SET can_review = TRUE, updated_at = now()
+      WHERE ride_request_id = NEW.id;
+    END IF;
+
+    RETURN NEW;
+END;
+$func$;
+
+-- driver earnings calculation helper
+CREATE OR REPLACE FUNCTION public.calculate_driver_earnings(amount DECIMAL)
+RETURNS DECIMAL
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+AS $func$
+    SELECT amount * 0.85;
+$func$;
+
+/* ===============================
+   15. TRIGGERS
+   =============================== */
+-- Booking seats update
+DROP TRIGGER IF EXISTS trg_update_seats_after_booking ON public.bookings;
+CREATE TRIGGER trg_update_seats_after_booking
+AFTER INSERT ON public.bookings
+FOR EACH ROW EXECUTE FUNCTION public.update_seats_after_booking();
+
+-- Enable reviews when ride status becomes 'completed'
+DROP TRIGGER IF EXISTS trg_enable_reviews_ride_offer ON public.ride_offers;
+CREATE TRIGGER trg_enable_reviews_ride_offer
+AFTER UPDATE OF ride_offer_status ON public.ride_offers
+FOR EACH ROW
+WHEN (NEW.ride_offer_status = 'completed')
+EXECUTE FUNCTION public.enable_reviews_after_completion();
+
+DROP TRIGGER IF EXISTS trg_enable_reviews_ride_request ON public.ride_requests;
+CREATE TRIGGER trg_enable_reviews_ride_request
+AFTER UPDATE OF ride_request_status ON public.ride_requests
+FOR EACH ROW
+WHEN (NEW.ride_request_status = 'completed')
+EXECUTE FUNCTION public.enable_reviews_after_completion();
+
+/* ===============================
+   16. ENABLE RLS on tables where user access matters
+   =============================== */
+ALTER TABLE public.user_profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.vehicles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ride_offers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ride_requests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.bookings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ride_reviews ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.emergency_contacts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.conversations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.payments ENABLE ROW LEVEL SECURITY;
+
+/* ===============================
+   17. RLS POLICIES (using clerk_id -> auth.uid() mapping)
+   - Policies compare auth.uid() (Clerk ID string) with user_profiles.clerk_id
+   - For FK columns that are UUIDs (owner_id, rider_id...), we check that the corresponding user_profiles row
+     has clerk_id = auth.uid() via EXISTS(...) or via SELECT.
+   =============================== */
+
+-- ---- user_profiles: user manages own profile via clerk_id match
+DROP POLICY IF EXISTS "users_manage_own_profiles" ON public.user_profiles;
+CREATE POLICY "users_manage_own_profiles"
+ON public.user_profiles
+FOR ALL
+TO authenticated
+USING (clerk_id = auth.uid()::text)
+WITH CHECK (clerk_id = auth.uid()::text);
+
+-- ---- vehicles: owner can manage own vehicles
+DROP POLICY IF EXISTS "users_manage_own_vehicles" ON public.vehicles;
+CREATE POLICY "users_manage_own_vehicles"
+ON public.vehicles
+FOR ALL
+TO authenticated
+USING (
+  EXISTS (
+    SELECT 1 FROM public.user_profiles up
+    WHERE up.id = owner_id AND up.clerk_id = auth.uid()::text
+  )
+)
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM public.user_profiles up
+    WHERE up.id = owner_id AND up.clerk_id = auth.uid()::text
+  )
+);
+
+-- ---- ride_offers: drivers can manage their own offers
+DROP POLICY IF EXISTS "users_manage_own_ride_offers" ON public.ride_offers;
+CREATE POLICY "users_manage_own_ride_offers"
+ON public.ride_offers
+FOR ALL
+TO authenticated
+USING (
+  EXISTS (
+    SELECT 1 FROM public.user_profiles up
+    WHERE up.id = driver_id AND up.clerk_id = auth.uid()::text
+  )
+)
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM public.user_profiles up
+    WHERE up.id = driver_id AND up.clerk_id = auth.uid()::text
+  )
+);
+
+-- ---- ride_requests: passengers can manage their own requests
+DROP POLICY IF EXISTS "users_manage_own_ride_requests" ON public.ride_requests;
+CREATE POLICY "users_manage_own_ride_requests"
+ON public.ride_requests
+FOR ALL
+TO authenticated
+USING (
+  EXISTS (
+    SELECT 1 FROM public.user_profiles up
+    WHERE up.id = passenger_id AND up.clerk_id = auth.uid()::text
+  )
+)
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM public.user_profiles up
+    WHERE up.id = passenger_id AND up.clerk_id = auth.uid()::text
+  )
+);
+
+-- ---- bookings: rider can manage their own bookings (rider_id)
+DROP POLICY IF EXISTS "users_manage_own_bookings" ON public.bookings;
+CREATE POLICY "users_manage_own_bookings"
+ON public.bookings
+FOR ALL
+TO authenticated
+USING (
+  EXISTS (
+    SELECT 1 FROM public.user_profiles up
+    WHERE up.id = rider_id AND up.clerk_id = auth.uid()::text
+  )
+)
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM public.user_profiles up
+    WHERE up.id = rider_id AND up.clerk_id = auth.uid()::text
+  )
+);
+
+-- ---- transactions: allow reading if payer or payee matches current user
+DROP POLICY IF EXISTS "users_manage_own_transactions" ON public.transactions;
+CREATE POLICY "users_manage_own_transactions"
+ON public.transactions
+FOR SELECT
+TO authenticated
+USING (
+  EXISTS (
+    SELECT 1 FROM public.user_profiles up
+    WHERE (up.id = payer_id OR up.id = payee_id) AND up.clerk_id = auth.uid()::text
+  )
+);
+
+-- ---- emergency contacts
+DROP POLICY IF EXISTS "users_manage_own_emergency_contacts" ON public.emergency_contacts;
+CREATE POLICY "users_manage_own_emergency_contacts"
+ON public.emergency_contacts
+FOR ALL
+TO authenticated
+USING (
+  EXISTS (
+    SELECT 1 FROM public.user_profiles up
+    WHERE up.id = user_id AND up.clerk_id = auth.uid()::text
+  )
+)
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM public.user_profiles up
+    WHERE up.id = user_id AND up.clerk_id = auth.uid()::text
+  )
+);
+
+-- ---- conversations: allow participants access
+DROP POLICY IF EXISTS "users_access_own_conversations" ON public.conversations;
+CREATE POLICY "users_access_own_conversations"
+ON public.conversations
+FOR ALL
+TO authenticated
+USING (
+  EXISTS (
+    SELECT 1 FROM public.user_profiles up
+    WHERE (up.id = participant_1 OR up.id = participant_2) AND up.clerk_id = auth.uid()::text
+  )
+)
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM public.user_profiles up
+    WHERE (up.id = participant_1 OR up.id = participant_2) AND up.clerk_id = auth.uid()::text
+  )
+);
+
+-- ---- messages: ensure sender is current user and conversation is accessible
+DROP POLICY IF EXISTS "users_access_conversation_messages" ON public.messages;
+CREATE POLICY "users_access_conversation_messages"
+ON public.messages
+FOR ALL
+TO authenticated
+USING (
+  EXISTS (
+    SELECT 1 FROM public.conversations c
+    JOIN public.user_profiles up ON ( (c.participant_1 = up.id OR c.participant_2 = up.id) AND up.clerk_id = auth.uid()::text )
+    WHERE c.id = conversation_id
+  )
+)
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM public.user_profiles up
+    WHERE up.id = sender_id AND up.clerk_id = auth.uid()::text
+  )
+);
+
+DROP POLICY IF EXISTS "user_access_own_payments" ON public.payments;
+CREATE POLICY "user_access_own_payments"
+ON public.payments
+FOR SELECT TO authenticated
+USING (
+  user_id = (
+    SELECT id::uuid FROM public.user_profiles
+    WHERE clerk_id = current_setting('request.jwt.claims.sub', true)
+  )
+);
+
+DROP POLICY IF EXISTS "insert_own_payments" ON public.payments;
+CREATE POLICY "insert_own_payments"
+ON public.payments
+FOR INSERT TO authenticated
+WITH CHECK (
+  user_id = (
+    SELECT id::uuid FROM public.user_profiles
+    WHERE clerk_id = current_setting('request.jwt.claims.sub', true)
+  )
+);
+
+
+/* ===============================
+   18. UTILITY: CLEANUP / ADMIN FUNCTIONS (optional)
+   - kept but do NOT trigger on auth.users; Clerk doesn't insert into auth.users
+   =============================== */
+
+CREATE OR REPLACE FUNCTION public.cleanup_demo_data()
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $cleanup$
+DECLARE
+    demo_user_ids UUID[];
+BEGIN
+    SELECT ARRAY_AGG(id) INTO demo_user_ids
+    FROM public.user_profiles
+    WHERE email LIKE '%@rideshare.com';
+
+    IF demo_user_ids IS NOT NULL THEN
+      DELETE FROM public.messages WHERE sender_id = ANY(demo_user_ids);
+      DELETE FROM public.conversations WHERE participant_1 = ANY(demo_user_ids) OR participant_2 = ANY(demo_user_ids);
+      DELETE FROM public.ride_reviews WHERE reviewer_id = ANY(demo_user_ids) OR reviewee_id = ANY(demo_user_ids);
+      DELETE FROM public.transactions WHERE payer_id = ANY(demo_user_ids) OR payee_id = ANY(demo_user_ids);
+      DELETE FROM public.bookings WHERE rider_id = ANY(demo_user_ids);
+      DELETE FROM public.ride_offers WHERE driver_id = ANY(demo_user_ids);
+      DELETE FROM public.ride_requests WHERE passenger_id = ANY(demo_user_ids);
+      DELETE FROM public.vehicles WHERE owner_id = ANY(demo_user_ids);
+      DELETE FROM public.payment_methods WHERE user_id = ANY(demo_user_ids);
+      DELETE FROM public.emergency_contacts WHERE user_id = ANY(demo_user_ids);
+      DELETE FROM public.user_profiles WHERE id = ANY(demo_user_ids);
+    END IF;
+END;
+$cleanup$;
+
+/* ===============================
+   19. NOTES & Next Steps
+   ===============================
+   1) Clerk integration:
+      - Use your server-side sync route (/api/sync-user) to upsert into user_profiles with clerk_id set to Clerk's userId.
+      - Example upsert keys: clerk_id, full_name, email, college, is_verified.
+      - When creating/updating records from server code that uses a service role key, you can set user_profiles.id explicitly or leave it auto-generated.
+
+   2) RLS / auth.uid():
+      - auth.uid() will be the Clerk user id (text). Policies compare it to user_profiles.clerk_id via EXISTS subqueries that map clerk_id -> internal UUID.
+      - Keep using the same approach in policies for any new tables referencing users.
+
+   3) If you previously had a trigger connected to auth.users (Supabase Auth), remove it (Clerk won't insert there). This script does NOT create any on_auth_user_created trigger.
+
+   4) If you need automatic insertion into user_profiles on external events, do it via your server-side sync route (Clerk permissioned fetch + supabaseAdmin upsert).
+
+   5) Test on staging first. Back up production if applying migrations.
+
+-- End of SQL
