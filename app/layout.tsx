@@ -1,11 +1,10 @@
 import type { Metadata } from "next";
 import { Poppins } from "next/font/google";
 import "./globals.css";
-// import { Toaster } from "@/components/ui/sonner";
 import React from "react";
 import AuthenticatedNavbars from "@/components/AuthenticatedNavbars";
 import ClientProviders from "./providers/ClientProviders";
-import { Analytics } from '@vercel/analytics/next';
+import { Analytics } from "@vercel/analytics/next";
 
 const poppins = Poppins({
   subsets: ["latin"],
@@ -31,10 +30,10 @@ export default function RootLayout({
       suppressHydrationWarning
       className={`${poppins.variable} font-sans antialiased`}
     >
-      <body>
+      <body className="min-h-screen bg-background text-foreground">
         <ClientProviders>
           <AuthenticatedNavbars />
-          {children}
+          <main className="min-h-screen">{children}</main>
           <Analytics />
         </ClientProviders>
       </body>
