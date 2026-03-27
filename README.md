@@ -1,116 +1,82 @@
-# Petrol Partner Backend Runbook
+# Petrol Partner
 
-This repo now contains three runtime surfaces:
+**Petrol Partner** is a student-only intercity ride-sharing platform built as a final-year major project.
+It helps college students share private-vehicle trips safely, reduce travel cost, and improve seat utilization through verified, route-based matching.
 
-- `web`: the existing Next.js application
-- `apps/api`: the production Express API
-- `apps/worker`: the background worker for expiry, overdue, reconcile, and recovery sweeps
+## Vision
 
-## Production Shape
+Build the mobility layer for students: trusted, affordable, and operationally reliable.
 
-- Platform target: `Render`
-- Database: `Supabase Postgres`
-- Queue/runtime state: `managed Redis`
-- Auth transport: `httpOnly` cookies, so the web app and API should live under the same parent domain
+Students should not choose between expensive solo travel and unsafe alternatives. Petrol Partner creates a campus-verified transport network where any verified user can become:
 
-## Local Development
+- A ride giver (post a ride offer)
+- A ride taker (post a ride request)
 
-1. Copy:
-   - `apps/api/.env.example` -> `apps/api/.env`
-   - `apps/worker/.env.example` -> `apps/worker/.env`
-2. Start local Postgres and Redis.
-3. Apply the schema from `apps/api/src/db/migrations/0001_init.sql`.
-4. Run:
-   - `npm run api:dev`
-   - `npm run worker:dev`
-   - `npm run dev`
+## Problem We Solve
 
-## Verification Model
+- Empty seats in student-owned vehicles on intercity routes
+- Fragmented coordination through informal groups/chats
+- Limited trust and payment accountability in peer-to-peer travel
 
-- Student verification submissions are `pending_review` until approved by an admin.
-- Driver eligibility submissions are `pending_review` until approved by an admin.
-- Vehicles are `pending_review` until approved by an admin.
-- Only verified students can create ride requests, bookings, or settlements.
-- Only users with approved driver eligibility and an approved vehicle can create ride offers.
+## Product Highlights
 
-## Critical Execution Flow
+- Student-first verification and eligibility controls
+- Unified posting flow for both ride offers and ride requests
+- Route-based discovery and asynchronous matching signals
+- End-to-end booking lifecycle: request -> confirm -> complete
+- Settlement lifecycle with due/overdue handling and financial hold protection
+- Post-trip online settlement using Razorpay with webhook-driven finality
+- Queue-backed backend processing for durable, production-style execution
 
-1. User registers and logs in.
-2. User submits student verification, driver eligibility, and vehicle details.
-3. Admin reviews pending verification items through the API.
-4. Verified students create ride offers or requests.
-5. Match refresh requests are persisted and processed by the API background processor.
-6. Bookings are created and expiry jobs are recovered by worker sweeps if queue dispatch was missed.
-7. Completed bookings open settlements.
-8. Overdue settlements are recovered by worker sweeps if queue dispatch was missed.
-9. Online payments flow through Razorpay order creation, client verify intake, webhook persistence, and worker-driven reconcile.
-10. Stale webhook or client-verify states are recovered by worker sweeps.
+## Trust and Safety Model
 
-## Deployment
+- Only verified students can access transaction flows
+- Ride offers require approved driver eligibility and approved vehicle
+- Gender preference controls supported at ride-posting level
+- Financial discipline enforced through overdue settlement hold rules
+- Payment final state is decided by reconcile/webhook, not client callback
 
-- Use `render.yaml` as the baseline blueprint.
-- Deploy `apps/api` and `apps/worker` as separate services.
-- Do not deploy production without Redis configured.
-- Keep `ENABLE_CHAT=false` and `ENABLE_TRACKING=false` until those runtimes are implemented.
+## System Architecture
 
-## Verification Commands
+Monorepo services:
 
-- API typecheck: `npm --prefix apps/api run typecheck`
-- API tests: `npm --prefix apps/api run test`
-- Worker typecheck: `npm --prefix apps/worker run typecheck`
-- Worker tests: `npm --prefix apps/worker run test`
+- `web` -> Next.js frontend
+- `apps/api` -> Express + TypeScript domain API
+- `apps/worker` -> BullMQ worker for reconcile/scheduler/background jobs
 
-## Frontend Cutover Flags
+Core stack:
 
-Create `.env.local` from `.env.local.example` and set:
+- Next.js (App Router)
+- Node.js + Express
+- Supabase Postgres
+- Redis + BullMQ
+- Razorpay
+- Mapbox
+- Deploy model: Vercel (`web`) + Render (`apps/api`, `apps/worker`)
 
-- `NEXT_PUBLIC_API_BASE_URL`
-- `NEXT_PUBLIC_USE_NEW_AUTH=true`
-- `NEXT_PUBLIC_USE_NEW_VERIFICATION=true`
-- `NEXT_PUBLIC_USE_NEW_RIDES=true`
-- `NEXT_PUBLIC_USE_NEW_BOOKINGS=true`
-- `NEXT_PUBLIC_USE_NEW_SETTLEMENTS=true`
-- `NEXT_PUBLIC_USE_NEW_PAYMENTS=true`
-- `NEXT_PUBLIC_ENABLE_COMMUNITY_UI=false`
-- `NEXT_PUBLIC_ENABLE_RATINGS_UI=false`
-- `NEXT_PUBLIC_ENABLE_CHAT_UI=false`
-- `NEXT_PUBLIC_ENABLE_TRACKING_UI=false`
+## Current Scope
 
-Legacy Next.js auth endpoints are deprecated and return `410`. Frontend auth must use Express `/v1/auth/*`.
+Implemented and actively integrated:
 
-## Staging Smoke Gate (Before Full Frontend Cutover)
+- Authentication and session flows
+- Verification domain
+- Rides (offer + request)
+- Bookings
+- Settlements
+- Payments (post-trip online settlement path)
 
-1. Login on web and confirm `GET /v1/auth/me` returns authenticated user.
-2. Submit verification and approve it from backend/admin flow.
-3. Create ride offer/request and confirm listing/detail pages work from `/v1/rides/*`.
-4. Create booking, confirm, complete ride, and confirm settlement is opened.
-5. Complete one offline settlement and one Razorpay sandbox online settlement.
-6. Verify overdue hold is applied when unpaid and removed after successful payment.
+Planned roadmap items:
 
-## Automated Staging Smoke Script
+- Real-time chat runtime
+- Live trip tracking runtime
+- Push notification delivery
+- Advanced trust graph and safety tooling
 
-Run:
+## Business Direction
 
-- `npm run smoke:staging`
+Petrol Partner is being developed as a startup-ready foundation, not only an academic prototype.
+The long-term direction is to expand from campus-level usage to regional student travel corridors with stronger trust infrastructure, better routing intelligence, and sustainable platform revenue models.
 
-Required environment variables:
+## Project Context
 
-- `SMOKE_API_BASE_URL`
-- `SMOKE_PASSENGER_EMAIL`
-- `SMOKE_PASSENGER_PASSWORD`
-- `SMOKE_DRIVER_EMAIL`
-- `SMOKE_DRIVER_PASSWORD`
-
-Optional (recommended for auto-approval):
-
-- `SMOKE_ADMIN_EMAIL`
-- `SMOKE_ADMIN_PASSWORD`
-
-What it verifies:
-
-- Express auth cookie flow (`/v1/auth/*`)
-- Verification submission + optional admin approval
-- Ride offer creation with approved vehicle
-- Booking create -> confirm -> complete
-- Settlement creation after completion
-- Online payment order creation + payment status read
+This project is developed as a final-year major project and serves as the baseline product for a future student mobility startup.

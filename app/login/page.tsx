@@ -1,16 +1,22 @@
-import { redirect } from "next/navigation";
+"use client";
+
+import { useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 import AuthSplitLayout from "@/components/auth/AuthSplitLayout";
 import LoginForm from "@/components/LoginForm";
-import { getServerCurrentUser } from "@/lib/server-auth";
+import { useCurrentUser } from "@/hooks/auth/useCurrentUser";
 
-export default async function LoginPage() {
-  const user = await getServerCurrentUser();
+export default function LoginPage() {
+  const router = useRouter();
+  const { isAuthenticated, loading } = useCurrentUser();
 
-  if (user) {
-    redirect("/dashboard");
-  }
+  useEffect(() => {
+    if (!loading && isAuthenticated) {
+      router.replace("/dashboard");
+    }
+  }, [isAuthenticated, loading, router]);
 
   return (
     <AuthSplitLayout

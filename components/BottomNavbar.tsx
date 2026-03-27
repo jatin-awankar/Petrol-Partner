@@ -2,8 +2,10 @@
 
 import React from "react";
 import { usePathname, useRouter } from "next/navigation";
+
 import Icon from "./AppIcon";
 import { frontendConfig } from "@/lib/frontend-config";
+import { cn } from "@/lib/utils";
 
 const BottomNavbar = () => {
   const pathname = usePathname();
@@ -33,60 +35,62 @@ const BottomNavbar = () => {
   ];
 
   return (
-    <nav
-      className="fixed bottom-0 left-0 right-0 z-100 md:hidden backdrop-blur-xl bg-card/90 border-t border-border 
-      shadow-lg pb-[env(safe-area-inset-bottom)]"
-    >
-      <div className="flex items-center justify-around h-16 px-2">
-        {navigationItems.map((item) => {
-          const isActive = pathname === item.path;
+    <nav className="fixed inset-x-0 bottom-0 z-50 md:hidden" aria-label="Bottom navigation">
+      <div className="mx-auto w-full max-w-xl px-3 pb-[max(0.625rem,env(safe-area-inset-bottom))]">
+        <div className="flex h-16 items-center justify-between rounded-2xl border border-border/80 bg-card/95 px-2 shadow-card backdrop-blur-xl">
+          {navigationItems.map((item) => {
+            const isActive = pathname === item.path;
 
-          return (
-            <button
-              key={item.path}
-              onClick={() => router.push(item.path)}
-              aria-current={isActive ? "page" : undefined}
-              className={`relative flex flex-col items-center justify-center transition-all duration-200 cursor-pointer
-                ${
-                  item.isCenter
-                    ? "translate-y-[-18%]"
-                    : "opacity-90 hover:opacity-100"
-                }
-                ${isActive ? "text-primary scale-105" : "text-muted-foreground"}
-              `}
-            >
-              <div
-                className={`relative flex items-center justify-center 
-                  ${item.isCenter ? "bg-gradient-hero text-white rounded-full w-14 h-14 shadow-lg" : ""}
-                `}
-              >
-                <Icon
-                  name={item.icon}
-                  size={item.isCenter ? 24 : 22}
-                  strokeWidth={isActive ? 2.5 : 2}
-                />
-
-                {/* 🔴 Notification Badge */}
-                {item.badge && !item.isCenter && (
-                  <span className="absolute -top-1.5 -right-2 min-w-[16px] h-[16px] bg-error text-error-foreground text-[10px] font-semibold rounded-full flex items-center justify-center px-[3px] shadow-md">
-                    {item.badge > 99 ? "99+" : item.badge}
-                  </span>
+            return (
+              <button
+                key={item.path}
+                onClick={() => router.push(item.path)}
+                aria-current={isActive ? "page" : undefined}
+                className={cn(
+                  "relative flex cursor-pointer flex-col items-center justify-center transition-all duration-200",
+                  item.isCenter ? "-mt-9" : "min-w-[62px]",
+                  isActive ? "text-primary" : "text-muted-foreground",
                 )}
-              </div>
-
-              {/* Label */}
-              {!item.isCenter && (
-                <span
-                  className={`text-[11px] mt-1 font-medium tracking-tight ${
-                    isActive ? "text-primary" : "text-muted-foreground"
-                  }`}
+              >
+                <div
+                  className={cn(
+                    "relative flex items-center justify-center",
+                    item.isCenter
+                      ? "h-14 w-14 rounded-2xl bg-gradient-primary text-primary-foreground shadow-soft"
+                      : "h-9 w-9 rounded-xl transition-colors",
+                    !item.isCenter && isActive
+                      ? "bg-accent text-accent-foreground"
+                      : !item.isCenter
+                        ? "hover:bg-muted/70"
+                        : "",
+                  )}
                 >
-                  {item.label}
-                </span>
-              )}
-            </button>
-          );
-        })}
+                  <Icon
+                    name={item.icon}
+                    size={item.isCenter ? 23 : 20}
+                    strokeWidth={isActive ? 2.5 : 2}
+                  />
+
+                  {item.badge && !item.isCenter ? (
+                    <span className="absolute -right-2 -top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-error px-[3px] text-[10px] font-semibold text-error-foreground shadow-md">
+                      {item.badge > 99 ? "99+" : item.badge}
+                    </span>
+                  ) : null}
+                </div>
+
+                {!item.isCenter ? (
+                  <span
+                    className={`mt-1 text-[11px] font-medium tracking-tight ${
+                      isActive ? "text-primary" : "text-muted-foreground"
+                    }`}
+                  >
+                    {item.label}
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
       </div>
     </nav>
   );
