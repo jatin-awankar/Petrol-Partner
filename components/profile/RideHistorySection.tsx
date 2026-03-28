@@ -94,9 +94,9 @@ const RideHistorySection: React.FC<RideHistorySectionProps> = ({
     <section className="rounded-2xl border border-border/70 bg-card/90 shadow-card">
       <button
         onClick={onToggle}
-        className="flex w-full items-center justify-between px-4 py-4 transition-colors hover:bg-muted/40"
+        className="flex w-full items-center justify-between px-4 py-3.5 transition-colors hover:bg-muted/40 sm:px-5 sm:py-4"
       >
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5 sm:gap-3">
           <Icon name="History" size={20} className="text-primary" />
           <div className="text-left">
             <h3 className="font-medium text-foreground">Ride History</h3>
@@ -112,7 +112,7 @@ const RideHistorySection: React.FC<RideHistorySectionProps> = ({
           isExpanded ? "max-h-[2800px] opacity-100" : "max-h-0 opacity-0"
         }`}
       >
-        <div className="space-y-4 border-t border-border/70 px-4 pb-5 pt-4">
+        <div className="space-y-4 border-t border-border/70 px-4 pb-5 pt-4 sm:px-5">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <Select value={filter} onValueChange={setFilter}>
               <SelectTrigger className="sm:w-[220px]">

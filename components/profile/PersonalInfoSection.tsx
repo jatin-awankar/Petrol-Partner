@@ -231,6 +231,7 @@ const PersonalInfoSection: React.FC<PersonalInfoSectionProps> = ({
                     value={formData.name ?? ""}
                     onChange={(e) => setField("name", e.target.value)}
                     disabled={isSaving}
+                    placeholder="Enter your full name"
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -240,11 +241,17 @@ const PersonalInfoSection: React.FC<PersonalInfoSectionProps> = ({
                     value={formData.phone ?? ""}
                     onChange={(e) => setField("phone", e.target.value)}
                     disabled={isSaving}
+                    placeholder="+91 98765 43210"
                   />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="profile-email">Email (read only)</Label>
-                  <Input id="profile-email" value={formData.email ?? ""} disabled />
+                  <Input
+                    id="profile-email"
+                    value={formData.email ?? ""}
+                    disabled
+                    placeholder="Email is managed by account login"
+                  />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="profile-dob">Date of birth</Label>
@@ -281,6 +288,7 @@ const PersonalInfoSection: React.FC<PersonalInfoSectionProps> = ({
                     value={formData.address ?? ""}
                     onChange={(e) => setField("address", e.target.value)}
                     disabled={isSaving}
+                    placeholder="Hostel / Street / Area"
                   />
                 </div>
               </div>
@@ -292,6 +300,7 @@ const PersonalInfoSection: React.FC<PersonalInfoSectionProps> = ({
                     value={formData.emergencyContact ?? ""}
                     onChange={(e) => setField("emergencyContact", e.target.value)}
                     disabled={isSaving}
+                    placeholder="Parent or trusted contact name"
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -301,6 +310,7 @@ const PersonalInfoSection: React.FC<PersonalInfoSectionProps> = ({
                     value={formData.emergencyPhone ?? ""}
                     onChange={(e) => setField("emergencyPhone", e.target.value)}
                     disabled={isSaving}
+                    placeholder="+91 91234 56789"
                   />
                 </div>
               </div>

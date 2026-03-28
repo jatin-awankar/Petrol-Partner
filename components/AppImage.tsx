@@ -2,7 +2,7 @@
 'use client';
 
 import Image from "next/image";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 
 type ImageProps = React.ImgHTMLAttributes<HTMLImageElement> & {
   src: string;
@@ -18,6 +18,11 @@ const AppImage: React.FC<ImageProps> = ({
   fallbackSrc = "/assets/images/no_image.png",
 }) => {
   const [imgSrc, setImgSrc] = useState(src);
+  const isDataUrl = (imgSrc || "").startsWith("data:image/");
+
+  useEffect(() => {
+    setImgSrc(src);
+  }, [src]);
 
   const handleError = () => {
     if (imgSrc !== fallbackSrc) {
@@ -25,7 +30,26 @@ const AppImage: React.FC<ImageProps> = ({
     }
   };
 
-  return <Image src={imgSrc || fallbackSrc} alt={alt} className={className} width={100} height={100} />;
+  if (isDataUrl) {
+    return (
+      <img
+        src={imgSrc}
+        alt={alt}
+        className={className}
+        onError={handleError}
+      />
+    );
+  }
+
+  return (
+    <Image
+      src={imgSrc || fallbackSrc}
+      alt={alt}
+      className={className}
+      width={100}
+      height={100}
+    />
+  );
 };
 
 export default AppImage;

@@ -3,6 +3,7 @@
 import React, { useMemo } from "react";
 import Skeleton from "react-loading-skeleton";
 import Icon from "../AppIcon";
+import { Badge } from "../ui/badge";
 
 interface Statistics {
   totalRides?: number;
@@ -74,14 +75,15 @@ const StatisticsSection: React.FC<StatisticsSectionProps> = ({
     <section className="rounded-2xl border border-border/70 bg-card/90 shadow-card">
       <button
         onClick={onToggle}
-        className="flex w-full items-center justify-between px-4 py-4 transition-colors hover:bg-muted/40"
+        className="flex w-full items-center justify-between px-4 py-3.5 transition-colors hover:bg-muted/40 sm:px-5 sm:py-4"
       >
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5 sm:gap-3">
           <Icon name="BarChart3" size={20} className="text-primary" />
           <div className="text-left">
             <h3 className="font-medium text-foreground">Impact Stats</h3>
             <p className="text-xs text-muted-foreground">Performance, savings, and community contribution.</p>
           </div>
+          <Badge variant="outline">Live metrics</Badge>
         </div>
         <Icon name={isExpanded ? "ChevronUp" : "ChevronDown"} size={20} className="text-muted-foreground" />
       </button>
@@ -91,23 +93,21 @@ const StatisticsSection: React.FC<StatisticsSectionProps> = ({
           isExpanded ? "max-h-[2600px] opacity-100" : "max-h-0 opacity-0"
         }`}
       >
-        <div className="space-y-4 border-t border-border/70 px-4 pb-5 pt-4">
+        <div className="space-y-4 border-t border-border/70 px-4 pb-5 pt-4 sm:px-5">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <article className="rounded-xl border border-border/70 bg-muted/20 p-3">
+            <article className="rounded-xl border border-primary/20 bg-gradient-to-br from-primary/10 via-card/95 to-card p-3">
               <p className="text-xs text-muted-foreground">Total rides</p>
               <p className="text-xl font-semibold text-foreground">{stats.totalRides.toLocaleString("en-IN")}</p>
             </article>
-            <article className="rounded-xl border border-border/70 bg-muted/20 p-3">
+            <article className="rounded-xl border border-sky-300/30 bg-gradient-to-br from-sky-100/50 via-card/95 to-card p-3 dark:from-sky-500/10">
               <p className="text-xs text-muted-foreground">Distance</p>
-              <p className="text-xl font-semibold text-foreground">
-                {stats.totalDistance.toLocaleString("en-IN")} km
-              </p>
+              <p className="text-xl font-semibold text-foreground">{stats.totalDistance.toLocaleString("en-IN")} km</p>
             </article>
-            <article className="rounded-xl border border-border/70 bg-muted/20 p-3">
+            <article className="rounded-xl border border-emerald-300/30 bg-gradient-to-br from-emerald-100/50 via-card/95 to-card p-3 dark:from-emerald-500/10">
               <p className="text-xs text-muted-foreground">Money saved</p>
               <p className="text-xl font-semibold text-foreground">₹{stats.moneySaved.toLocaleString("en-IN")}</p>
             </article>
-            <article className="rounded-xl border border-border/70 bg-muted/20 p-3">
+            <article className="rounded-xl border border-amber-300/30 bg-gradient-to-br from-amber-100/50 via-card/95 to-card p-3 dark:from-amber-500/10">
               <p className="text-xs text-muted-foreground">Average rating</p>
               <p className="text-xl font-semibold text-foreground">
                 {stats.averageRating ? stats.averageRating.toFixed(1) : "-"}
@@ -117,7 +117,7 @@ const StatisticsSection: React.FC<StatisticsSectionProps> = ({
           </div>
 
           <div className="grid gap-3 md:grid-cols-2">
-            <article className="rounded-xl border border-border/70 bg-muted/20 p-3">
+            <article className="rounded-xl border border-emerald-300/30 bg-gradient-to-br from-emerald-100/40 via-card/95 to-card p-3 dark:from-emerald-500/10">
               <h4 className="text-sm font-semibold text-foreground">Environmental Impact</h4>
               <div className="mt-2 space-y-1 text-sm text-muted-foreground">
                 <p>CO2 saved: {stats.co2Saved.toLocaleString("en-IN")} kg</p>
@@ -125,7 +125,7 @@ const StatisticsSection: React.FC<StatisticsSectionProps> = ({
                 <p>Trees equivalent: {stats.treesEquivalent.toLocaleString("en-IN")}</p>
               </div>
             </article>
-            <article className="rounded-xl border border-border/70 bg-muted/20 p-3">
+            <article className="rounded-xl border border-indigo-300/30 bg-gradient-to-br from-indigo-100/40 via-card/95 to-card p-3 dark:from-indigo-500/10">
               <h4 className="text-sm font-semibold text-foreground">This Month</h4>
               <div className="mt-2 space-y-1 text-sm text-muted-foreground">
                 <p>Rides: {stats.monthlyRides.toLocaleString("en-IN")}</p>
@@ -136,7 +136,7 @@ const StatisticsSection: React.FC<StatisticsSectionProps> = ({
             </article>
           </div>
 
-          <article className="rounded-xl border border-border/70 bg-muted/20 p-3">
+          <article className="rounded-xl border border-primary/20 bg-gradient-to-br from-primary/10 via-card/95 to-card p-3">
             <h4 className="text-sm font-semibold text-foreground">Community Score</h4>
             <p className="mt-1 text-sm text-muted-foreground">
               Score {stats.communityScore.toLocaleString("en-IN")} / 1000 • Rank #

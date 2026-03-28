@@ -10,44 +10,49 @@ import { useUserProfile } from "@/hooks/auth/useUserProfile";
 import { createVehicleRecord, updateVehicleRecord } from "@/lib/api/backend";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ShieldCheck, TriangleAlert, UserRoundCheck, Wallet } from "lucide-react";
+import {
+  ShieldCheck,
+  TriangleAlert,
+  UserRoundCheck,
+  Wallet,
+} from "lucide-react";
 
 // Lazy load large components to improve page load time
 const ProfileHeader = dynamic(
   () => import("@/components/profile/ProfileHeader"),
   {
     ssr: false,
-  }
+  },
 );
 const PersonalInfoSection = dynamic(
   () => import("@/components/profile/PersonalInfoSection"),
-  { ssr: false }
+  { ssr: false },
 );
 const VehicleInfoSection = dynamic(
   () => import("@/components/profile/VehicleInfoSection"),
-  { ssr: false }
+  { ssr: false },
 );
 const PreferencesSection = dynamic(
   () => import("@/components/profile/PreferencesSection"),
-  { ssr: false }
+  { ssr: false },
 );
 const SafetySection = dynamic(
   () => import("@/components/profile/SafetySection"),
   {
     ssr: false,
-  }
+  },
 );
 const AccountSecuritySection = dynamic(
   () => import("@/components/profile/AccountSecuritySection"),
-  { ssr: false }
+  { ssr: false },
 );
 const RideHistorySection = dynamic(
   () => import("@/components/profile/RideHistorySection"),
-  { ssr: false }
+  { ssr: false },
 );
 const StatisticsSection = dynamic(
   () => import("@/components/profile/StatisticsSection"),
-  { ssr: false }
+  { ssr: false },
 );
 
 // Error Boundary Component
@@ -116,7 +121,9 @@ const DEFAULT_STATISTICS = {
 
 function mapVehicleFormToBackend(vehicle: any) {
   const licensePlate = String(vehicle?.licensePlate ?? "").trim();
-  const normalizedFuelType = String(vehicle?.fuelType ?? "petrol").toLowerCase();
+  const normalizedFuelType = String(
+    vehicle?.fuelType ?? "petrol",
+  ).toLowerCase();
 
   return {
     vehicle_type:
@@ -139,7 +146,9 @@ function mapVehicleFormToBackend(vehicle: any) {
 }
 
 // Transform booking data to ride history format
-const transformBookingToRideHistory = (booking: any): {
+const transformBookingToRideHistory = (
+  booking: any,
+): {
   id: string;
   role: string;
   pickup: string;
@@ -175,7 +184,9 @@ const transformBookingToRideHistory = (booking: any): {
     rating: 0, // Not available in booking data
     partner: {
       name: booking.other_user_name || "Unknown",
-      avatar: booking.avatar || "https://w7.pngwing.com/pngs/81/570/png-transparent-profile-logo-computer-icons-user-user-blue-heroes-logo.png",
+      avatar:
+        booking.avatar ||
+        "https://w7.pngwing.com/pngs/81/570/png-transparent-profile-logo-computer-icons-user-user-blue-heroes-logo.png",
     },
   };
 };
@@ -207,6 +218,26 @@ const ProfileAccountSettings = () => {
     history: false,
     statistics: false,
   });
+  const [isPhotoUploading, setIsPhotoUploading] = useState(false);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+
+  const sectionNavItems: Array<{
+    key: keyof typeof expandedSections;
+    label: string;
+    id: string;
+  }> = [
+    { key: "personalInfo", label: "Personal", id: "profile-section-personal" },
+    { key: "vehicleInfo", label: "Vehicles", id: "profile-section-vehicles" },
+    {
+      key: "preferences",
+      label: "Preferences",
+      id: "profile-section-preferences",
+    },
+    { key: "safety", label: "Safety", id: "profile-section-safety" },
+    { key: "security", label: "Security", id: "profile-section-security" },
+    { key: "history", label: "History", id: "profile-section-history" },
+    { key: "statistics", label: "Impact", id: "profile-section-impact" },
+  ];
 
   // Calculate statistics from bookings
   const statistics = useMemo(() => {
@@ -215,12 +246,12 @@ const ProfileAccountSettings = () => {
     }
 
     const completedBookings = bookings.filter(
-      (b: any) => b.status === "completed"
+      (b: any) => b.status === "completed",
     );
     const totalRides = completedBookings.length;
     const totalAmount = completedBookings.reduce(
       (sum: number, b: any) => sum + (b.total_price || 0),
-      0
+      0,
     );
 
     return {
@@ -256,20 +287,63 @@ const ProfileAccountSettings = () => {
         };
       });
     },
-    []
+    [],
+  );
+
+  const jumpToSection = useCallback(
+    (section: keyof typeof expandedSections, elementId: string) => {
+      setExpandedSections((prev) => ({
+        ...prev,
+        [section]: true,
+      }));
+
+      window.setTimeout(() => {
+        const el = document.getElementById(elementId);
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      }, 30);
+    },
+    [],
   );
 
   // Handlers for data updates
   const handlePhotoUpload = useCallback(
-    async (_file: File) => {
+    async (file: File) => {
+      if (!file.type.startsWith("image/")) {
+        toast.error("Please upload a valid image file.");
+        return;
+      }
+
+      if (file.size > 3 * 1024 * 1024) {
+        toast.error("Profile photo must be 3MB or smaller.");
+        return;
+      }
+
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(new Error("Could not read image file"));
+        reader.readAsDataURL(file);
+      });
+
+      setPhotoPreview(dataUrl);
+      setIsPhotoUploading(true);
       try {
-        throw new Error("Profile photo upload is not available in the new backend yet.");
+        await updateProfile({
+          profile_image: dataUrl,
+        });
+        await refetch.user();
+        toast.success("Profile photo updated.");
       } catch (error: any) {
         console.error("Photo upload error:", error);
+        setPhotoPreview(null);
         toast.error(error.message || "Failed to upload photo");
+      } finally {
+        setIsPhotoUploading(false);
       }
     },
-    [updateProfile, refetch]
+    [updateProfile, refetch],
   );
 
   const handleEditProfile = useCallback(() => {
@@ -284,7 +358,9 @@ const ProfileAccountSettings = () => {
           phone: data.phone ?? null,
           date_of_birth: data.dateOfBirth ?? null,
           gender_for_matching:
-            data.gender === "female" || data.gender === "male" ? data.gender : null,
+            data.gender === "female" || data.gender === "male"
+              ? data.gender
+              : null,
           emergency_contact_name: data.emergencyContact ?? null,
           emergency_contact_phone: data.emergencyPhone ?? null,
           address: data.address ?? null,
@@ -297,50 +373,62 @@ const ProfileAccountSettings = () => {
         throw error; // Re-throw so component can handle it
       }
     },
-    [refetch, updateProfile, user?.profilePhoto]
+    [refetch, updateProfile, user?.profilePhoto],
   );
 
-  const handleSavePreferences = useCallback(async (data: any) => {
-    try {
-      await savePreferences(data);
-      toast.success("Preferences saved successfully!");
-    } catch (error: any) {
-      console.error("Save preferences error:", error);
-      toast.error(error.message || "Failed to save preferences");
-      throw error; // Re-throw so component can handle it
-    }
-  }, [savePreferences]);
+  const handleSavePreferences = useCallback(
+    async (data: any) => {
+      try {
+        await savePreferences(data);
+        toast.success("Preferences saved successfully!");
+      } catch (error: any) {
+        console.error("Save preferences error:", error);
+        toast.error(error.message || "Failed to save preferences");
+        throw error; // Re-throw so component can handle it
+      }
+    },
+    [savePreferences],
+  );
 
-  const handleSaveSafetySettings = useCallback(async (data: any) => {
-    try {
-      await saveSafety({
-        trustedContacts: data.trustedContacts,
-        settings: data.settings,
-      });
-      toast.success("Safety settings saved successfully!");
-    } catch (error: any) {
-      console.error("Save safety settings error:", error);
-      toast.error(error.message || "Failed to save safety settings");
-      throw error; // Re-throw so component can handle it
-    }
-  }, [saveSafety]);
+  const handleSaveSafetySettings = useCallback(
+    async (data: any) => {
+      try {
+        await saveSafety({
+          trustedContacts: data.trustedContacts,
+          settings: data.settings,
+        });
+        toast.success("Safety settings saved successfully!");
+      } catch (error: any) {
+        console.error("Save safety settings error:", error);
+        toast.error(error.message || "Failed to save safety settings");
+        throw error; // Re-throw so component can handle it
+      }
+    },
+    [saveSafety],
+  );
 
-  const handleSaveSecuritySettings = useCallback((_data?: Record<string, unknown>) => {
-    toast.success("Security settings saved successfully!");
-  }, []);
+  const handleSaveSecuritySettings = useCallback(
+    (_data?: Record<string, unknown>) => {
+      toast.success("Security settings saved successfully!");
+    },
+    [],
+  );
 
-  const handleAddVehicle = useCallback(async (vehicle: any) => {
-    try {
-      await createVehicleRecord(mapVehicleFormToBackend(vehicle));
+  const handleAddVehicle = useCallback(
+    async (vehicle: any) => {
+      try {
+        await createVehicleRecord(mapVehicleFormToBackend(vehicle));
 
-      toast.success("Vehicle added successfully!");
-      refetch.vehicles();
-    } catch (error: any) {
-      console.error("Add vehicle error:", error);
-      toast.error(error.message || "Failed to add vehicle");
-      throw error; // Re-throw so component can handle it
-    }
-  }, [refetch]);
+        toast.success("Vehicle added successfully!");
+        refetch.vehicles();
+      } catch (error: any) {
+        console.error("Add vehicle error:", error);
+        toast.error(error.message || "Failed to add vehicle");
+        throw error; // Re-throw so component can handle it
+      }
+    },
+    [refetch],
+  );
 
   const handleEditVehicle = useCallback(
     async (id: string | number, vehicle: any) => {
@@ -355,23 +443,25 @@ const ProfileAccountSettings = () => {
         throw error; // Re-throw so component can handle it
       }
     },
-    [refetch]
+    [refetch],
   );
 
   const handleDeleteVehicle = useCallback(
     async (_id: string | number) => {
       try {
-        throw new Error("Vehicle deletion is not available in the new backend yet.");
+        throw new Error(
+          "Vehicle deletion is not available in the new backend yet.",
+        );
       } catch (error: any) {
         console.error("Delete vehicle error:", error);
         toast.error(error.message || "Failed to delete vehicle");
       }
     },
-    [refetch]
+    [refetch],
   );
 
   // Show loading state
-  if (dataLoading) {
+  if (dataLoading && !user) {
     return (
       <div className="page min-h-screen">
         <div className="mx-auto max-w-5xl space-y-4">
@@ -432,6 +522,13 @@ const ProfileAccountSettings = () => {
     );
   }
 
+  const headerUser = photoPreview
+    ? {
+        ...user,
+        profilePhoto: photoPreview,
+      }
+    : user;
+
   return (
     <ErrorBoundary>
       <div className="page min-h-screen space-y-5">
@@ -439,40 +536,55 @@ const ProfileAccountSettings = () => {
           <div className="mx-auto max-w-5xl space-y-5">
             <Suspense fallback={<Skeleton height={120} />}>
               <ProfileHeader
-                user={user}
+                user={headerUser}
                 onPhotoUpload={handlePhotoUpload}
                 onEditProfile={handleEditProfile}
+                isPhotoUploading={isPhotoUploading}
               />
 
               <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                <article className="rounded-xl border border-border/70 bg-card/90 px-4 py-3 shadow-card">
+                <article className="rounded-xl border border-primary/20 bg-gradient-to-br from-primary/20 via-card/95 to-card px-4 py-3 shadow-card">
                   <div className="flex items-center justify-between">
-                    <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">Verification</p>
+                    <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">
+                      Verification
+                    </p>
                     <UserRoundCheck className="size-4 text-primary" />
                   </div>
                   <p className="mt-2 text-sm font-semibold text-foreground">
-                    {user.isCollegeVerified ? "Student Verified" : "Pending Verification"}
+                    {user.isCollegeVerified
+                      ? "Student Verified"
+                      : "Pending Verification"}
                   </p>
                 </article>
-                <article className="rounded-xl border border-border/70 bg-card/90 px-4 py-3 shadow-card">
+                <article className="rounded-xl border border-success/20 bg-gradient-to-br from-success/20 via-card/95 to-card px-4 py-3 shadow-card">
                   <div className="flex items-center justify-between">
-                    <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">Driver Status</p>
+                    <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">
+                      Driver Status
+                    </p>
                     <ShieldCheck className="size-4 text-primary" />
                   </div>
                   <p className="mt-2 text-sm font-semibold text-foreground">
-                    {user.isDriverVerified ? "Eligible to Offer Rides" : "Eligibility Pending"}
+                    {user.isDriverVerified
+                      ? "Eligible to Offer Rides"
+                      : "Eligibility Pending"}
                   </p>
                 </article>
-                <article className="rounded-xl border border-border/70 bg-card/90 px-4 py-3 shadow-card">
+                <article className="rounded-xl border border-warning/20 bg-gradient-to-br from-warning/20 via-card/95 to-card px-4 py-3 shadow-card">
                   <div className="flex items-center justify-between">
-                    <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">Total Rides</p>
+                    <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">
+                      Total Rides
+                    </p>
                     <Wallet className="size-4 text-primary" />
                   </div>
-                  <p className="mt-2 text-sm font-semibold text-foreground">{user.totalRides ?? 0}</p>
+                  <p className="mt-2 text-sm font-semibold text-foreground">
+                    {user.totalRides ?? 0}
+                  </p>
                 </article>
-                <article className="rounded-xl border border-border/70 bg-card/90 px-4 py-3 shadow-card">
+                <article className="rounded-xl border border-indigo-300/30 bg-gradient-to-br from-indigo/20 via-card/95 to-card px-4 py-3 shadow-card dark:from-indigo-500/10">
                   <div className="flex items-center justify-between">
-                    <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">Account Health</p>
+                    <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">
+                      Account Health
+                    </p>
                     <TriangleAlert className="size-4 text-primary" />
                   </div>
                   <div className="mt-2">
@@ -483,95 +595,133 @@ const ProfileAccountSettings = () => {
                 </article>
               </section>
 
+              <section className="profile-nav-scroll sticky top-16 z-20 -mx-1 overflow-x-auto rounded-xl border border-border/60 bg-background/90 px-1 py-2 shadow-sm backdrop-blur md:top-20">
+                <div className="flex w-max min-w-full gap-2">
+                  {sectionNavItems.map((item) => (
+                    <Button
+                      key={item.key}
+                      variant={
+                        expandedSections[item.key] ? "secondary" : "outline"
+                      }
+                      size="sm"
+                      className="rounded-full"
+                      onClick={() => jumpToSection(item.key, item.id)}
+                    >
+                      {item.label}
+                    </Button>
+                  ))}
+                </div>
+              </section>
+
               <div className="space-y-4">
-                <PersonalInfoSection
-                  user={user}
-                  onSave={handleSavePersonalInfo}
-                  isExpanded={expandedSections.personalInfo}
-                  onToggle={() => toggleSection("personalInfo")}
-                  isLoading={dataLoading}
-                  error={dataError}
-                />
+                <div id="profile-section-personal" className="scroll-mt-32">
+                  <PersonalInfoSection
+                    user={user}
+                    onSave={handleSavePersonalInfo}
+                    isExpanded={expandedSections.personalInfo}
+                    onToggle={() => toggleSection("personalInfo")}
+                    isLoading={dataLoading}
+                    error={dataError}
+                  />
+                </div>
 
-                <VehicleInfoSection
-                  vehicles={vehicles ?? null}
-                  onAddVehicle={handleAddVehicle}
-                  onEditVehicle={handleEditVehicle}
-                  onDeleteVehicle={handleDeleteVehicle}
-                  isExpanded={expandedSections.vehicleInfo}
-                  onToggle={() => toggleSection("vehicleInfo")}
-                  isLoading={dataLoading}
-                  error={dataError}
-                />
+                <div id="profile-section-vehicles" className="scroll-mt-32">
+                  <VehicleInfoSection
+                    vehicles={vehicles ?? null}
+                    onAddVehicle={handleAddVehicle}
+                    onEditVehicle={handleEditVehicle}
+                    onDeleteVehicle={handleDeleteVehicle}
+                    isExpanded={expandedSections.vehicleInfo}
+                    onToggle={() => toggleSection("vehicleInfo")}
+                    isLoading={dataLoading}
+                    error={dataError}
+                  />
+                </div>
 
-                <PreferencesSection
-                  preferences={preferences}
-                  onSave={handleSavePreferences}
-                  isExpanded={expandedSections.preferences}
-                  onToggle={() => toggleSection("preferences")}
-                  isLoading={dataLoading}
-                  error={dataError}
-                />
+                <div id="profile-section-preferences" className="scroll-mt-32">
+                  <PreferencesSection
+                    preferences={preferences}
+                    onSave={handleSavePreferences}
+                    isExpanded={expandedSections.preferences}
+                    onToggle={() => toggleSection("preferences")}
+                    isLoading={dataLoading}
+                    error={dataError}
+                  />
+                </div>
 
-                <SafetySection
-                  safetySettings={{
-                    trustedContacts: (safetySettings?.trustedContacts ?? []).map((contact, index) => ({
-                      id: contact.id ?? `${index}`,
-                      name: contact.name,
-                      phone: contact.phone,
-                      relationship: contact.relationship,
-                      email: contact.email,
-                    })),
-                    settings: safetySettings?.settings ?? {},
-                  }}
-                  onSave={handleSaveSafetySettings}
-                  isExpanded={expandedSections.safety}
-                  onToggle={() => toggleSection("safety")}
-                  isLoading={dataLoading}
-                  error={dataError}
-                />
+                <div id="profile-section-safety" className="scroll-mt-32">
+                  <SafetySection
+                    safetySettings={{
+                      trustedContacts: (
+                        safetySettings?.trustedContacts ?? []
+                      ).map((contact, index) => ({
+                        id: contact.id ?? `${index}`,
+                        name: contact.name,
+                        phone: contact.phone,
+                        relationship: contact.relationship,
+                        email: contact.email,
+                      })),
+                      settings: safetySettings?.settings ?? {},
+                    }}
+                    onSave={handleSaveSafetySettings}
+                    isExpanded={expandedSections.safety}
+                    onToggle={() => toggleSection("safety")}
+                    isLoading={dataLoading}
+                    error={dataError}
+                  />
+                </div>
 
-                <AccountSecuritySection
-                  securitySettings={{
-                    twoFactorEnabled: securitySettings?.two_factor?.enabled ?? false,
-                    twoFactorMethod: (securitySettings?.two_factor?.method as
-                      | "SMS"
-                      | "Email"
-                      | "App"
-                      | undefined) ?? undefined,
-                    passwordLastChanged:
-                      securitySettings?.password_last_changed_at ?? undefined,
-                  }}
-                  loginActivity={(securitySettings?.login_activity ?? []).map((item) => ({
-                    id: item.id,
-                    device: item.device,
-                    ipAddress: item.ip_address ?? undefined,
-                    time: item.time ?? undefined,
-                    current: item.current,
-                    lastActive: item.expires_at ?? undefined,
-                  }))}
-                  onSave={handleSaveSecuritySettings}
-                  isExpanded={expandedSections.security}
-                  onToggle={() => toggleSection("security")}
-                  isLoading={dataLoading}
-                  error={dataError}
-                />
+                <div id="profile-section-security" className="scroll-mt-32">
+                  <AccountSecuritySection
+                    securitySettings={{
+                      twoFactorEnabled:
+                        securitySettings?.two_factor?.enabled ?? false,
+                      twoFactorMethod:
+                        (securitySettings?.two_factor?.method as
+                          | "SMS"
+                          | "Email"
+                          | "App"
+                          | undefined) ?? undefined,
+                      passwordLastChanged:
+                        securitySettings?.password_last_changed_at ?? undefined,
+                    }}
+                    loginActivity={(securitySettings?.login_activity ?? []).map(
+                      (item) => ({
+                        id: item.id,
+                        device: item.device,
+                        ipAddress: item.ip_address ?? undefined,
+                        time: item.time ?? undefined,
+                        current: item.current,
+                        lastActive: item.expires_at ?? undefined,
+                      }),
+                    )}
+                    onSave={handleSaveSecuritySettings}
+                    isExpanded={expandedSections.security}
+                    onToggle={() => toggleSection("security")}
+                    isLoading={dataLoading}
+                    error={dataError}
+                  />
+                </div>
 
-                <RideHistorySection
-                  rideHistory={rideHistory}
-                  isLoading={dataLoading}
-                  onRebook={() => {}}
-                  onRateRide={() => {}}
-                  isExpanded={expandedSections.history}
-                  onToggle={() => toggleSection("history")}
-                />
+                <div id="profile-section-history" className="scroll-mt-32">
+                  <RideHistorySection
+                    rideHistory={rideHistory}
+                    isLoading={dataLoading}
+                    onRebook={() => {}}
+                    onRateRide={() => {}}
+                    isExpanded={expandedSections.history}
+                    onToggle={() => toggleSection("history")}
+                  />
+                </div>
 
-                <StatisticsSection
-                  statistics={statistics}
-                  isLoading={dataLoading}
-                  isExpanded={expandedSections.statistics}
-                  onToggle={() => toggleSection("statistics")}
-                />
+                <div id="profile-section-impact" className="scroll-mt-32">
+                  <StatisticsSection
+                    statistics={statistics}
+                    isLoading={dataLoading}
+                    isExpanded={expandedSections.statistics}
+                    onToggle={() => toggleSection("statistics")}
+                  />
+                </div>
               </div>
             </Suspense>
           </div>

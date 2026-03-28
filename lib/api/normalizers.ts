@@ -39,7 +39,8 @@ export function normalizeUserProfile(user: any): FrontendUserProfile {
     email: user.email ?? "",
     phone: user.phone ?? undefined,
     college: user.college ?? undefined,
-    profile_image: user.avatarUrl ?? user.profile_image ?? undefined,
+    profile_image:
+      user.avatarUrl ?? user.avatar_url ?? user.profile_image ?? undefined,
     date_of_birth: user.date_of_birth ?? null,
     gender_for_matching: user.gender_for_matching ?? null,
     emergency_contact_name: user.emergency_contact_name ?? null,

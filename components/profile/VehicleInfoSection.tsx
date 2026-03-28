@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -13,7 +13,7 @@ import {
 import Icon from "../AppIcon";
 import AppImage from "../AppImage";
 import Skeleton from "react-loading-skeleton";
-import { Edit, Plus, Save, Trash2 } from "lucide-react";
+import { Edit, ImageUp, Plus, Save, Trash2, X } from "lucide-react";
 
 export interface Vehicle {
   id: string | number;
@@ -31,10 +31,7 @@ export interface Vehicle {
 export interface VehicleInfoSectionProps {
   vehicles?: Vehicle[] | null;
   onAddVehicle?: (vehicle: Omit<Vehicle, "id">) => void | Promise<void>;
-  onEditVehicle?: (
-    id: string | number,
-    vehicle: Omit<Vehicle, "id">,
-  ) => void | Promise<void>;
+  onEditVehicle?: (id: string | number, vehicle: Omit<Vehicle, "id">) => void | Promise<void>;
   onDeleteVehicle?: (id: string | number) => void | Promise<void>;
   isExpanded: boolean;
   onToggle: () => void;
@@ -72,16 +69,23 @@ const VehicleInfoSection: React.FC<VehicleInfoSectionProps> = ({
   const [formData, setFormData] = useState<Omit<Vehicle, "id">>(EMPTY_FORM);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [isPhotoUploading, setIsPhotoUploading] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!showForm) {
       setFormData(EMPTY_FORM);
       setEditing(null);
       setFormError(null);
+      setIsPhotoUploading(false);
     }
   }, [showForm]);
 
   const displayedVehicles = useMemo(() => vehicles ?? [], [vehicles]);
+  const approvedCount = useMemo(
+    () => displayedVehicles.filter((vehicle) => Boolean(vehicle.isVerified)).length,
+    [displayedVehicles],
+  );
 
   const validate = useCallback(() => {
     if (!formData.make.trim()) return "Vehicle make is required.";
@@ -94,13 +98,10 @@ const VehicleInfoSection: React.FC<VehicleInfoSectionProps> = ({
     return null;
   }, [formData]);
 
-  const setField = useCallback(
-    (field: keyof Omit<Vehicle, "id">, value: string | boolean) => {
-      setFormData((prev) => ({ ...prev, [field]: value }));
-      setFormError(null);
-    },
-    [],
-  );
+  const setField = useCallback((field: keyof Omit<Vehicle, "id">, value: string | boolean) => {
+    setFormData((prev) => ({ ...prev, [field]: value }));
+    setFormError(null);
+  }, []);
 
   const handleEdit = useCallback((vehicle: Vehicle) => {
     setEditing(vehicle);
@@ -117,6 +118,45 @@ const VehicleInfoSection: React.FC<VehicleInfoSectionProps> = ({
     });
     setShowForm(true);
   }, []);
+
+  const handlePhotoPick = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const inputEl = event.currentTarget;
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setFormError(null);
+
+    if (!file.type.startsWith("image/")) {
+      setFormError("Please upload a valid image file for vehicle photo.");
+      inputEl.value = "";
+      return;
+    }
+
+    if (file.size > 3 * 1024 * 1024) {
+      setFormError("Vehicle photo must be 3MB or smaller.");
+      inputEl.value = "";
+      return;
+    }
+
+    setIsPhotoUploading(true);
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(new Error("Could not read image file"));
+        reader.readAsDataURL(file);
+      });
+      setField("photo", dataUrl);
+    } catch {
+      setFormError("Unable to read selected image.");
+    } finally {
+      setIsPhotoUploading(false);
+      inputEl.value = "";
+    }
+  }, [setField]);
+
+  const clearPhoto = useCallback(() => {
+    setField("photo", "");
+  }, [setField]);
 
   const handleSubmit = useCallback(async () => {
     const nextError = validate();
@@ -144,10 +184,7 @@ const VehicleInfoSection: React.FC<VehicleInfoSectionProps> = ({
   if (isLoading) {
     return (
       <section className="rounded-2xl border border-border/70 bg-card/90 shadow-card">
-        <button
-          onClick={onToggle}
-          className="flex w-full items-center justify-between px-4 py-4"
-        >
+        <button onClick={onToggle} className="flex w-full items-center justify-between px-4 py-4">
           <div className="flex items-center gap-3">
             <Icon name="Bike" size={20} className="text-primary" />
             <Skeleton width={150} height={18} />
@@ -162,9 +199,9 @@ const VehicleInfoSection: React.FC<VehicleInfoSectionProps> = ({
     <section className="rounded-2xl border border-border/70 bg-card/90 shadow-card">
       <button
         onClick={onToggle}
-        className="flex w-full items-center justify-between px-4 py-4 transition-colors hover:bg-muted/40"
+        className="flex w-full items-center justify-between px-4 py-3.5 transition-colors hover:bg-muted/40 sm:px-5 sm:py-4"
       >
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5 sm:gap-3">
           <Icon name="Bike" size={20} className="text-primary" />
           <div className="text-left">
             <h3 className="font-medium text-foreground">Vehicles</h3>
@@ -172,15 +209,10 @@ const VehicleInfoSection: React.FC<VehicleInfoSectionProps> = ({
               Approved vehicles are required to publish ride offers.
             </p>
           </div>
-          {displayedVehicles.length > 0 ? (
-            <Badge variant="secondary">{displayedVehicles.length}</Badge>
-          ) : null}
+          <Badge variant="secondary">{displayedVehicles.length}</Badge>
+          <Badge variant="outline">{approvedCount > 0 ? "Offer ready" : "Needs approval"}</Badge>
         </div>
-        <Icon
-          name={isExpanded ? "ChevronUp" : "ChevronDown"}
-          size={20}
-          className="text-muted-foreground"
-        />
+        <Icon name={isExpanded ? "ChevronUp" : "ChevronDown"} size={20} className="text-muted-foreground" />
       </button>
 
       <div
@@ -188,7 +220,7 @@ const VehicleInfoSection: React.FC<VehicleInfoSectionProps> = ({
           isExpanded ? "max-h-[3200px] opacity-100" : "max-h-0 opacity-0"
         }`}
       >
-        <div className="space-y-4 border-t border-border/70 px-4 pb-5 pt-4">
+        <div className="space-y-4 border-t border-border/70 px-4 pb-5 pt-4 sm:px-5">
           {error ? (
             <div className="rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
               {error}
@@ -199,25 +231,16 @@ const VehicleInfoSection: React.FC<VehicleInfoSectionProps> = ({
             <div className="rounded-xl border border-dashed border-border p-6 text-center">
               <Icon name="CarFront" size={26} className="mx-auto text-muted-foreground" />
               <p className="mt-2 text-sm font-medium text-foreground">No vehicles added yet</p>
-              <p className="text-xs text-muted-foreground">
-                Add your primary vehicle so you can offer rides.
-              </p>
+              <p className="text-xs text-muted-foreground">Add your primary vehicle so you can offer rides.</p>
             </div>
           ) : null}
 
           {displayedVehicles.map((vehicle) => (
-            <article
-              key={String(vehicle.id)}
-              className="rounded-xl border border-border/70 bg-muted/20 p-3 sm:p-4"
-            >
+            <article key={String(vehicle.id)} className="rounded-xl border border-border/70 bg-muted/20 p-3 sm:p-4">
               <div className="flex gap-3">
                 <div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-muted sm:h-16 sm:w-16">
                   {vehicle.photo ? (
-                    <AppImage
-                      src={vehicle.photo}
-                      alt={`${vehicle.make} ${vehicle.model}`}
-                      className="h-full w-full object-cover"
-                    />
+                    <AppImage src={vehicle.photo} alt={`${vehicle.make} ${vehicle.model}`} className="h-full w-full object-cover" />
                   ) : (
                     <div className="flex h-full w-full items-center justify-center">
                       <Icon name="CarFront" size={22} className="text-muted-foreground" />
@@ -243,11 +266,12 @@ const VehicleInfoSection: React.FC<VehicleInfoSectionProps> = ({
                 </div>
                 <div className="flex items-start gap-1">
                   {onEditVehicle ? (
-                    <Button variant="ghost" size="icon" onClick={() => handleEdit(vehicle)}>
+                    <Button type="button" variant="ghost" size="icon" onClick={() => handleEdit(vehicle)}>
                       <Edit className="size-4" />
                     </Button>
                   ) : null}
                   <Button
+                    type="button"
                     variant="ghost"
                     size="icon"
                     disabled
@@ -278,6 +302,7 @@ const VehicleInfoSection: React.FC<VehicleInfoSectionProps> = ({
                     value={formData.make}
                     onChange={(e) => setField("make", e.target.value)}
                     disabled={isSubmitting}
+                    placeholder="Honda"
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -287,6 +312,7 @@ const VehicleInfoSection: React.FC<VehicleInfoSectionProps> = ({
                     value={formData.model}
                     onChange={(e) => setField("model", e.target.value)}
                     disabled={isSubmitting}
+                    placeholder="City"
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -297,6 +323,7 @@ const VehicleInfoSection: React.FC<VehicleInfoSectionProps> = ({
                     value={formData.year}
                     onChange={(e) => setField("year", e.target.value)}
                     disabled={isSubmitting}
+                    placeholder="2022"
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -306,6 +333,7 @@ const VehicleInfoSection: React.FC<VehicleInfoSectionProps> = ({
                     value={formData.color}
                     onChange={(e) => setField("color", e.target.value)}
                     disabled={isSubmitting}
+                    placeholder="White"
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -315,15 +343,12 @@ const VehicleInfoSection: React.FC<VehicleInfoSectionProps> = ({
                     value={formData.licensePlate}
                     onChange={(e) => setField("licensePlate", e.target.value)}
                     disabled={isSubmitting}
+                    placeholder="MH12AB1234"
                   />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="vehicle-seats">Seats</Label>
-                  <Select
-                    value={formData.seats}
-                    onValueChange={(value) => setField("seats", value)}
-                    disabled={isSubmitting}
-                  >
+                  <Select value={formData.seats} onValueChange={(value) => setField("seats", value)} disabled={isSubmitting}>
                     <SelectTrigger id="vehicle-seats">
                       <SelectValue placeholder="Select seats" />
                     </SelectTrigger>
@@ -338,11 +363,7 @@ const VehicleInfoSection: React.FC<VehicleInfoSectionProps> = ({
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="vehicle-fuel">Fuel Type</Label>
-                  <Select
-                    value={formData.fuelType}
-                    onValueChange={(value) => setField("fuelType", value)}
-                    disabled={isSubmitting}
-                  >
+                  <Select value={formData.fuelType} onValueChange={(value) => setField("fuelType", value)} disabled={isSubmitting}>
                     <SelectTrigger id="vehicle-fuel">
                       <SelectValue placeholder="Select fuel type" />
                     </SelectTrigger>
@@ -355,20 +376,57 @@ const VehicleInfoSection: React.FC<VehicleInfoSectionProps> = ({
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="vehicle-photo">Photo URL</Label>
-                  <Input
-                    id="vehicle-photo"
-                    type="url"
-                    value={formData.photo ?? ""}
-                    onChange={(e) => setField("photo", e.target.value)}
-                    disabled={isSubmitting}
-                    placeholder="https://..."
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label>Vehicle Photo</Label>
+                  <input
+                    ref={photoInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handlePhotoPick}
                   />
+                  <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border/70 bg-muted/10 p-3">
+                    <div className="h-20 w-20 overflow-hidden rounded-lg border border-border/60 bg-muted">
+                      {formData.photo ? (
+                        <AppImage src={formData.photo} alt="Vehicle preview" className="h-full w-full object-cover" />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center">
+                          <Icon name="Image" size={18} className="text-muted-foreground" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => photoInputRef.current?.click()}
+                        disabled={isSubmitting || isPhotoUploading}
+                      >
+                        {isPhotoUploading ? (
+                          <>
+                            <Icon name="Loader" size={14} className="animate-spin" />
+                            Uploading...
+                          </>
+                        ) : (
+                          <>
+                            <ImageUp className="size-4" />
+                            {formData.photo ? "Change Photo" : "Upload Photo"}
+                          </>
+                        )}
+                      </Button>
+                      {formData.photo ? (
+                        <Button type="button" variant="ghost" onClick={clearPhoto} disabled={isSubmitting || isPhotoUploading}>
+                          <X className="size-4" />
+                          Remove
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">JPG/PNG up to 3MB.</p>
                 </div>
               </div>
               <div className="mt-4 flex flex-wrap gap-2">
-                <Button onClick={handleSubmit} disabled={isSubmitting}>
+                <Button type="button" onClick={handleSubmit} disabled={isSubmitting || isPhotoUploading}>
                   {isSubmitting ? (
                     <>
                       <Icon name="Loader" size={14} className="animate-spin" />
@@ -381,17 +439,13 @@ const VehicleInfoSection: React.FC<VehicleInfoSectionProps> = ({
                     </>
                   )}
                 </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => setShowForm(false)}
-                  disabled={isSubmitting}
-                >
+                <Button type="button" variant="outline" onClick={() => setShowForm(false)} disabled={isSubmitting || isPhotoUploading}>
                   Cancel
                 </Button>
               </div>
             </div>
           ) : (
-            <Button variant="outline" className="w-full sm:w-auto" onClick={() => setShowForm(true)}>
+            <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => setShowForm(true)}>
               <Plus className="size-4" />
               Add Vehicle
             </Button>
@@ -399,8 +453,8 @@ const VehicleInfoSection: React.FC<VehicleInfoSectionProps> = ({
 
           {onDeleteVehicle ? (
             <p className="text-xs text-muted-foreground">
-              Vehicle delete is intentionally disabled in this release to prevent accidental offer
-              disruptions. Support-assisted delete is coming soon.
+              Vehicle delete is intentionally disabled in this release to prevent accidental offer disruptions.
+              Support-assisted delete is coming soon.
             </p>
           ) : null}
         </div>

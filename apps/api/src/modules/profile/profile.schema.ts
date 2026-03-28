@@ -27,7 +27,21 @@ export const updateProfileSchema = z.object({
     .pipe(z.union([z.string().min(2).max(120), z.null(), z.undefined()]))
     .optional(),
   avatar_url: optionalNullableText
-    .pipe(z.union([z.string().url().max(2048), z.null(), z.undefined()]))
+    .pipe(
+      z.union([
+        z
+          .string()
+          .refine(
+            (value) =>
+              /^https?:\/\//i.test(value) ||
+              /^data:image\/[a-zA-Z0-9.+-]+;base64,/i.test(value),
+            "avatar_url must be an http(s) URL or a data URL",
+          )
+          .max(4_000_000),
+        z.null(),
+        z.undefined(),
+      ]),
+    )
     .optional(),
   date_of_birth: z
     .union([z.string(), z.null()])

@@ -31,10 +31,7 @@ export interface SafetySettings {
 
 export interface SafetySectionProps {
   safetySettings?: SafetySettings | null;
-  onSave?: (data: {
-    trustedContacts: TrustedContact[];
-    settings: SafetySettingsData;
-  }) => void | Promise<void>;
+  onSave?: (data: { trustedContacts: TrustedContact[]; settings: SafetySettingsData }) => void | Promise<void>;
   isExpanded: boolean;
   onToggle: () => void;
   isLoading?: boolean;
@@ -49,12 +46,7 @@ const DEFAULT_SETTINGS: SafetySettingsData = {
   safetyCheckIns: true,
 };
 
-const emptyContact = {
-  name: "",
-  phone: "",
-  relationship: "",
-  email: "",
-};
+const emptyContact = { name: "", phone: "", relationship: "", email: "" };
 
 const SafetySection: React.FC<SafetySectionProps> = ({
   safetySettings = null,
@@ -75,10 +67,7 @@ const SafetySection: React.FC<SafetySectionProps> = ({
 
   useEffect(() => {
     setTrustedContacts(safetySettings?.trustedContacts ?? []);
-    setSettings({
-      ...DEFAULT_SETTINGS,
-      ...(safetySettings?.settings ?? {}),
-    });
+    setSettings({ ...DEFAULT_SETTINGS, ...(safetySettings?.settings ?? {}) });
   }, [safetySettings]);
 
   const canAddContact = useMemo(
@@ -100,8 +89,7 @@ const SafetySection: React.FC<SafetySectionProps> = ({
       setFormError("Trusted contact phone is required.");
       return;
     }
-    const exists = trustedContacts.some((c) => c.phone.trim() === contactDraft.phone.trim());
-    if (exists) {
+    if (trustedContacts.some((c) => c.phone.trim() === contactDraft.phone.trim())) {
       setFormError("This phone number is already present in trusted contacts.");
       return;
     }
@@ -128,10 +116,7 @@ const SafetySection: React.FC<SafetySectionProps> = ({
     setIsSaving(true);
     setSaveSuccess(false);
     try {
-      await onSave({
-        trustedContacts,
-        settings,
-      });
+      await onSave({ trustedContacts, settings });
       setSaveSuccess(true);
       window.setTimeout(() => setSaveSuccess(false), 2200);
     } finally {
@@ -157,16 +142,15 @@ const SafetySection: React.FC<SafetySectionProps> = ({
     <section className="rounded-2xl border border-border/70 bg-card/90 shadow-card">
       <button
         onClick={onToggle}
-        className="flex w-full items-center justify-between px-4 py-4 transition-colors hover:bg-muted/40"
+        className="flex w-full items-center justify-between px-4 py-3.5 transition-colors hover:bg-muted/40 sm:px-5 sm:py-4"
       >
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5 sm:gap-3">
           <Icon name="Shield" size={20} className="text-primary" />
           <div className="text-left">
             <h3 className="font-medium text-foreground">Safety</h3>
-            <p className="text-xs text-muted-foreground">
-              Trusted contacts and trip-protection settings.
-            </p>
+            <p className="text-xs text-muted-foreground">Trusted contacts and trip-protection settings.</p>
           </div>
+          <Badge variant="outline">{trustedContacts.length} contacts</Badge>
         </div>
         <Icon name={isExpanded ? "ChevronUp" : "ChevronDown"} size={20} className="text-muted-foreground" />
       </button>
@@ -175,7 +159,7 @@ const SafetySection: React.FC<SafetySectionProps> = ({
           isExpanded ? "max-h-[2800px] opacity-100" : "max-h-0 opacity-0"
         }`}
       >
-        <div className="space-y-5 border-t border-border/70 px-4 pb-5 pt-4">
+        <div className="space-y-5 border-t border-border/70 px-4 pb-5 pt-4 sm:px-5">
           {error ? (
             <p className="rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
               {error}
@@ -201,10 +185,7 @@ const SafetySection: React.FC<SafetySectionProps> = ({
                 </p>
               ) : (
                 trustedContacts.map((contact) => (
-                  <div
-                    key={String(contact.id)}
-                    className="flex items-center justify-between rounded-lg border border-border/70 bg-background/80 p-2.5"
-                  >
+                  <div key={String(contact.id)} className="flex items-center justify-between rounded-lg border border-border/70 bg-background/80 p-2.5">
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium text-foreground">{contact.name}</p>
                       <p className="truncate text-xs text-muted-foreground">
@@ -230,6 +211,7 @@ const SafetySection: React.FC<SafetySectionProps> = ({
                   <Input
                     value={contactDraft.name}
                     onChange={(e) => setContactDraft((prev) => ({ ...prev, name: e.target.value }))}
+                    placeholder="Ananya Sharma"
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -237,15 +219,15 @@ const SafetySection: React.FC<SafetySectionProps> = ({
                   <Input
                     value={contactDraft.phone}
                     onChange={(e) => setContactDraft((prev) => ({ ...prev, phone: e.target.value }))}
+                    placeholder="+91 98765 43210"
                   />
                 </div>
                 <div className="space-y-1.5">
                   <Label>Relationship (optional)</Label>
                   <Input
                     value={contactDraft.relationship}
-                    onChange={(e) =>
-                      setContactDraft((prev) => ({ ...prev, relationship: e.target.value }))
-                    }
+                    onChange={(e) => setContactDraft((prev) => ({ ...prev, relationship: e.target.value }))}
+                    placeholder="Sister / Friend / Parent"
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -253,6 +235,7 @@ const SafetySection: React.FC<SafetySectionProps> = ({
                   <Input
                     value={contactDraft.email}
                     onChange={(e) => setContactDraft((prev) => ({ ...prev, email: e.target.value }))}
+                    placeholder="contact@example.com"
                   />
                 </div>
                 <div className="sm:col-span-2 flex flex-wrap gap-2">
@@ -266,12 +249,7 @@ const SafetySection: React.FC<SafetySectionProps> = ({
                 </div>
               </div>
             ) : (
-              <Button
-                variant="outline"
-                className="mt-3"
-                disabled={!canAddContact}
-                onClick={() => setShowAddForm(true)}
-              >
+              <Button variant="outline" className="mt-3" disabled={!canAddContact} onClick={() => setShowAddForm(true)}>
                 <Plus className="size-4" />
                 Add Contact
               </Button>
@@ -288,12 +266,7 @@ const SafetySection: React.FC<SafetySectionProps> = ({
                 ["safetyCheckIns", "Enable periodic safety check-ins on longer rides"],
               ].map(([key, label]) => (
                 <label key={key} className="flex items-center gap-2 text-sm">
-                  <Checkbox
-                    checked={Boolean(settings[key])}
-                    onCheckedChange={(checked) =>
-                      setToggle(key as keyof SafetySettingsData, checked === true)
-                    }
-                  />
+                  <Checkbox checked={Boolean(settings[key])} onCheckedChange={(checked) => setToggle(key as keyof SafetySettingsData, checked === true)} />
                   <span className="text-foreground">{label}</span>
                 </label>
               ))}

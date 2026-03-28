@@ -177,8 +177,11 @@ export const useProfileData = () => {
   const [profileDomainLoading, setProfileDomainLoading] = useState(true);
   const [profileDomainError, setProfileDomainError] = useState<string | null>(null);
 
-  const fetchProfileDomains = useCallback(async () => {
-    setProfileDomainLoading(true);
+  const fetchProfileDomains = useCallback(async (options?: { silent?: boolean }) => {
+    const silent = options?.silent === true;
+    if (!silent) {
+      setProfileDomainLoading(true);
+    }
     setProfileDomainError(null);
 
     try {
@@ -228,7 +231,9 @@ export const useProfileData = () => {
       setSafetySettings(DEFAULT_SAFETY);
       setSecuritySettings(DEFAULT_SECURITY);
     } finally {
-      setProfileDomainLoading(false);
+      if (!silent) {
+        setProfileDomainLoading(false);
+      }
     }
   }, []);
 
@@ -238,7 +243,7 @@ export const useProfileData = () => {
 
   useEffect(() => {
     const onFocus = () => {
-      void fetchProfileDomains();
+      void fetchProfileDomains({ silent: true });
       void fetchProfile().catch(() => undefined);
     };
 

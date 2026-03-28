@@ -60,14 +60,17 @@ const AccountSecuritySection: React.FC<AccountSecuritySectionProps> = ({
     <section className="rounded-2xl border border-border/70 bg-card/90 shadow-card">
       <button
         onClick={onToggle}
-        className="flex w-full items-center justify-between px-4 py-4 transition-colors hover:bg-muted/40"
+        className="flex w-full items-center justify-between px-4 py-3.5 transition-colors hover:bg-muted/40 sm:px-5 sm:py-4"
       >
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5 sm:gap-3">
           <Icon name="Lock" size={20} className="text-primary" />
           <div className="text-left">
             <h3 className="font-medium text-foreground">Security</h3>
             <p className="text-xs text-muted-foreground">Session visibility and account protection status.</p>
           </div>
+          <Badge variant={securitySettings?.twoFactorEnabled ? "secondary" : "outline"}>
+            {securitySettings?.twoFactorEnabled ? "2FA enabled" : "2FA pending"}
+          </Badge>
         </div>
         <Icon name={isExpanded ? "ChevronUp" : "ChevronDown"} size={20} className="text-muted-foreground" />
       </button>
@@ -77,7 +80,7 @@ const AccountSecuritySection: React.FC<AccountSecuritySectionProps> = ({
           isExpanded ? "max-h-[2600px] opacity-100" : "max-h-0 opacity-0"
         }`}
       >
-        <div className="space-y-4 border-t border-border/70 px-4 pb-5 pt-4">
+        <div className="space-y-4 border-t border-border/70 px-4 pb-5 pt-4 sm:px-5">
           {error ? (
             <p className="rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
               {error}
@@ -88,12 +91,7 @@ const AccountSecuritySection: React.FC<AccountSecuritySectionProps> = ({
             <article className="rounded-xl border border-border/70 bg-muted/20 p-3">
               <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">Password</p>
               <p className="mt-1 text-sm font-medium text-foreground">Last updated: {lastPasswordChange}</p>
-              <Button
-                variant="outline"
-                className="mt-3"
-                disabled
-                title="Password update endpoint is not available yet."
-              >
+              <Button variant="outline" className="mt-3" disabled title="Password update endpoint is not available yet.">
                 Change Password (Coming soon)
               </Button>
             </article>
@@ -104,12 +102,7 @@ const AccountSecuritySection: React.FC<AccountSecuritySectionProps> = ({
                   ? `Enabled (${securitySettings.twoFactorMethod || "Configured"})`
                   : "Not enabled"}
               </p>
-              <Button
-                variant="outline"
-                className="mt-3"
-                disabled
-                title="2FA setup runtime is not available in this release."
-              >
+              <Button variant="outline" className="mt-3" disabled title="2FA setup runtime is not available in this release.">
                 Configure 2FA (Coming soon)
               </Button>
             </article>
@@ -125,17 +118,11 @@ const AccountSecuritySection: React.FC<AccountSecuritySectionProps> = ({
                 <p className="text-sm text-muted-foreground">No recent session activity available.</p>
               ) : (
                 loginActivity.map((item) => (
-                  <div
-                    key={String(item.id)}
-                    className="flex items-start justify-between rounded-lg border border-border/70 bg-background/80 p-2.5"
-                  >
+                  <div key={String(item.id)} className="flex items-start justify-between rounded-lg border border-border/70 bg-background/80 p-2.5">
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-foreground">
-                        {item.device || "Unknown device"}
-                      </p>
+                      <p className="truncate text-sm font-medium text-foreground">{item.device || "Unknown device"}</p>
                       <p className="truncate text-xs text-muted-foreground">
-                        {[item.location, item.time, item.ipAddress].filter(Boolean).join(" • ") ||
-                          "No metadata"}
+                        {[item.location, item.time, item.ipAddress].filter(Boolean).join(" • ") || "No metadata"}
                       </p>
                     </div>
                     {item.current ? <Badge variant="secondary">Current</Badge> : <Badge variant="outline">Past</Badge>}
@@ -148,8 +135,7 @@ const AccountSecuritySection: React.FC<AccountSecuritySectionProps> = ({
           <article className="rounded-xl border border-border/70 bg-muted/20 p-3">
             <h4 className="text-sm font-semibold text-foreground">Account Controls</h4>
             <p className="mt-1 text-xs text-muted-foreground">
-              Device logout, data export, and account deletion are intentionally gated until admin-safe
-              workflows are finalized.
+              Device logout, data export, and account deletion are intentionally gated until admin-safe workflows are finalized.
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
               <Button variant="outline" disabled title="Coming soon: per-device session revoke.">
