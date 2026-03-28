@@ -8,6 +8,9 @@ import { toast } from "sonner";
 import { useProfileData } from "@/hooks/profile/useProfileData";
 import { useUserProfile } from "@/hooks/auth/useUserProfile";
 import { createVehicleRecord, updateVehicleRecord } from "@/lib/api/backend";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { ShieldCheck, TriangleAlert, UserRoundCheck, Wallet } from "lucide-react";
 
 // Lazy load large components to improve page load time
 const ProfileHeader = dynamic(
@@ -243,19 +246,12 @@ const ProfileAccountSettings = () => {
       .filter((ride): ride is NonNullable<typeof ride> => ride !== null);
   }, [bookings]);
 
-  // Toggle section expansion (only one section open at a time)
+  // Toggle section expansion (independent sections)
   const toggleSection = useCallback(
     (section: keyof typeof expandedSections) => {
       setExpandedSections((prev) => {
-        // Close all sections first
-        const allClosed = Object.keys(prev).reduce(
-          (acc, key) => ({ ...acc, [key]: false }),
-          {} as typeof prev
-        );
-
-        // Toggle only the clicked section
         return {
-          ...allClosed,
+          ...prev,
           [section]: !prev[section],
         };
       });
@@ -377,10 +373,12 @@ const ProfileAccountSettings = () => {
   // Show loading state
   if (dataLoading) {
     return (
-      <div className="page min-h-screen bg-background container flex mx-auto p-4 items-center">
-          <div className="max-w-4xl mx-auto">
-            Loading profile-settings...
-          </div>
+      <div className="page min-h-screen">
+        <div className="mx-auto max-w-5xl space-y-4">
+          <div className="h-36 animate-pulse rounded-2xl bg-muted/60" />
+          <div className="h-20 animate-pulse rounded-2xl bg-muted/60" />
+          <div className="h-96 animate-pulse rounded-2xl bg-muted/60" />
+        </div>
       </div>
     );
   }
@@ -388,24 +386,25 @@ const ProfileAccountSettings = () => {
   // Show error state
   if (dataError && !user) {
     return (
-      <div className="page min-h-screen bg-background container mx-auto p-4 space-y-6">
-        <main className="pb-20 md:pb-6">
-          <div className="max-w-4xl mx-auto">
-            <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
-              <h2 className="text-xl font-semibold text-red-800 mb-2">
+      <div className="page min-h-screen space-y-6">
+        <main className="pb-24 md:pb-8">
+          <div className="mx-auto max-w-5xl">
+            <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-center">
+              <h2 className="mb-2 text-xl font-semibold text-red-800">
                 Failed to load profile
               </h2>
-              <p className="text-red-600 mb-4">{dataError}</p>
-              <button
+              <p className="mb-4 text-red-600">{dataError}</p>
+              <Button
                 onClick={() => {
                   refetch.user();
                   refetch.vehicles();
                   refetch.bookings();
+                  refetch.profileDomains();
                 }}
-                className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
+                variant="destructive"
               >
                 Retry
-              </button>
+              </Button>
             </div>
           </div>
         </main>
@@ -416,11 +415,11 @@ const ProfileAccountSettings = () => {
   // Show empty state if user is null
   if (!user) {
     return (
-      <div className="page min-h-screen bg-background container mx-auto p-4 space-y-6">
-        <main className="pb-20 md:pb-6">
-          <div className="max-w-4xl mx-auto">
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
-              <h2 className="text-xl font-semibold text-yellow-800 mb-2">
+      <div className="page min-h-screen space-y-6">
+        <main className="pb-24 md:pb-8">
+          <div className="mx-auto max-w-5xl">
+            <div className="rounded-2xl border border-yellow-200 bg-yellow-50 p-6 text-center">
+              <h2 className="mb-2 text-xl font-semibold text-yellow-800">
                 No profile found
               </h2>
               <p className="text-yellow-600">
@@ -435,17 +434,56 @@ const ProfileAccountSettings = () => {
 
   return (
     <ErrorBoundary>
-      <div className="page min-h-screen bg-background container mx-auto p-4 space-y-6">
-        <main className="pb-20 md:pb-6">
-          <div className="max-w-4xl mx-auto">
-            <Suspense fallback={<Skeleton height={100} />}>
+      <div className="page min-h-screen space-y-5">
+        <main className="pb-24 md:pb-8">
+          <div className="mx-auto max-w-5xl space-y-5">
+            <Suspense fallback={<Skeleton height={120} />}>
               <ProfileHeader
                 user={user}
                 onPhotoUpload={handlePhotoUpload}
                 onEditProfile={handleEditProfile}
               />
 
-              <div className="space-y-0">
+              <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                <article className="rounded-xl border border-border/70 bg-card/90 px-4 py-3 shadow-card">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">Verification</p>
+                    <UserRoundCheck className="size-4 text-primary" />
+                  </div>
+                  <p className="mt-2 text-sm font-semibold text-foreground">
+                    {user.isCollegeVerified ? "Student Verified" : "Pending Verification"}
+                  </p>
+                </article>
+                <article className="rounded-xl border border-border/70 bg-card/90 px-4 py-3 shadow-card">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">Driver Status</p>
+                    <ShieldCheck className="size-4 text-primary" />
+                  </div>
+                  <p className="mt-2 text-sm font-semibold text-foreground">
+                    {user.isDriverVerified ? "Eligible to Offer Rides" : "Eligibility Pending"}
+                  </p>
+                </article>
+                <article className="rounded-xl border border-border/70 bg-card/90 px-4 py-3 shadow-card">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">Total Rides</p>
+                    <Wallet className="size-4 text-primary" />
+                  </div>
+                  <p className="mt-2 text-sm font-semibold text-foreground">{user.totalRides ?? 0}</p>
+                </article>
+                <article className="rounded-xl border border-border/70 bg-card/90 px-4 py-3 shadow-card">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">Account Health</p>
+                    <TriangleAlert className="size-4 text-primary" />
+                  </div>
+                  <div className="mt-2">
+                    <Badge variant={dataError ? "destructive" : "secondary"}>
+                      {dataError ? "Needs Attention" : "Healthy"}
+                    </Badge>
+                  </div>
+                </article>
+              </section>
+
+              <div className="space-y-4">
                 <PersonalInfoSection
                   user={user}
                   onSave={handleSavePersonalInfo}
