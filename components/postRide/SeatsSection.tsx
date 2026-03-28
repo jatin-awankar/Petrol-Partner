@@ -31,7 +31,7 @@ const SeatsSection: React.FC<SeatsSectionProps> = ({
   };
 
   return (
-    <div className="rounded-xl border border-border/70 bg-card p-4 md:p-5 space-y-4 sm:space-y-5">
+    <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/[0.04] p-4 md:p-5 space-y-4 sm:space-y-5">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <h3 className="text-base md:text-lg font-semibold text-foreground flex items-center gap-2">
           <Icon name="Users" size={18} className="text-primary" />
@@ -63,7 +63,7 @@ const SeatsSection: React.FC<SeatsSectionProps> = ({
         <p className="text-xs text-destructive">{errors.availableSeats || errors.seatsRequired}</p>
       )}
 
-      <div className="rounded-lg bg-muted/30 border border-border/70 p-3 text-xs text-muted-foreground">
+      <div className="rounded-lg bg-background/70 border border-border/70 p-3 text-xs text-muted-foreground">
         {mode === "offer"
           ? "Tip: Keep one seat free if you expect luggage on long routes."
           : "Tip: Request only the seats you need to improve matching speed."}

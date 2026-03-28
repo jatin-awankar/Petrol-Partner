@@ -46,10 +46,10 @@ const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({
               key={step.id}
               className={`flex items-center gap-3 rounded-lg border px-3 py-2 transition-colors ${
                 isActive
-                  ? "border-primary/30 bg-primary/10"
+                  ? "border-primary/30 bg-primary/12 shadow-[0_8px_24px_-20px_hsl(var(--primary))]"
                   : isDone
                     ? "border-success/30 bg-success/10"
-                    : "border-border/70 bg-muted/20"
+                    : "border-border/70 bg-background/75"
               }`}
             >
               <span

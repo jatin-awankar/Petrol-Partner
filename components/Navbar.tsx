@@ -8,12 +8,40 @@ import { Button } from "./ui/button";
 import { useCurrentUser } from "@/hooks/auth/useCurrentUser";
 import { frontendConfig } from "@/lib/frontend-config";
 import { cn } from "@/lib/utils";
+import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import { ScrollArea } from "./ui/scroll-area";
+import NotificationBadge from "./ui/NotificationBadge";
+import { useInAppNotifications } from "@/hooks/notifications/useInAppNotifications";
+
+function formatRelativeTime(value: string | null) {
+  if (!value) return "Just now";
+  const date = new Date(value);
+  const diffMs = Date.now() - date.getTime();
+  const diffMinutes = Math.floor(diffMs / 60000);
+  if (diffMinutes < 1) return "Just now";
+  if (diffMinutes < 60) return `${diffMinutes}m ago`;
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return date.toLocaleDateString();
+}
 
 const Navbar = () => {
   const pathname = usePathname();
   const router = useRouter();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const { logout, user } = useCurrentUser();
+  const {
+    items: notifications,
+    unreadCount,
+    loading: notificationsLoading,
+    error: notificationsError,
+    refresh: refreshNotifications,
+    markOneRead,
+    markAllRead,
+  } = useInAppNotifications(Boolean(user));
 
   const navigationItems = [
     { label: "Home", path: "/dashboard", icon: "Home" },
@@ -100,15 +128,127 @@ const Navbar = () => {
         </nav>
 
         <div className="flex items-center gap-2 sm:gap-3">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="relative h-9 w-9 rounded-full border border-border/70 bg-card/70 hover:bg-muted/70"
-            aria-label="Notifications"
+          <Popover
+            open={isNotificationOpen}
+            onOpenChange={(open) => {
+              setIsNotificationOpen(open);
+              if (open) {
+                void refreshNotifications();
+              }
+            }}
           >
-            <Icon name="Bell" size={18} />
-            <span className="absolute -top-1 -right-1 w-2 h-2 bg-error rounded-full" />
-          </Button>
+            <PopoverTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="relative h-9 w-9 rounded-full border border-border/70 bg-card/70 hover:bg-muted/70"
+                aria-label="Notifications"
+              >
+                <Icon name="Bell" size={18} />
+                <NotificationBadge
+                  count={unreadCount}
+                  size="sm"
+                  className="absolute -right-1 -top-1"
+                />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-[340px] p-0">
+              <div className="border-b border-border/70 px-4 py-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-semibold text-foreground">
+                    Notifications
+                  </h4>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 text-xs"
+                      onClick={() => void refreshNotifications()}
+                    >
+                      Refresh
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 text-xs"
+                      onClick={() => void markAllRead()}
+                      disabled={unreadCount === 0}
+                    >
+                      Mark all read
+                    </Button>
+                  </div>
+                </div>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {unreadCount > 0
+                    ? `${unreadCount} unread updates`
+                    : "You are all caught up"}
+                </p>
+              </div>
+
+              <ScrollArea className="h-[360px]">
+                <div className="space-y-1 p-2">
+                  {notificationsLoading ? (
+                    <div className="rounded-lg p-3 text-sm text-muted-foreground">
+                      Loading notifications...
+                    </div>
+                  ) : notificationsError ? (
+                    <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+                      {notificationsError}
+                    </div>
+                  ) : notifications.length === 0 ? (
+                    <div className="rounded-lg p-5 text-center">
+                      <p className="text-sm font-medium text-foreground">
+                        No notifications yet
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Ride matches and payment updates will appear here.
+                      </p>
+                    </div>
+                  ) : (
+                    notifications.map((notification) => {
+                      const unread = notification.status !== "read";
+                      return (
+                        <button
+                          key={notification.id}
+                          type="button"
+                          onClick={() => {
+                            if (unread) {
+                              void markOneRead(notification.id);
+                            }
+                          }}
+                          className={cn(
+                            "w-full rounded-lg border p-3 text-left transition-colors",
+                            unread
+                              ? "border-primary/20 bg-primary/5 hover:bg-primary/10"
+                              : "border-border/60 bg-background hover:bg-muted/50",
+                          )}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="line-clamp-1 text-sm font-semibold text-foreground">
+                              {notification.title}
+                            </p>
+                            {unread ? (
+                              <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-primary" />
+                            ) : null}
+                          </div>
+                          <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                            {notification.body}
+                          </p>
+                          <p className="mt-2 text-[11px] text-muted-foreground">
+                            {formatRelativeTime(
+                              notification.sent_at ?? notification.created_at,
+                            )}
+                          </p>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              </ScrollArea>
+            </PopoverContent>
+          </Popover>
 
           <div className="relative">
             <Button
