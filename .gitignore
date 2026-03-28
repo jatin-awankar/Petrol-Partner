@@ -37,6 +37,7 @@ yarn-error.log*
 .env
 apps/api/.env
 apps/worker/.env
+.vscode
 
 # vercel
 .vercel
