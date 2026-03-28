@@ -36,7 +36,7 @@ const PreferencesSection: React.FC<PreferencesSectionProps> = ({
 
   return (
     <div className="space-y-3 sm:space-y-4">
-      <div className="rounded-xl border border-border/70 bg-card p-4 md:p-5">
+      <div className="rounded-xl border border-violet-500/20 bg-violet-500/[0.04] p-4 md:p-5">
         <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <h3 className="text-base md:text-lg font-semibold text-foreground flex items-center gap-2">
             <Icon name="ShieldCheck" size={18} className="text-primary" />
@@ -65,7 +65,7 @@ const PreferencesSection: React.FC<PreferencesSectionProps> = ({
         </div>
       </div>
 
-      <div className="rounded-xl border border-border/70 bg-card p-4 md:p-5">
+      <div className="rounded-xl border border-sky-500/20 bg-sky-500/[0.04] p-4 md:p-5">
         <Label>Notes for other student (optional)</Label>
         <textarea
           value={formData.preferences.notes || ""}

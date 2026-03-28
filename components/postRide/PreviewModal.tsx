@@ -54,25 +54,25 @@ const PreviewBody = ({
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-2 sm:gap-3">
-        <div className="rounded-lg border border-border/70 bg-muted/20 p-3">
+        <div className="rounded-lg border border-border/70 bg-sky-500/[0.06] p-3">
           <p className="text-xs text-muted-foreground">Pickup</p>
           <p className="mt-1 text-sm text-foreground">
             {formData.route.pickup || "-"}
           </p>
         </div>
-        <div className="rounded-lg border border-border/70 bg-muted/20 p-3">
+        <div className="rounded-lg border border-border/70 bg-sky-500/[0.06] p-3">
           <p className="text-xs text-muted-foreground">Dropoff</p>
           <p className="mt-1 text-sm text-foreground">
             {formData.route.dropoff || "-"}
           </p>
         </div>
-        <div className="rounded-lg border border-border/70 bg-muted/20 p-3">
+        <div className="rounded-lg border border-border/70 bg-violet-500/[0.06] p-3">
           <p className="text-xs text-muted-foreground">Date and time</p>
           <p className="mt-1 text-sm text-foreground">
             {formData.schedule.date || "-"} {formData.schedule.time || ""}
           </p>
         </div>
-        <div className="rounded-lg border border-border/70 bg-muted/20 p-3">
+        <div className="rounded-lg border border-border/70 bg-violet-500/[0.06] p-3">
           <p className="text-xs text-muted-foreground">
             {mode === "offer" ? "Available seats" : "Seats needed"}
           </p>
@@ -85,7 +85,7 @@ const PreviewBody = ({
       </div>
 
       {mode === "offer" ? (
-        <div className="rounded-lg border border-border/70 bg-muted/20 p-3">
+        <div className="rounded-lg border border-border/70 bg-emerald-500/[0.06] p-3">
           <p className="text-xs text-muted-foreground">Vehicle</p>
           <p className="mt-1 text-sm text-foreground">
             {formData.vehicle.make} {formData.vehicle.model}
@@ -93,11 +93,11 @@ const PreviewBody = ({
         </div>
       ) : null}
 
-      <div className="rounded-lg border border-border/70 bg-muted/20 p-3">
+      <div className="rounded-lg border border-border/70 bg-amber-500/[0.06] p-3">
         <div className="flex items-center justify-between">
           <p className="text-xs text-muted-foreground">Price per seat</p>
           <Badge variant="secondary">
-            Rs {formData.pricing.farePerSeat || 0}
+            ₹ {formData.pricing.farePerSeat || 0}
           </Badge>
         </div>
         <p className="mt-2 text-xs text-muted-foreground">

@@ -72,7 +72,7 @@ const VehicleSection: React.FC<VehicleSectionProps> = ({
   }
 
   return (
-    <div className="rounded-xl border border-border/70 bg-card p-4 md:p-5 space-y-4">
+    <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] p-4 md:p-5 space-y-4">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
         <div>
           <h3 className="text-base md:text-lg font-semibold text-foreground flex items-center gap-2">
@@ -99,7 +99,7 @@ const VehicleSection: React.FC<VehicleSectionProps> = ({
                 className={`rounded-xl border p-4 text-left transition-colors ${
                   active
                     ? "border-primary bg-primary/10"
-                    : "border-border/70 bg-muted/15 hover:border-primary/40"
+                    : "border-border/70 bg-background/80 hover:border-primary/40"
                 }`}
                 onClick={() => selectVehicle(vehicle)}
               >
@@ -130,7 +130,11 @@ const VehicleSection: React.FC<VehicleSectionProps> = ({
       {errors.vehicle ? <p className="text-xs text-destructive">{errors.vehicle}</p> : null}
 
       <div className="flex justify-stretch sm:justify-end">
-        <Button variant="outline" className="w-full sm:w-auto" onClick={() => router.push("/profile")}>
+        <Button
+          variant="outline"
+          className="w-full sm:w-auto"
+          onClick={() => router.push("/profile-settings")}
+        >
           Manage vehicles in profile
         </Button>
       </div>

@@ -64,7 +64,7 @@ const DateTimeSection: React.FC<DateTimeSectionProps> = ({
 
   return (
     <div className="space-y-3 sm:space-y-4">
-      <div className="rounded-xl border border-border/70 bg-card p-4 md:p-5">
+      <div className="rounded-xl border border-violet-500/20 bg-violet-500/[0.04] p-4 md:p-5">
         <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <h3 className="text-base md:text-lg font-semibold text-foreground flex items-center gap-2">
             <CalendarDays className="h-5 w-5 text-primary" />
@@ -97,7 +97,7 @@ const DateTimeSection: React.FC<DateTimeSectionProps> = ({
         </div>
       </div>
 
-      <div className="rounded-xl border border-border/70 bg-card p-4 md:p-5">
+      <div className="rounded-xl border border-sky-500/20 bg-sky-500/[0.04] p-4 md:p-5">
         <div className="mb-3 flex items-center gap-2">
           <Clock3 className="h-5 w-5 text-primary" />
           <h4 className="text-sm font-semibold text-foreground">Quick time picks</h4>
@@ -119,7 +119,7 @@ const DateTimeSection: React.FC<DateTimeSectionProps> = ({
         </div>
       </div>
 
-      <details className="rounded-xl border border-border/70 bg-card p-4 md:p-5">
+      <details className="rounded-xl border border-amber-500/20 bg-amber-500/[0.04] p-4 md:p-5">
         <summary className="cursor-pointer list-none flex items-center justify-between">
           <span className="text-sm font-semibold text-foreground">Advanced timing</span>
           <Badge variant="outline">Optional</Badge>

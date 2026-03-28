@@ -114,7 +114,7 @@ const SearchComponent = () => {
 
   return (
     <section className="rounded-3xl border border-border/70 bg-card p-4 md:p-5 shadow-card">
-      <div className="rounded-2xl border border-border/60 bg-muted/35 p-4 md:p-5">
+      <div className="rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/5 via-muted/25 to-card p-4 md:p-5">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
           <div className="lg:col-span-4">
             <Label className="mb-2 text-xs uppercase tracking-[0.16em] text-muted-foreground">
@@ -230,7 +230,7 @@ const SearchComponent = () => {
             </TabsTrigger>
           </TabsList>
 
-          <div className="text-xs md:text-sm text-muted-foreground">
+          <div className="rounded-full border border-border/60 bg-muted/40 px-3 py-1 text-xs md:text-sm text-muted-foreground">
             {filtered.length} matching result{filtered.length !== 1 ? "s" : ""}
           </div>
         </div>
@@ -262,7 +262,9 @@ const SearchComponent = () => {
         >
           <Icon name="ChevronLeft" size={16} />
         </Button>
-        <div className="text-sm text-muted-foreground">Page {page}</div>
+        <div className="rounded-full border border-border/60 bg-muted/40 px-3 py-1 text-sm text-muted-foreground">
+          Page {page}
+        </div>
         <Button
           variant="outline"
           disabled={page * PAGE_SIZE >= filtered.length}

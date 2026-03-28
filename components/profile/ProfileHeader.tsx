@@ -66,7 +66,7 @@ const ProfileHeader: React.FC<ProfileHeaderProps> = ({
   };
 
   return (
-    <section className="rounded-2xl border border-border/70 bg-gradient-to-br from-card via-card to-primary/5 p-4 shadow-card sm:p-6">
+    <section className="rounded-2xl border border-border/70 bg-gradient-to-br from-card via-card to-card p-4 shadow-card sm:p-6">
       <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-center">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
           <div className="relative">

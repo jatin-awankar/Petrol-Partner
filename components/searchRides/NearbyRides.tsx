@@ -91,10 +91,13 @@ const NearbyRides = () => {
     <motion.section
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      className="rounded-3xl border border-border/70 bg-card p-4 md:p-5 shadow-card"
+      className="rounded-3xl border border-sky-300/25 bg-gradient-to-br from-sky-100/30 via-card to-card p-4 md:p-5 shadow-card dark:from-sky-500/10"
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
+          <div className="rounded-xl border border-sky-300/30 bg-sky-100/50 p-2 text-sky-700 dark:bg-sky-500/10 dark:text-sky-300">
+            <Icon name="Navigation" size={16} />
+          </div>
           <div>
             <h3 className="text-lg font-semibold text-foreground">
               Nearby availability
@@ -120,12 +123,12 @@ const NearbyRides = () => {
       </div>
 
       {!showNearby ? (
-        <div className="mt-4 rounded-xl border border-dashed border-border/80 bg-muted/30 p-5 text-sm text-muted-foreground">
+        <div className="mt-4 rounded-xl border border-dashed border-sky-300/40 bg-sky-50/50 p-5 text-sm text-muted-foreground dark:bg-sky-500/5">
           Turn on location to prioritize rides near you first.
         </div>
       ) : (
         <div className="mt-4 grid grid-cols-1 xl:grid-cols-2 gap-4">
-          <div className="rounded-2xl border border-border/70 bg-muted/20 p-4">
+          <div className="rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/5 via-card to-card p-4">
             <h4 className="mb-3 text-sm font-semibold text-foreground">
               Nearby offers
             </h4>
@@ -149,7 +152,7 @@ const NearbyRides = () => {
             )}
           </div>
 
-          <div className="rounded-2xl border border-border/70 bg-muted/20 p-4">
+          <div className="rounded-2xl border border-warning/25 bg-gradient-to-br from-warning/5 via-card to-card p-4">
             <h4 className="mb-3 text-sm font-semibold text-foreground">
               Nearby requests
             </h4>

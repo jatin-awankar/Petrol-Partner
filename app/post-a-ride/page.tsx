@@ -460,10 +460,10 @@ const PostRide = () => {
   if (authLoading) return null;
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_hsl(var(--primary)/0.10),_transparent_48%),radial-gradient(circle_at_85%_15%,_hsl(var(--accent)/0.18),_transparent_42%)]">
       <div className="container mx-auto px-3 py-4 sm:px-4 md:py-8 mb-16 md:mb-auto">
         <div className="flex flex-col gap-4 md:gap-6">
-          <header className="rounded-2xl border border-border/70 bg-card px-4 py-4 sm:px-5 sm:py-5 shadow-card">
+          <header className="rounded-2xl border border-border/70 bg-card/95 backdrop-blur-sm px-4 py-4 sm:px-5 sm:py-5 shadow-card">
             <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
               <div>
                 <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
@@ -476,6 +476,20 @@ const PostRide = () => {
                   Post in minutes with clean route, schedule and pricing
                   details.
                 </p>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <Badge
+                    variant="secondary"
+                    className="border border-primary/25 bg-primary/10 text-primary"
+                  >
+                    Student-only network
+                  </Badge>
+                  <Badge
+                    variant="secondary"
+                    className="border border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                  >
+                    Safer verified rides
+                  </Badge>
+                </div>
               </div>
 
               <Tabs
@@ -498,7 +512,7 @@ const PostRide = () => {
 
           <div className="grid grid-cols-1 xl:grid-cols-[320px_1fr] gap-4 md:gap-6">
             <aside className="space-y-4 xl:sticky xl:top-6 self-start">
-              <Card className="border-border/70 py-4">
+              <Card className="border-primary/20 bg-card/95 py-4 shadow-[0_8px_28px_-22px_hsl(var(--primary))]">
                 <CardHeader className="pb-3">
                   <CardTitle className="flex items-center justify-between text-base">
                     Journey Progress
@@ -516,12 +530,12 @@ const PostRide = () => {
                 </CardContent>
               </Card>
 
-              <Card className="border-border/70 py-4">
+              <Card className="border-sky-500/20 bg-sky-500/[0.04] py-4">
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base">Trip Snapshot</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3 text-sm">
-                  <div className="rounded-lg border border-border/70 bg-muted/20 p-3">
+                  <div className="rounded-lg border border-border/70 bg-background/70 p-3">
                     <p className="text-xs text-muted-foreground">Route</p>
                     <p className="mt-1 text-foreground truncate">
                       {formData.route.pickup || "Pickup not selected"}
@@ -539,21 +553,21 @@ const PostRide = () => {
                   <div className="flex items-center justify-between">
                     <span className="text-muted-foreground">Fare / seat</span>
                     <span className="font-semibold text-foreground">
-                      Rs {formData.pricing.farePerSeat || 0}
+                      ₹ {formData.pricing.farePerSeat || 0}
                     </span>
                   </div>
                 </CardContent>
               </Card>
 
-              <Card className="border-border/70">
-                <CardContent className="py-4 text-sm text-muted-foreground">
+              <Card className="border-emerald-500/20 bg-emerald-500/[0.04]">
+                <CardContent className="py-4 text-sm text-muted-foreground leading-relaxed">
                   Use clear pickup points, realistic pricing, and accurate
                   timings to get faster matches.
                 </CardContent>
               </Card>
             </aside>
 
-            <section className="rounded-2xl border border-border/70 bg-card shadow-card">
+            <section className="rounded-2xl border border-border/70 bg-card/95 backdrop-blur-sm shadow-card">
               <div className="border-b border-border/70 px-4 py-4 sm:px-5 md:px-6">
                 <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
                   Step {currentStep}

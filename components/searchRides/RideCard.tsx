@@ -25,7 +25,7 @@ const RideCard: React.FC<{
       exit={{ opacity: 0, y: -6 }}
     >
       <Card
-        className="group p-4 md:p-5 border-border/70 hover:border-primary/35 hover:shadow-card transition-all duration-200 cursor-pointer"
+        className="group p-4 md:p-5 border-border/70 bg-gradient-to-br from-card via-card to-muted/20 hover:border-primary/35 hover:shadow-card transition-all duration-200 cursor-pointer"
         onClick={() => onClick?.(ride)}
       >
         {loading ? (
@@ -38,7 +38,7 @@ const RideCard: React.FC<{
           <div className="space-y-4">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0 flex items-center gap-3">
-                <div className="w-12 h-12 bg-muted rounded-xl flex items-center justify-center flex-shrink-0 overflow-hidden">
+                <div className="w-12 h-12 bg-gradient-to-br from-primary/10 to-muted rounded-xl flex items-center justify-center flex-shrink-0 overflow-hidden">
                   {ride.profile_image ? (
                     <Image
                       src={ride.profile_image}
@@ -75,7 +75,7 @@ const RideCard: React.FC<{
               </div>
             </div>
 
-            <div className="rounded-xl border border-border/70 bg-muted/30 p-3">
+            <div className="rounded-xl border border-primary/15 bg-gradient-to-br from-primary/5 via-muted/25 to-card p-3">
               <div className="flex items-start gap-2">
                 <Icon
                   name="CircleDot"
@@ -100,7 +100,7 @@ const RideCard: React.FC<{
             </div>
 
             <div className="grid grid-cols-3 gap-2">
-              <div className="rounded-lg bg-secondary/80 px-2 py-2">
+              <div className="rounded-lg border border-border/60 bg-secondary/70 px-2 py-2">
                 <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
                   Date
                 </p>
@@ -108,7 +108,7 @@ const RideCard: React.FC<{
                   {formattedDate}
                 </p>
               </div>
-              <div className="rounded-lg bg-secondary/80 px-2 py-2">
+              <div className="rounded-lg border border-border/60 bg-secondary/70 px-2 py-2">
                 <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
                   Time
                 </p>
@@ -116,7 +116,7 @@ const RideCard: React.FC<{
                   {formattedTime}
                 </p>
               </div>
-              <div className="rounded-lg bg-secondary/80 px-2 py-2">
+              <div className="rounded-lg border border-border/60 bg-secondary/70 px-2 py-2">
                 <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
                   Seats
                 </p>
@@ -132,7 +132,7 @@ const RideCard: React.FC<{
                   Price Per Seat
                 </p>
                 <div className="text-base font-semibold text-foreground">
-                  Rs {ride.price_per_seat ?? 0}
+                  ₹ {ride.price_per_seat ?? 0}
                 </div>
               </div>
               <Button

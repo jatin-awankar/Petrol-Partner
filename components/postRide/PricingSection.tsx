@@ -60,7 +60,7 @@ const PricingSection: React.FC<PricingSectionProps> = ({
 
   return (
     <div className="space-y-3 sm:space-y-4">
-      <div className="rounded-xl border border-border/70 bg-card p-4 md:p-5">
+      <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.04] p-4 md:p-5">
         <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <h3 className="text-base md:text-lg font-semibold text-foreground flex items-center gap-2">
             <Icon name="IndianRupee" size={18} className="text-primary" />
@@ -70,7 +70,7 @@ const PricingSection: React.FC<PricingSectionProps> = ({
         </div>
 
         <div className="space-y-2">
-          <Label>{mode === "offer" ? "Fare per seat (Rs)" : "Max price per seat (Rs)"}</Label>
+          <Label>{mode === "offer" ? "Fare per seat (₹)" : "Max price per seat (₹)"}</Label>
           <Input
             type="number"
             min={1}
@@ -82,7 +82,7 @@ const PricingSection: React.FC<PricingSectionProps> = ({
         </div>
       </div>
 
-      <div className="rounded-xl border border-border/70 bg-card p-4 md:p-5">
+      <div className="rounded-xl border border-sky-500/20 bg-sky-500/[0.04] p-4 md:p-5">
         <h4 className="text-sm font-semibold text-foreground mb-3">
           {mode === "offer" ? "Estimated payout summary" : "Estimated spend summary"}
         </h4>
@@ -93,19 +93,19 @@ const PricingSection: React.FC<PricingSectionProps> = ({
           </div>
           <div className="rounded-lg border border-border/70 bg-muted/20 p-3">
             <p className="text-xs text-muted-foreground">Gross amount</p>
-            <p className="mt-1 text-sm font-semibold text-foreground">Rs {gross || 0}</p>
+            <p className="mt-1 text-sm font-semibold text-foreground">₹ {gross || 0}</p>
           </div>
           <div className="rounded-lg border border-border/70 bg-muted/20 p-3">
             <p className="text-xs text-muted-foreground">
               {mode === "offer" ? "Estimated net" : "Estimated total"}
             </p>
-            <p className="mt-1 text-sm font-semibold text-foreground">Rs {estimatedNet || 0}</p>
+            <p className="mt-1 text-sm font-semibold text-foreground">₹ {estimatedNet || 0}</p>
           </div>
         </div>
       </div>
 
       {mode === "offer" ? (
-        <div className="rounded-xl border border-border/70 bg-card p-4 md:p-5">
+        <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] p-4 md:p-5">
           <h4 className="text-sm font-semibold text-foreground mb-3">Accepted payment modes</h4>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
             {paymentMethods.map((method) => {

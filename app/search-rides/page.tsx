@@ -17,7 +17,7 @@ const SearchRidesPage = async () => {
   return (
     <div className="page min-h-screen bg-background">
       <div className="container mx-auto mb-12 md:mb-auto space-y-6">
-        <section className="rounded-3xl border border-border/70 bg-card p-5 md:p-7 shadow-card">
+        <section className="rounded-3xl border border-primary/20 bg-gradient-to-br from-primary/10 via-card to-card p-5 md:p-7 shadow-card">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
               <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
@@ -30,6 +30,17 @@ const SearchRidesPage = async () => {
                 Search active offers and ride requests on your route, then book
                 directly in a few taps.
               </p>
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                <span className="rounded-full border border-primary/25 bg-primary/10 px-2.5 py-1 text-primary">
+                  Live route feed
+                </span>
+                <span className="rounded-full border border-success/25 bg-success/10 px-2.5 py-1 text-success">
+                  Verified students
+                </span>
+                <span className="rounded-full border border-warning/25 bg-warning/10 px-2.5 py-1 text-foreground">
+                  Fast booking
+                </span>
+              </div>
             </div>
 
             <div className="flex flex-wrap gap-2">
