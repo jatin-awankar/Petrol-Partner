@@ -5,6 +5,11 @@ export interface FrontendUserProfile {
   phone?: string;
   college?: string;
   profile_image?: string;
+  date_of_birth?: string | null;
+  gender_for_matching?: "female" | "male" | null;
+  emergency_contact_name?: string | null;
+  emergency_contact_phone?: string | null;
+  address?: string | null;
   is_verified: boolean;
   role: string;
   created_at: string;
@@ -34,7 +39,13 @@ export function normalizeUserProfile(user: any): FrontendUserProfile {
     email: user.email ?? "",
     phone: user.phone ?? undefined,
     college: user.college ?? undefined,
-    profile_image: user.avatarUrl ?? user.profile_image ?? undefined,
+    profile_image:
+      user.avatarUrl ?? user.avatar_url ?? user.profile_image ?? undefined,
+    date_of_birth: user.date_of_birth ?? null,
+    gender_for_matching: user.gender_for_matching ?? null,
+    emergency_contact_name: user.emergency_contact_name ?? null,
+    emergency_contact_phone: user.emergency_contact_phone ?? null,
+    address: user.address ?? null,
     is_verified: Boolean(user.isVerified ?? user.is_verified),
     role: user.role ?? "user",
     created_at: user.createdAt ?? user.created_at ?? new Date().toISOString(),

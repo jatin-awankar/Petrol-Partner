@@ -50,7 +50,7 @@ const QuickActionCards: React.FC = () => {
         "Monitor due, overdue, and completed settlements in one place.",
       metricLabel: "Finance hub",
       metricValue: "Settlement board",
-      href: "/payment-transactions",
+      href: "/payments",
       icon: Wallet,
       accentClass: "from-sky-50 to-blue-100",
     },

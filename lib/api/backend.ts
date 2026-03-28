@@ -13,11 +13,55 @@ export interface BackendAuthUser {
   phone?: string;
   college?: string;
   profile_image?: string;
+  date_of_birth?: string | null;
+  gender_for_matching?: "female" | "male" | null;
+  emergency_contact_name?: string | null;
+  emergency_contact_phone?: string | null;
+  address?: string | null;
   is_verified: boolean;
   role: string;
   created_at: string;
   updated_at?: string;
   avg_rating?: number;
+}
+
+export interface BackendProfilePreferences {
+  musicPreference?: string;
+  smokingPolicy?: string;
+  chattiness?: string;
+  notifications?: Record<string, boolean>;
+  privacy?: Record<string, boolean>;
+  autoAccept?: Record<string, boolean>;
+}
+
+export interface BackendProfileSafety {
+  trustedContacts?: Array<{
+    id?: string | number;
+    name: string;
+    phone: string;
+    relationship?: string;
+    email?: string;
+  }>;
+  settings?: Record<string, boolean>;
+}
+
+export interface BackendProfileSecurity {
+  password_last_changed_at: string | null;
+  two_factor: {
+    enabled: boolean;
+    method: string | null;
+    supported: boolean;
+  };
+  login_activity: Array<{
+    id: string;
+    device: string;
+    user_agent: string | null;
+    ip_address: string | null;
+    time: string | null;
+    current: boolean;
+    revoked_at: string | null;
+    expires_at: string | null;
+  }>;
 }
 
 export async function loginWithBackend(input: {
@@ -60,6 +104,70 @@ export async function logoutFromBackend() {
 export async function getCurrentUserFromBackend() {
   const response = await apiRequest<{ user: any }>("/v1/auth/me");
   return normalizeUserProfile(response.user);
+}
+
+export async function getProfileMe() {
+  const response = await apiRequest<{ profile: any }>("/v1/profile/me");
+  return normalizeUserProfile(response.profile);
+}
+
+export async function updateProfileMe(input: Partial<{
+  full_name: string | null;
+  phone: string | null;
+  college: string | null;
+  avatar_url: string | null;
+  date_of_birth: string | null;
+  gender_for_matching: "female" | "male" | null;
+  emergency_contact_name: string | null;
+  emergency_contact_phone: string | null;
+  address: string | null;
+}>) {
+  const response = await apiRequest<{ profile: any }>("/v1/profile/me", {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+
+  return normalizeUserProfile(response.profile);
+}
+
+export async function getProfilePreferences() {
+  const response = await apiRequest<{ preferences: BackendProfilePreferences }>(
+    "/v1/profile/preferences",
+  );
+  return response.preferences ?? {};
+}
+
+export async function updateProfilePreferences(input: BackendProfilePreferences) {
+  const response = await apiRequest<{ preferences: BackendProfilePreferences }>(
+    "/v1/profile/preferences",
+    {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    },
+  );
+
+  return response.preferences ?? {};
+}
+
+export async function getProfileSafety() {
+  const response = await apiRequest<{ safety: BackendProfileSafety }>("/v1/profile/safety");
+  return response.safety ?? {};
+}
+
+export async function updateProfileSafety(input: BackendProfileSafety) {
+  const response = await apiRequest<{ safety: BackendProfileSafety }>("/v1/profile/safety", {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+
+  return response.safety ?? {};
+}
+
+export async function getProfileSecurity() {
+  const response = await apiRequest<{ security: BackendProfileSecurity }>(
+    "/v1/profile/security",
+  );
+  return response.security;
 }
 
 export async function getCurrentUserFromBackendServer(cookieHeader: string) {

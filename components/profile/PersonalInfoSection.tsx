@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
-import Icon from "../AppIcon";
+import React, { useCallback, useEffect, useState } from "react";
 import Skeleton from "react-loading-skeleton";
+import Icon from "../AppIcon";
 import { Button } from "../ui/button";
-import { Edit, Save } from "lucide-react";
 import { Input } from "../ui/input";
+import { Label } from "../ui/label";
 import {
   Select,
   SelectContent,
@@ -11,7 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../ui/select";
-import { Label } from "../ui/label";
+import { Edit, Save } from "lucide-react";
 
 export interface User {
   name?: string;
@@ -34,7 +34,7 @@ export interface PersonalInfoSectionProps {
   error?: string | null;
 }
 
-const DEFAULT_USER_FORM: User = {
+const EMPTY: User = {
   name: "",
   phone: "",
   dateOfBirth: "",
@@ -50,414 +50,286 @@ const PersonalInfoSection: React.FC<PersonalInfoSectionProps> = ({
   onSave,
   isExpanded,
   onToggle,
-  isLoading: externalLoading = false,
-  error: externalError = null,
+  isLoading = false,
+  error = null,
 }) => {
-  const [formData, setFormData] = useState<User>(DEFAULT_USER_FORM);
-  const [isEditing, setIsEditing] = useState<boolean>(false);
-  const [isSaving, setIsSaving] = useState<boolean>(false);
-  const [isInternalLoading, setIsInternalLoading] = useState(true);
-  const [formError, setFormError] = useState<string | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [formData, setFormData] = useState<User>(EMPTY);
 
-  const isLoading = externalLoading || isInternalLoading;
-
-  const genderOptions = useMemo(
-    () => [
-      { value: "male", label: "Male" },
-      { value: "female", label: "Female" },
-      { value: "other", label: "Other" },
-      { value: "prefer-not-to-say", label: "Prefer not to say" },
-    ],
-    []
-  );
-
-  // Initialize from props
   useEffect(() => {
-    if (user !== null) {
-      const timer = setTimeout(() => {
-        setFormData({
-          ...DEFAULT_USER_FORM,
-          name: user?.name ?? "",
-          phone: user?.phone ?? "",
-          dateOfBirth: user?.dateOfBirth ?? "",
-          gender: user?.gender ?? "",
-          emergencyContact: user?.emergencyContact ?? "",
-          emergencyPhone: user?.emergencyPhone ?? "",
-          address: user?.address ?? "",
-          email: user?.email ?? "",
-        });
-        setIsInternalLoading(false);
-      }, 300);
-      return () => clearTimeout(timer);
-    } else {
-      setIsInternalLoading(false);
-    }
+    setFormData({
+      ...EMPTY,
+      name: user?.name ?? "",
+      phone: user?.phone ?? "",
+      dateOfBirth: user?.dateOfBirth ?? "",
+      gender: user?.gender ?? "",
+      emergencyContact: user?.emergencyContact ?? "",
+      emergencyPhone: user?.emergencyPhone ?? "",
+      address: user?.address ?? "",
+      email: user?.email ?? "",
+    });
   }, [user]);
 
-  const handleInputChange = useCallback(
-    (field: keyof User, value: string) => {
-      setFormData((prev) => ({ ...prev, [field]: value }));
-      setFormError(null);
-    },
-    []
-  );
+  const setField = useCallback((key: keyof User, value: string) => {
+    setFormData((prev) => ({ ...prev, [key]: value }));
+    setFormError(null);
+  }, []);
 
-  const validateForm = useCallback((): boolean => {
-    if (!formData.name?.trim()) {
-      setFormError("Name is required");
-      return false;
-    }
-    if (!formData.phone?.trim()) {
-      setFormError("Phone number is required");
-      return false;
-    }
-    // Basic phone validation
-    const phoneRegex = /^[\d\s\-\+\(\)]{10,}$/;
-    if (!phoneRegex.test(formData.phone.trim())) {
-      setFormError("Please enter a valid phone number");
-      return false;
-    }
-    return true;
-  }, [formData]);
+  const validate = useCallback(() => {
+    if (!formData.name?.trim()) return "Full name is required.";
+    if (!formData.phone?.trim()) return "Phone number is required.";
+    return null;
+  }, [formData.name, formData.phone]);
 
   const handleSave = useCallback(async () => {
     if (!onSave) return;
-
-    setFormError(null);
-
-    if (!validateForm()) {
+    const nextError = validate();
+    if (nextError) {
+      setFormError(nextError);
       return;
     }
-
     setIsSaving(true);
-
+    setFormError(null);
     try {
       await onSave(formData);
-      setSaveSuccess(true);
       setIsEditing(false);
-      setTimeout(() => setSaveSuccess(false), 3000);
-    } catch (err) {
-      setFormError(
-        err instanceof Error ? err.message : "Failed to save profile. Please try again."
-      );
-      console.error("Save personal info error:", err);
+      setSaveSuccess(true);
+      window.setTimeout(() => setSaveSuccess(false), 2200);
+    } catch (err: any) {
+      setFormError(err?.message || "Unable to update profile.");
     } finally {
       setIsSaving(false);
     }
-  }, [formData, onSave, validateForm]);
+  }, [formData, onSave, validate]);
 
   const handleCancel = useCallback(() => {
-    if (user) {
-      setFormData({
-        ...DEFAULT_USER_FORM,
-        name: user?.name ?? "",
-        phone: user?.phone ?? "",
-        dateOfBirth: user?.dateOfBirth ?? "",
-        gender: user?.gender ?? "",
-        emergencyContact: user?.emergencyContact ?? "",
-        emergencyPhone: user?.emergencyPhone ?? "",
-        address: user?.address ?? "",
-        email: user?.email ?? "",
-      });
-    } else {
-      setFormData(DEFAULT_USER_FORM);
-    }
     setIsEditing(false);
     setFormError(null);
+    setFormData({
+      ...EMPTY,
+      name: user?.name ?? "",
+      phone: user?.phone ?? "",
+      dateOfBirth: user?.dateOfBirth ?? "",
+      gender: user?.gender ?? "",
+      emergencyContact: user?.emergencyContact ?? "",
+      emergencyPhone: user?.emergencyPhone ?? "",
+      address: user?.address ?? "",
+      email: user?.email ?? "",
+    });
   }, [user]);
 
-  // Render skeleton when loading
   if (isLoading) {
     return (
-      <div className="bg-card border border-border rounded-lg shadow-card animate-pulse">
-        <button
-          onClick={onToggle}
-          className="w-full flex items-center justify-between p-4 hover:bg-muted/50 transition-colors"
-        >
-          <div className="flex items-center space-x-3">
+      <section className="rounded-2xl border border-border/70 bg-card/90 shadow-card">
+        <button onClick={onToggle} className="flex w-full items-center justify-between px-4 py-4">
+          <div className="flex items-center gap-3">
             <Icon name="User" size={20} className="text-primary" />
-            <Skeleton width={192} height={20} className="rounded animate-bounce" />
+            <Skeleton width={180} height={18} />
           </div>
-          <Skeleton width={20} height={20} className="rounded animate-bounce" />
+          <Skeleton width={18} height={18} />
         </button>
-        {isExpanded && (
-          <div className="px-4 pb-4 border-t border-border pt-4 space-y-4">
-            <Skeleton width="100%" height={80} className="rounded animate-pulse" />
-            <Skeleton width="100%" height={80} className="rounded animate-pulse" />
-            <Skeleton width="100%" height={80} className="rounded animate-pulse" />
-            <Skeleton width="100%" height={80} className="rounded animate-pulse" />
-          </div>
-        )}
-      </div>
+      </section>
     );
   }
 
   return (
-    <div className="bg-card border border-border rounded-lg shadow-card">
+    <section className="rounded-2xl border border-border/70 bg-card/90 shadow-card">
       <button
         onClick={onToggle}
-        className="w-full flex items-center justify-between p-4 hover:bg-muted/50 transition-colors"
+        className="flex w-full items-center justify-between px-4 py-4 transition-colors hover:bg-muted/40"
       >
-        <div className="flex items-center space-x-3">
+        <div className="flex items-center gap-3">
           <Icon name="User" size={20} className="text-primary" />
-          <h3 className="font-medium text-foreground">Personal Information</h3>
+          <div className="text-left">
+            <h3 className="font-medium text-foreground">Personal Info</h3>
+            <p className="text-xs text-muted-foreground">Identity, contact details, and emergency information.</p>
+          </div>
         </div>
-        <Icon
-          name={isExpanded ? "ChevronUp" : "ChevronDown"}
-          size={20}
-          className="text-muted-foreground"
-        />
+        <Icon name={isExpanded ? "ChevronUp" : "ChevronDown"} size={20} className="text-muted-foreground" />
       </button>
 
-      {/* Content */}
       <div
-        className={`overflow-hidden transition-[max-height,opacity] duration-500 ease-in-out ${
-          isExpanded ? "max-h-[3000px] opacity-100" : "max-h-0 opacity-0"
+        className={`overflow-hidden transition-[max-height,opacity] duration-300 ${
+          isExpanded ? "max-h-[2800px] opacity-100" : "max-h-0 opacity-0"
         }`}
       >
-        <div className="px-4 pb-4 border-t border-border pt-4 space-y-6">
-          {saveSuccess && (
-            <div className="p-3 bg-success/10 border border-success/20 rounded-lg">
-              <p className="text-sm text-success">Profile saved successfully!</p>
-            </div>
-          )}
-
-          {(externalError || formError) && (
-            <div className="p-3 bg-error/10 border border-error/20 rounded-lg">
-              <p className="text-sm text-error">{externalError || formError}</p>
-            </div>
-          )}
+        <div className="space-y-4 border-t border-border/70 px-4 pb-5 pt-4">
+          {error ? (
+            <p className="rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
+              {error}
+            </p>
+          ) : null}
+          {formError ? (
+            <p className="rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
+              {formError}
+            </p>
+          ) : null}
+          {saveSuccess ? (
+            <p className="rounded-lg border border-emerald-300/40 bg-emerald-100/40 p-3 text-sm text-emerald-700">
+              Profile updated.
+            </p>
+          ) : null}
 
           {!isEditing ? (
             <>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid gap-3 sm:grid-cols-2">
                 <div>
-                  <label className="text-sm font-medium text-foreground">
-                    Full Name
-                  </label>
-                  <p className="text-muted-foreground mt-1">
-                    {formData.name || "Not provided"}
-                  </p>
+                  <p className="text-xs text-muted-foreground">Full name</p>
+                  <p className="text-sm font-medium text-foreground">{formData.name || "Not provided"}</p>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-foreground">
-                    Phone Number
-                  </label>
-                  <p className="text-muted-foreground mt-1">
-                    {formData.phone || "Not provided"}
-                  </p>
+                  <p className="text-xs text-muted-foreground">Phone</p>
+                  <p className="text-sm font-medium text-foreground">{formData.phone || "Not provided"}</p>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-foreground">
-                    Email
-                  </label>
-                  <p className="text-muted-foreground mt-1">
-                    {formData.email || "Not provided"}
-                  </p>
+                  <p className="text-xs text-muted-foreground">Email</p>
+                  <p className="text-sm font-medium text-foreground">{formData.email || "Not provided"}</p>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-foreground">
-                    Date of Birth
-                  </label>
-                  <p className="text-muted-foreground mt-1">
+                  <p className="text-xs text-muted-foreground">Date of birth</p>
+                  <p className="text-sm font-medium text-foreground">
                     {formData.dateOfBirth
                       ? new Date(formData.dateOfBirth).toLocaleDateString()
                       : "Not provided"}
                   </p>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-foreground">
-                    Gender
-                  </label>
-                  <p className="text-muted-foreground mt-1 capitalize">
-                    {formData.gender
-                      ? genderOptions.find((opt) => opt.value === formData.gender)?.label ||
-                        formData.gender
-                      : "Not provided"}
+                  <p className="text-xs text-muted-foreground">Gender</p>
+                  <p className="text-sm font-medium capitalize text-foreground">
+                    {formData.gender || "Not provided"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Emergency contact</p>
+                  <p className="text-sm font-medium text-foreground">
+                    {[formData.emergencyContact, formData.emergencyPhone].filter(Boolean).join(" - ") ||
+                      "Not provided"}
                   </p>
                 </div>
               </div>
-
-              {(formData.emergencyContact || formData.emergencyPhone) && (
-                <div className="border-t border-border pt-4 space-y-2">
-                  <h4 className="font-medium text-foreground">
-                    Emergency Contact
-                  </h4>
-                  <p className="text-sm text-muted-foreground">
-                    {formData.emergencyContact || "Not provided"}
-                    {formData.emergencyContact && formData.emergencyPhone && " — "}
-                    {formData.emergencyPhone || ""}
-                  </p>
-                </div>
-              )}
-
-              {formData.address && (
-                <div className="border-t border-border pt-4">
-                  <label className="text-sm font-medium text-foreground">
-                    Address
-                  </label>
-                  <p className="text-muted-foreground mt-1">{formData.address}</p>
-                </div>
-              )}
-
-              {onSave && (
-                <Button
-                  variant="outline"
-                  onClick={() => setIsEditing(true)}
-                  className="mt-4"
-                >
-                  <Edit />
-                  Edit Information
+              <div>
+                <p className="text-xs text-muted-foreground">Address</p>
+                <p className="text-sm font-medium text-foreground">{formData.address || "Not provided"}</p>
+              </div>
+              {onSave ? (
+                <Button variant="outline" onClick={() => setIsEditing(true)}>
+                  <Edit className="size-4" />
+                  Edit
                 </Button>
-              )}
+              ) : null}
             </>
           ) : (
             <>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="name">Full Name *</Label>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="profile-name">Full name</Label>
                   <Input
-                    id="name"
-                    type="text"
+                    id="profile-name"
                     value={formData.name ?? ""}
-                    onChange={(e) => handleInputChange("name", e.target.value)}
-                    required
+                    onChange={(e) => setField("name", e.target.value)}
                     disabled={isSaving}
                     placeholder="Enter your full name"
                   />
                 </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="phone">Phone Number *</Label>
+                <div className="space-y-1.5">
+                  <Label htmlFor="profile-phone">Phone</Label>
                   <Input
-                    id="phone"
-                    type="tel"
+                    id="profile-phone"
                     value={formData.phone ?? ""}
-                    onChange={(e) => handleInputChange("phone", e.target.value)}
-                    required
+                    onChange={(e) => setField("phone", e.target.value)}
                     disabled={isSaving}
-                    placeholder="Enter phone number"
+                    placeholder="+91 98765 43210"
                   />
                 </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
+                <div className="space-y-1.5">
+                  <Label htmlFor="profile-email">Email (read only)</Label>
                   <Input
-                    id="email"
-                    type="email"
+                    id="profile-email"
                     value={formData.email ?? ""}
-                    onChange={(e) => handleInputChange("email", e.target.value)}
-                    disabled={isSaving}
-                    placeholder="Enter email address"
+                    disabled
+                    placeholder="Email is managed by account login"
                   />
                 </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="dateOfBirth">Date of Birth</Label>
+                <div className="space-y-1.5">
+                  <Label htmlFor="profile-dob">Date of birth</Label>
                   <Input
-                    id="dateOfBirth"
+                    id="profile-dob"
                     type="date"
                     value={formData.dateOfBirth ?? ""}
-                    onChange={(e) =>
-                      handleInputChange("dateOfBirth", e.target.value)
-                    }
+                    onChange={(e) => setField("dateOfBirth", e.target.value)}
                     disabled={isSaving}
-                    max={new Date().toISOString().split("T")[0]}
                   />
                 </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="gender">Gender</Label>
+                <div className="space-y-1.5">
+                  <Label htmlFor="profile-gender">Gender</Label>
                   <Select
                     value={formData.gender || ""}
-                    onValueChange={(value) => handleInputChange("gender", value)}
+                    onValueChange={(value) => setField("gender", value)}
                     disabled={isSaving}
                   >
-                    <SelectTrigger id="gender">
-                      <SelectValue placeholder="Select Gender" />
+                    <SelectTrigger id="profile-gender">
+                      <SelectValue placeholder="Select gender" />
                     </SelectTrigger>
                     <SelectContent>
-                      {genderOptions.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
+                      <SelectItem value="male">Male</SelectItem>
+                      <SelectItem value="female">Female</SelectItem>
+                      <SelectItem value="other">Other</SelectItem>
+                      <SelectItem value="prefer-not-to-say">Prefer not to say</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
-              </div>
-
-              <div className="border-t border-border pt-4 space-y-4">
-                <h4 className="font-medium text-foreground">
-                  Emergency Contact
-                </h4>
-                <div className="space-y-2">
-                  <Label htmlFor="emergencyContact">Contact Name</Label>
+                <div className="space-y-1.5">
+                  <Label htmlFor="profile-address">Address</Label>
                   <Input
-                    id="emergencyContact"
-                    type="text"
+                    id="profile-address"
+                    value={formData.address ?? ""}
+                    onChange={(e) => setField("address", e.target.value)}
+                    disabled={isSaving}
+                    placeholder="Hostel / Street / Area"
+                  />
+                </div>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="profile-emergency-name">Emergency contact name</Label>
+                  <Input
+                    id="profile-emergency-name"
                     value={formData.emergencyContact ?? ""}
-                    onChange={(e) =>
-                      handleInputChange("emergencyContact", e.target.value)
-                    }
+                    onChange={(e) => setField("emergencyContact", e.target.value)}
                     disabled={isSaving}
-                    placeholder="Enter emergency contact name"
+                    placeholder="Parent or trusted contact name"
                   />
                 </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="emergencyPhone">Contact Phone</Label>
+                <div className="space-y-1.5">
+                  <Label htmlFor="profile-emergency-phone">Emergency contact phone</Label>
                   <Input
-                    id="emergencyPhone"
-                    type="tel"
+                    id="profile-emergency-phone"
                     value={formData.emergencyPhone ?? ""}
-                    onChange={(e) =>
-                      handleInputChange("emergencyPhone", e.target.value)
-                    }
+                    onChange={(e) => setField("emergencyPhone", e.target.value)}
                     disabled={isSaving}
-                    placeholder="Enter emergency contact phone"
+                    placeholder="+91 91234 56789"
                   />
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="address">Address</Label>
-                <Input
-                  id="address"
-                  type="text"
-                  value={formData.address ?? ""}
-                  onChange={(e) => handleInputChange("address", e.target.value)}
-                  disabled={isSaving}
-                  placeholder="Enter your address"
-                />
-              </div>
-
-              <div className="flex space-x-3 pt-4">
-                {onSave && (
-                  <Button
-                    variant="default"
-                    onClick={handleSave}
-                    disabled={isSaving}
-                  >
-                    {isSaving ? (
-                      <>
-                        <Icon name="Loader" className="animate-spin mr-2" />
-                        Saving...
-                      </>
-                    ) : (
-                      <>
-                        <Save />
-                        Save Changes
-                      </>
-                    )}
-                  </Button>
-                )}
-                <Button
-                  variant="outline"
-                  onClick={handleCancel}
-                  disabled={isSaving}
-                >
+              <div className="sticky bottom-2 z-10 flex flex-wrap gap-2 rounded-xl border border-border/60 bg-card/95 px-3 py-3 backdrop-blur">
+                <Button onClick={handleSave} disabled={isSaving}>
+                  {isSaving ? (
+                    <>
+                      <Icon name="Loader" size={14} className="animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="size-4" />
+                      Save
+                    </>
+                  )}
+                </Button>
+                <Button variant="outline" onClick={handleCancel} disabled={isSaving}>
                   Cancel
                 </Button>
               </div>
@@ -465,7 +337,7 @@ const PersonalInfoSection: React.FC<PersonalInfoSectionProps> = ({
           )}
         </div>
       </div>
-    </div>
+    </section>
   );
 };
 

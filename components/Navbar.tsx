@@ -19,7 +19,7 @@ const Navbar = () => {
     { label: "Home", path: "/dashboard", icon: "Home" },
     { label: "Search", path: "/search-rides", icon: "Search" },
     { label: "Post", path: "/post-a-ride", icon: "Plus" },
-    { label: "Payments", path: "/payment-transactions", icon: "CreditCard" },
+    { label: "Payments", path: "/payments", icon: "CreditCard" },
     ...(frontendConfig.flags.enableChatUi
       ? [{ label: "Messages", path: "/messages-chat", icon: "MessageCircle" as const }]
       : []),
@@ -39,7 +39,7 @@ const Navbar = () => {
         return "Messages";
       case "/profile-settings":
         return "Profile";
-      case "/payment-transactions":
+      case "/payments":
         return "Payments";
       default:
         return "Petrol Partner";

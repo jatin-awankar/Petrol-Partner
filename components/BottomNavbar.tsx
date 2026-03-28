@@ -27,7 +27,7 @@ const BottomNavbar = () => {
       : [
           {
             label: "Payments",
-            path: "/payment-transactions",
+            path: "/payments",
             icon: "CreditCard",
           },
         ]),
