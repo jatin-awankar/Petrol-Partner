@@ -64,6 +64,21 @@ export interface BackendProfileSecurity {
   }>;
 }
 
+export interface BackendNotification {
+  id: string;
+  type: string;
+  channel: string;
+  title: string;
+  body: string;
+  data: Record<string, unknown>;
+  status: "pending" | "sent" | "read" | "failed";
+  dedupe_key: string | null;
+  sent_at: string | null;
+  read_at: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
 export async function loginWithBackend(input: {
   email: string;
   password: string;
@@ -450,4 +465,51 @@ export async function submitClientPaymentVerification(input: {
 
 export async function getBookingPaymentStatus(bookingId: string) {
   return apiRequest<any>(`/v1/payments/bookings/${bookingId}/status`);
+}
+
+export async function listNotifications(input?: {
+  limit?: number;
+  offset?: number;
+  status?: "pending" | "sent" | "read" | "failed";
+}) {
+  const query = new URLSearchParams();
+
+  if (input?.limit !== undefined) {
+    query.set("limit", String(input.limit));
+  }
+
+  if (input?.offset !== undefined) {
+    query.set("offset", String(input.offset));
+  }
+
+  if (input?.status) {
+    query.set("status", input.status);
+  }
+
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+
+  return apiRequest<{
+    notifications: BackendNotification[];
+    pagination: {
+      limit: number;
+      offset: number;
+      count: number;
+      total: number;
+    };
+  }>(`/v1/notifications${suffix}`);
+}
+
+export async function markNotificationRead(notificationId: string) {
+  return apiRequest<{ notification: BackendNotification }>(
+    `/v1/notifications/${notificationId}/read`,
+    {
+      method: "POST",
+    },
+  );
+}
+
+export async function markAllNotificationsRead() {
+  return apiRequest<{ updated_count: number }>("/v1/notifications/read-all", {
+    method: "POST",
+  });
 }
