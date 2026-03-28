@@ -93,53 +93,6 @@ class ErrorBoundary extends React.Component<
   }
 }
 
-// Default values for null/undefined data
-const DEFAULT_PREFERENCES = {
-  musicPreference: "pop",
-  smokingPolicy: "no-smoking",
-  chattiness: "moderate",
-  notifications: {
-    rideMatches: true,
-    messages: true,
-    payments: true,
-    promotions: false,
-  },
-  privacy: {
-    showProfile: true,
-    shareRideHistory: true,
-    shareLocation: true,
-  },
-  autoAccept: {
-    highRatedUsers: true,
-    sameCollege: false,
-  },
-};
-
-const DEFAULT_SAFETY_SETTINGS = {
-  trustedContacts: [],
-  settings: {
-    autoShareRideDetails: true,
-    enableLocationTracking: true,
-    requireDriverVerification: true,
-    safetyCheckIns: true,
-  },
-};
-
-const DEFAULT_SECURITY_SETTINGS = {
-  twoFactorEnabled: false,
-  twoFactorMethod: undefined as "SMS" | "Email" | "App" | undefined,
-  lastPasswordChange: undefined as string | undefined,
-  loginActivity: [] as Array<{
-    id: number | string;
-    device: string;
-    location?: string;
-    time?: string;
-    current?: boolean;
-    ipAddress?: string;
-    lastActive?: string;
-  }>,
-};
-
 const DEFAULT_STATISTICS = {
   totalRides: 0,
   totalDistance: 0,
@@ -230,8 +183,13 @@ const ProfileAccountSettings = () => {
     user,
     vehicles,
     bookings,
+    preferences,
+    safetySettings,
+    securitySettings,
     loading: dataLoading,
     error: dataError,
+    savePreferences,
+    saveSafety,
     refetch,
   } = useProfileData();
   const { updateProfile } = useUserProfile();
@@ -246,13 +204,6 @@ const ProfileAccountSettings = () => {
     history: false,
     statistics: false,
   });
-
-  // Local state for settings that might not be in API yet
-  const [preferences, setPreferences] = useState(DEFAULT_PREFERENCES);
-  const [safetySettings, setSafetySettings] = useState(DEFAULT_SAFETY_SETTINGS);
-  const [securitySettings, setSecuritySettings] = useState(
-    DEFAULT_SECURITY_SETTINGS
-  );
 
   // Calculate statistics from bookings
   const statistics = useMemo(() => {
@@ -330,52 +281,55 @@ const ProfileAccountSettings = () => {
   }, [toggleSection]);
 
   const handleSavePersonalInfo = useCallback(
-    async (_data: any) => {
+    async (data: any) => {
       try {
-        await updateProfile();
+        await updateProfile({
+          full_name: data.name ?? null,
+          phone: data.phone ?? null,
+          date_of_birth: data.dateOfBirth ?? null,
+          gender_for_matching:
+            data.gender === "female" || data.gender === "male" ? data.gender : null,
+          emergency_contact_name: data.emergencyContact ?? null,
+          emergency_contact_phone: data.emergencyPhone ?? null,
+          address: data.address ?? null,
+          profile_image: user?.profilePhoto ?? undefined,
+        });
+        await refetch.user();
       } catch (error: any) {
         console.error("Save personal info error:", error);
         toast.error(error.message || "Failed to update profile");
         throw error; // Re-throw so component can handle it
       }
     },
-    [updateProfile, refetch]
+    [refetch, updateProfile, user?.profilePhoto]
   );
 
   const handleSavePreferences = useCallback(async (data: any) => {
     try {
-      setPreferences(data);
-      // TODO: Save to API when endpoint is available
-      // await fetch('/api/user/preferences', { method: 'POST', body: JSON.stringify(data) });
+      await savePreferences(data);
       toast.success("Preferences saved successfully!");
     } catch (error: any) {
       console.error("Save preferences error:", error);
       toast.error(error.message || "Failed to save preferences");
       throw error; // Re-throw so component can handle it
     }
-  }, []);
+  }, [savePreferences]);
 
   const handleSaveSafetySettings = useCallback(async (data: any) => {
     try {
-      setSafetySettings(data);
-      // TODO: Save to API when endpoint is available
-      // await fetch('/api/user/safety-settings', { method: 'POST', body: JSON.stringify(data) });
+      await saveSafety({
+        trustedContacts: data.trustedContacts,
+        settings: data.settings,
+      });
       toast.success("Safety settings saved successfully!");
     } catch (error: any) {
       console.error("Save safety settings error:", error);
       toast.error(error.message || "Failed to save safety settings");
       throw error; // Re-throw so component can handle it
     }
-  }, []);
+  }, [saveSafety]);
 
-  const handleSaveSecuritySettings = useCallback((data?: Partial<typeof DEFAULT_SECURITY_SETTINGS>) => {
-    if (data) {
-      setSecuritySettings((prev) => ({
-        ...prev,
-        ...data,
-      }));
-    }
-    // TODO: Save to API when endpoint is available
+  const handleSaveSecuritySettings = useCallback((_data?: Record<string, unknown>) => {
     toast.success("Security settings saved successfully!");
   }, []);
 
@@ -522,7 +476,16 @@ const ProfileAccountSettings = () => {
                 />
 
                 <SafetySection
-                  safetySettings={safetySettings}
+                  safetySettings={{
+                    trustedContacts: (safetySettings?.trustedContacts ?? []).map((contact, index) => ({
+                      id: contact.id ?? `${index}`,
+                      name: contact.name,
+                      phone: contact.phone,
+                      relationship: contact.relationship,
+                      email: contact.email,
+                    })),
+                    settings: safetySettings?.settings ?? {},
+                  }}
                   onSave={handleSaveSafetySettings}
                   isExpanded={expandedSections.safety}
                   onToggle={() => toggleSection("safety")}
@@ -532,11 +495,23 @@ const ProfileAccountSettings = () => {
 
                 <AccountSecuritySection
                   securitySettings={{
-                    twoFactorEnabled: securitySettings.twoFactorEnabled,
-                    twoFactorMethod: securitySettings.twoFactorMethod,
-                    passwordLastChanged: securitySettings.lastPasswordChange,
+                    twoFactorEnabled: securitySettings?.two_factor?.enabled ?? false,
+                    twoFactorMethod: (securitySettings?.two_factor?.method as
+                      | "SMS"
+                      | "Email"
+                      | "App"
+                      | undefined) ?? undefined,
+                    passwordLastChanged:
+                      securitySettings?.password_last_changed_at ?? undefined,
                   }}
-                  loginActivity={securitySettings.loginActivity}
+                  loginActivity={(securitySettings?.login_activity ?? []).map((item) => ({
+                    id: item.id,
+                    device: item.device,
+                    ipAddress: item.ip_address ?? undefined,
+                    time: item.time ?? undefined,
+                    current: item.current,
+                    lastActive: item.expires_at ?? undefined,
+                  }))}
                   onSave={handleSaveSecuritySettings}
                   isExpanded={expandedSections.security}
                   onToggle={() => toggleSection("security")}
