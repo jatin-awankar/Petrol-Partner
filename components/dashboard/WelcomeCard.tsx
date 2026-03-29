@@ -20,7 +20,7 @@ const WelcomeCard = () => {
 
   if (loading) {
     return (
-      <section className="overflow-hidden rounded-2xl border border-border/70 bg-gradient-to-br from-sky-50 via-card to-blue-50 p-6 shadow-card md:p-7">
+      <section className="overflow-hidden rounded-2xl border border-primary/20 p-6 shadow-card md:p-7">
         <div className="h-7 w-48 animate-pulse rounded-md bg-slate-200" />
         <div className="mt-2 h-4 w-72 animate-pulse rounded-md bg-slate-200" />
         <div className="mt-5 grid gap-3 sm:grid-cols-3">
@@ -36,7 +36,7 @@ const WelcomeCard = () => {
   const firstName = profile?.full_name?.trim().split(" ")[0] || "Rider";
 
   return (
-    <section className="overflow-hidden rounded-2xl border border-border/70 bg-gradient-to-br from-accent via-card/50 to-accent p-6 shadow-card md:p-7">
+    <section className="overflow-hidden rounded-2xl border border-primary/20 p-6 shadow-card md:p-7">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="inline-flex items-center gap-1 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-semiboald uppercase tracking-[0.12em] text-primary">

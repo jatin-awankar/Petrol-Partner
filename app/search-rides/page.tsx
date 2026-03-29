@@ -15,9 +15,9 @@ const SearchRidesPage = async () => {
   }
 
   return (
-    <div className="page min-h-screen bg-background">
-      <div className="container mx-auto mb-12 md:mb-auto space-y-6">
-        <section className="rounded-3xl border border-primary/20 bg-gradient-to-br from-primary/10 via-card to-card p-5 md:p-7 shadow-card">
+    <div className="min-h-screen pb-16 md:pb-auto bg-[radial-gradient(circle_at_top,_hsl(var(--primary)/0.10),_transparent_48%),radial-gradient(circle_at_85%_15%,_hsl(var(--accent)/0.18),_transparent_42%)]">
+      <div className="page container mx-auto space-y-6">
+        <section className="rounded-3xl border border-primary/20 p-5 md:p-7 bg-card/95 shadow-card">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
               <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">

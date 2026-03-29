@@ -506,7 +506,7 @@ const ProfileAccountSettings = () => {
   if (!user) {
     return (
       <div className="page min-h-screen space-y-6">
-        <main className="pb-24 md:pb-8">
+        <main className="pb-16 md:pb-8">
           <div className="mx-auto max-w-5xl">
             <div className="rounded-2xl border border-yellow-200 bg-yellow-50 p-6 text-center">
               <h2 className="mb-2 text-xl font-semibold text-yellow-800">
@@ -531,201 +531,199 @@ const ProfileAccountSettings = () => {
 
   return (
     <ErrorBoundary>
-      <div className="page min-h-screen space-y-5 bg-[radial-gradient(circle_at_top,_hsl(var(--primary)/0.10),_transparent_48%),radial-gradient(circle_at_85%_15%,_hsl(var(--accent)/0.18),_transparent_42%)]">
-        <main className="pb-24 md:pb-8">
-          <div className="mx-auto max-w-5xl space-y-5">
-            <Suspense fallback={<Skeleton height={120} />}>
-              <ProfileHeader
-                user={headerUser}
-                onPhotoUpload={handlePhotoUpload}
-                onEditProfile={handleEditProfile}
-                isPhotoUploading={isPhotoUploading}
-              />
+      <div className="min-h-screen pb-16 md:pb-8 bg-[radial-gradient(circle_at_top,_hsl(var(--primary)/0.10),_transparent_48%),radial-gradient(circle_at_85%_15%,_hsl(var(--accent)/0.18),_transparent_42%)]">
+        <div className="page mx-auto !max-w-5xl space-y-6">
+          <Suspense fallback={<Skeleton height={120} />}>
+            <ProfileHeader
+              user={headerUser}
+              onPhotoUpload={handlePhotoUpload}
+              onEditProfile={handleEditProfile}
+              isPhotoUploading={isPhotoUploading}
+            />
 
-              <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                <article className="rounded-xl border border-primary/20 bg-gradient-to-br from-primary/20 via-card/95 to-card px-4 py-3 shadow-card">
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">
-                      Verification
-                    </p>
-                    <UserRoundCheck className="size-4 text-primary" />
-                  </div>
-                  <p className="mt-2 text-sm font-semibold text-foreground">
-                    {user.isCollegeVerified
-                      ? "Student Verified"
-                      : "Pending Verification"}
+            <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              <article className="rounded-xl border border-primary/20 bg-gradient-to-br from-primary/20 via-card/95 to-card px-4 py-3 shadow-card">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">
+                    Verification
                   </p>
-                </article>
-                <article className="rounded-xl border border-success/20 bg-gradient-to-br from-success/20 via-card/95 to-card px-4 py-3 shadow-card">
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">
-                      Driver Status
-                    </p>
-                    <ShieldCheck className="size-4 text-primary" />
-                  </div>
-                  <p className="mt-2 text-sm font-semibold text-foreground">
-                    {user.isDriverVerified
-                      ? "Eligible to Offer Rides"
-                      : "Eligibility Pending"}
+                  <UserRoundCheck className="size-4 text-primary" />
+                </div>
+                <p className="mt-2 text-sm font-semibold text-foreground">
+                  {user.isCollegeVerified
+                    ? "Student Verified"
+                    : "Pending Verification"}
+                </p>
+              </article>
+              <article className="rounded-xl border border-success/20 bg-gradient-to-br from-success/20 via-card/95 to-card px-4 py-3 shadow-card">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">
+                    Driver Status
                   </p>
-                </article>
-                <article className="rounded-xl border border-warning/20 bg-gradient-to-br from-warning/20 via-card/95 to-card px-4 py-3 shadow-card">
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">
-                      Total Rides
-                    </p>
-                    <Wallet className="size-4 text-primary" />
-                  </div>
-                  <p className="mt-2 text-sm font-semibold text-foreground">
-                    {user.totalRides ?? 0}
+                  <ShieldCheck className="size-4 text-primary" />
+                </div>
+                <p className="mt-2 text-sm font-semibold text-foreground">
+                  {user.isDriverVerified
+                    ? "Eligible to Offer Rides"
+                    : "Eligibility Pending"}
+                </p>
+              </article>
+              <article className="rounded-xl border border-warning/20 bg-gradient-to-br from-warning/20 via-card/95 to-card px-4 py-3 shadow-card">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">
+                    Total Rides
                   </p>
-                </article>
-                <article className="rounded-xl border border-indigo-300/30 bg-gradient-to-br from-indigo/20 via-card/95 to-card px-4 py-3 shadow-card dark:from-indigo-500/10">
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">
-                      Account Health
-                    </p>
-                    <TriangleAlert className="size-4 text-primary" />
-                  </div>
-                  <div className="mt-2">
-                    <Badge variant={dataError ? "destructive" : "secondary"}>
-                      {dataError ? "Needs Attention" : "Healthy"}
-                    </Badge>
-                  </div>
-                </article>
-              </section>
-
-              <section className="profile-nav-scroll sticky top-16 z-20 -mx-1 overflow-x-auto rounded-xl border border-border/60 bg-background/90 px-1 py-2 shadow-sm backdrop-blur md:top-20">
-                <div className="flex w-max min-w-full gap-2">
-                  {sectionNavItems.map((item) => (
-                    <Button
-                      key={item.key}
-                      variant={
-                        expandedSections[item.key] ? "secondary" : "outline"
-                      }
-                      size="sm"
-                      className="rounded-full"
-                      onClick={() => jumpToSection(item.key, item.id)}
-                    >
-                      {item.label}
-                    </Button>
-                  ))}
+                  <Wallet className="size-4 text-primary" />
                 </div>
-              </section>
-
-              <div className="space-y-4">
-                <div id="profile-section-personal" className="scroll-mt-32">
-                  <PersonalInfoSection
-                    user={user}
-                    onSave={handleSavePersonalInfo}
-                    isExpanded={expandedSections.personalInfo}
-                    onToggle={() => toggleSection("personalInfo")}
-                    isLoading={dataLoading}
-                    error={dataError}
-                  />
+                <p className="mt-2 text-sm font-semibold text-foreground">
+                  {user.totalRides ?? 0}
+                </p>
+              </article>
+              <article className="rounded-xl border border-indigo-300/30 bg-gradient-to-br from-indigo/20 via-card/95 to-card px-4 py-3 shadow-card dark:from-indigo-500/10">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">
+                    Account Health
+                  </p>
+                  <TriangleAlert className="size-4 text-primary" />
                 </div>
-
-                <div id="profile-section-vehicles" className="scroll-mt-32">
-                  <VehicleInfoSection
-                    vehicles={vehicles ?? null}
-                    onAddVehicle={handleAddVehicle}
-                    onEditVehicle={handleEditVehicle}
-                    onDeleteVehicle={handleDeleteVehicle}
-                    isExpanded={expandedSections.vehicleInfo}
-                    onToggle={() => toggleSection("vehicleInfo")}
-                    isLoading={dataLoading}
-                    error={dataError}
-                  />
+                <div className="mt-2">
+                  <Badge variant={dataError ? "destructive" : "secondary"}>
+                    {dataError ? "Needs Attention" : "Healthy"}
+                  </Badge>
                 </div>
+              </article>
+            </section>
 
-                <div id="profile-section-preferences" className="scroll-mt-32">
-                  <PreferencesSection
-                    preferences={preferences}
-                    onSave={handleSavePreferences}
-                    isExpanded={expandedSections.preferences}
-                    onToggle={() => toggleSection("preferences")}
-                    isLoading={dataLoading}
-                    error={dataError}
-                  />
-                </div>
-
-                <div id="profile-section-safety" className="scroll-mt-32">
-                  <SafetySection
-                    safetySettings={{
-                      trustedContacts: (
-                        safetySettings?.trustedContacts ?? []
-                      ).map((contact, index) => ({
-                        id: contact.id ?? `${index}`,
-                        name: contact.name,
-                        phone: contact.phone,
-                        relationship: contact.relationship,
-                        email: contact.email,
-                      })),
-                      settings: safetySettings?.settings ?? {},
-                    }}
-                    onSave={handleSaveSafetySettings}
-                    isExpanded={expandedSections.safety}
-                    onToggle={() => toggleSection("safety")}
-                    isLoading={dataLoading}
-                    error={dataError}
-                  />
-                </div>
-
-                <div id="profile-section-security" className="scroll-mt-32">
-                  <AccountSecuritySection
-                    securitySettings={{
-                      twoFactorEnabled:
-                        securitySettings?.two_factor?.enabled ?? false,
-                      twoFactorMethod:
-                        (securitySettings?.two_factor?.method as
-                          | "SMS"
-                          | "Email"
-                          | "App"
-                          | undefined) ?? undefined,
-                      passwordLastChanged:
-                        securitySettings?.password_last_changed_at ?? undefined,
-                    }}
-                    loginActivity={(securitySettings?.login_activity ?? []).map(
-                      (item) => ({
-                        id: item.id,
-                        device: item.device,
-                        ipAddress: item.ip_address ?? undefined,
-                        time: item.time ?? undefined,
-                        current: item.current,
-                        lastActive: item.expires_at ?? undefined,
-                      }),
-                    )}
-                    onSave={handleSaveSecuritySettings}
-                    isExpanded={expandedSections.security}
-                    onToggle={() => toggleSection("security")}
-                    isLoading={dataLoading}
-                    error={dataError}
-                  />
-                </div>
-
-                <div id="profile-section-history" className="scroll-mt-32">
-                  <RideHistorySection
-                    rideHistory={rideHistory}
-                    isLoading={dataLoading}
-                    onRebook={() => {}}
-                    onRateRide={() => {}}
-                    isExpanded={expandedSections.history}
-                    onToggle={() => toggleSection("history")}
-                  />
-                </div>
-
-                <div id="profile-section-impact" className="scroll-mt-32">
-                  <StatisticsSection
-                    statistics={statistics}
-                    isLoading={dataLoading}
-                    isExpanded={expandedSections.statistics}
-                    onToggle={() => toggleSection("statistics")}
-                  />
-                </div>
+            <section className="profile-nav-scroll sticky top-16 z-20 -mx-1 overflow-x-auto rounded-xl border border-border/60 bg-background/90 px-1 py-2 shadow-sm backdrop-blur md:top-20">
+              <div className="flex w-max min-w-full gap-2">
+                {sectionNavItems.map((item) => (
+                  <Button
+                    key={item.key}
+                    variant={
+                      expandedSections[item.key] ? "secondary" : "outline"
+                    }
+                    size="sm"
+                    className="rounded-full"
+                    onClick={() => jumpToSection(item.key, item.id)}
+                  >
+                    {item.label}
+                  </Button>
+                ))}
               </div>
-            </Suspense>
-          </div>
-        </main>
+            </section>
+
+            <div className="space-y-4">
+              <div id="profile-section-personal" className="scroll-mt-32">
+                <PersonalInfoSection
+                  user={user}
+                  onSave={handleSavePersonalInfo}
+                  isExpanded={expandedSections.personalInfo}
+                  onToggle={() => toggleSection("personalInfo")}
+                  isLoading={dataLoading}
+                  error={dataError}
+                />
+              </div>
+
+              <div id="profile-section-vehicles" className="scroll-mt-32">
+                <VehicleInfoSection
+                  vehicles={vehicles ?? null}
+                  onAddVehicle={handleAddVehicle}
+                  onEditVehicle={handleEditVehicle}
+                  onDeleteVehicle={handleDeleteVehicle}
+                  isExpanded={expandedSections.vehicleInfo}
+                  onToggle={() => toggleSection("vehicleInfo")}
+                  isLoading={dataLoading}
+                  error={dataError}
+                />
+              </div>
+
+              <div id="profile-section-preferences" className="scroll-mt-32">
+                <PreferencesSection
+                  preferences={preferences}
+                  onSave={handleSavePreferences}
+                  isExpanded={expandedSections.preferences}
+                  onToggle={() => toggleSection("preferences")}
+                  isLoading={dataLoading}
+                  error={dataError}
+                />
+              </div>
+
+              <div id="profile-section-safety" className="scroll-mt-32">
+                <SafetySection
+                  safetySettings={{
+                    trustedContacts: (
+                      safetySettings?.trustedContacts ?? []
+                    ).map((contact, index) => ({
+                      id: contact.id ?? `${index}`,
+                      name: contact.name,
+                      phone: contact.phone,
+                      relationship: contact.relationship,
+                      email: contact.email,
+                    })),
+                    settings: safetySettings?.settings ?? {},
+                  }}
+                  onSave={handleSaveSafetySettings}
+                  isExpanded={expandedSections.safety}
+                  onToggle={() => toggleSection("safety")}
+                  isLoading={dataLoading}
+                  error={dataError}
+                />
+              </div>
+
+              <div id="profile-section-security" className="scroll-mt-32">
+                <AccountSecuritySection
+                  securitySettings={{
+                    twoFactorEnabled:
+                      securitySettings?.two_factor?.enabled ?? false,
+                    twoFactorMethod:
+                      (securitySettings?.two_factor?.method as
+                        | "SMS"
+                        | "Email"
+                        | "App"
+                        | undefined) ?? undefined,
+                    passwordLastChanged:
+                      securitySettings?.password_last_changed_at ?? undefined,
+                  }}
+                  loginActivity={(securitySettings?.login_activity ?? []).map(
+                    (item) => ({
+                      id: item.id,
+                      device: item.device,
+                      ipAddress: item.ip_address ?? undefined,
+                      time: item.time ?? undefined,
+                      current: item.current,
+                      lastActive: item.expires_at ?? undefined,
+                    }),
+                  )}
+                  onSave={handleSaveSecuritySettings}
+                  isExpanded={expandedSections.security}
+                  onToggle={() => toggleSection("security")}
+                  isLoading={dataLoading}
+                  error={dataError}
+                />
+              </div>
+
+              <div id="profile-section-history" className="scroll-mt-32">
+                <RideHistorySection
+                  rideHistory={rideHistory}
+                  isLoading={dataLoading}
+                  onRebook={() => {}}
+                  onRateRide={() => {}}
+                  isExpanded={expandedSections.history}
+                  onToggle={() => toggleSection("history")}
+                />
+              </div>
+
+              <div id="profile-section-impact" className="scroll-mt-32">
+                <StatisticsSection
+                  statistics={statistics}
+                  isLoading={dataLoading}
+                  isExpanded={expandedSections.statistics}
+                  onToggle={() => toggleSection("statistics")}
+                />
+              </div>
+            </div>
+          </Suspense>
+        </div>
       </div>
     </ErrorBoundary>
   );

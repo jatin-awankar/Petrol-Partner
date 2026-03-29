@@ -53,10 +53,18 @@ type SortBy = "latest" | "amount_desc" | "amount_asc" | "due_first";
 export default function PaymentsPage() {
   const router = useRouter();
   const { isAuthenticated, loading: authLoading } = useCurrentUser();
-  const { bookingsData, loading: bookingsLoading, refetch } = useFetchBookings(30);
+  const {
+    bookingsData,
+    loading: bookingsLoading,
+    refetch,
+  } = useFetchBookings(30);
 
-  const [transactions, setTransactions] = useState<Record<string, TransactionState>>({});
-  const [financialHold, setFinancialHold] = useState<FinancialHoldView | null>(null);
+  const [transactions, setTransactions] = useState<
+    Record<string, TransactionState>
+  >({});
+  const [financialHold, setFinancialHold] = useState<FinancialHoldView | null>(
+    null,
+  );
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
   const [refreshingAll, setRefreshingAll] = useState(false);
   const [filter, setFilter] = useState<PaymentFilter>("all");
@@ -125,7 +133,10 @@ export default function PaymentsPage() {
   }, []);
 
   const completedBookings = useMemo(
-    () => bookingsData?.bookings?.filter((booking) => booking.status === "completed") ?? [],
+    () =>
+      bookingsData?.bookings?.filter(
+        (booking) => booking.status === "completed",
+      ) ?? [],
     [bookingsData],
   );
 
@@ -145,7 +156,11 @@ export default function PaymentsPage() {
     try {
       await refetch();
       await refreshFinancialHold();
-      await Promise.all(completedBookings.map((booking) => refreshTransaction(booking.booking_id)));
+      await Promise.all(
+        completedBookings.map((booking) =>
+          refreshTransaction(booking.booking_id),
+        ),
+      );
     } finally {
       setRefreshingAll(false);
     }
@@ -157,7 +172,11 @@ export default function PaymentsPage() {
 
       try {
         await action();
-        await Promise.all([refreshTransaction(bookingId), refreshFinancialHold(), refetch()]);
+        await Promise.all([
+          refreshTransaction(bookingId),
+          refreshFinancialHold(),
+          refetch(),
+        ]);
       } finally {
         setActionLoadingId(null);
       }
@@ -171,7 +190,9 @@ export default function PaymentsPage() {
         const order = await createPaymentOrder({ bookingId });
 
         if (!order.key_id) {
-          throw new Error("Online payment is not configured in this environment.");
+          throw new Error(
+            "Online payment is not configured in this environment.",
+          );
         }
 
         const loaded = await loadRazorpay();
@@ -256,7 +277,10 @@ export default function PaymentsPage() {
     () =>
       completedBookings.map((booking) =>
         buildPaymentCardViewModel({
-          booking: booking as BookingsData & { total_payable?: number; payment_state?: string },
+          booking: booking as BookingsData & {
+            total_payable?: number;
+            payment_state?: string;
+          },
           transaction: transactions[booking.booking_id],
         }),
       ),
@@ -277,14 +301,21 @@ export default function PaymentsPage() {
     return sortPaymentCards(bySearch, sortBy);
   }, [filter, paymentCards, query, sortBy]);
 
-  const summary = useMemo(() => buildPaymentSummary(paymentCards), [paymentCards]);
+  const summary = useMemo(
+    () => buildPaymentSummary(paymentCards),
+    [paymentCards],
+  );
 
   const handleApiError = useCallback((error: unknown) => {
     const message =
-      error instanceof Error ? error.message : "Something went wrong. Please retry.";
+      error instanceof Error
+        ? error.message
+        : "Something went wrong. Please retry.";
 
     if (message.includes("FINANCIAL_HOLD_ACTIVE")) {
-      toast.error("Financial hold is active. Clear dues before creating new payments.");
+      toast.error(
+        "Financial hold is active. Clear dues before creating new payments.",
+      );
       return;
     }
 
@@ -309,123 +340,152 @@ export default function PaymentsPage() {
   }
 
   return (
-    <div className="page min-h-screen space-y-5 pb-24 md:pb-8">
-      <section className="space-y-2">
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">Payments Hub</h1>
-        <p className="text-sm text-muted-foreground">
-          Manage post-trip settlements with live status, verification progress, and overdue control.
-        </p>
-      </section>
-
-      <PaymentsSummaryStrip summary={summary} hold={financialHold} />
-
-      {financialHold?.hasFinancialHold ? (
-        <section className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-rose-700">
-          <div className="flex items-start gap-2">
-            <AlertTriangle className="mt-0.5 size-4" />
-            <p className="text-sm">
-              Financial hold is active due to overdue dues. Settle pending payments to restore full
-              platform access.
-            </p>
-          </div>
-        </section>
-      ) : null}
-
-      <PaymentsFilterBar
-        filter={filter}
-        onFilterChange={setFilter}
-        query={query}
-        onQueryChange={setQuery}
-        sortBy={sortBy}
-        onSortByChange={setSortBy}
-        onRefreshAll={() => void refreshAll()}
-        refreshing={refreshingAll}
-      />
-
-      {!filteredAndSortedCards.length ? (
-        <section className="rounded-2xl border border-border/70 bg-card px-6 py-10 text-center">
+    <div className="min-h-screen pb-16 md:pb-8 bg-[radial-gradient(circle_at_top,_hsl(var(--primary)/0.10),_transparent_48%),radial-gradient(circle_at_85%_15%,_hsl(var(--accent)/0.18),_transparent_42%)]">
+      <div className="page space-y-5">
+        <section className="space-y-2">
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+            Payments Hub
+          </h1>
           <p className="text-sm text-muted-foreground">
-            No transactions found for the selected filters.
+            Manage post-trip settlements with live status, verification
+            progress, and overdue control.
           </p>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="mt-2"
-            onClick={() => {
-              setFilter("all");
-              setQuery("");
-            }}
-          >
-            Reset filters
-          </Button>
         </section>
-      ) : (
-        <section className="space-y-4">
-          {filteredAndSortedCards.map((card) => {
-            const cardLoading = actionLoadingId === card.bookingId || transactions[card.bookingId]?.loading;
 
-            return (
-              <PaymentBookingCard
-                key={card.bookingId}
-                card={card}
-                loading={Boolean(cardLoading)}
-                onPayOnline={() =>
-                  void handlePayOnline(card.bookingId).catch(handleApiError)
-                }
-                onOpenMarkPaidSheet={() => setSheetState({ type: "mark_paid", bookingId: card.bookingId })}
-                onOpenConfirmReceiptSheet={() =>
-                  setSheetState({ type: "confirm_receipt", bookingId: card.bookingId })
-                }
-                onRefresh={() => void refreshTransaction(card.bookingId)}
-              />
-            );
-          })}
-        </section>
-      )}
+        <PaymentsSummaryStrip summary={summary} hold={financialHold} />
 
-      <PaymentActionSheet
-        open={Boolean(sheetState.type && sheetState.bookingId)}
-        onOpenChange={(open) => {
-          if (!open) {
-            setSheetState({ type: null, bookingId: null });
+        {financialHold?.hasFinancialHold ? (
+          <section className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-rose-700">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="mt-0.5 size-4" />
+              <p className="text-sm">
+                Financial hold is active due to overdue dues. Settle pending
+                payments to restore full platform access.
+              </p>
+            </div>
+          </section>
+        ) : null}
+
+        <PaymentsFilterBar
+          filter={filter}
+          onFilterChange={setFilter}
+          query={query}
+          onQueryChange={setQuery}
+          sortBy={sortBy}
+          onSortByChange={setSortBy}
+          onRefreshAll={() => void refreshAll()}
+          refreshing={refreshingAll}
+        />
+
+        {!filteredAndSortedCards.length ? (
+          <section className="rounded-2xl border border-border/70 bg-card px-6 py-10 text-center">
+            <p className="text-sm text-muted-foreground">
+              No transactions found for the selected filters.
+            </p>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="mt-2"
+              onClick={() => {
+                setFilter("all");
+                setQuery("");
+              }}
+            >
+              Reset filters
+            </Button>
+          </section>
+        ) : (
+          <section className="space-y-4">
+            {filteredAndSortedCards.map((card) => {
+              const cardLoading =
+                actionLoadingId === card.bookingId ||
+                transactions[card.bookingId]?.loading;
+
+              return (
+                <PaymentBookingCard
+                  key={card.bookingId}
+                  card={card}
+                  loading={Boolean(cardLoading)}
+                  onPayOnline={() =>
+                    void handlePayOnline(card.bookingId).catch(handleApiError)
+                  }
+                  onOpenMarkPaidSheet={() =>
+                    setSheetState({
+                      type: "mark_paid",
+                      bookingId: card.bookingId,
+                    })
+                  }
+                  onOpenConfirmReceiptSheet={() =>
+                    setSheetState({
+                      type: "confirm_receipt",
+                      bookingId: card.bookingId,
+                    })
+                  }
+                  onRefresh={() => void refreshTransaction(card.bookingId)}
+                />
+              );
+            })}
+          </section>
+        )}
+
+        <PaymentActionSheet
+          open={Boolean(sheetState.type && sheetState.bookingId)}
+          onOpenChange={(open) => {
+            if (!open) {
+              setSheetState({ type: null, bookingId: null });
+            }
+          }}
+          title={
+            sheetState.type === "confirm_receipt"
+              ? "Confirm Offline Receipt"
+              : "Mark Offline Payment"
           }
-        }}
-        title={
-          sheetState.type === "confirm_receipt"
-            ? "Confirm Offline Receipt"
-            : "Mark Offline Payment"
-        }
-        description={
-          sheetState.type === "confirm_receipt"
-            ? "Select how payment was received by the ride owner."
-            : "Select how payment was completed offline by the passenger."
-        }
-        options={[
-          { label: "Cash", value: "cash", description: "Pay or confirm using cash." },
-          { label: "UPI", value: "upi", description: "Pay or confirm through UPI." },
-        ]}
-        confirmLabel={sheetState.type === "confirm_receipt" ? "Confirm Receipt" : "Mark Paid"}
-        loading={Boolean(actionLoadingId && actionLoadingId === sheetState.bookingId)}
-        onConfirm={async (value) => {
-          const bookingId = sheetState.bookingId;
-
-          if (!bookingId || (value !== "cash" && value !== "upi")) {
-            return;
+          description={
+            sheetState.type === "confirm_receipt"
+              ? "Select how payment was received by the ride owner."
+              : "Select how payment was completed offline by the passenger."
           }
+          options={[
+            {
+              label: "Cash",
+              value: "cash",
+              description: "Pay or confirm using cash.",
+            },
+            {
+              label: "UPI",
+              value: "upi",
+              description: "Pay or confirm through UPI.",
+            },
+          ]}
+          confirmLabel={
+            sheetState.type === "confirm_receipt"
+              ? "Confirm Receipt"
+              : "Mark Paid"
+          }
+          loading={Boolean(
+            actionLoadingId && actionLoadingId === sheetState.bookingId,
+          )}
+          onConfirm={async (value) => {
+            const bookingId = sheetState.bookingId;
 
-          try {
-            if (sheetState.type === "confirm_receipt") {
-              await handleConfirmReceipt(bookingId, value);
-            } else {
-              await handleMarkPaid(bookingId, value);
+            if (!bookingId || (value !== "cash" && value !== "upi")) {
+              return;
             }
 
-            setSheetState({ type: null, bookingId: null });
-          } catch (error) {
-            handleApiError(error);
-          }
-        }}
-      />
+            try {
+              if (sheetState.type === "confirm_receipt") {
+                await handleConfirmReceipt(bookingId, value);
+              } else {
+                await handleMarkPaid(bookingId, value);
+              }
+
+              setSheetState({ type: null, bookingId: null });
+            } catch (error) {
+              handleApiError(error);
+            }
+          }}
+        />
+      </div>
     </div>
   );
 }

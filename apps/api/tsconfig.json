@@ -1,10 +1,23 @@
 {
   "extends": "../../tsconfig.backend.base.json",
   "compilerOptions": {
-    "rootDir": "src",
-    "outDir": "dist",
-    "noEmit": false,
-    "skipLibCheck": true // This ignores type errors in node_modules
+    /* Base Options */
+    "target": "ES2020" /* Compatible with Node 14+ */,
+    "module": "commonjs" /* Standard for Node.js backends */,
+    "moduleResolution": "node",
+    "esModuleInterop": true /* Allows importing CommonJS modules (like express) as default */,
+    "skipLibCheck": true /* Speeds up compilation by skipping type checks in node_modules */,
+    "forceConsistentCasingInFileNames": true,
+
+    /* Build Paths */
+    "rootDir": "./src" /* Matches your source folder */,
+    "outDir": "./dist" /* Matches your "start" script: dist/server.js */,
+    "sourceMap": true /* Useful for debugging production errors */,
+    "removeComments": true /* Reduces file size */,
+
+    /* Strictness */
+    "strict": true /* Enables all strict type-checking options */,
+    "noImplicitAny": true
   },
   "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "**/*.test.ts", "**/*.spec.ts"]

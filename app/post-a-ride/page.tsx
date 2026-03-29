@@ -460,10 +460,10 @@ const PostRide = () => {
   if (authLoading) return null;
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_hsl(var(--primary)/0.10),_transparent_48%),radial-gradient(circle_at_85%_15%,_hsl(var(--accent)/0.18),_transparent_42%)]">
-      <div className="container mx-auto px-3 py-4 sm:px-4 md:py-8 mb-16 md:mb-auto">
+    <div className="min-h-screen mb-16 md:mb-auto bg-[radial-gradient(circle_at_top,_hsl(var(--primary)/0.10),_transparent_48%),radial-gradient(circle_at_85%_15%,_hsl(var(--accent)/0.18),_transparent_42%)]">
+      <div className="page container mx-auto px-3 py-4 sm:px-4 md:py-8">
         <div className="flex flex-col gap-4 md:gap-6">
-          <header className="rounded-2xl border border-border/70 bg-card/95 backdrop-blur-sm px-4 py-4 sm:px-5 sm:py-5 shadow-card">
+          <header className="rounded-2xl border border-primary/20 bg-card/95 backdrop-blur-sm px-4 py-4 sm:px-5 sm:py-5 shadow-card">
             <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
               <div>
                 <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
