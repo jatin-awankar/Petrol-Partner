@@ -45,7 +45,7 @@ const SearchRidesPage = async () => {
 
             <div className="flex flex-wrap gap-2">
               <Button asChild className="h-10 px-4">
-                <Link href="/post-ride">
+                <Link href="/post-a-ride">
                   <Icon name="Plus" size={16} />
                   Post Ride
                 </Link>
