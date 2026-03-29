@@ -18,47 +18,49 @@ export default async function DashboardPage() {
   }
 
   return (
-    <div className="page min-h-screen bg-background space-y-6 !mb-12 !md:mb-auto">
-      <WelcomeCard />
+    <div className="min-h-screen pb-16 md:pb-auto bg-[radial-gradient(circle_at_top,_hsl(var(--primary)/0.10),_transparent_48%),radial-gradient(circle_at_85%_15%,_hsl(var(--accent)/0.18),_transparent_42%)]">
+      <main className="page space-y-6">
+        <WelcomeCard />
 
-      <QuickActionCards />
+        <QuickActionCards />
 
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[0.95fr_1.05fr]">
-        <div className="space-y-6">
-          <SafetyReminders />
-        </div>
-        <Suspense
-          fallback={
-            <div className="h-64 rounded-2xl border border-border/70 bg-card p-5">
-              Loading recent bookings...
-            </div>
-          }
-        >
-          <RecentActivitySection />
-        </Suspense>
-      </div>
-
-      <Suspense
-        fallback={
-          <div className="h-64 rounded-2xl border border-border/70 bg-card p-5">
-            Loading ride suggestions...
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+          <div className="space-y-6">
+            <SafetyReminders />
           </div>
-        }
-      >
-        <RideSuggestions />
-      </Suspense>
+          <Suspense
+            fallback={
+              <div className="h-64 rounded-2xl border border-border/70 bg-card p-5">
+                Loading recent bookings...
+              </div>
+            }
+          >
+            <RecentActivitySection />
+          </Suspense>
+        </div>
 
-      {frontendConfig.flags.enableCommunityUi ? (
         <Suspense
           fallback={
             <div className="h-64 rounded-2xl border border-border/70 bg-card p-5">
-              Loading community updates...
+              Loading ride suggestions...
             </div>
           }
         >
-          <CommunityUpdates />
+          <RideSuggestions />
         </Suspense>
-      ) : null}
+
+        {frontendConfig.flags.enableCommunityUi ? (
+          <Suspense
+            fallback={
+              <div className="h-64 rounded-2xl border border-border/70 bg-card p-5">
+                Loading community updates...
+              </div>
+            }
+          >
+            <CommunityUpdates />
+          </Suspense>
+        ) : null}
+      </main>
     </div>
   );
 }
