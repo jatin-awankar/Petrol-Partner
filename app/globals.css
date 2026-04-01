@@ -79,9 +79,8 @@
     hsl(200 89% 52%)
   );
   --gradient-hero:
-    radial-gradient(circle at 12% 0%, hsl(200 100% 94%) 0%, transparent 40%),
-    radial-gradient(circle at 92% 20%, hsl(214 100% 95%) 0%, transparent 45%),
-    hsl(var(--background));
+    radial-gradient(circle at top, hsl(var(--primary)/0.1), transparent 48%),
+    radial-gradient(circle at 85% 15%, hsl(var(--accent)/0.18), transparent 42%);
 
   --shadow-soft: 0 10px 30px -16px hsl(208 90% 44% / 0.24);
   --shadow-card: 0 10px 32px -20px hsl(222 47% 11% / 0.24);
@@ -98,14 +97,14 @@
 
 .dark {
   color-scheme: dark;
-  --background: 222 47% 11%;
+  --background: 0 0% 5%;
   --foreground: 210 40% 98%;
 
-  --card: 222 47% 13%;
-  --card-foreground: 210 40% 98%;
+  --card: 0 0% 4%;
+  --card-foreground: 210 30% 96%;
 
-  --popover: 222 47% 13%;
-  --popover-foreground: 210 40% 98%;
+  --popover: 215 28% 13%;
+  --popover-foreground: 210 30% 96%;
 
   --primary: 200 90% 57%;
   --primary-foreground: 222 47% 11%;
@@ -140,18 +139,11 @@
     hsl(200 90% 57%),
     hsl(191 84% 62%)
   );
-  --gradient-hero:
-    radial-gradient(
-      circle at 15% 0%,
-      hsl(206 90% 25% / 0.45) 0%,
-      transparent 40%
-    ),
-    radial-gradient(
-      circle at 90% 22%,
-      hsl(220 84% 30% / 0.42) 0%,
-      transparent 45%
-    ),
-    hsl(var(--background));
+  --gradient-hero: radial-gradient(
+    circle at top,
+    hsl(var(--primary)/0.05),
+    transparent 50%
+  );
 
   --shadow-soft: 0 10px 30px -16px hsl(200 90% 57% / 0.3);
   --shadow-card: 0 14px 36px -18px hsl(218 40% 2% / 0.55);

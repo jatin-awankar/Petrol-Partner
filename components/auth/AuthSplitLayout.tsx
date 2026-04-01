@@ -38,7 +38,7 @@ export default function AuthSplitLayout({
   footer,
 }: AuthSplitLayoutProps) {
   return (
-    <main className="relative min-h-screen flex items-center overflow-hidden bg-[radial-gradient(circle_at_top_left,hsl(204_94%_96%),transparent_42%),radial-gradient(circle_at_bottom_right,hsl(219_96%_94%),transparent_45%),hsl(var(--background))] px-4 py-10 md:px-8 md:py-14">
+    <main className="relative min-h-screen flex items-center overflow-hidden bg-gradient-hero px-4 py-10 md:px-8 md:py-14">
       <div className="mx-auto grid w-full max-w-6xl gap-6 lg:grid-cols-[1.05fr_0.95fr]">
         <section className="hidden rounded-2xl border border-border/70 bg-card/75 p-8 shadow-soft backdrop-blur md:block lg:p-10">
           <span className="inline-flex rounded-full border border-primary/25 bg-primary/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-primary">

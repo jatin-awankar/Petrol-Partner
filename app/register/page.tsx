@@ -67,13 +67,19 @@ export default function RegisterPage() {
       footer={
         <p>
           Already have an account?{" "}
-          <Link href="/login" className="font-medium text-primary hover:underline">
+          <Link
+            href="/login"
+            className="font-medium text-primary hover:underline"
+          >
             Sign in
           </Link>
         </p>
       }
     >
-      <form onSubmit={handleSubmit} className="mx-auto w-full max-w-md space-y-4">
+      <form
+        onSubmit={handleSubmit}
+        className="mx-auto w-full max-w-md space-y-4"
+      >
         <div className="space-y-1">
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">
             Register
@@ -147,7 +153,11 @@ export default function RegisterPage() {
           />
         </div>
 
-        <Button type="submit" disabled={loading} className="h-10 w-full rounded-md">
+        <Button
+          type="submit"
+          disabled={loading}
+          className="h-10 w-full rounded-md"
+        >
           {loading ? "Creating account..." : "Create Account"}
         </Button>
       </form>

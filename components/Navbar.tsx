@@ -49,7 +49,13 @@ const Navbar = () => {
     { label: "Post", path: "/post-a-ride", icon: "Plus" },
     { label: "Payments", path: "/payments", icon: "CreditCard" },
     ...(frontendConfig.flags.enableChatUi
-      ? [{ label: "Messages", path: "/messages-chat", icon: "MessageCircle" as const }]
+      ? [
+          {
+            label: "Messages",
+            path: "/messages-chat",
+            icon: "MessageCircle" as const,
+          },
+        ]
       : []),
   ];
 
@@ -101,7 +107,9 @@ const Navbar = () => {
             <span className="text-sm font-semibold tracking-tight text-foreground">
               Petrol Partner
             </span>
-            <span className="text-xs text-muted-foreground">{getPageText()}</span>
+            <span className="text-xs text-muted-foreground">
+              {getPageText()}
+            </span>
           </div>
         </div>
 
@@ -260,7 +268,11 @@ const Navbar = () => {
               <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/15 text-xs font-semibold text-primary">
                 {userInitial}
               </span>
-              <Icon name="ChevronDown" size={14} className="text-muted-foreground" />
+              <Icon
+                name="ChevronDown"
+                size={14}
+                className="text-muted-foreground"
+              />
             </Button>
 
             {isMenuOpen && (

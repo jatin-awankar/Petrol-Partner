@@ -15,7 +15,7 @@ const SearchRidesPage = async () => {
   }
 
   return (
-    <div className="min-h-screen pb-16 md:pb-auto bg-[radial-gradient(circle_at_top,_hsl(var(--primary)/0.10),_transparent_48%),radial-gradient(circle_at_85%_15%,_hsl(var(--accent)/0.18),_transparent_42%)]">
+    <div className="min-h-screen pb-16 md:pb-0 bg-gradient-hero">
       <div className="page container mx-auto space-y-6">
         <section className="rounded-3xl border border-primary/20 p-5 md:p-7 bg-card/95 shadow-card">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">

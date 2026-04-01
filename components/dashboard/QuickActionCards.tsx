@@ -64,7 +64,7 @@ const QuickActionCards: React.FC = () => {
           className={`rounded-2xl border border-border/70 bg-gradient-to-br ${card.accentClass} p-5 shadow-card`}
         >
           <div className="flex items-center justify-between">
-            <div className="rounded-lg border border-border/70 p-2 text-primary">
+            <div className="rounded-lg border border-border/70 p-2 text-slate-800/90">
               <card.icon className="size-5" />
             </div>
             <span className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
