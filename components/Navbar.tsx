@@ -12,6 +12,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { ScrollArea } from "./ui/scroll-area";
 import NotificationBadge from "./ui/NotificationBadge";
 import { useInAppNotifications } from "@/hooks/notifications/useInAppNotifications";
+import Image from "next/image";
 
 function formatRelativeTime(value: string | null) {
   if (!value) return "Just now";
@@ -100,9 +101,7 @@ const Navbar = () => {
           className="flex cursor-pointer items-center gap-3 select-none"
           onClick={() => router.push("/dashboard")}
         >
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-primary text-primary-foreground shadow-soft">
-            <Icon name="Bike" size={20} color="white" />
-          </div>
+          <Image src="/icons/logo.png" alt="logo" width={36} height={36} />
           <div className="hidden sm:flex sm:flex-col sm:leading-tight">
             <span className="text-sm font-semibold tracking-tight text-foreground">
               Petrol Partner
