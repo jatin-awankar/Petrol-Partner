@@ -18,7 +18,7 @@ export default async function DashboardPage() {
   }
 
   return (
-    <div className="min-h-screen pb-16 md:pb-auto bg-[radial-gradient(circle_at_top,_hsl(var(--primary)/0.10),_transparent_48%),radial-gradient(circle_at_85%_15%,_hsl(var(--accent)/0.18),_transparent_42%)]">
+    <div className="min-h-screen pb-16 md:pb-0 bg-gradient-hero">
       <main className="page space-y-6">
         <WelcomeCard />
 

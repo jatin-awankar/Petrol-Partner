@@ -25,12 +25,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html
-      lang="en"
-      suppressHydrationWarning
-      className={`${poppins.variable} font-sans antialiased`}
-    >
-      <body className="min-h-screen bg-background text-foreground">
+    <html lang="en" suppressHydrationWarning className={`${poppins.variable}`}>
+      <body className="min-h-screen bg-background text-foreground font-sans antialiased">
         <ClientProviders>
           <AuthenticatedNavbars />
           <main className="min-h-screen">{children}</main>

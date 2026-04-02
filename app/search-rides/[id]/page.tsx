@@ -427,8 +427,8 @@ const RideDetailsPage = () => {
 
   // Main Render
   return (
-    <div className="page min-h-screen bg-background container mx-auto p-4 space-y-6">
-      <main>
+    <div className="min-h-screen pb-16 md:pb-8 bg-gradient-hero">
+      <main className="page mx-auto space-y-6">
         <div className="max-w-7xl mx-auto">
           {/* Header Actions */}
           <motion.div
@@ -469,7 +469,7 @@ const RideDetailsPage = () => {
               )}
 
               {/* Mobile Booking */}
-              <div className="lg:hidden mb-6">
+              <div className="lg:hidden">
                 <BookingSection
                   ride={rideData}
                   role={rideData.type === "offer" ? "passenger" : "driver"}

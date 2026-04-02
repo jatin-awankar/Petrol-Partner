@@ -340,7 +340,7 @@ export default function PaymentsPage() {
   }
 
   return (
-    <div className="min-h-screen pb-16 md:pb-8 bg-[radial-gradient(circle_at_top,_hsl(var(--primary)/0.10),_transparent_48%),radial-gradient(circle_at_85%_15%,_hsl(var(--accent)/0.18),_transparent_42%)]">
+    <div className="min-h-screen pb-16 md:pb-8 bg-gradient-hero">
       <div className="page space-y-5">
         <section className="space-y-2">
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">

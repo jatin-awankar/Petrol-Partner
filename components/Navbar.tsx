@@ -12,6 +12,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { ScrollArea } from "./ui/scroll-area";
 import NotificationBadge from "./ui/NotificationBadge";
 import { useInAppNotifications } from "@/hooks/notifications/useInAppNotifications";
+import Image from "next/image";
 
 function formatRelativeTime(value: string | null) {
   if (!value) return "Just now";
@@ -49,7 +50,13 @@ const Navbar = () => {
     { label: "Post", path: "/post-a-ride", icon: "Plus" },
     { label: "Payments", path: "/payments", icon: "CreditCard" },
     ...(frontendConfig.flags.enableChatUi
-      ? [{ label: "Messages", path: "/messages-chat", icon: "MessageCircle" as const }]
+      ? [
+          {
+            label: "Messages",
+            path: "/messages-chat",
+            icon: "MessageCircle" as const,
+          },
+        ]
       : []),
   ];
 
@@ -94,14 +101,14 @@ const Navbar = () => {
           className="flex cursor-pointer items-center gap-3 select-none"
           onClick={() => router.push("/dashboard")}
         >
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-primary text-primary-foreground shadow-soft">
-            <Icon name="Bike" size={20} color="white" />
-          </div>
+          <Image src="/icons/logo.png" alt="logo" width={36} height={36} />
           <div className="hidden sm:flex sm:flex-col sm:leading-tight">
             <span className="text-sm font-semibold tracking-tight text-foreground">
               Petrol Partner
             </span>
-            <span className="text-xs text-muted-foreground">{getPageText()}</span>
+            <span className="text-xs text-muted-foreground">
+              {getPageText()}
+            </span>
           </div>
         </div>
 
@@ -260,7 +267,11 @@ const Navbar = () => {
               <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/15 text-xs font-semibold text-primary">
                 {userInitial}
               </span>
-              <Icon name="ChevronDown" size={14} className="text-muted-foreground" />
+              <Icon
+                name="ChevronDown"
+                size={14}
+                className="text-muted-foreground"
+              />
             </Button>
 
             {isMenuOpen && (

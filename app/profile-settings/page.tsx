@@ -531,7 +531,7 @@ const ProfileAccountSettings = () => {
 
   return (
     <ErrorBoundary>
-      <div className="min-h-screen pb-16 md:pb-8 bg-[radial-gradient(circle_at_top,_hsl(var(--primary)/0.10),_transparent_48%),radial-gradient(circle_at_85%_15%,_hsl(var(--accent)/0.18),_transparent_42%)]">
+      <div className="min-h-screen pb-16 md:pb-8 bg-gradient-hero">
         <div className="page mx-auto !max-w-5xl space-y-6">
           <Suspense fallback={<Skeleton height={120} />}>
             <ProfileHeader
