@@ -208,10 +208,10 @@ const BookingConfirmationModal: React.FC<BookingConfirmationModalProps> = ({
             <Icon name="CreditCard" />
             {showSkeleton ? (
               <SkeletonLine width="1/3" height={16} />
+            ) : bookingData?.paymentMethodLabel === "Cash" ? (
+              "Confirm Booking"
             ) : (
-              bookingData?.paymentMethodLabel === "Cash"
-                ? "Confirm Booking"
-                : "Confirm & Pay"
+              "Confirm & Pay"
             )}
           </Button>
         </div>

@@ -42,7 +42,7 @@ async function expireBooking(bookingId: string) {
 
     const booking = bookingResult.rows[0];
 
-    if (!["pending", "confirmed"].includes(booking.status)) {
+    if (booking.status !== "pending") {
       return { outcome: "already_terminal" as const, status: booking.status };
     }
 
@@ -115,6 +115,16 @@ async function expireBooking(bookingId: string) {
           previousPaymentState: booking.payment_state,
         }),
       ],
+    );
+
+    await client.query(
+      `UPDATE chat_rooms
+       SET status = 'locked',
+           locked_at = COALESCE(locked_at, now()),
+           delete_after = COALESCE(delete_after, now() + interval '7 days'),
+           updated_at = now()
+       WHERE booking_id = $1`,
+      [bookingId],
     );
 
     return { outcome: "expired" as const };

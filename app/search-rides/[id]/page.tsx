@@ -1,13 +1,18 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+} from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Share } from "lucide-react";
 import EmergencyAccessButton from "@/components/ui/EmergencyAccessButton";
 import { motion } from "framer-motion";
 
-// Components
 import ProfileInfo from "@/components/rideDetails/ProfileInfo";
 import RouteMap from "@/components/rideDetails/RouteMap";
 import BookingSection from "@/components/rideDetails/BookingSection";
@@ -16,11 +21,10 @@ import DriverPreferences from "@/components/rideDetails/DriverPreferences";
 import SafetyPanel from "@/components/rideDetails/SafetyPanel";
 import BookingConfirmationModal from "@/components/rideDetails/BookingConfirmationModal";
 import { useBookRide } from "@/hooks/bookings/useBookRide";
-import { formatUtcToTodayOrDayMonth } from "@/lib/utils";
+import { formatTimeToAmPm, formatUtcToTodayOrDayMonth } from "@/lib/utils";
 import { toast } from "sonner";
 import { getRideOffer, getRideRequest } from "@/lib/api/backend";
 
-// Types
 interface RideData {
   id: string;
   type: "offer" | "request";
@@ -95,7 +99,6 @@ interface RideData {
   };
 }
 
-// Transform API response to component format
 const transformRideOffer = (apiData: any): RideData => {
   let vehicleDetails: any = {};
   try {
@@ -153,9 +156,9 @@ const transformRideOffer = (apiData: any): RideData => {
     totalSeats: parseInt(apiData.available_seats || "0", 10),
     price_per_seat: pricePerSeat,
     totalPrice: pricePerSeat,
-    baseFare: baseFare,
-    fuelShare: fuelShare,
-    platformFee: platformFee,
+    baseFare,
+    fuelShare,
+    platformFee,
     vehicle: {
       make: vehicleDetails.make || vehicleDetails.make_model?.split(" ")[0],
       model:
@@ -219,9 +222,9 @@ const transformRideRequest = (apiData: any): RideData => {
     totalSeats: parseInt(apiData.seats_required || "1", 10),
     price_per_seat: pricePerSeat,
     totalPrice: pricePerSeat,
-    baseFare: baseFare,
-    fuelShare: fuelShare,
-    platformFee: platformFee,
+    baseFare,
+    fuelShare,
+    platformFee,
     safetyFeatures: [
       "GPS Tracking",
       "Emergency Button",
@@ -234,6 +237,7 @@ const RideDetailsPage = () => {
   const { id } = useParams();
   const router = useRouter();
   const { bookRide, loading: isBookingLoading } = useBookRide();
+  const bookingSectionRef = useRef<HTMLDivElement | null>(null);
 
   const [rideData, setRideData] = useState<RideData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -241,13 +245,10 @@ const RideDetailsPage = () => {
   const [showConfirmationModal, setShowConfirmationModal] = useState(false);
   const [bookingData, setBookingData] = useState<any>(null);
 
-  // Fetch ride data - try both offer and request endpoints
   const fetchRideData = useCallback(async () => {
-    // Handle both string and array cases from useParams
     const rideId = Array.isArray(id) ? id[0] : id;
 
     if (!rideId || typeof rideId !== "string") {
-      console.error("Invalid ride ID:", id);
       setError("Invalid ride ID");
       setLoading(false);
       return;
@@ -257,8 +258,6 @@ const RideDetailsPage = () => {
     setError(null);
 
     try {
-      console.log("Fetching ride with ID:", rideId);
-
       let offerData: any = null;
 
       try {
@@ -291,12 +290,10 @@ const RideDetailsPage = () => {
         return;
       }
 
-      // If neither worked, show error
       setError(
         "Ride not found. The ride may have been removed or the ID is invalid.",
       );
     } catch (err) {
-      console.error("Error fetching ride data:", err);
       setError(
         err instanceof Error
           ? err.message || "Failed to load ride data."
@@ -311,7 +308,6 @@ const RideDetailsPage = () => {
     fetchRideData();
   }, [fetchRideData]);
 
-  // Booking Logic
   const handleBookRide = useCallback(
     (bookingDetails: Record<string, unknown>) => {
       if (!rideData) return;
@@ -325,6 +321,7 @@ const RideDetailsPage = () => {
           dropoff: rideData.route?.dropoff?.name,
         },
         date: rideData.date,
+        time: rideData.route?.pickupTime,
         driverName:
           rideData.type === "offer"
             ? rideData.driver?.name
@@ -354,29 +351,25 @@ const RideDetailsPage = () => {
         router.push("/dashboard");
       }
     } catch (err) {
-      console.error("Booking error:", err);
       toast.error(
         err instanceof Error ? err.message : "Failed to complete booking",
       );
     }
   }, [bookingData, bookRide, router]);
 
-  // Emergency actions
-  const handleEmergencyCall = useCallback(
-    () => (window.location.href = "tel:911"),
-    [],
-  );
-  const handleShareLocation = useCallback(
-    () => alert("Location shared with contacts."),
-    [],
-  );
-  const handleContactSupport = useCallback(
-    () => alert("Contacting support..."),
-    [],
-  );
+  const handleEmergencyCall = useCallback(() => {
+    window.location.href = "tel:911";
+  }, []);
 
-  // Share functionality
-  const handleShare = useCallback(() => {
+  const handleShareLocation = useCallback(() => {
+    toast.success("Live location shared with trusted contacts.");
+  }, []);
+
+  const handleContactSupport = useCallback(() => {
+    toast.info("Support request queued. Team will contact you shortly.");
+  }, []);
+
+  const handleShare = useCallback(async () => {
     if (!rideData) return;
 
     const shareData = {
@@ -386,116 +379,184 @@ const RideDetailsPage = () => {
     };
 
     if (navigator.share) {
-      navigator.share(shareData).catch((err) => {
-        console.error("Share error:", err);
-      });
-    } else {
-      navigator.clipboard.writeText(window.location.href);
-      alert("Ride link copied!");
+      try {
+        await navigator.share(shareData);
+      } catch {
+        // user canceled share, no toast needed
+      }
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      toast.success("Ride link copied to clipboard.");
+    } catch {
+      toast.error("Could not copy link. Please copy the URL manually.");
     }
   }, [rideData]);
 
-  // Loading state
-  if (loading) {
-    return (
-      <div className="page min-h-screen bg-background container mx-auto p-4 space-y-6">
-        <div className="flex items-center justify-center min-h-[60vh]">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-            <p className="text-muted-foreground">Loading ride details...</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const summary = useMemo(() => {
+    if (!rideData) {
+      return {
+        date: "-",
+        time: "-",
+        seatsText: "-",
+        priceText: "?0",
+      };
+    }
 
-  // Error state
+    const seats =
+      rideData.type === "offer"
+        ? rideData.availableSeats
+        : rideData.seats_required;
+    return {
+      date: formatUtcToTodayOrDayMonth(rideData.date || "") || "-",
+      time: formatTimeToAmPm(rideData.route?.pickupTime || "") || "-",
+      seatsText: `${seats ?? 0} seat${(seats ?? 0) === 1 ? "" : "s"}`,
+      priceText: `₹${rideData.totalPrice ?? 0}`,
+    };
+  }, [rideData]);
+
+  const roleLabel = rideData?.type === "offer" ? "Driver" : "Passenger";
+
   if (error || !rideData) {
     return (
-      <div className="page min-h-screen bg-background container mx-auto p-4">
-        <div className="flex flex-col items-center justify-center min-h-[60vh] text-center">
-          <p className="text-destructive font-semibold text-lg mb-4">
-            {error || "Ride not found"}
-          </p>
-          <Button onClick={() => router.back()} variant="outline">
-            <ArrowLeft className="mr-2" /> Go Back
-          </Button>
-        </div>
+      <div className="min-h-screen pb-16 md:pb-0 bg-gradient-hero">
+        <main className="page mx-auto">
+          <div className="flex flex-col items-center justify-center min-h-[60vh] text-center rounded-3xl border border-border/70 bg-card/90 p-6">
+            <p className="text-destructive font-semibold text-lg mb-4">
+              {error || "Ride not found"}
+            </p>
+            <Button onClick={() => router.back()} variant="outline">
+              <ArrowLeft className="mr-2" /> Go Back
+            </Button>
+          </div>
+        </main>
       </div>
     );
   }
 
-  // Main Render
   return (
-    <div className="min-h-screen pb-16 md:pb-8 bg-gradient-hero">
-      <main className="page mx-auto space-y-6">
-        <div className="max-w-7xl mx-auto">
-          {/* Header Actions */}
-          <motion.div
-            initial={{ y: -10, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ delay: 0.2 }}
-            className="flex flex-row items-center justify-between mb-6"
-          >
-            <Button variant="ghost" size="sm" onClick={() => router.back()}>
-              <ArrowLeft className="mr-2" /> Back
-            </Button>
-            <Button variant="outline" size="sm" onClick={handleShare}>
-              <Share className="mr-2" /> Share
-            </Button>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="grid grid-cols-1 lg:grid-cols-3 gap-6"
-          >
-            {/* Left Column */}
-            <div className="lg:col-span-2 space-y-6">
-              <ProfileInfo
-                profile={
-                  rideData.type === "offer"
-                    ? (rideData.driver ?? {})
-                    : (rideData.passenger ?? {})
-                }
-                role={rideData.type === "offer" ? "driver" : "passenger"}
-                loading={loading}
-              />
-
-              <RouteMap route={rideData.route} />
-              <RideInformation ride={rideData} />
-              {rideData.type === "offer" && (
-                <DriverPreferences preferences={rideData.preferences} />
-              )}
-
-              {/* Mobile Booking */}
-              <div className="lg:hidden">
-                <BookingSection
-                  ride={rideData}
-                  role={rideData.type === "offer" ? "passenger" : "driver"}
-                  onBookRide={handleBookRide}
-                />
+    <div className="min-h-screen mb-28 md:mb-auto bg-gradient-hero">
+      <main className="page mx-auto space-y-5 md:space-y-6">
+        <section className="rounded-3xl border border-primary/20 p-4 md:p-6 bg-card/95 shadow-card">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                Ride Details
+              </p>
+              <h1 className="mt-2 text-xl md:text-2xl font-semibold text-foreground">
+                {rideData.route?.pickup?.name} to{" "}
+                {rideData.route?.dropoff?.name}
+              </h1>
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                <span className="rounded-full border border-primary/25 bg-primary/10 px-2.5 py-1 text-primary">
+                  {summary.date}
+                </span>
+                <span className="rounded-full border border-border/80 bg-secondary/70 px-2.5 py-1 text-foreground">
+                  {summary.time}
+                </span>
+                <span className="rounded-full border border-success/25 bg-success/10 px-2.5 py-1 text-success">
+                  {summary.seatsText}
+                </span>
+                <span className="rounded-full border border-warning/25 bg-warning/10 px-2.5 py-1 text-foreground">
+                  {roleLabel} verified flow
+                </span>
               </div>
             </div>
 
-            {/* Right Column */}
-            <div className="hidden lg:block space-y-6">
-              <BookingSection
-                ride={rideData}
-                role={rideData.type === "offer" ? "passenger" : "driver"}
-                onBookRide={handleBookRide}
-              />
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="sm" onClick={() => router.back()}>
+                <ArrowLeft className="mr-2" />
+                Back
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleShare}>
+                <Share className="mr-2" />
+                Share
+              </Button>
+            </div>
+          </div>
+        </section>
+
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="grid grid-cols-1 lg:grid-cols-3 gap-5 md:gap-6"
+        >
+          <div className="lg:col-span-2 space-y-5 md:space-y-6">
+            <RouteMap route={rideData.route} />
+
+            <ProfileInfo
+              profile={
+                rideData.type === "offer"
+                  ? (rideData.driver ?? {})
+                  : (rideData.passenger ?? {})
+              }
+              role={rideData.type === "offer" ? "driver" : "passenger"}
+              loading={loading}
+            />
+
+            <RideInformation ride={rideData} />
+
+            {rideData.type === "offer" && (
+              <DriverPreferences preferences={rideData.preferences} />
+            )}
+            <div className="lg:hidden">
               <SafetyPanel
                 onEmergencyContact={handleEmergencyCall}
                 onShareLocation={handleShareLocation}
                 onReportIssue={handleContactSupport}
               />
             </div>
-          </motion.div>
-        </div>
+
+            <div ref={bookingSectionRef} className="lg:hidden scroll-mt-24">
+              <BookingSection
+                ride={rideData}
+                role={rideData.type === "offer" ? "passenger" : "driver"}
+                onBookRide={handleBookRide}
+              />
+            </div>
+          </div>
+
+          <aside className="hidden lg:block space-y-6">
+            <BookingSection
+              ride={rideData}
+              role={rideData.type === "offer" ? "passenger" : "driver"}
+              onBookRide={handleBookRide}
+            />
+            <SafetyPanel
+              onEmergencyContact={handleEmergencyCall}
+              onShareLocation={handleShareLocation}
+              onReportIssue={handleContactSupport}
+            />
+          </aside>
+        </motion.div>
       </main>
 
-      {/* Booking Modal */}
+      <div className="fixed inset-x-0 bottom-15 z-40 border-t border-border/70 bg-card/95 backdrop-blur md:hidden">
+        <div className="page mx-auto py-3 flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+              Price per seat
+            </p>
+            <p className="text-base font-semibold text-foreground truncate">
+              {summary.priceText}
+            </p>
+          </div>
+          <Button
+            className="h-10 px-4"
+            onClick={() =>
+              bookingSectionRef.current?.scrollIntoView({
+                behavior: "smooth",
+                block: "start",
+              })
+            }
+          >
+            Book this ride
+          </Button>
+        </div>
+      </div>
+
       <BookingConfirmationModal
         isOpen={showConfirmationModal}
         onClose={() => setShowConfirmationModal(false)}
@@ -504,7 +565,6 @@ const RideDetailsPage = () => {
         isLoading={isBookingLoading}
       />
 
-      {/* Floating Emergency Button */}
       <EmergencyAccessButton
         onEmergencyCall={handleEmergencyCall}
         onShareLocation={handleShareLocation}

@@ -2,6 +2,8 @@ import { logger } from "../../config/logger";
 import { withTransaction } from "../../db/transaction";
 import { cancelBookingExpiry, scheduleBookingExpiry } from "../../queues";
 import { AppError } from "../../shared/errors/app-error";
+import { emitChatRoomLocked } from "../chat/chat.socket";
+import * as chatService from "../chat/chat.service";
 import * as settlementsService from "../settlements/settlements.service";
 import type {
   CreateBookingInput,
@@ -272,6 +274,7 @@ export async function confirmBooking(bookingId: string, actorUserId: string, rea
       {
         bookingId,
         status: "confirmed",
+        expiresAt: null,
         confirmedAt: booking.confirmed_at ? undefined : now,
       },
       client,
@@ -291,13 +294,28 @@ export async function confirmBooking(bookingId: string, actorUserId: string, rea
       },
       client,
     );
+
+    await chatService.ensureRoomForConfirmedBooking(
+      {
+        bookingId,
+        driverId: booking.driver_id,
+        passengerId: booking.passenger_id,
+      },
+      client,
+    );
   });
+
+  try {
+    await cancelBookingExpiry(bookingId);
+  } catch (error) {
+    logger.warn({ error, bookingId }, "Failed to remove booking expiry job after confirmation");
+  }
 
   return getExistingBookingForUser(bookingId, actorUserId);
 }
 
 export async function cancelBooking(bookingId: string, actorUserId: string, reason?: string) {
-  await withTransaction(async (client) => {
+  const transactionResult = await withTransaction(async (client) => {
     const booking = await bookingsRepo.findBookingForUpdate(bookingId, client);
 
     if (!booking) {
@@ -350,6 +368,12 @@ export async function cancelBooking(bookingId: string, actorUserId: string, reas
       },
       client,
     );
+
+    const lockedRoom = await chatService.lockRoomForTerminalBooking(bookingId, client);
+
+    return {
+      lockedRoom,
+    };
   });
 
   try {
@@ -358,22 +382,19 @@ export async function cancelBooking(bookingId: string, actorUserId: string, reas
     logger.warn({ error, bookingId }, "Failed to remove booking expiry job after cancellation");
   }
 
+  if (transactionResult.lockedRoom) {
+    emitChatRoomLocked({
+      roomId: transactionResult.lockedRoom.id,
+      lockedAt: transactionResult.lockedRoom.locked_at,
+      deleteAfter: transactionResult.lockedRoom.delete_after,
+    });
+  }
+
   return getExistingBookingForUser(bookingId, actorUserId);
 }
 
 export async function completeBooking(bookingId: string, actorUserId: string, reason?: string) {
-  let settlementOpened:
-    | {
-        settlementId: string;
-        bookingId: string;
-        payerUserId: string;
-        payeeUserId: string;
-        dueAt: Date | null;
-        status: string;
-      }
-    | undefined;
-
-  await withTransaction(async (client) => {
+  const transactionResult = await withTransaction(async (client) => {
     const booking = await bookingsRepo.findBookingForUpdate(bookingId, client);
 
     if (!booking) {
@@ -417,7 +438,16 @@ export async function completeBooking(bookingId: string, actorUserId: string, re
       client,
     );
 
-    settlementOpened = await settlementsService.openSettlementForCompletedBooking(booking, client);
+    const lockedRoom = await chatService.lockRoomForTerminalBooking(bookingId, client);
+    const settlementOpened = await settlementsService.openSettlementForCompletedBooking(
+      booking,
+      client,
+    );
+
+    return {
+      lockedRoom,
+      settlementOpened,
+    };
   });
 
   try {
@@ -426,15 +456,23 @@ export async function completeBooking(bookingId: string, actorUserId: string, re
     logger.warn({ error, bookingId }, "Failed to remove booking expiry job after completion");
   }
 
-  if (settlementOpened) {
+  if (transactionResult.settlementOpened) {
     try {
-      await settlementsService.afterSettlementOpened(settlementOpened);
+      await settlementsService.afterSettlementOpened(transactionResult.settlementOpened);
     } catch (error) {
       logger.warn(
-        { error, bookingId, settlementId: settlementOpened.settlementId },
+        { error, bookingId, settlementId: transactionResult.settlementOpened.settlementId },
         "Post-completion settlement follow-up failed",
       );
     }
+  }
+
+  if (transactionResult.lockedRoom) {
+    emitChatRoomLocked({
+      roomId: transactionResult.lockedRoom.id,
+      lockedAt: transactionResult.lockedRoom.locked_at,
+      deleteAfter: transactionResult.lockedRoom.delete_after,
+    });
   }
 
   return getExistingBookingForUser(bookingId, actorUserId);

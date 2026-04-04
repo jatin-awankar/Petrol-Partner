@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import Icon from "./AppIcon";
 import { Button } from "./ui/button";
 import { useCurrentUser } from "@/hooks/auth/useCurrentUser";
+import { useChatUnreadCount } from "@/hooks/chat/useChatUnreadCount";
 import { frontendConfig } from "@/lib/frontend-config";
 import { cn } from "@/lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
@@ -36,28 +37,21 @@ const Navbar = () => {
   const { logout, user } = useCurrentUser();
   const {
     items: notifications,
-    unreadCount,
+    unreadCount: notificationUnreadCount,
     loading: notificationsLoading,
     error: notificationsError,
     refresh: refreshNotifications,
     markOneRead,
     markAllRead,
   } = useInAppNotifications(Boolean(user));
+  const { unreadCount: chatUnreadCount } = useChatUnreadCount();
 
   const navigationItems = [
     { label: "Home", path: "/dashboard", icon: "Home" },
     { label: "Search", path: "/search-rides", icon: "Search" },
     { label: "Post", path: "/post-a-ride", icon: "Plus" },
     { label: "Payments", path: "/payments", icon: "CreditCard" },
-    ...(frontendConfig.flags.enableChatUi
-      ? [
-          {
-            label: "Messages",
-            path: "/messages-chat",
-            icon: "MessageCircle" as const,
-          },
-        ]
-      : []),
+    { label: "Messages", path: "/messages-chat", icon: "MessageCircle" },
   ];
 
   const isActive = (path: string) => pathname === path;
@@ -130,6 +124,9 @@ const Navbar = () => {
                 strokeWidth={isActive(item.path) ? 2.5 : 2}
               />
               <span>{item.label}</span>
+              {item.path === "/messages-chat" ? (
+                <NotificationBadge count={chatUnreadCount} size="sm" />
+              ) : null}
             </button>
           ))}
         </nav>
@@ -153,7 +150,7 @@ const Navbar = () => {
               >
                 <Icon name="Bell" size={18} />
                 <NotificationBadge
-                  count={unreadCount}
+                  count={notificationUnreadCount}
                   size="sm"
                   className="absolute -right-1 -top-1"
                 />
@@ -181,15 +178,15 @@ const Navbar = () => {
                       size="sm"
                       className="h-7 px-2 text-xs"
                       onClick={() => void markAllRead()}
-                      disabled={unreadCount === 0}
+                      disabled={notificationUnreadCount === 0}
                     >
                       Mark all read
                     </Button>
                   </div>
                 </div>
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  {unreadCount > 0
-                    ? `${unreadCount} unread updates`
+                  {notificationUnreadCount > 0
+                    ? `${notificationUnreadCount} unread updates`
                     : "You are all caught up"}
                 </p>
               </div>

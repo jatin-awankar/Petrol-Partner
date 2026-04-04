@@ -4,38 +4,33 @@ import React from "react";
 import { usePathname, useRouter } from "next/navigation";
 
 import Icon from "./AppIcon";
+import { useChatUnreadCount } from "@/hooks/chat/useChatUnreadCount";
 import { frontendConfig } from "@/lib/frontend-config";
 import { cn } from "@/lib/utils";
 
 const BottomNavbar = () => {
   const pathname = usePathname();
   const router = useRouter();
+  const { unreadCount } = useChatUnreadCount();
 
   const navigationItems = [
     { label: "Home", path: "/dashboard", icon: "Home" },
     { label: "Search", path: "/search-rides", icon: "Search" },
     { label: "Post", path: "/post-a-ride", icon: "Plus", isCenter: true },
-    ...(frontendConfig.flags.enableChatUi
-      ? [
-          {
-            label: "Messages",
-            path: "/messages-chat",
-            icon: "MessageCircle",
-            badge: 2,
-          },
-        ]
-      : [
-          {
-            label: "Payments",
-            path: "/payments",
-            icon: "CreditCard",
-          },
-        ]),
-    { label: "Profile", path: "/profile-settings", icon: "User" },
+    {
+      label: "Messages",
+      path: "/messages-chat",
+      icon: "MessageCircle",
+      badge: unreadCount,
+    },
+    { label: "Payments", path: "/payments", icon: "CreditCard" },
   ];
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-50 md:hidden" aria-label="Bottom navigation">
+    <nav
+      className="fixed inset-x-0 bottom-0 z-50 md:hidden"
+      aria-label="Bottom navigation"
+    >
       <div className="mx-auto w-full max-w-xl px-3 pb-[max(0.625rem,env(safe-area-inset-bottom))]">
         <div className="flex h-16 items-center justify-between rounded-2xl border border-border/80 bg-card/95 px-2 shadow-card backdrop-blur-xl">
           {navigationItems.map((item) => {
