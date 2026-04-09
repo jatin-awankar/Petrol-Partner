@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { sendChatMessage } from "@/lib/api/backend";
 import { frontendConfig } from "@/lib/frontend-config";
 
 export function useSendMessage() {
@@ -17,17 +18,7 @@ export function useSendMessage() {
     setError(null);
 
     try {
-      const res = await fetch(`/api/messages/send`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include", // Include cookies for NextAuth session
-        body: JSON.stringify({ chat_room_id: chatRoomId, content }),
-      });
-
-      if (!res.ok) throw new Error("Failed to send message");
-      return await res.json();
+      return await sendChatMessage(chatRoomId, content);
     } catch (err: any) {
       setError(err.message);
     } finally {

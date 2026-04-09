@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { listChatMessages } from "@/lib/api/backend";
 import { frontendConfig } from "@/lib/frontend-config";
 
 export function useFetchMessages(chatRoomId: string | null) {
@@ -10,7 +11,12 @@ export function useFetchMessages(chatRoomId: string | null) {
 
   const fetchMessages = useCallback(
     async () => {
-      if (!chatRoomId) return;
+      if (!chatRoomId) {
+        setMessages([]);
+        setLoading(false);
+        setError(null);
+        return;
+      }
       if (!frontendConfig.flags.enableChatUi) {
         setMessages([]);
         setLoading(false);
@@ -22,12 +28,10 @@ export function useFetchMessages(chatRoomId: string | null) {
       setError(null);
 
       try {
-        const res = await fetch(`/api/messages/${chatRoomId}`, {
-          credentials: "include", // Include cookies for NextAuth session
+        const data = await listChatMessages(chatRoomId, {
+          limit: 100,
         });
-        if (!res.ok) throw new Error("Failed to fetch messages");
-        const data = await res.json();
-        setMessages(data.messages || data);
+        setMessages(data.messages || []);
       } catch (err: any) {
         setError(err?.message ?? "Unknown error");
       } finally {

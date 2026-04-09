@@ -2,6 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   CalendarClock,
   CheckCircle2,
@@ -14,6 +15,7 @@ import { toast } from "sonner";
 
 import { useFetchBookings } from "@/hooks/bookings/useFetchBookings";
 import { useCancelBooking } from "@/hooks/bookings/useCancelBooking";
+import { frontendConfig } from "@/lib/frontend-config";
 import { formatTimeToAmPm, formatUtcToTodayOrDayMonth } from "@/lib/utils";
 import { Button } from "../ui/button";
 
@@ -47,6 +49,7 @@ function statusUi(status: string) {
 }
 
 const RecentActivitySection: React.FC = () => {
+  const router = useRouter();
   const { bookingsData, loading, refetch } = useFetchBookings(6);
   const { cancelBooking, loading: updating } = useCancelBooking();
 
@@ -54,7 +57,7 @@ const RecentActivitySection: React.FC = () => {
 
   const handleUpdateStatus = async (
     bookingId: string,
-    nextStatus: "confirmed" | "cancelled",
+    nextStatus: "confirmed" | "cancelled" | "completed",
     successMessage: string,
   ) => {
     try {
@@ -110,6 +113,10 @@ const RecentActivitySection: React.FC = () => {
               booking.status === "pending" &&
               ((isOfferFlow && isDriver) ||
                 (isRequestFlow && booking.user_role === "passenger"));
+            const canMarkCompleted = booking.status === "confirmed" && isDriver;
+            const canOpenChat =
+              frontendConfig.flags.enableChatUi &&
+              ["confirmed", "completed", "cancelled", "expired"].includes(booking.status);
 
             return (
               <article
@@ -173,16 +180,38 @@ const RecentActivitySection: React.FC = () => {
                           Accept
                         </Button>
                       </>
-                    ) : booking.status === "confirmed" ? (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled
-                        className="h-8 rounded-md"
-                      >
-                        <MessageCircle className="mr-1 size-3.5" />
-                        Chat unavailable
-                      </Button>
+                    ) : canOpenChat || canMarkCompleted ? (
+                      <>
+                        {canOpenChat ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 rounded-md"
+                            onClick={() =>
+                              router.push(`/messages-chat?bookingId=${booking.booking_id}`)
+                            }
+                          >
+                            <MessageCircle className="mr-1 size-3.5" />
+                            Chat
+                          </Button>
+                        ) : null}
+                        {canMarkCompleted ? (
+                          <Button
+                            size="sm"
+                            disabled={updating}
+                            className="h-8 rounded-md"
+                            onClick={() =>
+                              handleUpdateStatus(
+                                booking.booking_id,
+                                "completed",
+                                "Ride marked as completed",
+                              )
+                            }
+                          >
+                            Mark Completed
+                          </Button>
+                        ) : null}
+                      </>
                     ) : null}
                   </div>
                 </div>

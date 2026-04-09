@@ -1,7 +1,10 @@
+import { createServer } from "http";
+
 import { createApp } from "./app";
 import { env } from "./config/env";
 import { logger } from "./config/logger";
 import { dbQuery, pool } from "./db/pool";
+import { initializeChatSocketServer } from "./modules/chat/chat.socket";
 import { startMatchRefreshProcessor, stopMatchRefreshProcessor } from "./modules/matching/match-refresh.processor";
 import { assertQueueRuntimeReady, closeApiQueues } from "./queues";
 
@@ -57,7 +60,10 @@ async function bootstrap() {
     throw error;
   }
 
-  const server = app.listen(env.PORT, env.HOST, () => {
+  const server = createServer(app);
+  initializeChatSocketServer(server);
+
+  server.listen(env.PORT, env.HOST, () => {
     logger.info(
       {
         host: env.HOST,

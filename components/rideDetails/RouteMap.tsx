@@ -5,6 +5,7 @@ import "mapbox-gl/dist/mapbox-gl.css";
 import mapboxgl from "mapbox-gl";
 import Icon from "../AppIcon";
 import Skeleton from "react-loading-skeleton";
+import { formatTimeToAmPm } from "@/lib/utils";
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN ?? "";
 
@@ -31,7 +32,6 @@ const RouteMap: React.FC<RouteMapProps> = ({ route, loading = false }) => {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
-  const [isMapLoaded, setIsMapLoaded] = useState(false);
 
   useEffect(() => {
     if (!route?.pickup || !route?.dropoff) return;
@@ -42,49 +42,36 @@ const RouteMap: React.FC<RouteMapProps> = ({ route, loading = false }) => {
     }
 
     const initMap = async () => {
-      if (!route?.pickup || !route?.dropoff) return;
-      if (!mapboxgl.accessToken) {
-        setMapError("Mapbox token not found. Using fallback map.");
-        return;
-      }
-
       try {
-        // Cleanup previous instance
         if (mapRef.current) {
           mapRef.current.remove();
           mapRef.current = null;
         }
 
-        const { pickup, dropoff } = route;
+        const pickup = route?.pickup;
+        const dropoff = route?.dropoff;
+        if (!pickup || !dropoff) return;
 
-        // Initialize map
         const map = new mapboxgl.Map({
           container: mapContainerRef.current as HTMLElement,
           style: "mapbox://styles/mapbox/streets-v12",
           center: [pickup.lng, pickup.lat],
           zoom: 11,
         });
-        mapRef.current = map;
 
+        mapRef.current = map;
         map.addControl(
           new mapboxgl.NavigationControl({ showCompass: true }),
-          "top-right"
+          "top-right",
         );
 
         map.on("load", async () => {
-          setIsMapLoaded(true);
-
-          // Add pickup & dropoff markers
           new mapboxgl.Marker({ color: "#22c55e" })
             .setLngLat([pickup.lng, pickup.lat])
             .setPopup(
               new mapboxgl.Popup({ offset: 12 }).setHTML(
-                `<strong>${
-                  pickup.name ?? "Pickup"
-                }</strong><div style="font-size:12px">${
-                  pickup.address ?? ""
-                }</div>`
-              )
+                `<strong>${pickup.name ?? "Pickup"}</strong><div style=\"font-size:12px\">${pickup.address ?? ""}</div>`,
+              ),
             )
             .addTo(map);
 
@@ -92,29 +79,20 @@ const RouteMap: React.FC<RouteMapProps> = ({ route, loading = false }) => {
             .setLngLat([dropoff.lng, dropoff.lat])
             .setPopup(
               new mapboxgl.Popup({ offset: 12 }).setHTML(
-                `<strong>${
-                  dropoff.name ?? "Dropoff"
-                }</strong><div style="font-size:12px">${
-                  dropoff.address ?? ""
-                }</div>`
-              )
+                `<strong>${dropoff.name ?? "Dropoff"}</strong><div style=\"font-size:12px\">${dropoff.address ?? ""}</div>`,
+              ),
             )
             .addTo(map);
 
-          // Fetch route from Mapbox Directions API
           try {
             const res = await fetch(
-              `https://api.mapbox.com/directions/v5/mapbox/driving/${pickup.lng},${pickup.lat};${dropoff.lng},${dropoff.lat}?geometries=geojson&access_token=${mapboxgl.accessToken}`
+              `https://api.mapbox.com/directions/v5/mapbox/driving/${pickup.lng},${pickup.lat};${dropoff.lng},${dropoff.lat}?geometries=geojson&access_token=${mapboxgl.accessToken}`,
             );
             const data = await res.json();
-
-            if (!data.routes || data.routes.length === 0) {
+            if (!data.routes || data.routes.length === 0)
               throw new Error("No route found");
-            }
 
             const routeGeo = data.routes[0].geometry;
-
-            // Add route line to map
             map.addSource("route", {
               type: "geojson",
               data: {
@@ -130,26 +108,23 @@ const RouteMap: React.FC<RouteMapProps> = ({ route, loading = false }) => {
               source: "route",
               layout: { "line-join": "round", "line-cap": "round" },
               paint: {
-                "line-color": "#3b82f6",
+                "line-color": "#2563eb",
                 "line-width": 5,
                 "line-opacity": 0.8,
               },
             });
 
-            // Fit to route bounds
             const bounds = new mapboxgl.LngLatBounds();
             for (const coord of routeGeo.coordinates) {
               bounds.extend(coord as [number, number]);
             }
             map.fitBounds(bounds, { padding: 60, maxZoom: 14 });
-          } catch (err) {
-            console.error("Directions API error:", err);
-            setMapError("Failed to load route.");
+          } catch {
+            setMapError("Failed to load map route. Showing fallback view.");
           }
         });
-      } catch (err) {
-        console.error("Map init error:", err);
-        setMapError("Map initialization failed.");
+      } catch {
+        setMapError("Map initialization failed. Showing fallback view.");
       }
     };
 
@@ -172,22 +147,19 @@ const RouteMap: React.FC<RouteMapProps> = ({ route, loading = false }) => {
 
   if (loading) {
     return (
-      <div className="bg-card rounded-lg border border-border shadow-soft p-4 space-y-3">
-        <Skeleton height={200} />
-        <div className="space-y-2">
-          <Skeleton height={18} width="80%" />
-          <Skeleton height={14} width="60%" />
-        </div>
+      <div className="rounded-2xl border border-border/70 bg-card/90 p-4 shadow-soft space-y-3">
+        <Skeleton height={220} />
+        <Skeleton height={14} width="80%" />
       </div>
     );
   }
 
   return (
-    <div className="bg-card rounded-lg border border-border shadow-soft overflow-hidden">
-      <div className="relative h-48 md:h-64">
+    <section className="rounded-2xl border border-border/70 bg-gradient-to-br from-card via-card to-muted/20 shadow-soft overflow-hidden">
+      <div className="relative h-52 md:h-64">
         {mapError ? (
           <iframe
-            title="Ride Route (fallback)"
+            title="Ride Route"
             src={googleEmbedSrc()}
             loading="lazy"
             referrerPolicy="no-referrer-when-downgrade"
@@ -200,71 +172,63 @@ const RouteMap: React.FC<RouteMapProps> = ({ route, loading = false }) => {
           />
         )}
 
-        {/* Overlay info */}
-        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-4">
-          <div className="flex items-center justify-between text-white">
-            <div className="flex items-center space-x-2">
-              <Icon name="MapPin" size={16} />
-              <span className="text-sm font-medium truncate">
-                {route?.pickup?.name ?? "Pickup"} →{" "}
-                {route?.dropoff?.name ?? "Dropoff"}
+        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-3">
+          <div className="flex items-center justify-between gap-3 text-white">
+            <p className="text-sm font-medium truncate">
+              {route?.pickup?.name ?? "Pickup"} ?{" "}
+              {route?.dropoff?.name ?? "Dropoff"}
+            </p>
+            <div className="flex items-center gap-2 text-xs shrink-0">
+              <span className="inline-flex items-center gap-1">
+                <Icon name="Clock3" size={12} />
+                {route?.duration ?? "-"}
               </span>
-            </div>
-            <div className="flex items-center space-x-3 text-sm">
-              <div className="flex items-center space-x-1">
-                <Icon name="Clock" size={14} />
-                <span>{route?.duration ?? "—"}</span>
-              </div>
-              <div className="flex items-center space-x-1">
-                <Icon name="Navigation" size={14} />
-                <span>{route?.distance ?? "—"}</span>
-              </div>
+              <span className="inline-flex items-center gap-1">
+                <Icon name="Navigation" size={12} />
+                {route?.distance ?? "-"}
+              </span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Route details section */}
-      <div className="p-4 space-y-3">
-        <div className="flex items-start space-x-3">
-          <div className="flex flex-col items-center pt-1">
-            <div className="w-3 h-3 bg-success rounded-full" />
-            <div className="w-0.5 h-8 bg-border my-1" />
-            <div className="w-3 h-3 bg-error rounded-full" />
+      <div className="p-4">
+        <div className="flex items-start gap-3">
+          <div className="pt-1 flex flex-col items-center">
+            <span className="w-3 h-3 rounded-full bg-success" />
+            <span className="w-px h-8 bg-border my-1" />
+            <span className="w-3 h-3 rounded-full bg-destructive" />
           </div>
 
-          <div className="flex-1 space-y-6">
+          <div className="flex-1 space-y-4 min-w-0">
             <div>
-              <p className="text-sm font-medium text-foreground">
+              <p className="text-sm font-medium text-foreground truncate">
                 {route?.pickup?.name ?? "Pickup"}
               </p>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-xs text-muted-foreground truncate">
                 {route?.pickup?.address ?? "-"}
               </p>
-              {route?.pickupTime && (
-                <p className="text-xs text-success font-medium">
-                  Pickup: {route.pickupTime}
-                </p>
-              )}
+              <p className="text-xs text-success mt-0.5">
+                Pickup: {formatTimeToAmPm(route?.pickupTime || "") || "-"}
+              </p>
             </div>
-
             <div>
-              <p className="text-sm font-medium text-foreground">
+              <p className="text-sm font-medium text-foreground truncate">
                 {route?.dropoff?.name ?? "Dropoff"}
               </p>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-xs text-muted-foreground truncate">
                 {route?.dropoff?.address ?? "-"}
               </p>
               {route?.dropoffTime && (
-                <p className="text-xs text-error font-medium">
-                  Drop-off: {route.dropoffTime}
+                <p className="text-xs text-destructive mt-0.5">
+                  Drop-off: {formatTimeToAmPm(route.dropoffTime)}
                 </p>
               )}
             </div>
           </div>
         </div>
       </div>
-    </div>
+    </section>
   );
 };
 

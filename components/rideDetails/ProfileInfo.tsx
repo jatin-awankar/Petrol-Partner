@@ -1,10 +1,10 @@
-'use client';
+"use client";
 
-import React from 'react';
-import Image from '@/components/AppImage';
-import Icon from '@/components/AppIcon';
-import Skeleton from 'react-loading-skeleton';
-import VerificationBadge from '../ui/VerificationBadge';
+import React from "react";
+import Image from "@/components/AppImage";
+import Icon from "@/components/AppIcon";
+import Skeleton from "react-loading-skeleton";
+import VerificationBadge from "../ui/VerificationBadge";
 
 interface Profile {
   id?: string;
@@ -22,83 +22,26 @@ interface Profile {
 
 interface ProfileInfoProps {
   profile?: Profile | null;
-  role?: 'driver' | 'passenger';
+  role?: "driver" | "passenger";
   loading?: boolean;
 }
 
-/* ---------- Error Boundary ---------- */
-class ProfileInfoErrorBoundary extends React.Component<
-  { children: React.ReactNode },
-  { hasError: boolean }
-> {
-  constructor(props: { children: React.ReactNode }) {
-    super(props);
-    this.state = { hasError: false };
-  }
-
-  static getDerivedStateFromError(_: Error) {
-    return { hasError: true };
-  }
-
-  componentDidCatch(error: Error, info: React.ErrorInfo) {
-    console.error('ProfileInfo error:', error, info);
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div className="bg-card p-4 rounded-lg border border-border text-destructive">
-          Something went wrong loading the profile.
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
-
-/* ---------- Component ---------- */
 const ProfileInfo: React.FC<ProfileInfoProps> = ({
   profile = null,
-  role = 'driver',
+  role = "driver",
   loading = false,
 }) => {
-  // Show skeleton while loading
   if (loading) {
     return (
-      <div className="bg-card rounded-lg p-4 border border-border shadow-soft">
-        <div className="flex items-start space-x-4">
-          <div className="relative">
-            <div className="w-16 h-16 rounded-full overflow-hidden bg-muted">
-              <Skeleton className="w-16 h-16 rounded-full" />
-            </div>
-          </div>
-
-          <div className="flex-1">
-            <div className="flex items-center justify-between mb-2">
-              <Skeleton className="h-6 w-1/3" />
-              <Skeleton className="h-4 w-20" />
-            </div>
-
-            <Skeleton className="h-4 w-1/2 mb-2" />
-
-            <div className="mb-2">
-              <Skeleton className="h-12 w-full" />
-            </div>
-
-            <div className="flex items-center space-x-4 mt-3">
-              <Skeleton className="h-4 w-20" />
-              <Skeleton className="h-4 w-24" />
-            </div>
-          </div>
-        </div>
+      <div className="rounded-2xl border border-border/70 bg-gradient-to-br from-card via-card to-muted/20 p-4 md:p-5 shadow-soft">
+        <Skeleton height={88} />
       </div>
     );
   }
 
-  // If no profile and not loading, show a friendly empty state
   if (!profile) {
     return (
-      <div className="bg-card p-4 rounded-lg border border-border text-center text-muted-foreground">
+      <div className="rounded-2xl border border-border/70 bg-card/90 p-4 text-center text-muted-foreground">
         No profile data available.
       </div>
     );
@@ -118,99 +61,80 @@ const ProfileInfo: React.FC<ProfileInfoProps> = ({
   } = profile;
 
   return (
-    <div className="bg-card rounded-lg p-4 border border-border shadow-soft">
-      <div className="flex items-start space-x-4">
-        {/* Avatar */}
-        <div className="relative">
-          <div className="w-16 h-16 rounded-full overflow-hidden bg-muted">
+    <section className="rounded-2xl border border-border/70 bg-gradient-to-br from-card via-card to-muted/20 p-4 md:p-5 shadow-soft">
+      <div className="flex items-start gap-3 md:gap-4">
+        <div className="relative shrink-0">
+          <div className="w-14 h-14 md:w-16 md:h-16 rounded-2xl overflow-hidden bg-muted border border-border/70">
             <Image
               src={
                 avatar ||
-                'https://cdn-icons-png.flaticon.com/512/3177/3177440.png'
+                "https://cdn-icons-png.flaticon.com/512/3177/3177440.png"
               }
-              alt={`${name ?? 'User'}'s profile`}
+              alt={`${name ?? "User"} profile`}
               className="w-full h-full object-cover"
             />
           </div>
-
           <div className="absolute -bottom-1 -right-1">
             <VerificationBadge
               isVerified={!!isVerified}
               verificationType="college"
-              size={18}
-              className='text-success-foreground fill-success'
+              size={16}
+              className="text-success-foreground fill-success"
             />
           </div>
         </div>
 
-        {/* Details */}
-        <div className="flex-1">
-          <div className="flex items-center space-x-2 mb-1">
-            <h3 className="text-lg font-semibold text-foreground">
-              {name ?? 'Unknown User'}
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-base md:text-lg font-semibold text-foreground truncate">
+              {name ?? "Unknown User"}
             </h3>
-
+            <span className="rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary capitalize">
+              {role}
+            </span>
             {rating ? (
-              <div className="flex items-center space-x-1">
+              <span className="inline-flex items-center gap-1 rounded-full border border-warning/30 bg-warning/10 px-2 py-0.5 text-[11px] text-foreground">
                 <Icon
                   name="Star"
-                  size={16}
+                  size={12}
                   className="text-warning fill-current"
                 />
-                <span className="text-sm font-medium text-foreground">
-                  {rating}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  ({reviewCount ?? 0})
-                </span>
-              </div>
+                {rating} ({reviewCount ?? 0})
+              </span>
             ) : (
-              <span className="text-xs text-muted-foreground">(New User)</span>
+              <span className="text-[11px] text-muted-foreground">
+                New user
+              </span>
             )}
           </div>
 
-          {/* Role tag */}
-          <p className="text-xs font-medium text-accent-foreground uppercase tracking-wide mb-1">
-            {role === 'driver' ? 'Driver' : 'Passenger'}
+          <p className="mt-1 text-sm text-muted-foreground truncate">
+            {college ?? "College not specified"}
+            {year ? ` • ${year}` : ""}
           </p>
 
-          <p className="text-sm text-muted-foreground mb-2">
-            {college ?? 'College not specified'}
-            {year ? ` • ${year}` : ''}
-          </p>
+          {bio && (
+            <p className="mt-2 text-sm text-foreground line-clamp-2">{bio}</p>
+          )}
 
-          {bio && <p className="text-sm text-foreground mb-2">{bio}</p>}
-
-          <div className="flex items-center space-x-4 mt-3">
-            {typeof totalRides !== 'undefined' && (
-              <div className="flex items-center space-x-1">
-                <Icon name="Bike" size={14} className="text-muted-foreground" />
-                <span className="text-xs text-muted-foreground">
-                  {totalRides} rides
-                </span>
-              </div>
+          <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+            {typeof totalRides !== "undefined" && (
+              <span className="inline-flex items-center gap-1">
+                <Icon name="Bike" size={13} />
+                {totalRides} rides
+              </span>
             )}
-
             {joinedDate && (
-              <div className="flex items-center space-x-1">
-                <Icon name="Clock" size={14} className="text-muted-foreground" />
-                <span className="text-xs text-muted-foreground">
-                  Joined {joinedDate}
-                </span>
-              </div>
+              <span className="inline-flex items-center gap-1">
+                <Icon name="Clock3" size={13} />
+                Joined {joinedDate}
+              </span>
             )}
           </div>
         </div>
       </div>
-    </div>
+    </section>
   );
 };
 
-/* Export wrapped in Error Boundary */
-export default function ProfileInfoWithBoundary(props: ProfileInfoProps) {
-  return (
-    <ProfileInfoErrorBoundary>
-      <ProfileInfo {...props} />
-    </ProfileInfoErrorBoundary>
-  );
-}
+export default ProfileInfo;

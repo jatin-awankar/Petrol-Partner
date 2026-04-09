@@ -52,5 +52,6 @@ export async function scheduleMaintenanceSweepJobs() {
     maintenanceQueue.add("recover-settlement-overdue", {}, { ...sharedOptions, jobId: "recover-settlement-overdue" }),
     maintenanceQueue.add("recover-payment-webhooks", {}, { ...sharedOptions, jobId: "recover-payment-webhooks" }),
     maintenanceQueue.add("recover-payment-orders", {}, { ...sharedOptions, jobId: "recover-payment-orders" }),
+    maintenanceQueue.add("delete-locked-chat-rooms", {}, { ...sharedOptions, jobId: "delete-locked-chat-rooms" }),
   ]);
 }

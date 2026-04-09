@@ -79,6 +79,45 @@ export interface BackendNotification {
   updated_at: string | null;
 }
 
+export interface BackendChatRoom {
+  id: string;
+  booking_id: string;
+  driver_id: string;
+  passenger_id: string;
+  status: "active" | "locked";
+  locked_at: string | null;
+  delete_after: string | null;
+  last_message_at: string | null;
+  driver_last_read_at: string | null;
+  passenger_last_read_at: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  booking_status: string;
+  pickup_location: string | null;
+  drop_location: string | null;
+  date: string | null;
+  time: string | null;
+  other_user_id: string;
+  other_user_name: string | null;
+  other_user_email: string;
+  other_user_avatar_url: string | null;
+  unread_count: number;
+  last_message: {
+    content: string;
+    sender_id: string;
+    created_at: string | null;
+  } | null;
+}
+
+export interface BackendChatMessage {
+  id: string;
+  chat_room_id: string;
+  sender_id: string;
+  receiver_id: string;
+  content: string;
+  created_at: string | null;
+}
+
 export async function loginWithBackend(input: {
   email: string;
   password: string;
@@ -381,6 +420,93 @@ export async function createBookingRecord(input: {
   });
 
   return normalizeBooking(payload.booking);
+}
+
+export async function listChatRooms(input?: {
+  status?: "active" | "locked";
+  limit?: number;
+  offset?: number;
+}) {
+  const query = new URLSearchParams();
+
+  if (input?.status) {
+    query.set("status", input.status);
+  }
+
+  if (input?.limit !== undefined) {
+    query.set("limit", String(input.limit));
+  }
+
+  if (input?.offset !== undefined) {
+    query.set("offset", String(input.offset));
+  }
+
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return apiRequest<{
+    rooms: BackendChatRoom[];
+    pagination: {
+      limit: number;
+      offset: number;
+      count: number;
+      total: number;
+    };
+  }>(`/v1/chat/rooms${suffix}`);
+}
+
+export async function listChatMessages(
+  roomId: string,
+  input?: {
+    limit?: number;
+    before?: string;
+  },
+) {
+  const query = new URLSearchParams();
+
+  if (input?.limit !== undefined) {
+    query.set("limit", String(input.limit));
+  }
+
+  if (input?.before) {
+    query.set("before", input.before);
+  }
+
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return apiRequest<{
+    room: BackendChatRoom;
+    messages: BackendChatMessage[];
+  }>(`/v1/chat/rooms/${roomId}/messages${suffix}`);
+}
+
+export async function sendChatMessage(roomId: string, content: string) {
+  return apiRequest<{
+    message: BackendChatMessage;
+    room: {
+      id: string;
+      booking_id: string;
+      status: "active" | "locked";
+    };
+  }>(`/v1/chat/rooms/${roomId}/messages`, {
+    method: "POST",
+    body: JSON.stringify({
+      content,
+    }),
+  });
+}
+
+export async function markChatRoomRead(roomId: string, readAt?: string) {
+  return apiRequest<{
+    room: BackendChatRoom;
+    read_at: string;
+  }>(`/v1/chat/rooms/${roomId}/read`, {
+    method: "POST",
+    body: JSON.stringify(
+      readAt
+        ? {
+            read_at: readAt,
+          }
+        : {},
+    ),
+  });
 }
 
 export async function updateBookingStatusLegacy(input: {

@@ -1,67 +1,74 @@
-'use client';
+"use client";
 
-import React, { useState } from 'react';
-import Skeleton from 'react-loading-skeleton';
-import { CreditCard } from 'lucide-react';
+import React, { useState } from "react";
+import Skeleton from "react-loading-skeleton";
+import { CreditCard } from "lucide-react";
 
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
-import { Input } from '../ui/input';
-import { Label } from '../ui/label';
-import Icon from '../AppIcon';
-import { Button } from '../ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select";
+import { Input } from "../ui/input";
+import { Label } from "../ui/label";
+import Icon from "../AppIcon";
+import { Button } from "../ui/button";
 
 interface BookingSectionProps {
   ride?: any;
-  role?: 'driver' | 'passenger';
+  role?: "driver" | "passenger";
   onBookRide: (bookingData: any) => void;
 }
 
 const BookingSection: React.FC<BookingSectionProps> = ({
   ride,
-  role = 'passenger',
+  role = "passenger",
   onBookRide,
 }) => {
   const [selectedSeats, setSelectedSeats] = useState(1);
-  const [specialRequests, setSpecialRequests] = useState('');
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('');
+  const [specialRequests, setSpecialRequests] = useState("");
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
 
   const isLoading = !ride;
 
   if (isLoading) {
     return (
-      <div className="space-y-4">
-        <Skeleton width={200} height={25} />
+      <div className="rounded-2xl border border-border/70 bg-card/90 p-4 md:p-5 shadow-soft space-y-3">
+        <Skeleton width={170} height={22} />
         <Skeleton height={40} />
         <Skeleton height={40} />
-        <Skeleton height={80} />
-        <Skeleton height={40} />
-        <Skeleton height={60} />
-        <Skeleton height={50} />
+        <Skeleton height={88} />
+        <Skeleton height={42} />
       </div>
     );
   }
 
-  const seatOptions = Array.from({ length: ride?.availableSeats || 1 }, (_, i) => ({
-    value: (i + 1).toString(),
-    label: `${i + 1} seat${i + 1 > 1 ? 's' : ''}`,
-  }));
+  const seatOptions = Array.from(
+    { length: ride?.availableSeats || 1 },
+    (_, i) => ({
+      value: (i + 1).toString(),
+      label: `${i + 1} seat${i + 1 > 1 ? "s" : ""}`,
+    }),
+  );
 
   const paymentMethods =
-    role === 'passenger'
+    role === "passenger"
       ? [
-          { value: 'online', label: 'Online settlement after ride completion' },
-          { value: 'upi', label: 'Direct UPI settlement after ride completion' },
-          { value: 'cash', label: 'Cash settlement after ride completion' },
+          { value: "online", label: "Online settlement after ride" },
+          { value: "upi", label: "Direct UPI settlement" },
+          { value: "cash", label: "Cash settlement" },
         ]
-      : [{ value: 'cash', label: 'Offline settlement confirmation' }];
+      : [{ value: "cash", label: "Offline settlement confirmation" }];
 
   const totalCost = (ride?.totalPrice ?? 0) * selectedSeats;
   const platformFee = (ride?.platformFee ?? 0) * selectedSeats;
   const finalAmount = totalCost + platformFee;
 
   const handleBooking = async () => {
-    if (role === 'passenger' && !selectedPaymentMethod) return;
+    if (role === "passenger" && !selectedPaymentMethod) return;
 
     setIsProcessing(true);
 
@@ -84,28 +91,26 @@ const BookingSection: React.FC<BookingSectionProps> = ({
 
     try {
       onBookRide(bookingData);
-    } catch (error) {
-      console.error('Booking error:', error);
     } finally {
       setIsProcessing(false);
     }
   };
 
   return (
-    <div className="bg-card rounded-lg p-4 border border-border shadow-soft">
-      <h3 className="text-lg font-semibold text-foreground mb-4">
-        {role === 'passenger' ? 'Book Your Ride' : 'Respond to Ride Request'}
+    <section className="rounded-2xl border border-border/70 bg-gradient-to-br from-card via-card to-muted/20 p-4 md:p-5 shadow-soft">
+      <h3 className="text-base md:text-lg font-semibold text-foreground mb-4">
+        {role === "passenger" ? "Book this ride" : "Respond to ride request"}
       </h3>
 
       <div className="space-y-4">
-        {role === 'passenger' && (
-          <>
+        {role === "passenger" && (
+          <div className="space-y-1.5">
             <Label>Number of seats</Label>
             <Select
-              value={selectedSeats.toString() || ''}
+              value={selectedSeats.toString()}
               onValueChange={(value) => setSelectedSeats(parseInt(value, 10))}
             >
-              <SelectTrigger className="mb-4">
+              <SelectTrigger>
                 <SelectValue placeholder="Select seats" />
               </SelectTrigger>
               <SelectContent>
@@ -116,47 +121,55 @@ const BookingSection: React.FC<BookingSectionProps> = ({
                 ))}
               </SelectContent>
             </Select>
-          </>
+          </div>
         )}
 
-        <Label>Special requests (optional)</Label>
-        <Input
-          type="text"
-          placeholder="Optional instructions for the driver/passenger"
-          value={specialRequests}
-          onChange={(e) => setSpecialRequests(e.target.value)}
-        />
+        <div className="space-y-1.5">
+          <Label>Special requests (optional)</Label>
+          <Input
+            type="text"
+            placeholder="Optional instructions for the trip"
+            value={specialRequests}
+            onChange={(e) => setSpecialRequests(e.target.value)}
+          />
+        </div>
 
-        <div className="bg-muted/50 rounded-lg p-3">
-          <h4 className="text-sm font-medium text-foreground mb-3">Estimated Fare</h4>
-          <div className="space-y-2">
-            {role === 'passenger' && (
+        <div className="rounded-xl border border-border/70 bg-card/80 p-3">
+          <h4 className="text-sm font-medium text-foreground mb-2">
+            Estimated fare
+          </h4>
+          <div className="space-y-2 text-sm">
+            {role === "passenger" && (
               <>
                 <div className="flex items-center justify-between">
-                  <span>{selectedSeats} seat{selectedSeats > 1 ? 's' : ''} × ₹{ride?.totalPrice}</span>
-                  <span>₹{totalCost}</span>
+                  <span className="text-muted-foreground">
+                    {selectedSeats} seat{selectedSeats > 1 ? "s" : ""} × ₹
+                    {ride?.totalPrice ?? 0}
+                  </span>
+                  <span className="text-foreground">₹{totalCost}</span>
                 </div>
-                <div className="flex items-center justify-between text-sm text-muted-foreground">
-                  <span>Platform fee</span>
-                  <span>₹{platformFee}</span>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Platform fee</span>
+                  <span className="text-foreground">₹{platformFee}</span>
                 </div>
-                <hr className="border-border" />
+                <div className="h-px bg-border" />
               </>
             )}
             <div className="flex items-center justify-between">
-              <span className="text-base font-semibold text-foreground">Estimated total</span>
-              <span className="text-base font-semibold text-primary">₹{finalAmount}</span>
+              <span className="font-semibold text-foreground">
+                Estimated total
+              </span>
+              <span className="font-semibold text-primary">₹{finalAmount}</span>
             </div>
           </div>
         </div>
 
-        {role === 'passenger' && (
-          <>
+        {role === "passenger" && (
+          <div className="space-y-1.5">
             <Label>Preferred settlement method</Label>
             <Select
-              value={selectedPaymentMethod || ''}
+              value={selectedPaymentMethod}
               onValueChange={(value) => setSelectedPaymentMethod(value)}
-              required
             >
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="Select settlement method" />
@@ -169,18 +182,16 @@ const BookingSection: React.FC<BookingSectionProps> = ({
                 ))}
               </SelectContent>
             </Select>
-          </>
+          </div>
         )}
 
-        <div className="bg-warning/10 rounded-lg p-3">
-          <div className="flex items-start space-x-2">
-            <Icon name="Shield" size={16} className="text-warning mt-0.5" />
-            <div>
-              <p className="text-sm font-medium text-warning mb-1">Safety First</p>
-              <p className="text-xs text-foreground">
-                Share ride details with trusted contacts. Payment is settled only after ride completion.
-              </p>
-            </div>
+        <div className="rounded-xl border border-warning/30 bg-warning/10 p-3">
+          <div className="flex items-start gap-2">
+            <Icon name="Shield" size={15} className="text-warning mt-0.5" />
+            <p className="text-xs text-foreground">
+              Share your trip details with trusted contacts. Settlement happens
+              only after ride completion.
+            </p>
           </div>
         </div>
 
@@ -188,24 +199,20 @@ const BookingSection: React.FC<BookingSectionProps> = ({
           variant="default"
           size="lg"
           onClick={handleBooking}
-          disabled={(role === 'passenger' && !selectedPaymentMethod) || isProcessing}
+          disabled={
+            (role === "passenger" && !selectedPaymentMethod) || isProcessing
+          }
           className="w-full"
         >
           <CreditCard />
           {isProcessing
-            ? 'Processing...'
-            : role === 'passenger'
-              ? `Send Booking Request for ₹${finalAmount}`
-              : 'Respond to Request'}
+            ? "Processing..."
+            : role === "passenger"
+              ? `Send booking request for ₹${finalAmount}`
+              : "Respond to request"}
         </Button>
-
-        <p className="text-xs text-muted-foreground text-center">
-          By booking, you agree to our{" "}
-          <span className="text-primary underline cursor-pointer">Terms of Service</span> and{" "}
-          <span className="text-primary underline cursor-pointer">Cancellation Policy</span>.
-        </p>
       </div>
-    </div>
+    </section>
   );
 };
 

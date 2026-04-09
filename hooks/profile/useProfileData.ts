@@ -169,7 +169,7 @@ export const useProfileData = () => {
     loading: bookingsLoading,
     error: bookingsError,
     refetch: refetchBookings,
-  } = useFetchBookings(10);
+  } = useFetchBookings(50);
 
   const [preferences, setPreferences] = useState<BackendProfilePreferences>(DEFAULT_PREFERENCES);
   const [safetySettings, setSafetySettings] = useState<BackendProfileSafety>(DEFAULT_SAFETY);
@@ -294,7 +294,7 @@ export const useProfileData = () => {
 
     return {
       ...transformed,
-      totalRides: bookingsData?.bookings?.length || 0,
+      totalRides: bookingsData?.pagination?.total ?? bookingsData?.bookings?.length ?? 0,
     };
   }, [userProfile, driverEligibilityStatus, bookingsData]);
 

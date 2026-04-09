@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useState } from "react";
+import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { useTheme } from "next-themes";
 
 import Icon from "./AppIcon";
 import { Button } from "./ui/button";
 import { useCurrentUser } from "@/hooks/auth/useCurrentUser";
-import { frontendConfig } from "@/lib/frontend-config";
+import { useChatUnreadCount } from "@/hooks/chat/useChatUnreadCount";
 import { cn } from "@/lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { ScrollArea } from "./ui/scroll-area";
@@ -33,31 +34,26 @@ const Navbar = () => {
   const router = useRouter();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
+  const [isThemeMounted, setIsThemeMounted] = useState(false);
+  const { resolvedTheme, setTheme } = useTheme();
   const { logout, user } = useCurrentUser();
   const {
     items: notifications,
-    unreadCount,
+    unreadCount: notificationUnreadCount,
     loading: notificationsLoading,
     error: notificationsError,
     refresh: refreshNotifications,
     markOneRead,
     markAllRead,
   } = useInAppNotifications(Boolean(user));
+  const { unreadCount: chatUnreadCount } = useChatUnreadCount();
 
   const navigationItems = [
     { label: "Home", path: "/dashboard", icon: "Home" },
     { label: "Search", path: "/search-rides", icon: "Search" },
     { label: "Post", path: "/post-a-ride", icon: "Plus" },
     { label: "Payments", path: "/payments", icon: "CreditCard" },
-    ...(frontendConfig.flags.enableChatUi
-      ? [
-          {
-            label: "Messages",
-            path: "/messages-chat",
-            icon: "MessageCircle" as const,
-          },
-        ]
-      : []),
+    { label: "Messages", path: "/messages-chat", icon: "MessageCircle" },
   ];
 
   const isActive = (path: string) => pathname === path;
@@ -93,6 +89,12 @@ const Navbar = () => {
       console.error("Logout failed:", err);
     }
   };
+
+  useEffect(() => {
+    setIsThemeMounted(true);
+  }, []);
+
+  const isDarkTheme = resolvedTheme === "dark";
 
   return (
     <header className="sticky top-0 left-0 right-0 z-50 border-b border-border/70 bg-background/80 backdrop-blur-xl supports-[backdrop-filter]:bg-background/65">
@@ -130,6 +132,9 @@ const Navbar = () => {
                 strokeWidth={isActive(item.path) ? 2.5 : 2}
               />
               <span>{item.label}</span>
+              {item.path === "/messages-chat" ? (
+                <NotificationBadge count={chatUnreadCount} size="sm" />
+              ) : null}
             </button>
           ))}
         </nav>
@@ -153,7 +158,7 @@ const Navbar = () => {
               >
                 <Icon name="Bell" size={18} />
                 <NotificationBadge
-                  count={unreadCount}
+                  count={notificationUnreadCount}
                   size="sm"
                   className="absolute -right-1 -top-1"
                 />
@@ -181,15 +186,15 @@ const Navbar = () => {
                       size="sm"
                       className="h-7 px-2 text-xs"
                       onClick={() => void markAllRead()}
-                      disabled={unreadCount === 0}
+                      disabled={notificationUnreadCount === 0}
                     >
                       Mark all read
                     </Button>
                   </div>
                 </div>
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  {unreadCount > 0
-                    ? `${unreadCount} unread updates`
+                  {notificationUnreadCount > 0
+                    ? `${notificationUnreadCount} unread updates`
                     : "You are all caught up"}
                 </p>
               </div>
@@ -286,6 +291,20 @@ const Navbar = () => {
                 </div>
                 <div className="my-1 h-px bg-border" />
                 <div className="space-y-1">
+                  <button
+                    className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm text-popover-foreground hover:bg-muted"
+                    onClick={() => {
+                      if (!isThemeMounted) return;
+                      setTheme(isDarkTheme ? "light" : "dark");
+                    }}
+                    type="button"
+                  >
+                    <span className="flex items-center gap-2">
+                      <Icon name={isDarkTheme ? "Sun" : "Moon"} size={16} />
+                      <span>{isDarkTheme ? "Light Mode" : "Dark Mode"}</span>
+                    </span>
+                  </button>
+
                   <button
                     className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-popover-foreground hover:bg-muted"
                     onClick={() => {

@@ -47,7 +47,7 @@ async function recoverBookingExpiryJobs() {
   const result = await pool.query<RecoverBookingExpiryRow>(
     `SELECT id, expires_at
      FROM bookings
-     WHERE status IN ('pending', 'confirmed')
+     WHERE status = 'pending'
        AND expires_at IS NOT NULL
      ORDER BY expires_at ASC
      LIMIT 500`,
@@ -64,6 +64,35 @@ async function recoverBookingExpiryJobs() {
   );
 
   return { recovered: result.rows.length };
+}
+
+interface DeletedChatRoomRow {
+  id: string;
+  booking_id: string;
+}
+
+async function deleteLockedChatRooms() {
+  const result = await pool.query<DeletedChatRoomRow>(
+    `WITH due_rooms AS (
+       SELECT id, booking_id
+       FROM chat_rooms
+       WHERE status = 'locked'
+         AND delete_after IS NOT NULL
+         AND delete_after <= now()
+       ORDER BY delete_after ASC
+       LIMIT 500
+     )
+     DELETE FROM chat_rooms c
+     USING due_rooms d
+     WHERE c.id = d.id
+     RETURNING d.id, d.booking_id`,
+  );
+
+  return {
+    deleted: result.rows.length,
+    roomIds: result.rows.map((row) => row.id),
+    bookingIds: result.rows.map((row) => row.booking_id),
+  };
 }
 
 async function recoverSettlementOverdueJobs() {
@@ -153,6 +182,9 @@ export function createMaintenanceWorker() {
           break;
         case "recover-payment-orders":
           result = await recoverPaymentOrderJobs();
+          break;
+        case "delete-locked-chat-rooms":
+          result = await deleteLockedChatRooms();
           break;
         default:
           result = { skipped: true };

@@ -16,180 +16,146 @@ const RideInformation: React.FC<RideInformationProps> = ({
   role = "passenger",
 }) => {
   const isLoading = !ride;
-  const departureTime = formatTimeToAmPm(ride.route.pickupTime)
-  const departureDate = formatUtcToTodayOrDayMonth(ride.date)
+  const departureTime = formatTimeToAmPm(ride?.route?.pickupTime || "");
+  const departureDate = formatUtcToTodayOrDayMonth(ride?.date || "");
+  const seats =
+    role === "passenger" ? ride?.availableSeats : ride?.seats_required;
 
   return (
-    <div className="bg-card rounded-lg p-4 border border-border shadow-soft">
-      <h3 className="text-lg font-semibold text-foreground mb-4">
-        {isLoading ? <Skeleton width={200} /> : "Ride Information"}
-      </h3>
-      <div className="space-y-4">
-        {/* Date & Time */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
-              <Icon name="Calendar" size={20} className="text-primary" />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-foreground">
-                {isLoading ? <Skeleton width={100} /> : departureDate ?? "—"}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {isLoading ? (
-                  <Skeleton width={80} />
-                ) : (
-                  `Departure: ${departureTime ?? "—"}`
-                )}
-              </p>
-            </div>
-          </div>
-          <div className="text-right">
-            <p className="text-sm font-medium text-foreground">
-              {isLoading ? (
-                <Skeleton width={50} />
-              ) : (
-                `${ride?.availableSeats ?? "—"} seats left`
-              )}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              {isLoading ? (
-                <Skeleton width={60} />
-              ) : (
-                `of ${ride?.totalSeats ?? "—"} total`
-              )}
-            </p>
-          </div>
-        </div>
-
-        {/* Price Breakdown */}
-        <div className="bg-muted/50 rounded-lg p-3">
-          <div className="space-y-2">
-            {["Base fare", "Fuel share", "Platform fee"].map((label) => (
-              <div key={label} className="flex items-center justify-between">
-                <span className="text-sm text-foreground">{label}</span>
-                <span className="text-sm text-foreground">
-                  {isLoading ? (
-                    <Skeleton width={40} />
-                  ) : label === "Base fare" ? (
-                    `₹${ride?.baseFare ?? "—"}`
-                  ) : label === "Fuel share" ? (
-                    `₹${ride?.fuelShare ?? "—"}`
-                  ) : (
-                    `₹${ride?.platformFee ?? "—"}`
-                  )}
-                </span>
-              </div>
-            ))}
-            <hr className="border-border my-2" />
-            <div className="flex items-center justify-between">
-              <span className="text-base font-semibold text-foreground">
-                Total per seat
-              </span>
-              <span className="text-base font-semibold text-primary">
-                {isLoading ? (
-                  <Skeleton width={50} />
-                ) : (
-                  `₹${ride?.totalPrice ?? "—"}`
-                )}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Vehicle Details */}
-        {ride?.type === "offer" && (
-          ride?.vehicle && (ride.vehicle.make || ride.vehicle.model) ? (
-            <div className="flex items-center space-x-3">
-              {ride?.vehicle?.image && (
-                <div className="w-16 h-12 rounded-lg overflow-hidden">
-                  {isLoading ? (
-                    <Skeleton height="100%" width="100%" />
-                  ) : (
-                    <AppImage
-                      src={ride.vehicle.image}
-                      alt={`${ride.vehicle.make ?? ""} ${
-                        ride.vehicle.model ?? ""
-                      }`}
-                      className="w-full h-full object-cover"
-                    />
-                  )}
-                </div>
-              )}
-              <div className="flex-1 space-y-1">
-                <p className="text-sm font-medium text-foreground">
-                  {isLoading ? (
-                    <Skeleton width={80} />
-                  ) : (
-                    `${ride.vehicle.make ?? "—"} ${ride.vehicle.model ?? ""}`.trim()
-                  )}
-                </p>
-                {(ride.vehicle.color || ride.vehicle.year) && (
-                  <p className="text-xs text-muted-foreground">
-                    {isLoading ? (
-                      <Skeleton width={100} />
-                    ) : (
-                      `${ride.vehicle.color ?? "—"} • ${
-                        ride.vehicle.year ?? "—"
-                      }`
-                    )}
-                  </p>
-                )}
-                {ride.vehicle.plateNumber && (
-                  <p className="text-xs text-muted-foreground">
-                    {isLoading ? (
-                      <Skeleton width={80} />
-                    ) : (
-                      ride.vehicle.plateNumber
-                    )}
-                  </p>
-                )}
-              </div>
-              {ride.vehicle.fuelEfficiency && (
-                <div className="flex items-center space-x-1">
-                  {isLoading ? (
-                    <Skeleton width={30} />
-                  ) : (
-                    <>
-                      <Icon name="Fuel" size={14} className="text-success" />
-                      <span className="text-xs text-success font-medium">
-                        {ride.vehicle.fuelEfficiency} km/l
-                      </span>
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
+    <section className="rounded-2xl border border-border/70 bg-gradient-to-br from-card via-card to-muted/20 p-4 md:p-5 shadow-soft space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-base md:text-lg font-semibold text-foreground">
+          {isLoading ? <Skeleton width={170} /> : "Fare and ride details"}
+        </h3>
+        <span className="rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-[11px] font-medium text-primary">
+          {isLoading ? (
+            <Skeleton width={60} />
+          ) : ride?.type === "offer" ? (
+            "Ride Offer"
           ) : (
-            <div className="text-sm text-muted-foreground">
-              Vehicle details not available.
-            </div>
-          )
-        )}
+            "Ride Request"
+          )}
+        </span>
+      </div>
 
-        {/* Safety Features */}
-        <div className="bg-success/10 rounded-lg p-3">
-          <div className="flex items-center space-x-2 mb-2">
-            <Icon name="Shield" size={16} className="text-success" />
-            <span className="text-sm font-medium text-success">
-              Safety Features
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+        {[
+          { label: "Date", value: departureDate || "-", icon: "Calendar" },
+          { label: "Time", value: departureTime || "-", icon: "Clock3" },
+          { label: "Seats", value: `${seats ?? 0}`, icon: "Users" },
+          {
+            label: "Per seat",
+            value: `₹${ride?.totalPrice ?? 0}`,
+            icon: "Wallet",
+          },
+        ].map((item) => (
+          <div
+            key={item.label}
+            className="rounded-xl border border-border/60 bg-secondary/70 p-2.5"
+          >
+            <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-muted-foreground">
+              <Icon name={item.icon} size={12} />
+              <span>{item.label}</span>
+            </div>
+            <p className="mt-1 text-sm font-medium text-foreground">
+              {isLoading ? <Skeleton width={70} /> : item.value}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      <div className="rounded-xl border border-border/70 bg-card/80 p-3">
+        <div className="space-y-2 text-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">Base fare</span>
+            <span className="text-foreground">
+              {isLoading ? <Skeleton width={48} /> : `₹${ride?.baseFare ?? 0}`}
             </span>
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            {isLoading
-              ? Array.from({ length: 4 }).map((_, idx) => (
-                  <Skeleton key={idx} height={15} />
-                ))
-              : ride?.safetyFeatures?.map((feature: string, index: number) => (
-                  <div key={index} className="flex items-center space-x-1">
-                    <Icon name="Check" size={12} className="text-success" />
-                    <span className="text-xs text-foreground">{feature}</span>
-                  </div>
-                ))}
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">Fuel share</span>
+            <span className="text-foreground">
+              {isLoading ? <Skeleton width={48} /> : `₹${ride?.fuelShare ?? 0}`}
+            </span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">Platform fee</span>
+            <span className="text-foreground">
+              {isLoading ? (
+                <Skeleton width={48} />
+              ) : (
+                `₹${ride?.platformFee ?? 0}`
+              )}
+            </span>
+          </div>
+          <div className="h-px bg-border my-1" />
+          <div className="flex items-center justify-between text-base font-semibold">
+            <span className="text-foreground">Total per seat</span>
+            <span className="text-primary">
+              {isLoading ? (
+                <Skeleton width={56} />
+              ) : (
+                `₹${ride?.totalPrice ?? 0}`
+              )}
+            </span>
           </div>
         </div>
       </div>
-    </div>
+
+      {ride?.type === "offer" &&
+        (ride?.vehicle?.make || ride?.vehicle?.model) && (
+          <div className="rounded-xl border border-border/70 bg-card/80 p-3">
+            <p className="text-sm font-semibold text-foreground mb-2">
+              Vehicle details
+            </p>
+            <div className="flex items-center gap-3">
+              {ride?.vehicle?.image && (
+                <div className="w-16 h-12 rounded-lg overflow-hidden border border-border/70">
+                  <AppImage
+                    src={ride.vehicle.image}
+                    alt={`${ride.vehicle.make ?? ""} ${ride.vehicle.model ?? ""}`}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              )}
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-foreground truncate">
+                  {`${ride.vehicle.make ?? "-"} ${ride.vehicle.model ?? ""}`.trim()}
+                </p>
+                <p className="text-xs text-muted-foreground truncate">
+                  {ride.vehicle.color || "-"} • {ride.vehicle.year || "-"}
+                </p>
+                {ride.vehicle.plateNumber && (
+                  <p className="text-xs text-muted-foreground">
+                    {ride.vehicle.plateNumber}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+      <div className="rounded-xl border border-success/30 bg-success/10 p-3">
+        <div className="flex items-center gap-2 mb-2">
+          <Icon name="Shield" size={14} className="text-success" />
+          <p className="text-sm font-semibold text-success">Safety coverage</p>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+          {(ride?.safetyFeatures?.length
+            ? ride.safetyFeatures
+            : ["GPS Tracking", "Emergency support"]
+          ).map((feature: string, idx: number) => (
+            <div
+              key={idx}
+              className="flex items-center gap-1.5 text-xs text-foreground"
+            >
+              <Icon name="Check" size={12} className="text-success" />
+              <span>{feature}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
   );
 };
 

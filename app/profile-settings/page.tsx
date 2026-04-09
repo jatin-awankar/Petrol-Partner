@@ -103,6 +103,9 @@ class ErrorBoundary extends React.Component<
 
 const DEFAULT_STATISTICS = {
   totalRides: 0,
+  completedRides: 0,
+  cancelledRides: 0,
+  completionRate: 0,
   totalDistance: 0,
   moneySaved: 0,
   averageRating: 0,
@@ -117,7 +120,42 @@ const DEFAULT_STATISTICS = {
   monthlyCO2: 0,
   communityScore: 0,
   communityRank: 0,
+  communityPercentile: 0,
+  rankingTier: "Starter",
+  nextTier: "Active",
+  pointsToNextTier: 0,
+  scoreBreakdown: {
+    reliability: 0,
+    rideVolume: 0,
+    monthlyMomentum: 0,
+    ratingQuality: 0,
+    communityImpact: 0,
+  },
 };
+
+const ESTIMATED_KM_PER_RIDE = 7.5;
+const ESTIMATED_CO2_KG_PER_RIDE = 1.4;
+const ESTIMATED_FUEL_L_PER_RIDE = 0.5;
+const ESTIMATED_TREES_PER_KG_CO2 = 1 / 22;
+
+function toNumber(value: unknown) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function getBookingDate(booking: any) {
+  const rawValue = booking?.date ?? booking?.created_at ?? booking?.updated_at;
+  if (!rawValue) {
+    return null;
+  }
+
+  const parsed = new Date(rawValue);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+
+  return parsed;
+}
 
 function mapVehicleFormToBackend(vehicle: any) {
   const licensePlate = String(vehicle?.licensePlate ?? "").trim();
@@ -245,29 +283,158 @@ const ProfileAccountSettings = () => {
       return DEFAULT_STATISTICS;
     }
 
-    const completedBookings = bookings.filter(
-      (b: any) => b.status === "completed",
+    const normalizedBookings = bookings.map((booking: any) => ({
+      ...booking,
+      normalizedStatus: String(booking?.status ?? "").toLowerCase(),
+      normalizedDate: getBookingDate(booking),
+    }));
+
+    const completedBookings = normalizedBookings.filter(
+      (booking: any) => booking.normalizedStatus === "completed",
     );
+    const cancelledBookings = normalizedBookings.filter(
+      (booking: any) => booking.normalizedStatus === "cancelled",
+    );
+
+    const totalBookings = normalizedBookings.length;
     const totalRides = completedBookings.length;
-    const totalAmount = completedBookings.reduce(
-      (sum: number, b: any) => sum + (b.total_price || 0),
+    const completionRate =
+      totalBookings > 0 ? Math.round((totalRides / totalBookings) * 100) : 0;
+    const rideValueInr = completedBookings.reduce(
+      (sum: number, booking: any) => sum + toNumber(booking.total_price),
       0,
+    );
+    const studentsHelped = new Set(
+      completedBookings
+        .map((booking: any) =>
+          String(
+            booking.other_user_email || booking.other_user_name || "",
+          ).trim(),
+        )
+        .filter(Boolean),
+    ).size;
+
+    const averageRating = Math.max(0, Math.min(5, toNumber(user?.rating)));
+    const totalRatings = Math.max(0, Math.round(totalRides * 0.6));
+
+    const now = new Date();
+    const monthlyCompleted = completedBookings.filter((booking: any) => {
+      if (!booking.normalizedDate) {
+        return false;
+      }
+
+      return (
+        booking.normalizedDate.getMonth() === now.getMonth() &&
+        booking.normalizedDate.getFullYear() === now.getFullYear()
+      );
+    });
+
+    const monthlyRides = monthlyCompleted.length;
+    const monthlyRideValueInr = monthlyCompleted.reduce(
+      (sum: number, booking: any) => sum + toNumber(booking.total_price),
+      0,
+    );
+
+    const totalDistance = Number(
+      (totalRides * ESTIMATED_KM_PER_RIDE).toFixed(1),
+    );
+    const monthlyDistance = Number(
+      (monthlyRides * ESTIMATED_KM_PER_RIDE).toFixed(1),
+    );
+    const co2Saved = Number(
+      (totalRides * ESTIMATED_CO2_KG_PER_RIDE).toFixed(1),
+    );
+    const monthlyCO2 = Number(
+      (monthlyRides * ESTIMATED_CO2_KG_PER_RIDE).toFixed(1),
+    );
+    const fuelSaved = Number(
+      (totalRides * ESTIMATED_FUEL_L_PER_RIDE).toFixed(1),
+    );
+    const treesEquivalent = Number(
+      (co2Saved * ESTIMATED_TREES_PER_KG_CO2).toFixed(2),
+    );
+
+    const rideVolumeScore = Math.min(300, totalRides * 12);
+    const reliabilityScore = Math.round((completionRate / 100) * 250);
+    const monthlyMomentumScore = Math.min(180, monthlyRides * 18);
+    const ratingWeight = totalRatings >= 10 ? 1 : 0.75;
+    const ratingQualityScore = Math.round(
+      (averageRating / 5) * 170 * ratingWeight,
+    );
+    const communityImpactScore = Math.min(
+      100,
+      Math.round(studentsHelped * 4 + co2Saved * 0.8),
+    );
+    const communityScore = Math.max(
+      0,
+      Math.min(
+        1000,
+        rideVolumeScore +
+          reliabilityScore +
+          monthlyMomentumScore +
+          ratingQualityScore +
+          communityImpactScore,
+      ),
+    );
+
+    const leagueTiers = [
+      { minScore: 900, name: "Legend", percentile: 1 },
+      { minScore: 800, name: "Elite", percentile: 5 },
+      { minScore: 700, name: "Pro", percentile: 10 },
+      { minScore: 550, name: "Rising", percentile: 25 },
+      { minScore: 400, name: "Active", percentile: 40 },
+      { minScore: 0, name: "Starter", percentile: 70 },
+    ] as const;
+
+    const currentTier =
+      leagueTiers.find((tier) => communityScore >= tier.minScore) ??
+      leagueTiers[leagueTiers.length - 1];
+    const higherTier = [...leagueTiers]
+      .reverse()
+      .find((tier) => tier.minScore > communityScore);
+    const communityPercentile = currentTier.percentile;
+
+    const assumedActiveStudents = 500;
+    const estimatedRank = Math.max(
+      1,
+      Math.round((communityPercentile / 100) * assumedActiveStudents),
     );
 
     return {
       ...DEFAULT_STATISTICS,
       totalRides,
-      moneySaved: totalAmount,
-      monthlyRides: completedBookings.filter((b: any) => {
-        const bookingDate = new Date(b.created_at || b.date);
-        const now = new Date();
-        return (
-          bookingDate.getMonth() === now.getMonth() &&
-          bookingDate.getFullYear() === now.getFullYear()
-        );
-      }).length,
+      completedRides: totalRides,
+      cancelledRides: cancelledBookings.length,
+      completionRate,
+      totalDistance,
+      moneySaved: rideValueInr,
+      averageRating,
+      totalRatings,
+      co2Saved,
+      fuelSaved,
+      treesEquivalent,
+      studentsHelped,
+      monthlyRides,
+      monthlySavings: monthlyRideValueInr,
+      monthlyDistance,
+      monthlyCO2,
+      communityScore,
+      communityRank: estimatedRank,
+      communityPercentile,
+      rankingTier: currentTier.name,
+      nextTier: higherTier?.name ?? "Maxed",
+      pointsToNextTier: higherTier
+        ? Math.max(0, higherTier.minScore - communityScore)
+        : 0,
+      scoreBreakdown: {
+        reliability: reliabilityScore,
+        rideVolume: rideVolumeScore,
+        monthlyMomentum: monthlyMomentumScore,
+        ratingQuality: ratingQualityScore,
+        communityImpact: communityImpactScore,
+      },
     };
-  }, [bookings]);
+  }, [bookings, user?.rating]);
 
   // Transform bookings to ride history format
   const rideHistory = useMemo(() => {
@@ -594,7 +761,7 @@ const ProfileAccountSettings = () => {
               </article>
             </section>
 
-            <section className="profile-nav-scroll sticky top-16 z-20 -mx-1 overflow-x-auto rounded-xl border border-border/60 bg-background/90 px-1 py-2 shadow-sm backdrop-blur md:top-20">
+            <section className="profile-nav-scroll sticky top-16 z-20 overflow-x-auto rounded-xl border border-border/60 bg-background/90 px-3 py-2 shadow-sm backdrop-blur md:top-20">
               <div className="flex w-max min-w-full gap-2">
                 {sectionNavItems.map((item) => (
                   <Button

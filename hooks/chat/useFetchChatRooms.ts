@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useCallback, useState, useEffect } from "react";
+import { listChatRooms } from "@/lib/api/backend";
 import { frontendConfig } from "@/lib/frontend-config";
 
 export function useFetchChatRooms() {
@@ -8,7 +9,7 @@ export function useFetchChatRooms() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchChatRooms = async () => {
+  const fetchChatRooms = useCallback(async () => {
     if (!frontendConfig.flags.enableChatUi) {
       setChatRooms([]);
       setLoading(false);
@@ -19,22 +20,21 @@ export function useFetchChatRooms() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/messages/chat", {
-        credentials: "include", // Include cookies for NextAuth session
+      const result = await listChatRooms({
+        limit: 50,
+        offset: 0,
       });
-      if (!res.ok) throw new Error("Failed to fetch chat rooms");
-      const data = await res.json();
-      setChatRooms(data);
+      setChatRooms(result.rooms ?? []);
     } catch (err: any) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    fetchChatRooms();
-  }, []);
+    void fetchChatRooms();
+  }, [fetchChatRooms]);
 
   return { chatRooms, loading, error, refetch: fetchChatRooms };
 }
