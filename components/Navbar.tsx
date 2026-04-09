@@ -1,13 +1,13 @@
 "use client";
 
-import React, { useState } from "react";
+import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { useTheme } from "next-themes";
 
 import Icon from "./AppIcon";
 import { Button } from "./ui/button";
 import { useCurrentUser } from "@/hooks/auth/useCurrentUser";
 import { useChatUnreadCount } from "@/hooks/chat/useChatUnreadCount";
-import { frontendConfig } from "@/lib/frontend-config";
 import { cn } from "@/lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { ScrollArea } from "./ui/scroll-area";
@@ -34,6 +34,8 @@ const Navbar = () => {
   const router = useRouter();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
+  const [isThemeMounted, setIsThemeMounted] = useState(false);
+  const { resolvedTheme, setTheme } = useTheme();
   const { logout, user } = useCurrentUser();
   const {
     items: notifications,
@@ -87,6 +89,12 @@ const Navbar = () => {
       console.error("Logout failed:", err);
     }
   };
+
+  useEffect(() => {
+    setIsThemeMounted(true);
+  }, []);
+
+  const isDarkTheme = resolvedTheme === "dark";
 
   return (
     <header className="sticky top-0 left-0 right-0 z-50 border-b border-border/70 bg-background/80 backdrop-blur-xl supports-[backdrop-filter]:bg-background/65">
@@ -283,6 +291,20 @@ const Navbar = () => {
                 </div>
                 <div className="my-1 h-px bg-border" />
                 <div className="space-y-1">
+                  <button
+                    className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm text-popover-foreground hover:bg-muted"
+                    onClick={() => {
+                      if (!isThemeMounted) return;
+                      setTheme(isDarkTheme ? "light" : "dark");
+                    }}
+                    type="button"
+                  >
+                    <span className="flex items-center gap-2">
+                      <Icon name={isDarkTheme ? "Sun" : "Moon"} size={16} />
+                      <span>{isDarkTheme ? "Light Mode" : "Dark Mode"}</span>
+                    </span>
+                  </button>
+
                   <button
                     className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-popover-foreground hover:bg-muted"
                     onClick={() => {

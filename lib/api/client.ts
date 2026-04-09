@@ -24,7 +24,15 @@ function buildUrl(path: string) {
     return path;
   }
 
-  return `${frontendConfig.apiBaseUrl}${path.startsWith("/") ? path : `/${path}`}`;
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+
+  if (typeof window !== "undefined") {
+    // Keep browser API calls same-origin so cookie-based auth works reliably,
+    // and let Next.js rewrites proxy /v1 requests to the backend.
+    return normalizedPath;
+  }
+
+  return `${frontendConfig.apiBaseUrl}${normalizedPath}`;
 }
 
 const AUTH_ENDPOINTS_WITHOUT_RETRY = new Set([

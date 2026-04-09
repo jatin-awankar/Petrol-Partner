@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useCallback, useState, useEffect } from "react";
 import { listChatRooms } from "@/lib/api/backend";
 import { frontendConfig } from "@/lib/frontend-config";
 
@@ -9,7 +9,7 @@ export function useFetchChatRooms() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchChatRooms = async () => {
+  const fetchChatRooms = useCallback(async () => {
     if (!frontendConfig.flags.enableChatUi) {
       setChatRooms([]);
       setLoading(false);
@@ -30,11 +30,11 @@ export function useFetchChatRooms() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    fetchChatRooms();
-  }, []);
+    void fetchChatRooms();
+  }, [fetchChatRooms]);
 
   return { chatRooms, loading, error, refetch: fetchChatRooms };
 }
