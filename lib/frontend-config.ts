@@ -55,7 +55,7 @@ export const frontendConfig = {
       process.env.NEXT_PUBLIC_ENABLE_RATINGS_UI,
       false,
     ),
-    enableChatUi: parseBooleanFlag(process.env.NEXT_PUBLIC_ENABLE_CHAT_UI, false),
+    enableChatUi: parseBooleanFlag(process.env.NEXT_PUBLIC_ENABLE_CHAT_UI, true),
     enableTrackingUi: parseBooleanFlag(
       process.env.NEXT_PUBLIC_ENABLE_TRACKING_UI,
       false,

@@ -1,39 +1,35 @@
-// proxy.ts - Next.js 16+ uses "proxy" instead of "middleware"
-import { withAuth } from "next-auth/middleware";
+import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
-// 🔒 Protect routes that require authentication
-export default withAuth(
-  function proxy(req) {
-    // You can add custom logic here if needed
-    return NextResponse.next();
-  },
-  {
-    callbacks: {
-      // If the user is not authenticated, redirect to login
-      authorized: ({ token }) => !!token,
-    },
-    pages: {
-      signIn: "/login", // Custom login page
-    },
-  }
-);
+const ACCESS_TOKEN_COOKIE = "pp_access_token";
+const REFRESH_TOKEN_COOKIE = "pp_refresh_token";
 
-// 🧭 Define which routes are protected
+export default function proxy(req: NextRequest) {
+  const hasAccessToken = Boolean(req.cookies.get(ACCESS_TOKEN_COOKIE)?.value);
+  const hasRefreshToken = Boolean(req.cookies.get(REFRESH_TOKEN_COOKIE)?.value);
+
+  if (hasAccessToken || hasRefreshToken) {
+    return NextResponse.next();
+  }
+
+  const loginUrl = new URL("/login", req.url);
+  loginUrl.searchParams.set("next", req.nextUrl.pathname + req.nextUrl.search);
+  return NextResponse.redirect(loginUrl);
+}
+
 export const config = {
   matcher: [
-    "/dashboard/:path*",  // Protect all dashboard routes
-    "/api/user/:path*",   // Protect user API routes
-    "/api/bookings/:path*", // Protect booking API routes
-    "/api/rides/:path*",   // Protect ride API routes
-    "/api/messages/:path*", // Protect message API routes
-    "/api/vehicle/:path*",  // Protect vehicle API routes
-    "/profile-settings", // Protect profile-settings page
-    "/profile-settings/:path*", // Protect profile pages sub-routes
-    "/post-a-ride/:path*",  // Protect post ride pages
-    "/messages-chat/:path*", // Protect messages pages
-    "/search-rides/:path*", // Protect search rides pages
-    "/payments/:path*", // Protect payments pages
+    "/dashboard/:path*",
+    "/api/user/:path*",
+    "/api/bookings/:path*",
+    "/api/rides/:path*",
+    "/api/messages/:path*",
+    "/api/vehicle/:path*",
+    "/profile-settings",
+    "/profile-settings/:path*",
+    "/post-a-ride/:path*",
+    "/messages-chat/:path*",
+    "/search-rides/:path*",
+    "/payments/:path*",
   ],
 };
-
