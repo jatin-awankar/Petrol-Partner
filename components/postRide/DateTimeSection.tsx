@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import type { PostRideFormData } from "@/lib/post-ride";
 import { CalendarDays, Clock3 } from "lucide-react";
 
 import { Button } from "../ui/button";
@@ -9,8 +10,8 @@ import { Label } from "../ui/label";
 import { Badge } from "../ui/badge";
 
 interface DateTimeSectionProps {
-  formData: any;
-  updateFormData: (data: any) => void;
+  formData: PostRideFormData;
+  updateFormData: React.Dispatch<React.SetStateAction<PostRideFormData>>;
   errors: Record<string, string>;
   mode?: "offer" | "request";
 }
@@ -30,7 +31,13 @@ const DateTimeSection: React.FC<DateTimeSectionProps> = ({
   errors,
   mode = "offer",
 }) => {
-  const getMinDate = () => new Date().toISOString().split("T")[0];
+  const getMinDate = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
 
   const getMinTime = () => {
     const selectedDate = new Date(formData.schedule.date);
@@ -124,6 +131,9 @@ const DateTimeSection: React.FC<DateTimeSectionProps> = ({
           <span className="text-sm font-semibold text-foreground">Advanced timing</span>
           <Badge variant="outline">Optional</Badge>
         </summary>
+        <p className="mt-2 text-xs text-muted-foreground">
+          Advanced timing settings are optional and are not required to publish this ride.
+        </p>
 
         <div className="mt-4 space-y-4">
           <div className="space-y-2">

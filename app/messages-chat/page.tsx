@@ -405,7 +405,7 @@ export default function MessagesPage() {
             </div>
 
             <ScrollArea
-              className={`min-h-0 flex-1 bg-gradient-to-b from-background to-muted/20 px-4 py-4 ${
+              className={`min-h-0 flex-1 bg-gradient-to-b from-background to-muted/20 my-3 px-4 py-4 ${
                 selectedRoom.status === "locked" ? "pt-28" : "pt-16"
               } pb-[calc(env(safe-area-inset-bottom)+8rem)] md:pb-6`}
             >
@@ -421,7 +421,7 @@ export default function MessagesPage() {
                   details.
                 </p>
               ) : (
-                <div className="space-y-3">
+                <div className="space-y-3 mb-4 md:mb-10">
                   {liveMessages.map((message) => {
                     const mine = message.sender_id === user?.id;
                     return (

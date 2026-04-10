@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useMemo } from "react";
+import type { PostRideFormData } from "@/lib/post-ride";
 
 import Icon from "../AppIcon";
 import { Button } from "../ui/button";
@@ -9,8 +10,8 @@ import { Label } from "../ui/label";
 import { Badge } from "../ui/badge";
 
 interface PricingSectionProps {
-  formData: any;
-  updateFormData: (data: any) => void;
+  formData: PostRideFormData;
+  updateFormData: React.Dispatch<React.SetStateAction<PostRideFormData>>;
   errors: Record<string, string>;
   mode?: "offer" | "request";
 }
@@ -27,20 +28,26 @@ const PricingSection: React.FC<PricingSectionProps> = ({
   errors,
   mode = "offer",
 }) => {
-  const seats = mode === "offer" ? Number(formData.availableSeats || 0) : Number(formData.seatsRequired || 0);
+  const seats =
+    mode === "offer"
+      ? Number(formData.availableSeats || 0)
+      : Number(formData.seatsRequired || 0);
   const fare = Number(formData.pricing.farePerSeat || 0);
 
-  const gross = useMemo(() => (mode === "offer" ? fare * seats : fare * seats), [fare, mode, seats]);
-  const estimatedNet = useMemo(() => (mode === "offer" ? Math.max(0, gross - Math.ceil(gross * 0.05)) : gross), [gross, mode]);
+  const gross = useMemo(() => fare * seats, [fare, seats]);
+  const estimatedNet = useMemo(
+    () => (mode === "offer" ? Math.max(0, gross - Math.ceil(gross * 0.05)) : gross),
+    [gross, mode],
+  );
 
   const setFare = (value: number) => {
-    updateFormData({
-      ...formData,
+    updateFormData((prev) => ({
+      ...prev,
       pricing: {
-        ...formData.pricing,
+        ...prev.pricing,
         farePerSeat: value,
       },
-    });
+    }));
   };
 
   const togglePaymentMethod = (method: string) => {
@@ -49,13 +56,13 @@ const PricingSection: React.FC<PricingSectionProps> = ({
       ? current.filter((item: string) => item !== method)
       : [...current, method];
 
-    updateFormData({
-      ...formData,
+    updateFormData((prev) => ({
+      ...prev,
       pricing: {
-        ...formData.pricing,
+        ...prev.pricing,
         paymentMethods: next,
       },
-    });
+    }));
   };
 
   return (
@@ -78,7 +85,9 @@ const PricingSection: React.FC<PricingSectionProps> = ({
             onChange={(e) => setFare(Number(e.target.value) || 0)}
             placeholder="Enter amount"
           />
-          {errors.farePerSeat ? <p className="text-xs text-destructive">{errors.farePerSeat}</p> : null}
+          {errors.farePerSeat ? (
+            <p className="text-xs text-destructive">{errors.farePerSeat}</p>
+          ) : null}
         </div>
       </div>
 

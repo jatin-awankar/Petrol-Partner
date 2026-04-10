@@ -4,13 +4,24 @@ import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import Icon from "../AppIcon";
+import type { PostRideFormData } from "@/lib/post-ride";
 import { getVerificationOverview } from "@/lib/api/backend";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 
+type ApprovedVehicle = {
+  id: string;
+  make: string;
+  model: string;
+  year: string;
+  fuel: string;
+  color: string;
+  plateNumber: string;
+};
+
 interface VehicleSectionProps {
-  formData: any;
-  updateFormData: (data: any) => void;
+  formData: PostRideFormData;
+  updateFormData: React.Dispatch<React.SetStateAction<PostRideFormData>>;
   errors: Record<string, string>;
 }
 
@@ -21,7 +32,7 @@ const VehicleSection: React.FC<VehicleSectionProps> = ({
 }) => {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [vehicles, setVehicles] = useState<any[]>([]);
+  const [vehicles, setVehicles] = useState<ApprovedVehicle[]>([]);
   const [vehicleLoadError, setVehicleLoadError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -42,8 +53,9 @@ const VehicleSection: React.FC<VehicleSectionProps> = ({
 
         setVehicles(approvedVehicles);
         setVehicleLoadError(null);
-      } catch (error: any) {
-        setVehicleLoadError(error?.message || "Unable to load approved vehicles.");
+      } catch (error: unknown) {
+        const safeError = error as { message?: string };
+        setVehicleLoadError(safeError.message || "Unable to load approved vehicles.");
       } finally {
         setLoading(false);
       }
@@ -52,15 +64,15 @@ const VehicleSection: React.FC<VehicleSectionProps> = ({
     void loadVehicles();
   }, []);
 
-  const selectVehicle = (vehicle: any) => {
-    updateFormData({
-      ...formData,
+  const selectVehicle = (vehicle: ApprovedVehicle) => {
+    updateFormData((prev) => ({
+      ...prev,
       vehicle: {
-        ...formData.vehicle,
+        ...prev.vehicle,
         ...vehicle,
         selectedId: vehicle.id,
       },
-    });
+    }));
   };
 
   if (loading) {

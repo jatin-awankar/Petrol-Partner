@@ -9,6 +9,7 @@ import { useRouter } from "next/navigation";
 import { useFetchSuggestedRides } from "@/hooks/rides/useFetchSuggestedRides";
 import { formatTimeToAmPm, todaysDate } from "@/lib/utils";
 import { Button } from "../ui/button";
+import { SkeletonBlock } from "./DashboardSkeletons";
 
 const RideSuggestions: React.FC = () => {
   const router = useRouter();
@@ -47,10 +48,7 @@ const RideSuggestions: React.FC = () => {
       <div className="mt-4 grid gap-3 md:grid-cols-2">
         {loading
           ? Array.from({ length: 4 }).map((_, idx) => (
-              <div
-                key={idx}
-                className="h-36 animate-pulse rounded-xl border border-border/70 bg-background"
-              />
+              <SkeletonBlock key={idx} className="h-36 rounded-xl border border-border/70" />
             ))
           : suggestions.map((ride: CombineRideData) => {
               const rideType = ride.driver_id ? "Offer" : "Request";
@@ -69,12 +67,12 @@ const RideSuggestions: React.FC = () => {
                       {rideType}
                     </span>
                     <span className="text-sm font-semibold text-foreground">
-                      Rs {ride.price_per_seat}
+                      ? {ride.price_per_seat}
                     </span>
                   </div>
 
                   <p className="mt-2 line-clamp-1 text-sm font-semibold text-foreground">
-                    {ride.pickup_location} → {ride.drop_location}
+                    {ride.pickup_location} ? {ride.drop_location}
                   </p>
 
                   <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground">
@@ -130,3 +128,4 @@ const RideSuggestions: React.FC = () => {
 };
 
 export default RideSuggestions;
+
