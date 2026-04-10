@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import Skeleton from "react-loading-skeleton";
 import { Button } from "../ui/button";
 import { ExternalLink } from "lucide-react";
 import Icon from "../AppIcon";
@@ -9,6 +8,7 @@ import AppImage from "../AppImage";
 import { motion } from "framer-motion";
 import { useCommunityUpdates } from "@/hooks/community/useCommunityUpdates";
 import { formatUtcToTodayOrDayMonth } from "@/lib/utils";
+import { SkeletonBlock } from "./DashboardSkeletons";
 
 const CommunityUpdates: React.FC = () => {
   const { updates, loading, hasMore, loadMore } = useCommunityUpdates({ limit: 3 });
@@ -40,14 +40,14 @@ const CommunityUpdates: React.FC = () => {
           ? Array.from({ length: 3 }).map((_, idx) => (
               <div
                 key={idx}
-                className="border border-border rounded-lg overflow-hidden animate-pulse"
+                className="border border-border rounded-lg overflow-hidden"
               >
-                <div className="relative h-32 bg-gray-200"></div>
+                <SkeletonBlock className="relative h-32 rounded-none" />
                 <div className="p-4 space-y-2">
-                  <Skeleton width="70%" height={16} />
-                  <Skeleton width="90%" height={12} />
-                  <Skeleton width="80%" height={12} />
-                  <Skeleton width="40%" height={12} />
+                  <SkeletonBlock className="h-4 w-[70%]" />
+                  <SkeletonBlock className="h-3 w-[90%]" />
+                  <SkeletonBlock className="h-3 w-[80%]" />
+                  <SkeletonBlock className="h-3 w-[40%]" />
                 </div>
               </div>
             ))

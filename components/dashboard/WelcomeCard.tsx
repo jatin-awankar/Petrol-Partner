@@ -5,6 +5,7 @@ import { CalendarClock, CarFront, ShieldCheck } from "lucide-react";
 
 import { useUserProfile } from "@/hooks/auth/useUserProfile";
 import { Button } from "../ui/button";
+import { SkeletonBlock } from "./DashboardSkeletons";
 
 const WelcomeCard = () => {
   const { profile, loading } = useUserProfile();
@@ -21,14 +22,14 @@ const WelcomeCard = () => {
   if (loading) {
     return (
       <section className="overflow-hidden rounded-2xl border border-primary/20 p-6 shadow-card md:p-7">
-        <div className="h-7 w-48 animate-pulse rounded-md bg-slate-200" />
-        <div className="mt-2 h-4 w-72 animate-pulse rounded-md bg-slate-200" />
+        <SkeletonBlock className="h-7 w-48" />
+        <SkeletonBlock className="mt-2 h-4 w-72" />
         <div className="mt-5 grid gap-3 sm:grid-cols-3">
-          <div className="h-16 animate-pulse rounded-xl bg-slate-200" />
-          <div className="h-16 animate-pulse rounded-xl bg-slate-200" />
-          <div className="h-16 animate-pulse rounded-xl bg-slate-200" />
+          <SkeletonBlock className="h-16 rounded-xl" />
+          <SkeletonBlock className="h-16 rounded-xl" />
+          <SkeletonBlock className="h-16 rounded-xl" />
         </div>
-        <div className="mt-5 h-9 w-40 animate-pulse rounded-md bg-slate-200" />
+        <SkeletonBlock className="mt-5 h-9 w-40" />
       </section>
     );
   }

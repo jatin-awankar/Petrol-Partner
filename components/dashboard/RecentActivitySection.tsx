@@ -18,6 +18,7 @@ import { useCancelBooking } from "@/hooks/bookings/useCancelBooking";
 import { frontendConfig } from "@/lib/frontend-config";
 import { formatTimeToAmPm, formatUtcToTodayOrDayMonth } from "@/lib/utils";
 import { Button } from "../ui/button";
+import { SkeletonBlock } from "./DashboardSkeletons";
 
 function statusUi(status: string) {
   switch (status) {
@@ -88,10 +89,7 @@ const RecentActivitySection: React.FC = () => {
       <div className="mt-4 space-y-3">
         {loading ? (
           Array.from({ length: 4 }).map((_, index) => (
-            <div
-              key={index}
-              className="h-20 animate-pulse rounded-xl border border-border/70 bg-background"
-            />
+            <SkeletonBlock key={index} className="h-20 rounded-xl border border-border/70" />
           ))
         ) : activities.length === 0 ? (
           <div className="rounded-xl border border-dashed border-border p-5 text-center">
@@ -127,7 +125,7 @@ const RecentActivitySection: React.FC = () => {
                   <div>
                     <div className="flex items-center gap-2">
                       <p className="text-sm font-semibold text-foreground">
-                        {booking.pickup_location} ➟ {booking.drop_location}
+                        {booking.pickup_location} ? {booking.drop_location}
                       </p>
                       <span
                         className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${ui.className}`}
@@ -225,3 +223,4 @@ const RecentActivitySection: React.FC = () => {
 };
 
 export default RecentActivitySection;
+
