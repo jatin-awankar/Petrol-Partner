@@ -6,8 +6,14 @@ import mapboxgl from "mapbox-gl";
 import Icon from "../AppIcon";
 import Skeleton from "react-loading-skeleton";
 import { formatTimeToAmPm } from "@/lib/utils";
+import {
+  fetchDrivingRoute,
+  hasMapboxToken,
+  normalizeMapboxError,
+} from "@/lib/mapbox-client";
+import { Button } from "../ui/button";
 
-mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN ?? "";
+mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
 
 interface LatLng {
   lat: number;
@@ -32,28 +38,41 @@ const RouteMap: React.FC<RouteMapProps> = ({ route, loading = false }) => {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
+  const [retryTick, setRetryTick] = useState(0);
 
   useEffect(() => {
     if (!route?.pickup || !route?.dropoff) return;
 
-    if (!mapboxgl.accessToken) {
-      setMapError("Mapbox token not found. Using fallback map.");
+    if (!hasMapboxToken()) {
+      setMapError("Map token missing. Add NEXT_PUBLIC_MAPBOX_TOKEN to load route map.");
       return;
     }
 
+    let cancelled = false;
+
     const initMap = async () => {
       try {
+        if (!mapContainerRef.current) return;
+        const pickup = route.pickup;
+        const dropoff = route.dropoff;
+        if (!pickup || !dropoff) return;
         if (mapRef.current) {
           mapRef.current.remove();
           mapRef.current = null;
         }
 
-        const pickup = route?.pickup;
-        const dropoff = route?.dropoff;
-        if (!pickup || !dropoff) return;
+        if (
+          !Number.isFinite(pickup.lat) ||
+          !Number.isFinite(pickup.lng) ||
+          !Number.isFinite(dropoff.lat) ||
+          !Number.isFinite(dropoff.lng)
+        ) {
+          setMapError("Invalid route coordinates. Unable to render map.");
+          return;
+        }
 
         const map = new mapboxgl.Map({
-          container: mapContainerRef.current as HTMLElement,
+          container: mapContainerRef.current,
           style: "mapbox://styles/mapbox/streets-v12",
           center: [pickup.lng, pickup.lat],
           zoom: 11,
@@ -66,6 +85,8 @@ const RouteMap: React.FC<RouteMapProps> = ({ route, loading = false }) => {
         );
 
         map.on("load", async () => {
+          if (cancelled) return;
+
           new mapboxgl.Marker({ color: "#22c55e" })
             .setLngLat([pickup.lng, pickup.lat])
             .setPopup(
@@ -85,14 +106,15 @@ const RouteMap: React.FC<RouteMapProps> = ({ route, loading = false }) => {
             .addTo(map);
 
           try {
-            const res = await fetch(
-              `https://api.mapbox.com/directions/v5/mapbox/driving/${pickup.lng},${pickup.lat};${dropoff.lng},${dropoff.lat}?geometries=geojson&access_token=${mapboxgl.accessToken}`,
-            );
-            const data = await res.json();
-            if (!data.routes || data.routes.length === 0)
-              throw new Error("No route found");
+            const routeGeo = await fetchDrivingRoute({
+              pickup: { lng: pickup.lng, lat: pickup.lat },
+              dropoff: { lng: dropoff.lng, lat: dropoff.lat },
+              timeoutMs: 10000,
+            });
 
-            const routeGeo = data.routes[0].geometry;
+            if (map.getLayer("route-line")) map.removeLayer("route-line");
+            if (map.getSource("route")) map.removeSource("route");
+
             map.addSource("route", {
               type: "geojson",
               data: {
@@ -119,31 +141,26 @@ const RouteMap: React.FC<RouteMapProps> = ({ route, loading = false }) => {
               bounds.extend(coord as [number, number]);
             }
             map.fitBounds(bounds, { padding: 60, maxZoom: 14 });
-          } catch {
-            setMapError("Failed to load map route. Showing fallback view.");
+            setMapError(null);
+          } catch (error) {
+            setMapError(normalizeMapboxError(error, "Failed to load route line."));
           }
         });
-      } catch {
-        setMapError("Map initialization failed. Showing fallback view.");
+      } catch (error) {
+        setMapError(normalizeMapboxError(error, "Map initialization failed."));
       }
     };
 
-    initMap();
+    void initMap();
 
     return () => {
+      cancelled = true;
       if (mapRef.current) {
         mapRef.current.remove();
         mapRef.current = null;
       }
     };
-  }, [route]);
-
-  const googleEmbedSrc = () => {
-    const p = route?.pickup;
-    const d = route?.dropoff;
-    if (!p || !d) return "";
-    return `https://www.google.com/maps/dir/?api=1&origin=${p.lat},${p.lng}&destination=${d.lat},${d.lng}`;
-  };
+  }, [route, retryTick]);
 
   if (loading) {
     return (
@@ -158,25 +175,20 @@ const RouteMap: React.FC<RouteMapProps> = ({ route, loading = false }) => {
     <section className="rounded-2xl border border-border/70 bg-gradient-to-br from-card via-card to-muted/20 shadow-soft overflow-hidden">
       <div className="relative h-52 md:h-64">
         {mapError ? (
-          <iframe
-            title="Ride Route"
-            src={googleEmbedSrc()}
-            loading="lazy"
-            referrerPolicy="no-referrer-when-downgrade"
-            className="absolute inset-0 w-full h-full border-0"
-          />
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-muted/30 px-4 text-center">
+            <p className="text-sm text-muted-foreground">{mapError}</p>
+            <Button size="sm" variant="outline" onClick={() => setRetryTick((v) => v + 1)}>
+              Retry map
+            </Button>
+          </div>
         ) : (
-          <div
-            ref={mapContainerRef}
-            className="absolute inset-0 w-full h-full"
-          />
+          <div ref={mapContainerRef} className="absolute inset-0 w-full h-full" />
         )}
 
         <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-3">
           <div className="flex items-center justify-between gap-3 text-white">
             <p className="text-sm font-medium truncate">
-              {route?.pickup?.name ?? "Pickup"} ?{" "}
-              {route?.dropoff?.name ?? "Dropoff"}
+              {route?.pickup?.name ?? "Pickup"} to {route?.dropoff?.name ?? "Dropoff"}
             </p>
             <div className="flex items-center gap-2 text-xs shrink-0">
               <span className="inline-flex items-center gap-1">

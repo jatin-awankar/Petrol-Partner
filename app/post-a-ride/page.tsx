@@ -23,19 +23,27 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useCreateRideOffer } from "@/hooks/rides/useRideOffers";
 import { useCreateRideRequest } from "@/hooks/rides/useRideRequests";
 import { useCurrentUser } from "@/hooks/auth/useCurrentUser";
+import {
+  buildRideOfferPayload,
+  buildRideRequestPayload,
+  getAllStepErrors,
+  getStepErrors,
+  type PostMode,
+  type PostRideFormData,
+  type StepMeta,
+} from "@/lib/post-ride";
 
 const STORAGE_KEY = "postRideFormData";
-type PostMode = "offer" | "request";
 
-const initialFormData = {
-  mode: "offer" as PostMode,
+const initialFormData: PostRideFormData = {
+  mode: "offer",
   route: {
     pickup: "",
     dropoff: "",
-    pickup_lat: null as number | null,
-    pickup_lng: null as number | null,
-    drop_lat: null as number | null,
-    drop_lng: null as number | null,
+    pickup_lat: null,
+    pickup_lng: null,
+    drop_lat: null,
+    drop_lng: null,
   },
   schedule: {
     date: "",
@@ -46,16 +54,16 @@ const initialFormData = {
   availableSeats: 1,
   seatsRequired: 1,
   vehicle: {
-    selectedId: null as string | null,
+    selectedId: null,
     make: "",
     model: "",
     year: "",
     type: "",
     fuel: "",
     color: "",
-    features: [] as string[],
+    features: [],
   },
-  pricing: { farePerSeat: 0, paymentMethods: ["upi"] as string[] },
+  pricing: { farePerSeat: 0, paymentMethods: ["upi"] },
   preferences: {
     gender: "any",
     notes: "",
@@ -83,13 +91,6 @@ function getFriendlyBusinessError(error: unknown) {
   }
 }
 
-type StepMeta = {
-  id: number;
-  title: string;
-  component: string;
-  subtitle: string;
-};
-
 const PostRide = () => {
   const { isAuthenticated, loading: authLoading } = useCurrentUser();
   const router = useRouter();
@@ -100,7 +101,7 @@ const PostRide = () => {
   const [showPreview, setShowPreview] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [formData, setFormData] = useState(initialFormData);
+  const [formData, setFormData] = useState<PostRideFormData>(initialFormData);
 
   const mode = formData.mode;
   const loading = offerLoading || requestLoading;
@@ -114,74 +115,19 @@ const PostRide = () => {
   const steps = useMemo<StepMeta[]>(() => {
     return mode === "offer"
       ? [
-          {
-            id: 1,
-            title: "Route",
-            component: "route",
-            subtitle: "Pickup and drop",
-          },
-          {
-            id: 2,
-            title: "Schedule",
-            component: "schedule",
-            subtitle: "When you leave",
-          },
-          {
-            id: 3,
-            title: "Seats",
-            component: "seats",
-            subtitle: "Passenger capacity",
-          },
-          {
-            id: 4,
-            title: "Vehicle",
-            component: "vehicle",
-            subtitle: "Approved vehicle",
-          },
-          {
-            id: 5,
-            title: "Pricing",
-            component: "pricing",
-            subtitle: "Fare per seat",
-          },
-          {
-            id: 6,
-            title: "Preferences",
-            component: "preferences",
-            subtitle: "Ride conditions",
-          },
+          { id: 1, title: "Route", component: "route", subtitle: "Pickup and drop" },
+          { id: 2, title: "Schedule", component: "schedule", subtitle: "When you leave" },
+          { id: 3, title: "Seats", component: "seats", subtitle: "Passenger capacity" },
+          { id: 4, title: "Vehicle", component: "vehicle", subtitle: "Approved vehicle" },
+          { id: 5, title: "Pricing", component: "pricing", subtitle: "Fare per seat" },
+          { id: 6, title: "Preferences", component: "preferences", subtitle: "Ride conditions" },
         ]
       : [
-          {
-            id: 1,
-            title: "Route",
-            component: "route",
-            subtitle: "Pickup and drop",
-          },
-          {
-            id: 2,
-            title: "Schedule",
-            component: "schedule",
-            subtitle: "When you need ride",
-          },
-          {
-            id: 3,
-            title: "Seats",
-            component: "seats",
-            subtitle: "Seats needed",
-          },
-          {
-            id: 4,
-            title: "Pricing",
-            component: "pricing",
-            subtitle: "Your max price",
-          },
-          {
-            id: 5,
-            title: "Preferences",
-            component: "preferences",
-            subtitle: "Ride conditions",
-          },
+          { id: 1, title: "Route", component: "route", subtitle: "Pickup and drop" },
+          { id: 2, title: "Schedule", component: "schedule", subtitle: "When you need ride" },
+          { id: 3, title: "Seats", component: "seats", subtitle: "Seats needed" },
+          { id: 4, title: "Pricing", component: "pricing", subtitle: "Your max price" },
+          { id: 5, title: "Preferences", component: "preferences", subtitle: "Ride conditions" },
         ];
   }, [mode]);
 
@@ -227,77 +173,6 @@ const PostRide = () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(formData));
   }, [formData]);
 
-  const getStepErrors = (
-    step: number,
-    state: typeof formData,
-    currentMode: PostMode,
-  ): Record<string, string> => {
-    const nextErrors: Record<string, string> = {};
-    const seatsOffer = Number(state.availableSeats);
-    const seatsRequest = Number(state.seatsRequired);
-    const fareValue = Number(state.pricing.farePerSeat);
-    const pickupLat = Number(state.route.pickup_lat);
-    const pickupLng = Number(state.route.pickup_lng);
-    const dropLat = Number(state.route.drop_lat);
-    const dropLng = Number(state.route.drop_lng);
-
-    if (step === 1) {
-      if (!state.route.pickup.trim()) nextErrors.pickup = "Pickup required";
-      if (!state.route.dropoff.trim()) nextErrors.dropoff = "Drop-off required";
-      if (
-        !Number.isFinite(pickupLat) ||
-        !Number.isFinite(pickupLng) ||
-        !Number.isFinite(dropLat) ||
-        !Number.isFinite(dropLng)
-      ) {
-        nextErrors.routeCoordinates =
-          "Select pickup and drop from search or map.";
-      }
-    }
-
-    if (step === 2) {
-      if (!state.schedule.date) nextErrors.date = "Date required";
-      if (!state.schedule.time) nextErrors.time = "Time required";
-    }
-
-    if (step === 3) {
-      if (
-        currentMode === "offer" &&
-        (!Number.isFinite(seatsOffer) || seatsOffer < 1)
-      ) {
-        nextErrors.availableSeats = "Select at least 1 seat";
-      }
-      if (
-        currentMode === "request" &&
-        (!Number.isFinite(seatsRequest) || seatsRequest < 1)
-      ) {
-        nextErrors.seatsRequired = "Select at least 1 seat";
-      }
-    }
-
-    if (step === 4) {
-      if (currentMode === "offer" && !state.vehicle.selectedId) {
-        nextErrors.vehicle = "Select an approved vehicle from your profile";
-      }
-      if (
-        currentMode === "request" &&
-        (!Number.isFinite(fareValue) || fareValue < 1)
-      ) {
-        nextErrors.farePerSeat = "Set your max price per seat";
-      }
-    }
-
-    if (
-      step === 5 &&
-      currentMode === "offer" &&
-      (!Number.isFinite(fareValue) || fareValue < 1)
-    ) {
-      nextErrors.farePerSeat = "Set a fare amount";
-    }
-
-    return nextErrors;
-  };
-
   const validateStep = useCallback(
     (step: number) => {
       const next = getStepErrors(step, formData, mode);
@@ -309,10 +184,8 @@ const PostRide = () => {
 
   const completedSteps = useMemo(
     () =>
-      steps.filter(
-        (step) =>
-          Object.keys(getStepErrors(step.id, formData, mode)).length === 0,
-      ).length,
+      steps.filter((step) => Object.keys(getStepErrors(step.id, formData, mode)).length === 0)
+        .length,
     [steps, formData, mode],
   );
 
@@ -329,93 +202,42 @@ const PostRide = () => {
 
   const handleModeChange = (nextMode: PostMode) => {
     if (nextMode === mode) return;
-    setFormData((prev) => ({
-      ...prev,
+
+    const nextFormData = {
+      ...formData,
       mode: nextMode,
-    }));
+    } as PostRideFormData;
+
+    setFormData(nextFormData);
     setCurrentStep(1);
-    setErrors({});
+    setErrors(getStepErrors(1, nextFormData, nextMode));
   };
 
   const handlePublish = async () => {
-    const allValid = steps.every((step) => validateStep(step.id));
-    if (!allValid) {
+    const allStepErrors = getAllStepErrors(steps, formData, mode);
+    setErrors(allStepErrors);
+
+    if (Object.keys(allStepErrors).length > 0) {
       toast.error("Please complete required details before publishing.");
       return;
     }
 
     setIsPublishing(true);
     try {
-      const pickupLat = Number(formData.route.pickup_lat);
-      const pickupLng = Number(formData.route.pickup_lng);
-      const dropLat = Number(formData.route.drop_lat);
-      const dropLng = Number(formData.route.drop_lng);
-      const pricePerSeat = Number(formData.pricing.farePerSeat);
-      const seatsRequired = Number(formData.seatsRequired);
-      const availableSeats = Number(formData.availableSeats);
-
-      if (
-        !Number.isFinite(pickupLat) ||
-        !Number.isFinite(pickupLng) ||
-        !Number.isFinite(dropLat) ||
-        !Number.isFinite(dropLng) ||
-        !Number.isFinite(pricePerSeat)
-      ) {
-        toast.error(
-          "Route and pricing fields are invalid. Please reselect values.",
-        );
-        return;
-      }
-
-      const sharedPayload = {
-        pickup_location: formData.route.pickup,
-        drop_location: formData.route.dropoff,
-        pickup_lat: pickupLat,
-        pickup_lng: pickupLng,
-        drop_lat: dropLat,
-        drop_lng: dropLng,
-        date: formData.schedule.date,
-        time: formData.schedule.time,
-        price_per_seat: pricePerSeat,
-        counterparty_gender_preference:
-          formData.preferences.gender === "female"
-            ? "female_only"
-            : formData.preferences.gender === "male"
-              ? "male_only"
-              : "any",
-        notification_enabled: true,
-        notes: formData.preferences.notes || undefined,
-      };
-
       if (mode === "offer") {
-        if (!Number.isFinite(availableSeats) || availableSeats < 1) {
-          toast.error("Invalid seat count. Please update seats.");
+        const offerPayload = buildRideOfferPayload(formData);
+        if (!offerPayload.ok) {
+          toast.error(offerPayload.error);
           return;
         }
-        await createRideOffer({
-          ...sharedPayload,
-          available_seats: availableSeats,
-          vehicle_id: formData.vehicle.selectedId,
-          vehicle_details: formData.vehicle.make
-            ? {
-                make: formData.vehicle.make,
-                model: formData.vehicle.model || "",
-                year: formData.vehicle.year || "",
-                color: formData.vehicle.color || "",
-                fuelType: formData.vehicle.fuel || "",
-                features: formData.vehicle.features || [],
-              }
-            : undefined,
-        });
+        await createRideOffer(offerPayload.payload);
       } else {
-        if (!Number.isFinite(seatsRequired) || seatsRequired < 1) {
-          toast.error("Invalid seat requirement. Please update seats.");
+        const requestPayload = buildRideRequestPayload(formData);
+        if (!requestPayload.ok) {
+          toast.error(requestPayload.error);
           return;
         }
-        await createRideRequest({
-          ...sharedPayload,
-          seats_required: seatsRequired,
-        });
+        await createRideRequest(requestPayload.payload);
       }
 
       toast.success(

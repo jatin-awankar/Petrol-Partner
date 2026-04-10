@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Send } from "lucide-react";
 
 import Icon from "../AppIcon";
+import type { PostRideFormData } from "@/lib/post-ride";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import {
@@ -25,7 +26,7 @@ import {
 interface PreviewModalProps {
   isOpen: boolean;
   onClose: () => void;
-  formData: any;
+  formData: PostRideFormData;
   mode: "offer" | "request";
   onPublish: () => void;
 }
@@ -40,14 +41,11 @@ const PreviewBody = ({
   formData,
   mode,
 }: {
-  formData: any;
+  formData: PostRideFormData;
   mode: "offer" | "request";
 }) => {
   const checklist = useMemo(
-    () =>
-      mode === "offer"
-        ? [...checklistBase, "Approved vehicle selected"]
-        : checklistBase,
+    () => (mode === "offer" ? [...checklistBase, "Approved vehicle selected"] : checklistBase),
     [mode],
   );
 
@@ -56,15 +54,11 @@ const PreviewBody = ({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-2 sm:gap-3">
         <div className="rounded-lg border border-border/70 bg-sky-500/[0.06] p-3">
           <p className="text-xs text-muted-foreground">Pickup</p>
-          <p className="mt-1 text-sm text-foreground">
-            {formData.route.pickup || "-"}
-          </p>
+          <p className="mt-1 text-sm text-foreground">{formData.route.pickup || "-"}</p>
         </div>
         <div className="rounded-lg border border-border/70 bg-sky-500/[0.06] p-3">
           <p className="text-xs text-muted-foreground">Dropoff</p>
-          <p className="mt-1 text-sm text-foreground">
-            {formData.route.dropoff || "-"}
-          </p>
+          <p className="mt-1 text-sm text-foreground">{formData.route.dropoff || "-"}</p>
         </div>
         <div className="rounded-lg border border-border/70 bg-violet-500/[0.06] p-3">
           <p className="text-xs text-muted-foreground">Date and time</p>
@@ -77,9 +71,7 @@ const PreviewBody = ({
             {mode === "offer" ? "Available seats" : "Seats needed"}
           </p>
           <p className="mt-1 text-sm text-foreground">
-            {mode === "offer"
-              ? formData.availableSeats
-              : formData.seatsRequired}
+            {mode === "offer" ? formData.availableSeats : formData.seatsRequired}
           </p>
         </div>
       </div>
@@ -96,9 +88,7 @@ const PreviewBody = ({
       <div className="rounded-lg border border-border/70 bg-amber-500/[0.06] p-3">
         <div className="flex items-center justify-between">
           <p className="text-xs text-muted-foreground">Price per seat</p>
-          <Badge variant="secondary">
-            ₹ {formData.pricing.farePerSeat || 0}
-          </Badge>
+          <Badge variant="secondary">₹ {formData.pricing.farePerSeat || 0}</Badge>
         </div>
         <p className="mt-2 text-xs text-muted-foreground">
           Preference: {formData.preferences.gender || "any"}
@@ -109,10 +99,7 @@ const PreviewBody = ({
         <p className="text-sm font-semibold text-foreground mb-2">Checklist</p>
         <ul className="space-y-1">
           {checklist.map((item) => (
-            <li
-              key={item}
-              className="text-sm text-muted-foreground flex items-center gap-2"
-            >
+            <li key={item} className="text-sm text-muted-foreground flex items-center gap-2">
               <Icon name="CheckCircle2" size={14} className="text-success" />
               {item}
             </li>
@@ -147,12 +134,8 @@ const PreviewModal: React.FC<PreviewModalProps> = ({
       <Drawer open={isOpen} onOpenChange={(open) => (!open ? onClose() : null)}>
         <DrawerContent className="max-h-[88vh] mb-16 md:mb-auto">
           <DrawerHeader>
-            <DrawerTitle>
-              {mode === "offer" ? "Review offer" : "Review request"}
-            </DrawerTitle>
-            <DrawerDescription>
-              Final check before publishing.
-            </DrawerDescription>
+            <DrawerTitle>{mode === "offer" ? "Review offer" : "Review request"}</DrawerTitle>
+            <DrawerDescription>Final check before publishing.</DrawerDescription>
           </DrawerHeader>
           <div className="px-3 sm:px-4 pb-2 overflow-y-auto">
             <PreviewBody formData={formData} mode={mode} />
@@ -175,20 +158,14 @@ const PreviewModal: React.FC<PreviewModalProps> = ({
     <Dialog open={isOpen} onOpenChange={(open) => (!open ? onClose() : null)}>
       <DialogContent className="max-w-2xl mx-3 sm:mx-0">
         <DialogHeader>
-          <DialogTitle>
-            {mode === "offer" ? "Review ride offer" : "Review ride request"}
-          </DialogTitle>
+          <DialogTitle>{mode === "offer" ? "Review ride offer" : "Review ride request"}</DialogTitle>
           <DialogDescription>Confirm details and publish.</DialogDescription>
         </DialogHeader>
 
         <PreviewBody formData={formData} mode={mode} />
 
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-2 pt-2">
-          <Button
-            variant="outline"
-            className="w-full sm:w-auto"
-            onClick={onClose}
-          >
+          <Button variant="outline" className="w-full sm:w-auto" onClick={onClose}>
             Edit
           </Button>
           <Button className="w-full sm:w-auto" onClick={onPublish}>

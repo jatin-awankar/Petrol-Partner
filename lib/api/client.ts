@@ -171,6 +171,61 @@ function toNetworkError(path: string, error: unknown) {
   });
 }
 
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isChatPath(path: string) {
+  return normalizePathname(path).startsWith("/v1/chat/");
+}
+
+function isIdempotentMethod(method: string | undefined) {
+  const normalizedMethod = (method ?? "GET").toUpperCase();
+  return normalizedMethod === "GET" || normalizedMethod === "HEAD";
+}
+
+async function fetchWithTransientRetry(
+  path: string,
+  url: string,
+  init: RequestInit,
+  attempts = 2,
+) {
+  let lastError: unknown = null;
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      const response = await fetch(url, init);
+
+      if (
+        attempt < attempts &&
+        isChatPath(path) &&
+        isIdempotentMethod(init.method) &&
+        [502, 503, 504].includes(response.status)
+      ) {
+        await delay(900 * attempt);
+        continue;
+      }
+
+      return response;
+    } catch (error) {
+      lastError = error;
+
+      if (
+        attempt < attempts &&
+        isChatPath(path) &&
+        isIdempotentMethod(init.method)
+      ) {
+        await delay(900 * attempt);
+        continue;
+      }
+
+      throw error;
+    }
+  }
+
+  throw lastError;
+}
+
 export async function apiRequest<T>(
   path: string,
   init: RequestInit & { skipJsonBody?: boolean; _retryAttempted?: boolean } = {},
@@ -184,7 +239,7 @@ export async function apiRequest<T>(
   let response: Response;
 
   try {
-    response = await fetch(buildUrl(path), {
+    response = await fetchWithTransientRetry(path, buildUrl(path), {
       ...init,
       credentials: "include",
       headers,
@@ -247,7 +302,7 @@ export async function serverApiRequest<T>(
   let response: Response;
 
   try {
-    response = await fetch(buildUrl(path), {
+    response = await fetchWithTransientRetry(path, buildUrl(path), {
       ...init,
       headers,
       cache: init.cache ?? "no-store",
