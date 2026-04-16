@@ -12,8 +12,8 @@ import {
 } from "../ui/select";
 import Icon from "../AppIcon";
 import AppImage from "../AppImage";
-import Skeleton from "react-loading-skeleton";
 import { Edit, ImageUp, Plus, Save, Trash2, X } from "lucide-react";
+import { ProfileSectionSkeleton } from "./ProfileSkeletons";
 
 export interface Vehicle {
   id: string | number;
@@ -182,17 +182,7 @@ const VehicleInfoSection: React.FC<VehicleInfoSectionProps> = ({
   }, [editing, formData, onAddVehicle, onEditVehicle, validate]);
 
   if (isLoading) {
-    return (
-      <section className="rounded-2xl border border-border/70 bg-card/90 shadow-card">
-        <button onClick={onToggle} className="flex w-full items-center justify-between px-4 py-4">
-          <div className="flex items-center gap-3">
-            <Icon name="Bike" size={20} className="text-primary" />
-            <Skeleton width={150} height={18} />
-          </div>
-          <Skeleton width={18} height={18} />
-        </button>
-      </section>
-    );
+    return <ProfileSectionSkeleton icon={<Icon name="Bike" size={20} className="text-primary" />} titleWidthClass="w-36" />;
   }
 
   return (

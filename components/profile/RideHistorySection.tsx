@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import Skeleton from "react-loading-skeleton";
 import Icon from "../AppIcon";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -14,6 +13,7 @@ import {
 } from "../ui/select";
 import { formatTimeToAmPm, formatUtcToTodayOrDayMonth } from "@/lib/utils";
 import { MessageSquare, Receipt, Repeat, Star } from "lucide-react";
+import { ProfileSectionSkeleton } from "./ProfileSkeletons";
 
 interface RidePartner {
   name: string;
@@ -77,17 +77,7 @@ const RideHistorySection: React.FC<RideHistorySectionProps> = ({
   }, [filter, history]);
 
   if (isLoading) {
-    return (
-      <section className="rounded-2xl border border-border/70 bg-card/90 shadow-card">
-        <button onClick={onToggle} className="flex w-full items-center justify-between px-4 py-4">
-          <div className="flex items-center gap-3">
-            <Icon name="History" size={20} className="text-primary" />
-            <Skeleton width={140} height={18} />
-          </div>
-          <Skeleton width={18} height={18} />
-        </button>
-      </section>
-    );
+    return <ProfileSectionSkeleton icon={<Icon name="History" size={20} className="text-primary" />} titleWidthClass="w-36" />;
   }
 
   return (

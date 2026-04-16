@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useState } from "react";
-import Skeleton from "react-loading-skeleton";
 import Icon from "../AppIcon";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -12,6 +11,7 @@ import {
   SelectValue,
 } from "../ui/select";
 import { Edit, Save } from "lucide-react";
+import { ProfileSectionSkeleton } from "./ProfileSkeletons";
 
 export interface User {
   name?: string;
@@ -122,17 +122,7 @@ const PersonalInfoSection: React.FC<PersonalInfoSectionProps> = ({
   }, [user]);
 
   if (isLoading) {
-    return (
-      <section className="rounded-2xl border border-border/70 bg-card/90 shadow-card">
-        <button onClick={onToggle} className="flex w-full items-center justify-between px-4 py-4">
-          <div className="flex items-center gap-3">
-            <Icon name="User" size={20} className="text-primary" />
-            <Skeleton width={180} height={18} />
-          </div>
-          <Skeleton width={18} height={18} />
-        </button>
-      </section>
-    );
+    return <ProfileSectionSkeleton icon={<Icon name="User" size={20} className="text-primary" />} titleWidthClass="w-44" />;
   }
 
   return (

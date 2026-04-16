@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useCallback, useEffect, useState } from "react";
-import Skeleton from "react-loading-skeleton";
 import Icon from "../AppIcon";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
@@ -13,6 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../ui/select";
+import { ProfileSectionSkeleton } from "./ProfileSkeletons";
 
 export interface Preferences {
   musicPreference?: string;
@@ -115,17 +115,7 @@ const PreferencesSection: React.FC<PreferencesSectionProps> = ({
   }, [form, onSave]);
 
   if (isLoading) {
-    return (
-      <section className="rounded-2xl border border-border/70 bg-card/90 shadow-card">
-        <button onClick={onToggle} className="flex w-full items-center justify-between px-4 py-4">
-          <div className="flex items-center gap-3">
-            <Icon name="Settings" size={20} className="text-primary" />
-            <Skeleton width={160} height={18} />
-          </div>
-          <Skeleton width={18} height={18} />
-        </button>
-      </section>
-    );
+    return <ProfileSectionSkeleton icon={<Icon name="Settings" size={20} className="text-primary" />} titleWidthClass="w-40" />;
   }
 
   return (

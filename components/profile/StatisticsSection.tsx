@@ -1,9 +1,9 @@
 "use client";
 
 import React, { useMemo } from "react";
-import Skeleton from "react-loading-skeleton";
 import Icon from "../AppIcon";
 import { Badge } from "../ui/badge";
+import { ProfileSectionSkeleton } from "./ProfileSkeletons";
 
 interface Statistics {
   totalRides?: number;
@@ -86,20 +86,7 @@ const StatisticsSection: React.FC<StatisticsSectionProps> = ({
   );
 
   if (isLoading) {
-    return (
-      <section className="rounded-2xl border border-border/70 bg-card/90 shadow-card">
-        <button
-          onClick={onToggle}
-          className="flex w-full items-center justify-between px-4 py-4"
-        >
-          <div className="flex items-center gap-3">
-            <Icon name="BarChart3" size={20} className="text-primary" />
-            <Skeleton width={150} height={18} />
-          </div>
-          <Skeleton width={18} height={18} />
-        </button>
-      </section>
-    );
+    return <ProfileSectionSkeleton icon={<Icon name="BarChart3" size={20} className="text-primary" />} titleWidthClass="w-36" />;
   }
 
   return (
