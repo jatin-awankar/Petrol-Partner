@@ -20,6 +20,7 @@ import RideInformation from "@/components/rideDetails/RideInformation";
 import DriverPreferences from "@/components/rideDetails/DriverPreferences";
 import SafetyPanel from "@/components/rideDetails/SafetyPanel";
 import BookingConfirmationModal from "@/components/rideDetails/BookingConfirmationModal";
+import { RideDetailsPageSkeleton } from "@/components/rideDetails/RideDetailsSkeletons";
 import { useBookRide } from "@/hooks/bookings/useBookRide";
 import { formatTimeToAmPm, formatUtcToTodayOrDayMonth } from "@/lib/utils";
 import { toast } from "sonner";
@@ -401,7 +402,7 @@ const RideDetailsPage = () => {
         date: "-",
         time: "-",
         seatsText: "-",
-        priceText: "?0",
+        priceText: "₹0",
       };
     }
 
@@ -418,6 +419,10 @@ const RideDetailsPage = () => {
   }, [rideData]);
 
   const roleLabel = rideData?.type === "offer" ? "Driver" : "Passenger";
+
+  if (loading) {
+    return <RideDetailsPageSkeleton />;
+  }
 
   if (error || !rideData) {
     return (

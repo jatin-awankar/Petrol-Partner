@@ -1,8 +1,8 @@
 "use client";
 
 import React from "react";
-import Skeleton from "react-loading-skeleton";
 import Icon from "../AppIcon";
+import { SkeletonBlock } from "@/components/searchRides/SearchRidesSkeletons";
 
 interface DriverPreferencesProps {
   preferences?: Record<string, string>;
@@ -43,8 +43,8 @@ const DriverPreferences: React.FC<DriverPreferencesProps> = ({
   if (isLoading) {
     return (
       <div className="rounded-2xl border border-border/70 bg-card/90 p-4 md:p-5 shadow-soft space-y-3">
-        <Skeleton height={24} width={160} />
-        <Skeleton height={80} />
+        <SkeletonBlock className="h-6 w-40" />
+        <SkeletonBlock className="h-20 w-full" />
       </div>
     );
   }

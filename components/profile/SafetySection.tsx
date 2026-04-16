@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import Skeleton from "react-loading-skeleton";
 import Icon from "../AppIcon";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
@@ -7,6 +6,7 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Badge } from "../ui/badge";
 import { Plus, Save, Trash2 } from "lucide-react";
+import { ProfileSectionSkeleton } from "./ProfileSkeletons";
 
 export interface TrustedContact {
   id: number | string;
@@ -125,17 +125,7 @@ const SafetySection: React.FC<SafetySectionProps> = ({
   }, [onSave, settings, trustedContacts]);
 
   if (isLoading) {
-    return (
-      <section className="rounded-2xl border border-border/70 bg-card/90 shadow-card">
-        <button onClick={onToggle} className="flex w-full items-center justify-between px-4 py-4">
-          <div className="flex items-center gap-3">
-            <Icon name="Shield" size={20} className="text-primary" />
-            <Skeleton width={140} height={18} />
-          </div>
-          <Skeleton width={18} height={18} />
-        </button>
-      </section>
-    );
+    return <ProfileSectionSkeleton icon={<Icon name="Shield" size={20} className="text-primary" />} titleWidthClass="w-36" />;
   }
 
   return (

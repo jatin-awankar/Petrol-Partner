@@ -18,6 +18,7 @@ import {
 } from "../ui/select";
 import { useFetchRideOffers } from "@/hooks/rides/useRideOffers";
 import { useFetchRideRequests } from "@/hooks/rides/useRideRequests";
+import { RideResultsGridSkeleton } from "./SearchRidesSkeletons";
 
 const PAGE_SIZE = 6;
 
@@ -113,7 +114,7 @@ const SearchComponent = () => {
   };
 
   return (
-    <section className="rounded-3xl border border-border/70 bg-card p-4 md:p-5 shadow-card">
+    <section className="rounded-3xl border border-border/70 bg-card p-4 shadow-card md:p-5">
       <div className="rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/5 via-muted/25 to-card p-4 md:p-5">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
           <div className="lg:col-span-4">
@@ -291,9 +292,7 @@ const RideResults = ({
   return (
     <AnimatePresence mode="wait">
       {loading ? (
-        <div className="py-12 text-center text-muted-foreground">
-          Loading live rides...
-        </div>
+        <RideResultsGridSkeleton cards={6} />
       ) : filtered.length === 0 ? (
         <div className="py-12 text-center text-muted-foreground">
           No rides found. Try broadening your route or removing a filter.
@@ -304,12 +303,7 @@ const RideResults = ({
           className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"
         >
           {paged.map((ride) => (
-            <RideCard
-              key={ride.id}
-              ride={ride}
-              onClick={onOpenRide}
-              loading={loading}
-            />
+            <RideCard key={ride.id} ride={ride} onClick={onOpenRide} />
           ))}
         </motion.div>
       )}

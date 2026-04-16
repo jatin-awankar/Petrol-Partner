@@ -10,6 +10,11 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  ChatHeaderSkeleton,
+  ChatMessagesSkeleton,
+  ChatRoomsListSkeleton,
+} from "@/components/messages/ChatSkeletons";
 import { useCurrentUser } from "@/hooks/auth/useCurrentUser";
 import { useFetchChatRooms } from "@/hooks/chat/useFetchChatRooms";
 import { useFetchMessages } from "@/hooks/chat/useFetchMessages";
@@ -303,9 +308,7 @@ export default function MessagesPage() {
 
         <ScrollArea className="min-h-0 flex-1 pb-[calc(env(safe-area-inset-bottom)+4.75rem)] md:pb-0">
           {roomsLoading ? (
-            <div className="p-4 text-sm text-muted-foreground">
-              Loading chats...
-            </div>
+            <ChatRoomsListSkeleton rows={7} />
           ) : roomsError ? (
             <div className="p-4 text-sm text-destructive">{roomsError}</div>
           ) : chatRooms.length === 0 ? (
@@ -366,43 +369,56 @@ export default function MessagesPage() {
         } relative min-w-0 flex-1 flex-col overflow-hidden border-border bg-card md:flex md:rounded-2xl md:border`}
       >
         {!selectedRoom ? (
-          <div className="flex h-full flex-col items-center justify-center px-8 text-center text-muted-foreground">
-            <MessageCircle className="mb-2 size-8" />
-            <p>Select a conversation to view messages.</p>
-          </div>
+          roomsLoading ? (
+            <>
+              <ChatHeaderSkeleton showBackButton={!showRoomsOnMobile} />
+              <div className="px-4 py-4 pt-16">
+                <ChatMessagesSkeleton bubbles={6} />
+              </div>
+            </>
+          ) : (
+            <div className="flex h-full flex-col items-center justify-center px-8 text-center text-muted-foreground">
+              <MessageCircle className="mb-2 size-8" />
+              <p>Select a conversation to view messages.</p>
+            </div>
+          )
         ) : (
           <>
-            <div className="absolute inset-x-0 top-0 z-20 border-b border-border bg-card/95 px-4 py-2.5 backdrop-blur">
-              <div className="flex items-start gap-3">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="h-9 w-9 md:hidden"
-                  onClick={() => setShowRoomsOnMobile(true)}
-                  aria-label="Back to conversations"
-                >
-                  <ChevronLeft className="size-5" />
-                </Button>
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-foreground">
-                    {selectedRoom.other_user_name ||
-                      selectedRoom.other_user_email}
-                  </p>
-                  <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
-                    Booking {selectedRoom.booking_status} |{" "}
-                    {selectedRoom.pickup_location} to{" "}
-                    {selectedRoom.drop_location}
-                  </p>
+            {messagesLoading ? (
+              <ChatHeaderSkeleton showBackButton={!showRoomsOnMobile} />
+            ) : (
+              <div className="absolute inset-x-0 top-0 z-20 border-b border-border bg-card/95 px-4 py-2.5 backdrop-blur">
+                <div className="flex items-start gap-3">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-9 w-9 md:hidden"
+                    onClick={() => setShowRoomsOnMobile(true)}
+                    aria-label="Back to conversations"
+                  >
+                    <ChevronLeft className="size-5" />
+                  </Button>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-foreground">
+                      {selectedRoom.other_user_name ||
+                        selectedRoom.other_user_email}
+                    </p>
+                    <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                      Booking {selectedRoom.booking_status} |{" "}
+                      {selectedRoom.pickup_location} to{" "}
+                      {selectedRoom.drop_location}
+                    </p>
+                  </div>
                 </div>
+                {selectedRoom.status === "locked" ? (
+                  <div className="mt-2 -mx-4 border-t border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-700">
+                    Chat is read-only. Messages auto-delete on{" "}
+                    {formatRetentionTime(selectedRoom.delete_after)}.
+                  </div>
+                ) : null}
               </div>
-              {selectedRoom.status === "locked" ? (
-                <div className="mt-2 -mx-4 border-t border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-700">
-                  Chat is read-only. Messages auto-delete on{" "}
-                  {formatRetentionTime(selectedRoom.delete_after)}.
-                </div>
-              ) : null}
-            </div>
+            )}
 
             <ScrollArea
               className={`min-h-0 flex-1 bg-gradient-to-b from-background to-muted/20 my-3 px-4 py-4 ${
@@ -410,9 +426,7 @@ export default function MessagesPage() {
               } pb-[calc(env(safe-area-inset-bottom)+8rem)] md:pb-6`}
             >
               {messagesLoading ? (
-                <p className="text-sm text-muted-foreground">
-                  Loading messages...
-                </p>
+                <ChatMessagesSkeleton bubbles={6} />
               ) : messagesError ? (
                 <p className="text-sm text-destructive">{messagesError}</p>
               ) : liveMessages.length === 0 ? (

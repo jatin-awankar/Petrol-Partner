@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import Icon from "../AppIcon";
 import type { PostRideFormData } from "@/lib/post-ride";
 import { getVerificationOverview } from "@/lib/api/backend";
+import { VehicleSectionSkeleton } from "./PostRideSkeletons";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 
@@ -76,11 +77,7 @@ const VehicleSection: React.FC<VehicleSectionProps> = ({
   };
 
   if (loading) {
-    return (
-      <div className="rounded-xl border border-border/70 bg-card p-5">
-        <p className="text-sm text-muted-foreground">Loading approved vehicles...</p>
-      </div>
-    );
+    return <VehicleSectionSkeleton />;
   }
 
   return (

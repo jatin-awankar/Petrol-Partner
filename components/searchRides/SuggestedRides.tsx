@@ -1,16 +1,18 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import Icon from "../AppIcon";
 import { Button } from "../ui/button";
 import RideCard from "./RideCard";
 import { useRouter } from "next/navigation";
 import { useFetchSuggestedRides } from "@/hooks/rides/useFetchSuggestedRides";
 import { todaysDate } from "@/lib/utils";
+import { RideCardSkeleton } from "./SearchRidesSkeletons";
 
 const SuggestedRides = () => {
   const router = useRouter();
+  const [refreshing, setRefreshing] = useState(false);
   const { rideOffers, rideRequests, loading, refetch } = useFetchSuggestedRides(
     {
       limit: 4,
@@ -30,6 +32,15 @@ const SuggestedRides = () => {
 
   const handleOpenRide = (ride: CombineRideData) => {
     router.push(`/search-rides/${ride.id}`);
+  };
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await refetch();
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   return (
@@ -57,16 +68,23 @@ const SuggestedRides = () => {
           variant="outline"
           size="sm"
           className="h-8"
-          onClick={() => void refetch()}
+          onClick={() => void handleRefresh()}
+          disabled={refreshing}
         >
-          <Icon name="RefreshCw" size={14} />
-          Refresh
+          <Icon
+            name="RefreshCw"
+            size={14}
+            className={refreshing ? "animate-spin" : ""}
+          />
+          {refreshing ? "Refreshing..." : "Refresh"}
         </Button>
       </div>
 
-      {loading ? (
-        <div className="py-8 text-center text-muted-foreground">
-          Loading suggestions...
+      {loading && suggestions.length === 0 ? (
+        <div className="space-y-3">
+          {Array.from({ length: 4 }).map((_, idx) => (
+            <RideCardSkeleton key={idx} compact />
+          ))}
         </div>
       ) : suggestions.length === 0 ? (
         <div className="py-8 text-center text-muted-foreground">
@@ -75,12 +93,7 @@ const SuggestedRides = () => {
       ) : (
         <div className="space-y-3">
           {suggestions.map((ride) => (
-            <RideCard
-              key={ride.id}
-              ride={ride}
-              onClick={handleOpenRide}
-              loading={false}
-            />
+            <RideCard key={ride.id} ride={ride} onClick={handleOpenRide} />
           ))}
         </div>
       )}

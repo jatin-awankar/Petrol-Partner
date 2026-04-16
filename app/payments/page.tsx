@@ -8,6 +8,11 @@ import { toast } from "sonner";
 import PaymentActionSheet from "@/components/payments/PaymentActionSheet";
 import PaymentBookingCard from "@/components/payments/PaymentBookingCard";
 import PaymentsFilterBar from "@/components/payments/PaymentsFilterBar";
+import {
+  PaymentsFilterSkeleton,
+  PaymentsListSkeleton,
+  PaymentsSummarySkeleton,
+} from "@/components/payments/PaymentsSkeletons";
 import PaymentsSummaryStrip from "@/components/payments/PaymentsSummaryStrip";
 import { Button } from "@/components/ui/button";
 import { useFetchBookings } from "@/hooks/bookings/useFetchBookings";
@@ -329,11 +334,15 @@ export default function PaymentsPage() {
 
   if (authLoading || bookingsLoading) {
     return (
-      <div className="page min-h-screen">
-        <div className="space-y-3">
-          <div className="h-28 animate-pulse rounded-2xl bg-muted/60" />
-          <div className="h-24 animate-pulse rounded-2xl bg-muted/60" />
-          <div className="h-72 animate-pulse rounded-2xl bg-muted/60" />
+      <div className="min-h-screen pb-16 md:pb-8 bg-gradient-hero">
+        <div className="page space-y-5">
+          <section className="space-y-2">
+            <div className="h-8 w-48 animate-pulse rounded-md bg-muted/60 dark:bg-muted/40" />
+            <div className="h-4 w-full max-w-xl animate-pulse rounded-md bg-muted/60 dark:bg-muted/40" />
+          </section>
+          <PaymentsSummarySkeleton />
+          <PaymentsFilterSkeleton />
+          <PaymentsListSkeleton rows={4} />
         </div>
       </div>
     );

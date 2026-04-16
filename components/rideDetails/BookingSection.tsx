@@ -1,7 +1,6 @@
-"use client";
+﻿"use client";
 
 import React, { useState } from "react";
-import Skeleton from "react-loading-skeleton";
 import { CreditCard } from "lucide-react";
 
 import {
@@ -15,6 +14,7 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import Icon from "../AppIcon";
 import { Button } from "../ui/button";
+import { SkeletonBlock } from "@/components/searchRides/SearchRidesSkeletons";
 
 interface BookingSectionProps {
   ride?: any;
@@ -36,23 +36,20 @@ const BookingSection: React.FC<BookingSectionProps> = ({
 
   if (isLoading) {
     return (
-      <div className="rounded-2xl border border-border/70 bg-card/90 p-4 md:p-5 shadow-soft space-y-3">
-        <Skeleton width={170} height={22} />
-        <Skeleton height={40} />
-        <Skeleton height={40} />
-        <Skeleton height={88} />
-        <Skeleton height={42} />
+      <div className="space-y-3 rounded-2xl border border-border/70 bg-card/90 p-4 shadow-soft md:p-5">
+        <SkeletonBlock className="h-6 w-44" />
+        <SkeletonBlock className="h-10 w-full" />
+        <SkeletonBlock className="h-10 w-full" />
+        <SkeletonBlock className="h-24 w-full" />
+        <SkeletonBlock className="h-11 w-full" />
       </div>
     );
   }
 
-  const seatOptions = Array.from(
-    { length: ride?.availableSeats || 1 },
-    (_, i) => ({
-      value: (i + 1).toString(),
-      label: `${i + 1} seat${i + 1 > 1 ? "s" : ""}`,
-    }),
-  );
+  const seatOptions = Array.from({ length: ride?.availableSeats || 1 }, (_, i) => ({
+    value: (i + 1).toString(),
+    label: `${i + 1} seat${i + 1 > 1 ? "s" : ""}`,
+  }));
 
   const paymentMethods =
     role === "passenger"
@@ -97,13 +94,13 @@ const BookingSection: React.FC<BookingSectionProps> = ({
   };
 
   return (
-    <section className="rounded-2xl border border-border/70 bg-gradient-to-br from-card via-card to-muted/20 p-4 md:p-5 shadow-soft">
-      <h3 className="text-base md:text-lg font-semibold text-foreground mb-4">
+    <section className="rounded-2xl border border-border/70 bg-gradient-to-br from-card via-card to-muted/20 p-4 shadow-soft md:p-5">
+      <h3 className="mb-4 text-base font-semibold text-foreground md:text-lg">
         {role === "passenger" ? "Book this ride" : "Respond to ride request"}
       </h3>
 
       <div className="space-y-4">
-        {role === "passenger" && (
+        {role === "passenger" ? (
           <div className="space-y-1.5">
             <Label>Number of seats</Label>
             <Select
@@ -122,7 +119,7 @@ const BookingSection: React.FC<BookingSectionProps> = ({
               </SelectContent>
             </Select>
           </div>
-        )}
+        ) : null}
 
         <div className="space-y-1.5">
           <Label>Special requests (optional)</Label>
@@ -135,42 +132,44 @@ const BookingSection: React.FC<BookingSectionProps> = ({
         </div>
 
         <div className="rounded-xl border border-border/70 bg-card/80 p-3">
-          <h4 className="text-sm font-medium text-foreground mb-2">
-            Estimated fare
-          </h4>
+          <h4 className="mb-2 text-sm font-medium text-foreground">Estimated fare</h4>
           <div className="space-y-2 text-sm">
-            {role === "passenger" && (
+            {role === "passenger" ? (
               <>
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground">
-                    {selectedSeats} seat{selectedSeats > 1 ? "s" : ""} × ₹
+                    {selectedSeats} seat{selectedSeats > 1 ? "s" : ""} × {"\u20B9"}
                     {ride?.totalPrice ?? 0}
                   </span>
-                  <span className="text-foreground">₹{totalCost}</span>
+                  <span className="text-foreground">
+                    {"\u20B9"}
+                    {totalCost}
+                  </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground">Platform fee</span>
-                  <span className="text-foreground">₹{platformFee}</span>
+                  <span className="text-foreground">
+                    {"\u20B9"}
+                    {platformFee}
+                  </span>
                 </div>
                 <div className="h-px bg-border" />
               </>
-            )}
+            ) : null}
             <div className="flex items-center justify-between">
-              <span className="font-semibold text-foreground">
-                Estimated total
+              <span className="font-semibold text-foreground">Estimated total</span>
+              <span className="font-semibold text-primary">
+                {"\u20B9"}
+                {finalAmount}
               </span>
-              <span className="font-semibold text-primary">₹{finalAmount}</span>
             </div>
           </div>
         </div>
 
-        {role === "passenger" && (
+        {role === "passenger" ? (
           <div className="space-y-1.5">
             <Label>Preferred settlement method</Label>
-            <Select
-              value={selectedPaymentMethod}
-              onValueChange={(value) => setSelectedPaymentMethod(value)}
-            >
+            <Select value={selectedPaymentMethod} onValueChange={(value) => setSelectedPaymentMethod(value)}>
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="Select settlement method" />
               </SelectTrigger>
@@ -183,14 +182,13 @@ const BookingSection: React.FC<BookingSectionProps> = ({
               </SelectContent>
             </Select>
           </div>
-        )}
+        ) : null}
 
         <div className="rounded-xl border border-warning/30 bg-warning/10 p-3">
           <div className="flex items-start gap-2">
-            <Icon name="Shield" size={15} className="text-warning mt-0.5" />
+            <Icon name="Shield" size={15} className="mt-0.5 text-warning" />
             <p className="text-xs text-foreground">
-              Share your trip details with trusted contacts. Settlement happens
-              only after ride completion.
+              Share your trip details with trusted contacts. Settlement happens only after ride completion.
             </p>
           </div>
         </div>
@@ -199,16 +197,14 @@ const BookingSection: React.FC<BookingSectionProps> = ({
           variant="default"
           size="lg"
           onClick={handleBooking}
-          disabled={
-            (role === "passenger" && !selectedPaymentMethod) || isProcessing
-          }
+          disabled={(role === "passenger" && !selectedPaymentMethod) || isProcessing}
           className="w-full"
         >
           <CreditCard />
           {isProcessing
             ? "Processing..."
             : role === "passenger"
-              ? `Send booking request for ₹${finalAmount}`
+              ? `Send booking request for \u20B9${finalAmount}`
               : "Respond to request"}
         </Button>
       </div>

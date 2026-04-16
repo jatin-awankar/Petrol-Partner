@@ -1,9 +1,9 @@
 "use client";
 
 import React from "react";
-import Skeleton from "react-loading-skeleton";
 import Icon from "../AppIcon";
 import { Button } from "../ui/button";
+import { SkeletonBlock } from "@/components/searchRides/SearchRidesSkeletons";
 
 interface SafetyPanelProps {
   onEmergencyContact?: () => void;
@@ -53,12 +53,12 @@ const SafetyPanel: React.FC<SafetyPanelProps> = ({
     <section className="rounded-2xl border border-border/70 bg-gradient-to-br from-card via-card to-muted/20 p-4 md:p-5 shadow-soft">
       <div className="flex items-center gap-2 mb-4">
         {isLoading ? (
-          <Skeleton circle height={20} width={20} />
+          <SkeletonBlock className="h-5 w-5 rounded-full" />
         ) : (
           <Icon name="ShieldCheck" size={18} className="text-success" />
         )}
         <h3 className="text-base md:text-lg font-semibold text-foreground">
-          {isLoading ? <Skeleton width={150} /> : "Safety and support"}
+          {isLoading ? <SkeletonBlock className="h-5 w-36" /> : "Safety and support"}
         </h3>
       </div>
 
@@ -70,7 +70,7 @@ const SafetyPanel: React.FC<SafetyPanelProps> = ({
               className="rounded-xl border border-border/70 bg-card/90 p-3"
             >
               {isLoading ? (
-                <Skeleton height={52} />
+                <SkeletonBlock className="h-[52px] w-full" />
               ) : (
                 <div className="flex items-center justify-between gap-3">
                   <div>

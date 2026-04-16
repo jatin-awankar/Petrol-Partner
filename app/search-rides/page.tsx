@@ -1,4 +1,3 @@
-import React from "react";
 import SearchComponent from "@/components/searchRides/SearchComponent";
 import SuggestedRides from "@/components/searchRides/SuggestedRides";
 import NearbyRides from "@/components/searchRides/NearbyRides";

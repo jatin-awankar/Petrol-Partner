@@ -3,13 +3,13 @@
 import React, { useState, useCallback, useMemo } from "react";
 import dynamic from "next/dynamic";
 import { Suspense } from "react";
-import Skeleton from "react-loading-skeleton";
 import { toast } from "sonner";
 import { useProfileData } from "@/hooks/profile/useProfileData";
 import { useUserProfile } from "@/hooks/auth/useUserProfile";
 import { createVehicleRecord, updateVehicleRecord } from "@/lib/api/backend";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ProfileSettingsPageSkeleton } from "@/components/profile/ProfileSkeletons";
 import {
   ShieldCheck,
   TriangleAlert,
@@ -629,15 +629,7 @@ const ProfileAccountSettings = () => {
 
   // Show loading state
   if (dataLoading && !user) {
-    return (
-      <div className="page min-h-screen">
-        <div className="mx-auto max-w-5xl space-y-4">
-          <div className="h-36 animate-pulse rounded-2xl bg-muted/60" />
-          <div className="h-20 animate-pulse rounded-2xl bg-muted/60" />
-          <div className="h-96 animate-pulse rounded-2xl bg-muted/60" />
-        </div>
-      </div>
-    );
+    return <ProfileSettingsPageSkeleton />;
   }
 
   // Show error state
@@ -700,7 +692,7 @@ const ProfileAccountSettings = () => {
     <ErrorBoundary>
       <div className="min-h-screen pb-16 md:pb-8 bg-gradient-hero">
         <div className="page mx-auto !max-w-5xl space-y-6">
-          <Suspense fallback={<Skeleton height={120} />}>
+          <Suspense fallback={<ProfileSettingsPageSkeleton />}>
             <ProfileHeader
               user={headerUser}
               onPhotoUpload={handlePhotoUpload}
