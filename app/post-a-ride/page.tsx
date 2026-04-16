@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
@@ -115,19 +115,74 @@ const PostRide = () => {
   const steps = useMemo<StepMeta[]>(() => {
     return mode === "offer"
       ? [
-          { id: 1, title: "Route", component: "route", subtitle: "Pickup and drop" },
-          { id: 2, title: "Schedule", component: "schedule", subtitle: "When you leave" },
-          { id: 3, title: "Seats", component: "seats", subtitle: "Passenger capacity" },
-          { id: 4, title: "Vehicle", component: "vehicle", subtitle: "Approved vehicle" },
-          { id: 5, title: "Pricing", component: "pricing", subtitle: "Fare per seat" },
-          { id: 6, title: "Preferences", component: "preferences", subtitle: "Ride conditions" },
+          {
+            id: 1,
+            title: "Route",
+            component: "route",
+            subtitle: "Pickup and drop",
+          },
+          {
+            id: 2,
+            title: "Schedule",
+            component: "schedule",
+            subtitle: "When you leave",
+          },
+          {
+            id: 3,
+            title: "Seats",
+            component: "seats",
+            subtitle: "Passenger capacity",
+          },
+          {
+            id: 4,
+            title: "Vehicle",
+            component: "vehicle",
+            subtitle: "Approved vehicle",
+          },
+          {
+            id: 5,
+            title: "Pricing",
+            component: "pricing",
+            subtitle: "Fare per seat",
+          },
+          {
+            id: 6,
+            title: "Preferences",
+            component: "preferences",
+            subtitle: "Ride conditions",
+          },
         ]
       : [
-          { id: 1, title: "Route", component: "route", subtitle: "Pickup and drop" },
-          { id: 2, title: "Schedule", component: "schedule", subtitle: "When you need ride" },
-          { id: 3, title: "Seats", component: "seats", subtitle: "Seats needed" },
-          { id: 4, title: "Pricing", component: "pricing", subtitle: "Your max price" },
-          { id: 5, title: "Preferences", component: "preferences", subtitle: "Ride conditions" },
+          {
+            id: 1,
+            title: "Route",
+            component: "route",
+            subtitle: "Pickup and drop",
+          },
+          {
+            id: 2,
+            title: "Schedule",
+            component: "schedule",
+            subtitle: "When you need ride",
+          },
+          {
+            id: 3,
+            title: "Seats",
+            component: "seats",
+            subtitle: "Seats needed",
+          },
+          {
+            id: 4,
+            title: "Pricing",
+            component: "pricing",
+            subtitle: "Your max price",
+          },
+          {
+            id: 5,
+            title: "Preferences",
+            component: "preferences",
+            subtitle: "Ride conditions",
+          },
         ];
   }, [mode]);
 
@@ -184,8 +239,10 @@ const PostRide = () => {
 
   const completedSteps = useMemo(
     () =>
-      steps.filter((step) => Object.keys(getStepErrors(step.id, formData, mode)).length === 0)
-        .length,
+      steps.filter(
+        (step) =>
+          Object.keys(getStepErrors(step.id, formData, mode)).length === 0,
+      ).length,
     [steps, formData, mode],
   );
 
@@ -279,7 +336,9 @@ const PostRide = () => {
     }
   };
 
-  if (authLoading) return null;
+  // if (authLoading) {
+  //   return <PostRidePageSkeleton steps={steps.length} />;
+  // }
 
   return (
     <div className="min-h-screen mb-16 md:mb-auto bg-gradient-hero">

@@ -9,6 +9,7 @@ import RideCard from "./RideCard";
 import { useRouter } from "next/navigation";
 import { useFetchSuggestedRides } from "@/hooks/rides/useFetchSuggestedRides";
 import Icon from "../AppIcon";
+import { RideResultsGridSkeleton } from "./SearchRidesSkeletons";
 
 const NearbyRides = () => {
   const router = useRouter();
@@ -133,16 +134,11 @@ const NearbyRides = () => {
               Nearby offers
             </h4>
             {loading ? (
-              <p className="text-sm text-muted-foreground">Loading...</p>
+              <RideResultsGridSkeleton cards={2} compact />
             ) : nearby.offers.length ? (
               <div className="space-y-3">
                 {nearby.offers.map((ride) => (
-                  <RideCard
-                    key={ride.id}
-                    ride={ride}
-                    onClick={handleOpenRide}
-                    loading={false}
-                  />
+                  <RideCard key={ride.id} ride={ride} onClick={handleOpenRide} />
                 ))}
               </div>
             ) : (
@@ -157,16 +153,11 @@ const NearbyRides = () => {
               Nearby requests
             </h4>
             {loading ? (
-              <p className="text-sm text-muted-foreground">Loading...</p>
+              <RideResultsGridSkeleton cards={2} compact />
             ) : nearby.requests.length ? (
               <div className="space-y-3">
                 {nearby.requests.map((ride) => (
-                  <RideCard
-                    key={ride.id}
-                    ride={ride}
-                    onClick={handleOpenRide}
-                    loading={false}
-                  />
+                  <RideCard key={ride.id} ride={ride} onClick={handleOpenRide} />
                 ))}
               </div>
             ) : (

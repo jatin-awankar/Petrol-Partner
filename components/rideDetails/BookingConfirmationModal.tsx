@@ -147,7 +147,8 @@ const BookingConfirmationModal: React.FC<BookingConfirmationModalProps> = ({
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Amount</span>
                   <span className="text-sm font-medium text-primary">
-                    ₹{bookingData?.totalAmount ?? 0}
+                    {"\u20B9"}
+                    {bookingData?.totalAmount ?? 0}
                   </span>
                 </div>
               </div>
@@ -221,3 +222,4 @@ const BookingConfirmationModal: React.FC<BookingConfirmationModalProps> = ({
 };
 
 export default BookingConfirmationModal;
+

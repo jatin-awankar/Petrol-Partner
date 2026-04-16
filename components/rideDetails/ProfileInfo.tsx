@@ -3,8 +3,8 @@
 import React from "react";
 import Image from "@/components/AppImage";
 import Icon from "@/components/AppIcon";
-import Skeleton from "react-loading-skeleton";
 import VerificationBadge from "../ui/VerificationBadge";
+import { SkeletonBlock } from "@/components/searchRides/SearchRidesSkeletons";
 
 interface Profile {
   id?: string;
@@ -34,7 +34,14 @@ const ProfileInfo: React.FC<ProfileInfoProps> = ({
   if (loading) {
     return (
       <div className="rounded-2xl border border-border/70 bg-gradient-to-br from-card via-card to-muted/20 p-4 md:p-5 shadow-soft">
-        <Skeleton height={88} />
+        <div className="flex items-start gap-3 md:gap-4">
+          <SkeletonBlock className="h-16 w-16 rounded-2xl" />
+          <div className="flex-1 space-y-2">
+            <SkeletonBlock className="h-5 w-40" />
+            <SkeletonBlock className="h-4 w-52" />
+            <SkeletonBlock className="h-4 w-full" />
+          </div>
+        </div>
       </div>
     );
   }

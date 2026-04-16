@@ -4,7 +4,6 @@ import React, { useEffect, useRef, useState } from "react";
 import "mapbox-gl/dist/mapbox-gl.css";
 import mapboxgl from "mapbox-gl";
 import Icon from "../AppIcon";
-import Skeleton from "react-loading-skeleton";
 import { formatTimeToAmPm } from "@/lib/utils";
 import {
   fetchDrivingRoute,
@@ -12,6 +11,7 @@ import {
   normalizeMapboxError,
 } from "@/lib/mapbox-client";
 import { Button } from "../ui/button";
+import { SkeletonBlock } from "@/components/searchRides/SearchRidesSkeletons";
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
 
@@ -165,8 +165,8 @@ const RouteMap: React.FC<RouteMapProps> = ({ route, loading = false }) => {
   if (loading) {
     return (
       <div className="rounded-2xl border border-border/70 bg-card/90 p-4 shadow-soft space-y-3">
-        <Skeleton height={220} />
-        <Skeleton height={14} width="80%" />
+        <SkeletonBlock className="h-[220px] w-full rounded-lg" />
+        <SkeletonBlock className="h-4 w-4/5" />
       </div>
     );
   }
