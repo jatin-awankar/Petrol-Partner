@@ -5,6 +5,7 @@ import { AppError } from "../../shared/errors/app-error";
 import { emitChatRoomLocked } from "../chat/chat.socket";
 import * as chatService from "../chat/chat.service";
 import * as settlementsService from "../settlements/settlements.service";
+import * as verificationRepo from "../verification/verification.repo";
 import type {
   CreateBookingInput,
   ListBookingsQuery,
@@ -99,11 +100,60 @@ function ensureNotTerminal(status: string) {
   }
 }
 
+function parseRideDeparture(ride: {
+  date: Date | string;
+  time: Date | string;
+}) {
+  const rideDate = new Date(ride.date);
+  const timeToken = String(ride.time).slice(0, 8);
+  const [hours, minutes, seconds] = timeToken.split(":").map((part) => Number(part));
+  const departure = new Date(rideDate);
+  departure.setHours(
+    Number.isFinite(hours) ? hours : 0,
+    Number.isFinite(minutes) ? minutes : 0,
+    Number.isFinite(seconds) ? seconds : 0,
+    0,
+  );
+  return departure;
+}
+
+async function assertApprovedDriverWithVehicle(userId: string) {
+  const eligibility = await verificationRepo.findTransactionEligibilityByUserId(userId);
+
+  if (eligibility?.driver_eligibility_status !== "approved") {
+    throw new AppError(
+      403,
+      "Approved driver eligibility is required before booking ride requests",
+      "DRIVER_ELIGIBILITY_NOT_APPROVED",
+      {
+        status: eligibility?.driver_eligibility_status ?? null,
+      },
+    );
+  }
+
+  const vehicles = await verificationRepo.listVehiclesByOwner(userId);
+  const hasApprovedVehicle = vehicles.some(
+    (vehicle) => vehicle.status === "active" && vehicle.verification_status === "approved",
+  );
+
+  if (!hasApprovedVehicle) {
+    throw new AppError(
+      403,
+      "At least one approved active vehicle is required before booking ride requests",
+      "VEHICLE_NOT_APPROVED",
+    );
+  }
+}
+
 export async function createBooking(userId: string, input: CreateBookingInput) {
   await settlementsService.assertUserCanTransact(userId);
+  const isRideOfferFlow = Boolean(input.ride_offer_id);
+
+  if (!isRideOfferFlow) {
+    await assertApprovedDriverWithVehicle(userId);
+  }
 
   const created = await withTransaction(async (client) => {
-    const isRideOfferFlow = Boolean(input.ride_offer_id);
     const rideResult = isRideOfferFlow
       ? await bookingsRepo.findRideOfferForUpdate(input.ride_offer_id!, client)
       : await bookingsRepo.findRideRequestForUpdate(input.ride_request_id!, client);
@@ -116,6 +166,11 @@ export async function createBooking(userId: string, input: CreateBookingInput) {
 
     if (ride.status !== "active") {
       throw new AppError(409, "Ride is not available for booking", "RIDE_NOT_BOOKABLE");
+    }
+
+    const rideDepartureAt = parseRideDeparture(ride);
+    if (rideDepartureAt.getTime() <= Date.now()) {
+      throw new AppError(409, "Ride has already departed", "RIDE_DEPARTED");
     }
 
     if (ride.owner_id === userId) {
@@ -186,13 +241,23 @@ export async function createBooking(userId: string, input: CreateBookingInput) {
     }
 
     if (isRideOfferFlow) {
-      await bookingsRepo.decrementRideOfferSeats(input.ride_offer_id!, input.seats_booked, client);
+      const rowCount = await bookingsRepo.decrementRideOfferSeats(
+        input.ride_offer_id!,
+        input.seats_booked,
+        client,
+      );
+      if (rowCount !== 1) {
+        throw new AppError(409, "Not enough seats available", "INSUFFICIENT_SEATS");
+      }
     } else {
-      await bookingsRepo.decrementRideRequestSeats(
+      const rowCount = await bookingsRepo.decrementRideRequestSeats(
         input.ride_request_id!,
         input.seats_booked,
         client,
       );
+      if (rowCount !== 1) {
+        throw new AppError(409, "Not enough seats available", "INSUFFICIENT_SEATS");
+      }
     }
 
     await bookingsRepo.insertBookingStatusEvent(

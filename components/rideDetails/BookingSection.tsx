@@ -33,6 +33,8 @@ const BookingSection: React.FC<BookingSectionProps> = ({
   const [isProcessing, setIsProcessing] = useState(false);
 
   const isLoading = !ride;
+  const normalizedSeatCapacity =
+    Number(ride?.availableSeats ?? ride?.available_seats ?? ride?.seats_required ?? 1) || 1;
 
   if (isLoading) {
     return (
@@ -46,10 +48,11 @@ const BookingSection: React.FC<BookingSectionProps> = ({
     );
   }
 
-  const seatOptions = Array.from({ length: ride?.availableSeats || 1 }, (_, i) => ({
+  const seatOptions = Array.from({ length: normalizedSeatCapacity }, (_, i) => ({
     value: (i + 1).toString(),
     label: `${i + 1} seat${i + 1 > 1 ? "s" : ""}`,
   }));
+  const shouldShowSeatSelector = role === "passenger" || role === "driver";
 
   const paymentMethods =
     role === "passenger"
@@ -100,12 +103,19 @@ const BookingSection: React.FC<BookingSectionProps> = ({
       </h3>
 
       <div className="space-y-4">
-        {role === "passenger" ? (
+        {shouldShowSeatSelector ? (
           <div className="space-y-1.5">
             <Label>Number of seats</Label>
             <Select
               value={selectedSeats.toString()}
-              onValueChange={(value) => setSelectedSeats(parseInt(value, 10))}
+              onValueChange={(value) =>
+                setSelectedSeats(
+                  Math.min(
+                    Math.max(parseInt(value, 10), 1),
+                    Math.max(normalizedSeatCapacity, 1),
+                  ),
+                )
+              }
             >
               <SelectTrigger>
                 <SelectValue placeholder="Select seats" />

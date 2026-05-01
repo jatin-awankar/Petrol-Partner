@@ -417,7 +417,11 @@ export async function updateRideOffer(
 
 export async function listRideOffers(filters: ListRideOffersQuery) {
   const values: Array<string | number> = [];
-  const where: string[] = ["r.status = 'active'", "r.available_seats > 0"];
+  const where: string[] = [
+    "r.status = 'active'",
+    "r.available_seats > 0",
+    "r.date >= current_date",
+  ];
   let distanceSelect = "";
   let orderBy = "r.created_at DESC";
   let locationFilter = "";
@@ -618,7 +622,11 @@ export async function updateRideRequest(
 
 export async function listRideRequests(filters: ListRideRequestsQuery) {
   const values: Array<string | number> = [];
-  const where: string[] = ["r.status = 'active'", "r.seats_required > 0"];
+  const where: string[] = [
+    "r.status = 'active'",
+    "r.seats_required > 0",
+    "r.date >= current_date",
+  ];
   let distanceSelect = "";
   let orderBy = "r.created_at DESC";
   let locationFilter = "";

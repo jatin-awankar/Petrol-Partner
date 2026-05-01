@@ -4,6 +4,25 @@ import { useCallback, useEffect, useState } from "react";
 
 import { createRideOfferRecord, listRideOffers } from "@/lib/api/backend";
 
+function getLocalTodayIsoDate() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function filterOutPastDateRides<T extends { date?: string }>(rides: T[]) {
+  const today = getLocalTodayIsoDate();
+  return rides.filter((ride) => {
+    if (!ride?.date) {
+      return false;
+    }
+
+    return ride.date >= today;
+  });
+}
+
 export function useFetchRideOffers() {
   const [offers, setOffers] = useState<FetchRides | null>();
   const [loading, setLoading] = useState(true);
@@ -15,7 +34,10 @@ export function useFetchRideOffers() {
 
     try {
       const data = await listRideOffers({});
-      setOffers(data);
+      setOffers({
+        ...data,
+        rides: filterOutPastDateRides((data?.rides ?? []) as any[]),
+      });
     } catch (err: any) {
       setError(err?.message || "Failed to fetch ride offers");
     } finally {

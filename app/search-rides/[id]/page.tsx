@@ -339,9 +339,18 @@ const RideDetailsPage = () => {
     if (!bookingData) return;
 
     try {
+      const rideOfferId =
+        typeof bookingData.ride_offer_id === "string"
+          ? bookingData.ride_offer_id
+          : undefined;
+      const rideRequestId =
+        typeof bookingData.ride_request_id === "string"
+          ? bookingData.ride_request_id
+          : undefined;
+
       const result = await bookRide({
-        ride_offer_id: bookingData.ride_offer_id,
-        ride_request_id: bookingData.ride_request_id,
+        ride_offer_id: rideOfferId,
+        ride_request_id: rideRequestId,
         seats_booked: bookingData.seats || 1,
         payment_method: bookingData.paymentMethod || "cash",
       });

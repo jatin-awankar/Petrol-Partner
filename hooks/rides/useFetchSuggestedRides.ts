@@ -11,6 +11,25 @@ interface SuggestedRidesOptions {
   date?: string;
 }
 
+function getLocalTodayIsoDate() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function filterOutPastDateRides<T extends { date?: string }>(rides: T[]) {
+  const today = getLocalTodayIsoDate();
+  return rides.filter((ride) => {
+    if (!ride?.date) {
+      return false;
+    }
+
+    return ride.date >= today;
+  });
+}
+
 export function useFetchSuggestedRides(options: SuggestedRidesOptions = {}) {
   const [rideOffers, setRideOffers] = useState<FetchRides | null>();
   const [rideRequests, setRideRequests] = useState<FetchRides | null>();
@@ -37,8 +56,14 @@ export function useFetchSuggestedRides(options: SuggestedRidesOptions = {}) {
         }),
       ]);
 
-      setRideOffers(offersData);
-      setRideRequests(requestsData);
+      setRideOffers({
+        ...offersData,
+        rides: filterOutPastDateRides((offersData?.rides ?? []) as any[]),
+      });
+      setRideRequests({
+        ...requestsData,
+        rides: filterOutPastDateRides((requestsData?.rides ?? []) as any[]),
+      });
     } catch (err: any) {
       setError(err?.message || "Failed to fetch suggested rides");
     } finally {

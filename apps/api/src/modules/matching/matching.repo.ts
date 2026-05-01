@@ -264,6 +264,7 @@ export async function listOfferCandidates(input: {
        WHERE o.id = $1
          AND o.status = 'active'
          AND o.available_seats > 0
+         AND (o.date > current_date OR (o.date = current_date AND o.time > current_time))
      )
      SELECT *
      FROM (
@@ -307,6 +308,7 @@ export async function listOfferCandidates(input: {
        JOIN ride_requests rr
          ON rr.status = 'active'
         AND rr.seats_required > 0
+        AND (rr.date > current_date OR (rr.date = current_date AND rr.time > current_time))
         AND rr.passenger_id <> source_offer.driver_id
         AND to_char(rr.date, 'YYYY-MM-DD') = source_offer.date
         AND rr.seats_required <= source_offer.available_seats
@@ -399,6 +401,7 @@ export async function listRequestCandidates(input: {
        WHERE r.id = $1
          AND r.status = 'active'
          AND r.seats_required > 0
+         AND (r.date > current_date OR (r.date = current_date AND r.time > current_time))
      )
      SELECT *
      FROM (
@@ -442,6 +445,7 @@ export async function listRequestCandidates(input: {
        JOIN ride_offers ro
          ON ro.status = 'active'
         AND ro.available_seats > 0
+        AND (ro.date > current_date OR (ro.date = current_date AND ro.time > current_time))
         AND ro.driver_id <> source_request.passenger_id
         AND to_char(ro.date, 'YYYY-MM-DD') = source_request.date
         AND ro.available_seats >= source_request.seats_required

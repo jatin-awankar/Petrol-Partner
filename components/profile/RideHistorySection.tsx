@@ -73,11 +73,18 @@ const RideHistorySection: React.FC<RideHistorySectionProps> = ({
 
   const filtered = useMemo(() => {
     if (filter === "all") return history;
-    return history.filter((item) => item.status === filter || item.role.toLowerCase() === filter);
+    return history.filter(
+      (item) => item.status === filter || item.role.toLowerCase() === filter,
+    );
   }, [filter, history]);
 
   if (isLoading) {
-    return <ProfileSectionSkeleton icon={<Icon name="History" size={20} className="text-primary" />} titleWidthClass="w-36" />;
+    return (
+      <ProfileSectionSkeleton
+        icon={<Icon name="History" size={20} className="text-primary" />}
+        titleWidthClass="w-36"
+      />
+    );
   }
 
   return (
@@ -90,11 +97,17 @@ const RideHistorySection: React.FC<RideHistorySectionProps> = ({
           <Icon name="History" size={20} className="text-primary" />
           <div className="text-left">
             <h3 className="font-medium text-foreground">Ride History</h3>
-            <p className="text-xs text-muted-foreground">Completed and past ride activity.</p>
+            <p className="text-xs text-muted-foreground">
+              Completed and past ride activity.
+            </p>
           </div>
           <Badge variant="secondary">{history.length}</Badge>
         </div>
-        <Icon name={isExpanded ? "ChevronUp" : "ChevronDown"} size={20} className="text-muted-foreground" />
+        <Icon
+          name={isExpanded ? "ChevronUp" : "ChevronDown"}
+          size={20}
+          className="text-muted-foreground"
+        />
       </button>
 
       <div
@@ -116,21 +129,30 @@ const RideHistorySection: React.FC<RideHistorySectionProps> = ({
                 <SelectItem value="passenger">As passenger</SelectItem>
               </SelectContent>
             </Select>
-            <p className="text-xs text-muted-foreground">Receipts and support actions are visible but disabled.</p>
+            <p className="text-xs text-muted-foreground">
+              Receipts and support actions are visible but disabled.
+            </p>
           </div>
 
           {filtered.length === 0 ? (
             <div className="rounded-xl border border-dashed border-border p-6 text-center">
-              <p className="text-sm font-medium text-foreground">No rides in this view</p>
-              <p className="text-xs text-muted-foreground">Once rides are completed, they appear here.</p>
+              <p className="text-sm font-medium text-foreground">
+                No rides in this view
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Once rides are completed, they appear here.
+              </p>
             </div>
           ) : (
             filtered.map((ride) => (
-              <article key={ride.id} className="rounded-xl border border-border/70 bg-muted/20 p-3 sm:p-4">
+              <article
+                key={ride.id}
+                className="rounded-xl border border-border/70 bg-muted/20 p-3 sm:p-4"
+              >
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <p className="text-sm font-semibold text-foreground">
-                      {ride.pickup} -&gt; {ride.drop}
+                      {ride.pickup} ➞ {ride.drop}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       {ride.date} • {ride.time}
@@ -158,27 +180,47 @@ const RideHistorySection: React.FC<RideHistorySectionProps> = ({
                   <span>{ride.distance} km</span>
                   <span>{ride.duration}</span>
                   <span>₹{ride.amount.toLocaleString("en-IN")}</span>
-                  {ride.rating ? <span>Rating {ride.rating.toFixed(1)}</span> : null}
+                  {ride.rating ? (
+                    <span>Rating {ride.rating.toFixed(1)}</span>
+                  ) : null}
                 </div>
 
                 <div className="mt-3 flex flex-wrap gap-2">
                   {onRebook && ride.status === "completed" ? (
-                    <Button variant="outline" size="sm" onClick={() => onRebook(ride)}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onRebook(ride)}
+                    >
                       <Repeat className="size-4" />
                       Book Again
                     </Button>
                   ) : null}
                   {onRateRide && ride.status === "completed" && !ride.rating ? (
-                    <Button variant="outline" size="sm" onClick={() => onRateRide(ride, 5)}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onRateRide(ride, 5)}
+                    >
                       <Star className="size-4" />
                       Rate
                     </Button>
                   ) : null}
-                  <Button variant="ghost" size="sm" disabled title="Coming soon: receipt export.">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled
+                    title="Coming soon: receipt export."
+                  >
                     <Receipt className="size-4" />
                     Receipt
                   </Button>
-                  <Button variant="ghost" size="sm" disabled title="Coming soon: ride support workflow.">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled
+                    title="Coming soon: ride support workflow."
+                  >
                     <MessageSquare className="size-4" />
                     Support
                   </Button>

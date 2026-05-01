@@ -10,6 +10,8 @@ interface LockedRideRow {
   pricing_snapshot: Record<string, unknown>;
   status: string;
   counterparty_gender_preference: string;
+  date: Date | string;
+  time: Date | string;
 }
 
 interface LockedBookingRow {
@@ -183,7 +185,9 @@ export function findRideOfferForUpdate(id: string, client: PoolClient) {
        price_per_seat_paise,
        pricing_snapshot,
        status,
-       counterparty_gender_preference
+       counterparty_gender_preference,
+       date,
+       time
      FROM ride_offers
      WHERE id = $1
      FOR UPDATE`,
@@ -200,7 +204,9 @@ export function findRideRequestForUpdate(id: string, client: PoolClient) {
        price_per_seat_paise,
        pricing_snapshot,
        status,
-       counterparty_gender_preference
+       counterparty_gender_preference,
+       date,
+       time
      FROM ride_requests
      WHERE id = $1
      FOR UPDATE`,
@@ -278,13 +284,16 @@ export async function decrementRideOfferSeats(
   seatsBooked: number,
   client: PoolClient,
 ) {
-  await client.query(
+  const result = await client.query(
     `UPDATE ride_offers
      SET available_seats = available_seats - $1,
          updated_at = now()
-     WHERE id = $2`,
+     WHERE id = $2
+       AND available_seats >= $1`,
     [seatsBooked, rideOfferId],
   );
+
+  return result.rowCount ?? 0;
 }
 
 export async function decrementRideRequestSeats(
@@ -292,7 +301,7 @@ export async function decrementRideRequestSeats(
   seatsBooked: number,
   client: PoolClient,
 ) {
-  await client.query(
+  const result = await client.query(
     `UPDATE ride_requests
      SET seats_required = seats_required - $1,
          status = CASE
@@ -300,9 +309,12 @@ export async function decrementRideRequestSeats(
            ELSE 'active'
          END,
          updated_at = now()
-     WHERE id = $2`,
+     WHERE id = $2
+       AND seats_required >= $1`,
     [seatsBooked, rideRequestId],
   );
+
+  return result.rowCount ?? 0;
 }
 
 export async function restoreRideOfferSeats(

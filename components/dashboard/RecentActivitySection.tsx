@@ -89,7 +89,10 @@ const RecentActivitySection: React.FC = () => {
       <div className="mt-4 space-y-3">
         {loading ? (
           Array.from({ length: 4 }).map((_, index) => (
-            <SkeletonBlock key={index} className="h-20 rounded-xl border border-border/70" />
+            <SkeletonBlock
+              key={index}
+              className="h-20 rounded-xl border border-border/70"
+            />
           ))
         ) : activities.length === 0 ? (
           <div className="rounded-xl border border-dashed border-border p-5 text-center">
@@ -114,7 +117,9 @@ const RecentActivitySection: React.FC = () => {
             const canMarkCompleted = booking.status === "confirmed" && isDriver;
             const canOpenChat =
               frontendConfig.flags.enableChatUi &&
-              ["confirmed", "completed", "cancelled", "expired"].includes(booking.status);
+              ["confirmed", "completed", "cancelled", "expired"].includes(
+                booking.status,
+              );
 
             return (
               <article
@@ -125,7 +130,7 @@ const RecentActivitySection: React.FC = () => {
                   <div>
                     <div className="flex items-center gap-2">
                       <p className="text-sm font-semibold text-foreground">
-                        {booking.pickup_location} ? {booking.drop_location}
+                        {booking.pickup_location} ➞ {booking.drop_location}
                       </p>
                       <span
                         className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${ui.className}`}
@@ -186,7 +191,9 @@ const RecentActivitySection: React.FC = () => {
                             variant="outline"
                             className="h-8 rounded-md"
                             onClick={() =>
-                              router.push(`/messages-chat?bookingId=${booking.booking_id}`)
+                              router.push(
+                                `/messages-chat?bookingId=${booking.booking_id}`,
+                              )
                             }
                           >
                             <MessageCircle className="mr-1 size-3.5" />
@@ -223,4 +230,3 @@ const RecentActivitySection: React.FC = () => {
 };
 
 export default RecentActivitySection;
-
