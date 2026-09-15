@@ -1,7 +1,6 @@
 import { config } from "dotenv";
+import { assertSafeAutomatedDatabase } from "@petrol-partner/runtime-config";
 import { z } from "zod";
-
-import { assertSafeAutomatedDatabase } from "./database-safety";
 
 config();
 
@@ -50,6 +49,7 @@ assertSafeAutomatedDatabase({
   databaseUrl: parsed.data.DATABASE_URL,
   nodeEnv: parsed.data.NODE_ENV,
   ci: process.env.CI === "true",
+  disposableDatabaseAcknowledged: process.env.TEST_DATABASE_DISPOSABLE === "true",
 });
 
 export const env = {

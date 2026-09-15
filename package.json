@@ -12,6 +12,8 @@
     "packages/*"
   ],
   "scripts": {
+    "preinstall": "node scripts/assert-runtime.mjs",
+    "runtime:check": "node scripts/assert-runtime.mjs",
     "dev": "next dev --turbopack",
     "build": "next build --turbopack",
     "start": "next start",

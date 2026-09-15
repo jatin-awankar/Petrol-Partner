@@ -12,6 +12,8 @@ The repository is one npm workspace with one root `package-lock.json`. From a fr
 
 ```sh
 nvm use
+npm install --global npm@11.19.0
+npm run runtime:check
 npm ci
 npm run hooks:install
 docker compose up -d --wait
@@ -53,7 +55,7 @@ npm run check
 
 Focused commands are available as `npm run lint`, `npm run typecheck`, `npm test`, `npm run test:integration`, and `npm run build:all`. API integration tests exercise the public HTTP application with real PostgreSQL and verify committed state through an independent connection. Tables are truncated deterministically between cases. The first test characterizes legacy registration durability; it does not certify the registration flow against the pilot policy.
 
-Both API and worker environment loaders reject a database without `test` in its database name whenever `NODE_ENV=test` or `CI=true`. CI provisions disposable PostgreSQL and Redis services and cannot silently target a production-named database.
+Both API and worker environment loaders require the explicit `TEST_DATABASE_DISPOSABLE=true` acknowledgement, a loopback host, and a database name ending in `_test` whenever `NODE_ENV=test` or `CI=true`. CI provisions fixed local PostgreSQL and Redis services, so an automated check cannot silently target a remote production database.
 
 ## Branch and commit guard
 

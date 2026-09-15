@@ -36,7 +36,10 @@ test("hook installation preserves and runs an existing pre-commit hook", () => {
   cpSync(join(projectRoot, ".githooks/pre-commit"), join(repository, ".githooks/pre-commit"));
   chmodSync(join(repository, ".githooks/pre-commit"), 0o755);
 
-  const oldHook = join(repository, ".git/hooks/pre-commit");
+  const customHooks = join(repository, ".existing-hooks");
+  mkdirSync(customHooks);
+  git(repository, "config", "core.hooksPath", ".existing-hooks");
+  const oldHook = join(customHooks, "pre-commit");
   writeFileSync(oldHook, "#!/bin/sh\nprintf preserved > .existing-hook-ran\n");
   chmodSync(oldHook, 0o755);
 
