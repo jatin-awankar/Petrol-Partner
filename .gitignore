@@ -40,7 +40,11 @@ yarn-error.log*
 .env
 apps/api/.env
 apps/worker/.env
+!.env.example
+!apps/api/.env.example
+!apps/worker/.env.example
 .vscode
+/.githooks/pre-commit.local
 
 # vercel
 .vercel

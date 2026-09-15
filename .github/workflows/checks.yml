@@ -1,0 +1,53 @@
+name: checks
+
+on:
+  pull_request:
+  push:
+    branches-ignore:
+      - main
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17.6-alpine
+        env:
+          POSTGRES_DB: petrol_partner_test
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d petrol_partner_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      redis:
+        image: redis:7.4.5-alpine
+        ports:
+          - 56379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      CI: "true"
+      NODE_ENV: test
+      APP_ORIGIN: http://localhost:3000
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:55432/petrol_partner_test
+      REDIS_URL: redis://127.0.0.1:56379
+      ACCESS_TOKEN_SECRET: test-access-token-secret-at-least-32-characters
+      REFRESH_TOKEN_SECRET: test-refresh-token-secret-at-least-32-characters
+      ENABLE_CHAT: "false"
+      ENABLE_TRACKING: "false"
+      ENABLE_MATCH_REFRESH_PROCESSOR: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run check

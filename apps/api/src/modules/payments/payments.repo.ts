@@ -315,7 +315,7 @@ export async function updatePaymentOrderStatus(
 ) {
   const values: unknown[] = [input.paymentOrderId, input.status];
   const updates = ["status = $2", "updated_at = now()"];
-  let parameterIndex = 3;
+  const parameterIndex = 3;
 
   if (input.expiresAt !== undefined) {
     updates.push(`expires_at = $${parameterIndex}`);

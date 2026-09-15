@@ -1,87 +1,76 @@
 # Petrol Partner
 
-**Petrol Partner** is a student-only intercity ride-sharing platform built as a final-year major project.
-It helps college students share private-vehicle trips safely, reduce travel cost, and improve seat utilization through verified, route-based matching.
-<div align=center>
-  <img src="public/Dashboard.png" alt="salesforce-img" width=30% />
-  <img src="public/RideDetails.png" alt="salesforce-img" width=30% />
-  <img src="public/Profile.png" alt="salesforce-img" width=30% />
-</div>
+Petrol Partner is a modular Next.js web application with an Express API, a PostgreSQL database, and a BullMQ worker. The current codebase is a legacy foundation being moved toward the controlled pilot contract in [`docs/pilot-spec.md`](docs/pilot-spec.md); existing ride, payment, and chat behavior is not evidence of pilot correctness.
 
-## Vision
+## Supported development environment
 
-Build the mobility layer for students: trusted, affordable, and operationally reliable.
+- Node.js 24.20.x (see `.nvmrc`)
+- npm 11.19.x
+- Docker with Compose v2
 
-Students should not choose between expensive solo travel and unsafe alternatives. Petrol Partner creates a campus-verified transport network where any verified user can become:
+The repository is one npm workspace with one root `package-lock.json`. From a fresh checkout:
 
-- A ride giver (post a ride offer)
-- A ride taker (post a ride request)
+```sh
+nvm use
+npm ci
+npm run hooks:install
+docker compose up -d --wait
+cp .env.example .env.local
+cp apps/api/.env.example apps/api/.env
+cp apps/worker/.env.example apps/worker/.env
+DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:55432/petrol_partner_test npm run db:migrate
+```
 
-## Problem We Solve
+The examples use only local synthetic credentials and a disposable PostgreSQL database. Never put participant data or production credentials in these files.
 
-- Empty seats in student-owned vehicles on intercity routes
-- Fragmented coordination through informal groups/chats
-- Limited trust and payment accountability in peer-to-peer travel
+## Running locally
 
-## Product Highlights
+Start each process in its own terminal:
 
-- Student-first verification and eligibility controls
-- Unified posting flow for both ride offers and ride requests
-- Route-based discovery and asynchronous matching signals
-- End-to-end booking lifecycle: request -> confirm -> complete
-- Settlement lifecycle with due/overdue handling and financial hold protection
-- Post-trip online settlement using Razorpay with webhook-driven finality
-- Queue-backed backend processing for durable, production-style execution
+```sh
+npm run dev
+npm run api:dev
+npm run worker:dev
+```
 
-## Trust and Safety Model
+The web app listens on `http://localhost:3000`, the API on `http://localhost:4000`, PostgreSQL on port `55432`, and Redis on port `56379`. Create a synthetic record through the existing HTTP application:
 
-- Only verified students can access transaction flows
-- Ride offers require approved driver eligibility and approved vehicle
-- Gender preference controls supported at ride-posting level
-- Financial discipline enforced through overdue settlement hold rules
-- Payment final state is decided by reconcile/webhook, not client callback
+```sh
+curl -i http://localhost:4000/v1/auth/register \
+  -H 'content-type: application/json' \
+  --data '{"email":"student@example.test","password":"synthetic-password","fullName":"Synthetic Student","college":"Synthetic College"}'
+```
 
-## System Architecture
+Stop and discard the local service data with `docker compose down`. PostgreSQL uses a `tmpfs`, so its contents are intentionally disposable.
 
-Monorepo services:
+## Checks
 
-- `web` -> Next.js frontend
-- `apps/api` -> Express + TypeScript domain API
-- `apps/worker` -> BullMQ worker for reconcile/scheduler/background jobs
+With the Compose services running, execute the same aggregate check used by CI:
 
-Core stack:
+```sh
+npm run check
+```
 
-- Next.js (App Router)
-- Node.js + Express
-- Supabase Postgres
-- Redis + BullMQ
-- Razorpay
-- Mapbox
-- Deploy model: Vercel (`web`) + Render (`apps/api`, `apps/worker`)
+Focused commands are available as `npm run lint`, `npm run typecheck`, `npm test`, `npm run test:integration`, and `npm run build:all`. API integration tests exercise the public HTTP application with real PostgreSQL and verify committed state through an independent connection. Tables are truncated deterministically between cases. The first test characterizes legacy registration durability; it does not certify the registration flow against the pilot policy.
 
-## Current Scope
+Both API and worker environment loaders reject a database without `test` in its database name whenever `NODE_ENV=test` or `CI=true`. CI provisions disposable PostgreSQL and Redis services and cannot silently target a production-named database.
 
-Implemented and actively integrated:
+## Branch and commit guard
 
-- Authentication and session flows
-- Verification domain
-- Rides (offer + request)
-- Bookings
-- Settlements
-- Payments (post-trip online settlement path)
+Run `npm run hooks:install` once per clone. It configures the versioned pre-commit hook, which rejects commits on `main`. If `.git/hooks/pre-commit` already exists, the installer preserves it as `.githooks/pre-commit.local` and runs it after the branch guard. Work on a dedicated `codex/<ticket>-<description>` branch and merge through review.
 
-Planned roadmap items:
+## Module boundaries
 
-- Real-time chat runtime
-- Live trip tracking runtime
-- Push notification delivery
-- Advanced trust graph and safety tooling
+- `app/`, `components/`, `hooks/`, `lib/`: Next.js web UI and browser/server adapters.
+- `apps/api`: Express routes/controllers, domain services, repositories, and PostgreSQL migrations. Routes/controllers stay thin; services own policy and transactions; repositories own SQL.
+- `apps/worker`: BullMQ job entry points and PostgreSQL-backed maintenance work.
+- `packages/shared-types`: types shared by more than one application.
+- `scripts`: repository-level setup, migration, guard, and smoke utilities.
 
-## Business Direction
+## Current limitations
 
-Petrol Partner is being developed as a startup-ready foundation, not only an academic prototype.
-The long-term direction is to expand from campus-level usage to regional student travel corridors with stronger trust infrastructure, better routing intelligence, and sustainable platform revenue models.
-
-## Project Context
-
-This project is developed as a final-year major project and serves as the baseline product for a future student mobility startup.
+- The migration runner applies the existing forward SQL files but the deployed schema history is still unknown; ticket 02 must inventory and reconcile it before any production migration.
+- Local Redis supports legacy queues. Redis durability, payment processing, chat, tracking, passenger listings, and other pilot-disabled behavior are not approved pilot capabilities.
+- The PostgreSQL HTTP test is a characterization foothold. Later pilot-critical state changes still require dedicated authorization, concurrency, idempotency, rollback, notification, and recovery tests with separate connections.
+- The new Next.js ESLint preset exposed legacy effect-state and callback-order findings. Those two compiler-oriented rules are temporarily isolated globally, and the misnamed callback false-positive is isolated to `RouteSection.tsx`; existing hook dependency warnings remain visible for follow-up.
+- This setup neither deploys nor changes production data. Remote branch protection remains a repository-host setting for an operator to enable.

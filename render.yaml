@@ -7,9 +7,9 @@ services:
   - type: web
     name: petrol-partner-api
     runtime: node
-    rootDir: apps/api
-    buildCommand: npm install && npm run build
-    startCommand: npm run start
+    rootDir: .
+    buildCommand: npm ci && npm run build --workspace @petrol-partner/api
+    startCommand: npm run start --workspace @petrol-partner/api
     healthCheckPath: /v1/ready
     plan: starter
     envVars:
@@ -58,9 +58,9 @@ services:
   - type: worker
     name: petrol-partner-worker
     runtime: node
-    rootDir: apps/worker
-    buildCommand: npm install && npm run build
-    startCommand: npm run start
+    rootDir: .
+    buildCommand: npm ci && npm run build --workspace @petrol-partner/worker
+    startCommand: npm run start --workspace @petrol-partner/worker
     plan: starter
     envVars:
       - key: NODE_ENV

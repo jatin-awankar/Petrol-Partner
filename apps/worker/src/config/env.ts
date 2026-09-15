@@ -1,6 +1,8 @@
 import { config } from "dotenv";
 import { z } from "zod";
 
+import { assertSafeAutomatedDatabase } from "./database-safety";
+
 config();
 
 const envSchema = z.object({
@@ -28,5 +30,11 @@ if (
     "Invalid worker environment configuration: Razorpay credentials are required in production",
   );
 }
+
+assertSafeAutomatedDatabase({
+  databaseUrl: parsed.data.DATABASE_URL,
+  nodeEnv: parsed.data.NODE_ENV,
+  ci: process.env.CI === "true",
+});
 
 export const env = parsed.data;

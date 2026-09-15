@@ -1,6 +1,8 @@
 import { config } from "dotenv";
 import { z } from "zod";
 
+import { assertSafeAutomatedDatabase } from "./database-safety";
+
 config();
 
 const booleanStringSchema = z.enum(["true", "false"]).default("false");
@@ -43,6 +45,12 @@ if (!parsed.success) {
 if (parsed.data.NODE_ENV === "production" && !parsed.data.REDIS_URL) {
   throw new Error("Invalid API environment configuration: REDIS_URL is required in production");
 }
+
+assertSafeAutomatedDatabase({
+  databaseUrl: parsed.data.DATABASE_URL,
+  nodeEnv: parsed.data.NODE_ENV,
+  ci: process.env.CI === "true",
+});
 
 export const env = {
   ...parsed.data,
