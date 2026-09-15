@@ -4,8 +4,8 @@ Petrol Partner is a modular Next.js web application with an Express API, a Postg
 
 ## Supported development environment
 
-- Node.js 24.20.x (see `.nvmrc`)
-- npm 11.19.x
+- Node.js 24.20.0 (see `.nvmrc`)
+- npm 11.19.0
 - Docker with Compose v2
 
 The repository is one npm workspace with one root `package-lock.json`. From a fresh checkout:
