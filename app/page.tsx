@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowDown, ArrowRight, ArrowUpRight, Check, MapPin } from "lucide-react";
 import styles from "./landing.module.css";
@@ -30,9 +31,16 @@ const futureFeatures = [
   "More college corridors",
 ];
 
+export const metadata: Metadata = {
+  title: "Petrol Partner | Share the college corridor",
+  description:
+    "A supervised ride-sharing pilot for verified adult students travelling between Amravati University and PRMITR.",
+};
+
 export default function LandingPage() {
   return (
     <main className={styles.page}>
+      <a className={styles.skipLink} href="#main-content">Skip to main content</a>
       <div className={styles.notice}>
         <span className={styles.noticeDot} />
         A small, supervised pilot is in the works · Amravati University ↗ PRMITR
@@ -51,7 +59,7 @@ export default function LandingPage() {
         <Link className={styles.signIn} href="/login">Sign in <ArrowUpRight size={17} /></Link>
       </header>
 
-      <section className={styles.hero} aria-labelledby="hero-heading">
+      <section className={styles.hero} id="main-content" tabIndex={-1} aria-labelledby="hero-heading">
         <div className={styles.heroCopy}>
           <div className={styles.heroLabel}><span>THE COLLEGE CORRIDOR, REIMAGINED</span><span>EST. FOR THE EVERYDAY</span></div>
           <h1 id="hero-heading">SAME<br /><span className={styles.outlineWord}>ROUTE.</span><br /><span className={styles.highlightWord}>BETTER</span><br />RIDE<span className={styles.heroDot}>.</span></h1>
@@ -86,7 +94,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <div className={styles.marquee} aria-label="Pilot essentials"><span>VERIFIED ADULT STUDENTS</span><i>✳</i><span>FIXED STOPS</span><i>✳</i><span>ONE SEAT PER REQUEST</span><i>✳</i><span>NO MYSTERY STATUS</span><i>✳</i></div>
+      <div className={styles.marquee} aria-label="Pilot essentials"><span>VERIFIED ADULT STUDENTS</span><i aria-hidden="true">✳</i><span>FIXED STOPS</span><i aria-hidden="true">✳</i><span>ONE SEAT PER REQUEST</span><i aria-hidden="true">✳</i><span>NO MYSTERY STATUS</span><i aria-hidden="true">✳</i></div>
 
       <section className={styles.how} id="how-it-works" aria-labelledby="how-heading">
         <div className={styles.sectionHeading}>
