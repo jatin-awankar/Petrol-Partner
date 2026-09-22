@@ -1,4 +1,5 @@
 import { config } from "dotenv";
+import { assertSafeAutomatedDatabase } from "@petrol-partner/runtime-config";
 import { z } from "zod";
 
 config();
@@ -43,6 +44,13 @@ if (!parsed.success) {
 if (parsed.data.NODE_ENV === "production" && !parsed.data.REDIS_URL) {
   throw new Error("Invalid API environment configuration: REDIS_URL is required in production");
 }
+
+assertSafeAutomatedDatabase({
+  databaseUrl: parsed.data.DATABASE_URL,
+  nodeEnv: parsed.data.NODE_ENV,
+  ci: process.env.CI === "true",
+  disposableDatabaseAcknowledged: process.env.TEST_DATABASE_DISPOSABLE === "true",
+});
 
 export const env = {
   ...parsed.data,
