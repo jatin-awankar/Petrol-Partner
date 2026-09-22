@@ -1,63 +1,142 @@
 import Link from "next/link";
-import { ArrowRight, ArrowUpRight, Check, Clock3, MapPin, ShieldCheck, UsersRound } from "lucide-react";
+import { ArrowDown, ArrowRight, ArrowUpRight, Check, MapPin } from "lucide-react";
 import styles from "./landing.module.css";
 
 const steps = [
-  { number: "01", title: "Find your way", copy: "Browse ride offers for the fixed college corridor, with stops, time, seats, and contribution shown upfront." },
-  { number: "02", title: "Request one seat", copy: "Send a request for yourself. It stays pending until the driver accepts, so you always know where you stand." },
-  { number: "03", title: "Close the loop", copy: "After the trip, confirm the journey and record the contribution and receipt separately." },
+  {
+    number: "01",
+    tag: "LOOK",
+    title: "Find your ride.",
+    copy: "See offers on the college corridor with the stops, departure, seats, and contribution upfront.",
+  },
+  {
+    number: "02",
+    tag: "ASK",
+    title: "Claim your spot.",
+    copy: "Request one seat for yourself. Your request stays pending until the driver accepts it.",
+  },
+  {
+    number: "03",
+    tag: "GO",
+    title: "Make it count.",
+    copy: "After the ride, confirm the journey. Payment claims and receipts get their own clear record.",
+  },
 ];
-const laterFeatures = ["In-app chat", "Live trip tracking", "In-app payments", "More college corridors"];
+
+const futureFeatures = [
+  "In-app chat",
+  "Live trip tracking",
+  "In-app payments",
+  "More college corridors",
+];
 
 export default function LandingPage() {
-  return <main className={styles.page}>
-    <div className={styles.announcement}><span className={styles.announcementDot} />Preparing a supervised pilot for the Amravati University–PRMITR corridor</div>
-    <header className={styles.header}>
-      <Link className={styles.brand} href="/" aria-label="Petrol Partner home"><span className={styles.brandMark} aria-hidden="true"><i /><i /></span>petrol<span>partner.</span></Link>
-      <nav className={styles.nav} aria-label="Main navigation"><a href="#how-it-works">How it works</a><a href="#pilot">The pilot</a><a href="#roadmap">What&apos;s next</a></nav>
-      <Link className={styles.headerLogin} href="/login">Sign in <ArrowUpRight size={15} /></Link>
-    </header>
-
-    <section className={styles.hero} aria-labelledby="hero-heading">
-      <div className={styles.heroCopy}>
-        <p className={styles.eyebrow}>A better way along the same road</p>
-        <h1 id="hero-heading">Good journeys<br />start <em>together.</em></h1>
-        <p className={styles.heroLead}>A thoughtful way for verified students to share a college corridor ride, agree on the details, and stay clear on what happens next.</p>
-        <div className={styles.heroActions}><Link className={styles.primaryButton} href="/register">Create an account <ArrowUpRight size={18} /></Link><a className={styles.textButton} href="#how-it-works">See how it works <ArrowRight size={17} /></a></div>
-        <p className={styles.heroNote}><ShieldCheck size={16} />Pilot participation requires verification and approval.</p>
+  return (
+    <main className={styles.page}>
+      <div className={styles.notice}>
+        <span className={styles.noticeDot} />
+        A small, supervised pilot is in the works · Amravati University ↗ PRMITR
       </div>
-      <div className={styles.heroVisual} role="img" aria-label="Illustration of the Amravati University to PRMITR corridor">
-        <div className={styles.visualTop}><span>THE COLLEGE CORRIDOR</span><span>01 / 01</span></div>
-        <div className={styles.mapCanvas}>
-          <div className={styles.mapGrid} /><div className={styles.mapRoadOne} /><div className={styles.mapRoadTwo} /><div className={styles.routePath} />
-          <div className={`${styles.mapPoint} ${styles.mapPointStart}`} /><div className={`${styles.mapPoint} ${styles.mapPointEnd}`} />
-          <div className={styles.mapLabelStart}><small>START</small>Amravati<br />University</div><div className={styles.mapLabelEnd}><small>ARRIVE</small>PRMITR<br />Gate</div>
-          <div className={styles.mapStamp}>AMRAVATI<br /><strong>↗</strong></div>
+
+      <header className={styles.header}>
+        <Link className={styles.brand} href="/" aria-label="Petrol Partner home">
+          <span className={styles.brandGlyph} aria-hidden="true">p<span>p</span></span>
+          <span>petrol<br />partner<span className={styles.brandPeriod}>.</span></span>
+        </Link>
+        <nav className={styles.nav} aria-label="Main navigation">
+          <a href="#how-it-works">How it works</a>
+          <a href="#pilot">The pilot</a>
+          <a href="#future">What&apos;s next</a>
+        </nav>
+        <Link className={styles.signIn} href="/login">Sign in <ArrowUpRight size={17} /></Link>
+      </header>
+
+      <section className={styles.hero} aria-labelledby="hero-heading">
+        <div className={styles.heroCopy}>
+          <div className={styles.heroLabel}><span>THE COLLEGE CORRIDOR, REIMAGINED</span><span>EST. FOR THE EVERYDAY</span></div>
+          <h1 id="hero-heading">SAME<br /><span className={styles.outlineWord}>ROUTE.</span><br /><span className={styles.highlightWord}>BETTER</span><br />RIDE<span className={styles.heroDot}>.</span></h1>
+          <div className={styles.heroLower}>
+            <p>Heading the same way? Find a seat with an approved student driver, know the details before you ask, and keep the whole trip clear from start to finish.</p>
+            <div className={styles.heroActions}>
+              <Link className={styles.primaryButton} href="/register">Create an account <ArrowUpRight size={19} /></Link>
+              <a className={styles.secondaryLink} href="#how-it-works">See the idea <ArrowDown size={16} /></a>
+            </div>
+            <small>Participation requires verification and approval. Real trips start after pilot launch gates are met.</small>
+          </div>
         </div>
-        <div className={styles.visualBottom}><div><small>ONE FIXED ROUTE</small><strong>Familiar stops.<br />Shared direction.</strong></div><span>↘</span></div>
-      </div>
-    </section>
 
-    <div className={styles.ticker} aria-label="Pilot principles"><span><ShieldCheck size={17} /> Verified adults</span><i /><span><MapPin size={17} /> Predefined stops</span><i /><span><UsersRound size={17} /> One seat per request</span><i /><span><Clock3 size={17} /> Clear deadlines</span></div>
+        <div className={styles.heroArt} aria-label="Illustrated Petrol Partner corridor pass" role="img">
+          <span className={styles.cornerCode}>PP / ROUTE 001</span>
+          <span className={styles.cornerStar} aria-hidden="true">✦</span>
+          <div className={styles.ticket}>
+            <div className={styles.ticketTop}><span>YOUR CORRIDOR PASS</span><span>AMRAVATI / MH</span></div>
+            <div className={styles.ticketRoute}>
+              <div><small>FROM</small><strong>Amravati<br />University</strong></div>
+              <div className={styles.routeGraphic} aria-hidden="true"><i /><b /><i /></div>
+              <div><small>TO</small><strong>PRMITR<br />Gate</strong></div>
+            </div>
+            <div className={styles.ticketGrid}>
+              <div><small>SEAT</small><strong>Just yours.</strong></div>
+              <div><small>STATUS</small><strong>Clear at every step.</strong></div>
+            </div>
+            <div className={styles.ticketBottom}><span>FIND IT. REQUEST IT. RIDE.</span><span className={styles.barcode} aria-hidden="true" /></div>
+          </div>
+          <span className={styles.artStamp}>NO<br />GUESSWORK<br /><i>↗</i></span>
+          <div className={styles.artFooter}><span>ONE ROUTE. A SMALL PILOT. A BETTER ROUTINE.</span><span>01 — 03</span></div>
+        </div>
+      </section>
 
-    <section className={styles.stepsSection} id="how-it-works" aria-labelledby="steps-heading">
-      <div className={styles.sectionIntro}><p className={styles.sectionKicker}>THE SIMPLE PART</p><h2 id="steps-heading">From &ldquo;is there a seat?&rdquo;<br />to <em>see you there.</em></h2><p>Each step says what is confirmed, what is waiting, and who acts next.</p></div>
-      <div className={styles.stepsGrid}>{steps.map(step => <article className={styles.step} key={step.number}><span className={styles.stepNumber}>{step.number}</span><div className={styles.stepLine} /><h3>{step.title}</h3><p>{step.copy}</p></article>)}</div>
-    </section>
+      <div className={styles.marquee} aria-label="Pilot essentials"><span>VERIFIED ADULT STUDENTS</span><i>✳</i><span>FIXED STOPS</span><i>✳</i><span>ONE SEAT PER REQUEST</span><i>✳</i><span>NO MYSTERY STATUS</span><i>✳</i></div>
 
-    <section className={styles.pilotSection} id="pilot" aria-labelledby="pilot-heading">
-      <div className={styles.pilotHeading}><p className={styles.sectionKicker}>SMALL BY DESIGN</p><h2 id="pilot-heading">One corridor.<br /><em>Real clarity.</em></h2><p>The first pilot is planned for 20–30 approved adult students travelling between Amravati University and PRMITR. It starts with a small set of agreed stops and approved private cars.</p><Link className={styles.pilotLink} href="/register">Create an account <ArrowUpRight size={18} /></Link></div>
-      <div className={styles.pilotCard}><div className={styles.pilotCardHeader}><span>THE PILOT, AT A GLANCE</span><span>001</span></div><div className={styles.pilotCardRoute}><span className={styles.routeCircle} />Amravati University<span className={styles.routeDash} /><span className={styles.routeCircle} />PRMITR</div><div className={styles.pilotRules}>
-        <p><Check size={18} />Students and drivers are approved before participating.</p>
-        <p><Check size={18} />A request is confirmed only when the driver accepts.</p>
-        <p><Check size={18} />Contribution details are visible before a request.</p>
-        <p><Check size={18} />Journey and payment records have separate confirmations.</p>
-      </div><p className={styles.pilotCardFoot}>Real trips begin only after the pilot&apos;s operational and safety gates are met.</p></div>
-    </section>
+      <section className={styles.how} id="how-it-works" aria-labelledby="how-heading">
+        <div className={styles.sectionHeading}>
+          <p className={styles.kicker}>01 / THE FLOW</p>
+          <h2 id="how-heading">Not complicated.<br /><em>Just considered.</em></h2>
+          <p>Every step tells you what happened and what comes next. No pretending a pending request is a confirmed seat.</p>
+        </div>
+        <div className={styles.stepGrid}>{steps.map((step) => (
+          <article className={styles.step} key={step.number}>
+            <div className={styles.stepTop}><span>{step.number}</span><span>{step.tag} ↗</span></div>
+            <div className={styles.stepIcon} aria-hidden="true">{step.number === "01" ? "↗" : step.number === "02" ? "+" : "✓"}</div>
+            <h3>{step.title}</h3>
+            <p>{step.copy}</p>
+          </article>
+        ))}</div>
+      </section>
 
-    <section className={styles.roadmapSection} id="roadmap" aria-labelledby="roadmap-heading"><div className={styles.roadmapIntro}><p className={styles.sectionKicker}>A LOOK AHEAD</p><h2 id="roadmap-heading">The road doesn&apos;t<br />end here.</h2><p>These ideas are part of the broader vision. They are not available in the first pilot.</p></div><div className={styles.roadmapList}>{laterFeatures.map((feature, index) => <div className={styles.roadmapItem} key={feature}><span>0{index + 1}</span><strong>{feature}</strong><span className={styles.plannedTag}>PLANNED</span><ArrowUpRight size={20} /></div>)}</div></section>
+      <section className={styles.pilot} id="pilot" aria-labelledby="pilot-heading">
+        <div className={styles.pilotCopy}>
+          <p className={styles.kicker}>02 / THE PILOT</p>
+          <h2 id="pilot-heading">SMALL<br />ON <span>PURPOSE.</span></h2>
+          <p>We&apos;re preparing a supervised pilot for 20–30 approved adult students between Amravati University and PRMITR. One corridor. A small set of stops. Approved private cars.</p>
+          <Link href="/register" className={styles.pilotLink}>Create an account <ArrowUpRight size={18} /></Link>
+        </div>
+        <div className={styles.pilotBoard}>
+          <div className={styles.boardTop}><span>THE RULES OF THE ROAD</span><span>001 / 001</span></div>
+          <div className={styles.boardRoute}><MapPin size={22} /><span>Amravati University</span><span className={styles.boardLine} /><span>PRMITR</span></div>
+          <div className={styles.boardList}>
+            <p><Check size={19} />Verified and approved people participate.</p>
+            <p><Check size={19} />A request is pending until the driver accepts.</p>
+            <p><Check size={19} />The contribution is visible before you request.</p>
+            <p><Check size={19} />Journey and payment confirmations stay separate.</p>
+          </div>
+          <small>Real trips begin only when the pilot&apos;s operational and safety gates are met.</small>
+        </div>
+      </section>
 
-    <section className={styles.finalCta} aria-labelledby="final-heading"><div><p className={styles.sectionKicker}>YOUR ROUTE, TOGETHER</p><h2 id="final-heading">The journey feels<br />better <em>shared.</em></h2></div><div><p>Create an account to begin the verification process for this supervised pilot.</p><Link className={styles.lightButton} href="/register">Create an account <ArrowUpRight size={18} /></Link></div></section>
-    <footer className={styles.footer}><span className={styles.footerBrand}>petrol<span>partner.</span></span><span>Made for a more thoughtful commute.</span><div><Link href="/login">Sign in</Link><a href="#hero-heading">Back to top ↑</a></div></footer>
-  </main>;
+      <section className={styles.future} id="future" aria-labelledby="future-heading">
+        <div className={styles.futureIntro}>
+          <p className={styles.kicker}>03 / WHAT&apos;S NEXT</p>
+          <h2 id="future-heading">MORE ROAD<br /><span>AHEAD.</span></h2>
+          <p>Good ideas for later. These are part of the broader vision and are not available in the first pilot.</p>
+        </div>
+        <div className={styles.futureList}>{futureFeatures.map((feature, index) => (
+          <div className={styles.futureRow} key={feature}><span>0{index + 1}</span><strong>{feature}</strong><em>PLANNED</em><ArrowUpRight size={20} /></div>
+        ))}</div>
+      </section>
+
+      <section className={styles.cta} aria-labelledby="cta-heading"><span className={styles.ctaSun} aria-hidden="true">✳</span><div><p className={styles.kicker}>GOOD RIDES START SOMEWHERE</p><h2 id="cta-heading">LET&apos;S GO<br /><span>TOGETHER.</span></h2></div><div className={styles.ctaRight}><p>Create an account to begin verification for the supervised pilot.</p><Link href="/register">Create an account <ArrowUpRight size={20} /></Link></div></section>
+      <footer className={styles.footer}><span>petrol partner<span>.</span></span><small>For the route you already know.</small><div><Link href="/login">Sign in</Link><a href="#hero-heading">Back to top ↑</a></div></footer>
+    </main>
+  );
 }
