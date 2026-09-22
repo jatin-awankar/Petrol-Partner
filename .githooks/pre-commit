@@ -1,0 +1,8 @@
+#!/bin/sh
+set -eu
+
+node scripts/reject-main-commit.mjs
+
+if [ -x .githooks/pre-commit.local ]; then
+  .githooks/pre-commit.local
+fi
