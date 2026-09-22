@@ -34,7 +34,7 @@ const futureFeatures = [
 export const metadata: Metadata = {
   title: "Petrol Partner | Share the college corridor",
   description:
-    "A supervised ride-sharing pilot for verified adult students travelling between Amravati University and PRMITR.",
+    "A supervised ride-sharing pilot for verified adult PRMITR students travelling along the Amravati University–PRMITR corridor.",
 };
 
 export default function LandingPage() {
@@ -116,7 +116,7 @@ export default function LandingPage() {
         <div className={styles.pilotCopy}>
           <p className={styles.kicker}>02 / THE PILOT</p>
           <h2 id="pilot-heading">SMALL<br />ON <span>PURPOSE.</span></h2>
-          <p>We&apos;re preparing a supervised pilot for 20–30 approved adult students between Amravati University and PRMITR. One corridor. A small set of stops. Approved private cars.</p>
+          <p>We&apos;re preparing a supervised pilot for 20–30 approved adult PRMITR students on the Amravati University–PRMITR corridor. One route. A small set of stops. Approved private cars.</p>
           <Link href="/register" className={styles.pilotLink}>Create an account <ArrowUpRight size={18} /></Link>
         </div>
         <div className={styles.pilotBoard}>
