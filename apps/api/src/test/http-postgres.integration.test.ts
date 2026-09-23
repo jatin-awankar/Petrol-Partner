@@ -9,7 +9,7 @@ import { createApp } from "../app";
 import { pool } from "../db/pool";
 
 const verificationPool = new Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
-const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql"];
+const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql"];
 
 beforeAll(async () => {
   for (const migration of migrations) {

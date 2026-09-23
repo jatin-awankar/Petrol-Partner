@@ -8,7 +8,8 @@
     "start": "node dist/server.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --pool threads --maxWorkers 1 src",
-    "test:integration": "vitest run --pool threads --maxWorkers 1 src/test/http-postgres.integration.test.ts"
+    "test:integration": "vitest run --pool threads --maxWorkers 1 src/test/http-postgres.integration.test.ts",
+    "prototype:acknowledgement": "tsx src/modules/acknowledgement-prototype/server.ts"
   },
   "dependencies": {
     "@petrol-partner/runtime-config": "0.1.0",
