@@ -17,6 +17,20 @@ missing or undated. A fully evidenced proof may still recommend rejection, but a
 ticket requirement must first be resolved or returned for an explicit scope decision.
 This fail-closed result is intentional and must not be bypassed for launch approval.
 
+Every check marked `passed` must include these machine-validated fields in the evidence
+file:
+
+- `checked_on`: the observation date in `YYYY-MM-DD` form;
+- `procedure`: the executed command or reproducible procedure;
+- `observed_result`: the externally observable outcome rather than an implementation
+  assertion; and
+- `artifact`: a retained artifact path or reference supporting the result.
+
+A completed 19/19 proof additionally requires `environment` to be exactly
+`synthetic-staging`. These structural requirements prevent unsupported prose from
+passing the gate; the maintainer reviewing adoption must still inspect the referenced
+artifacts and confirm that they belong to the recorded run.
+
 ## Current repository findings
 
 - The Express API issues and verifies its own JWTs. It does not validate a Supabase

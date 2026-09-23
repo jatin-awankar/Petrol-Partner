@@ -23,6 +23,10 @@ function evidence(overrides = {}) {
         {
           status: "passed",
           evidence: `Synthetic result for ${name}`,
+          checked_on: "2026-09-23",
+          procedure: `npm run synthetic:${name}`,
+          observed_result: `${name} produced the expected staging response`,
+          artifact: `artifacts/${name}.json`,
         },
       ]),
     ),
@@ -71,6 +75,42 @@ test("rejects adoption when any required check lacks passing evidence", async ()
       assert.equal(error.code, 1);
       assert.match(error.stdout, /Decision: INCOMPLETE/);
       assert.match(error.stdout, /operator_mfa: not_run/);
+      return true;
+    },
+  );
+});
+
+test("rejects a passed check supported only by prose", async () => {
+  const value = evidence();
+  value.checks.operator_mfa = {
+    status: "passed",
+    evidence: "MFA worked in staging.",
+  };
+  const evidencePath = await writeEvidence(value);
+
+  await assert.rejects(
+    execFileAsync(process.execPath, [cliPath, evidencePath]),
+    (error) => {
+      assert.equal(error.code, 1);
+      assert.match(
+        error.stderr,
+        /checks\.operator_mfa passed evidence requires checked_on, procedure, observed_result, and artifact/,
+      );
+      return true;
+    },
+  );
+});
+
+test("rejects a complete-looking proof that was not run in synthetic staging", async () => {
+  const evidencePath = await writeEvidence(
+    evidence({ environment: "repository review only" }),
+  );
+
+  await assert.rejects(
+    execFileAsync(process.execPath, [cliPath, evidencePath]),
+    (error) => {
+      assert.equal(error.code, 1);
+      assert.match(error.stderr, /a complete proof requires environment synthetic-staging/);
       return true;
     },
   );

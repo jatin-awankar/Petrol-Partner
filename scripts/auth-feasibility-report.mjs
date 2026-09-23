@@ -39,6 +39,23 @@ function validatePrimarySources(sources) {
   });
 }
 
+function hasText(value) {
+  return typeof value === "string" && value.trim() !== "";
+}
+
+function validatePassedEvidence(name, check) {
+  if (
+    !ISO_DATE.test(check.checked_on ?? "") ||
+    !hasText(check.procedure) ||
+    !hasText(check.observed_result) ||
+    !hasText(check.artifact)
+  ) {
+    fail(
+      `checks.${name} passed evidence requires checked_on, procedure, observed_result, and artifact`,
+    );
+  }
+}
+
 export function assessEvidence(value) {
   if (value?.schema_version !== 1) {
     fail("schema_version must be 1");
@@ -67,6 +84,9 @@ export function assessEvidence(value) {
     if (typeof check.evidence !== "string" || check.evidence.trim() === "") {
       fail(`checks.${name}.evidence is required`);
     }
+    if (check.status === "passed") {
+      validatePassedEvidence(name, check);
+    }
     return { name, status: check.status, evidence: check.evidence.trim() };
   });
 
@@ -87,6 +107,10 @@ export function assessEvidence(value) {
   const unfinished = results.filter((result) => !TERMINAL_STATUSES.has(result.status));
   const failed = results.filter((result) => result.status === "failed");
   const complete = unfinished.length === 0 && failed.length === 0;
+
+  if (complete && value.environment !== "synthetic-staging") {
+    fail('a complete proof requires environment synthetic-staging');
+  }
 
   return {
     complete,

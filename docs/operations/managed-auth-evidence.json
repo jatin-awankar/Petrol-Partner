@@ -62,19 +62,35 @@
     },
     "provider_subject_mapping": {
       "status": "passed",
-      "evidence": "The decision record specifies a unique (provider, provider_subject) mapping to the existing stable users.id; application foreign keys remain unchanged."
+      "evidence": "The decision record specifies a unique (provider, provider_subject) mapping to the existing stable users.id; application foreign keys remain unchanged.",
+      "checked_on": "2026-09-23",
+      "procedure": "Review the Stable identity mapping section against pilot-spec.md user story 68 and the current users.id foreign-key model.",
+      "observed_result": "The proposed mapping keeps provider subjects separate and leaves every application relationship attached to users.id.",
+      "artifact": "docs/operations/managed-auth-feasibility.md#stable-identity-mapping"
     },
     "duplicate_missing_email": {
       "status": "passed",
-      "evidence": "The decision record requires a normalized-email collision inventory before migration, rejects provider identities without a usable verified email from automatic claiming, and never treats an obfuscated duplicate-signup response as ownership proof."
+      "evidence": "The decision record requires a normalized-email collision inventory before migration, rejects provider identities without a usable verified email from automatic claiming, and never treats an obfuscated duplicate-signup response as ownership proof.",
+      "checked_on": "2026-09-23",
+      "procedure": "Compare the Stable identity mapping procedure with Supabase Identity Linking documentation for duplicate and unverified identities.",
+      "observed_result": "The procedure stops on normalized-email collisions and routes missing or unverified email identities to manual review.",
+      "artifact": "docs/operations/managed-auth-feasibility.md#stable-identity-mapping"
     },
     "account_claim_fallback": {
       "status": "passed",
-      "evidence": "The decision record selects controlled claim/reset as the default because password transfer has not been rehearsed; only pre-inventoried stable users may be attached."
+      "evidence": "The decision record selects controlled claim/reset as the default because password transfer has not been rehearsed; only pre-inventoried stable users may be attached.",
+      "checked_on": "2026-09-23",
+      "procedure": "Review the Controlled claim/reset fallback procedure against pilot-spec.md user story 68 and the unknown deployed password baseline.",
+      "observed_result": "The fallback preserves users.id, requires verified email ownership, audits the link, invalidates legacy sessions, and stops ambiguous claims for review.",
+      "artifact": "docs/operations/managed-auth-feasibility.md#controlled-claimreset-fallback"
     },
     "limits_smtp_costs": {
       "status": "passed",
-      "evidence": "Primary documentation was checked on 2026-09-23: Free includes 50,000 MAU and basic MFA but pauses inactive projects; built-in SMTP is best-effort, restricted, and currently two messages/hour. Pro starts at USD 25/month; SMTP provider cost remains an operator decision."
+      "evidence": "Primary documentation was checked on 2026-09-23: Free includes 50,000 MAU and basic MFA but pauses inactive projects; built-in SMTP is best-effort, restricted, and currently two messages/hour. Pro starts at USD 25/month; SMTP provider cost remains an operator decision.",
+      "checked_on": "2026-09-23",
+      "procedure": "Read the dated Supabase pricing, custom SMTP, rate-limit, session, and backup sources recorded below and compare them with the 20–30-person pilot and recovery objectives.",
+      "observed_result": "Free is sufficient only for development proof; custom SMTP and an approved recovery arrangement remain required costs/decisions for pilot operation.",
+      "artifact": "docs/operations/managed-auth-feasibility.md#limits-and-cost-finding"
     },
     "export_restore": {
       "status": "not_run",
