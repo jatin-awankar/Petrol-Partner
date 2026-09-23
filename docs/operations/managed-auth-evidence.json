@@ -1,0 +1,151 @@
+{
+  "schema_version": 1,
+  "provider": "Supabase Auth",
+  "environment": "synthetic-staging",
+  "evidence_date": "2026-09-23",
+  "checks": {
+    "email_verification": {
+      "status": "passed", "evidence": "Synthetic student and operator confirmed through captured Mailtrap SMTP messages with no pre-confirmation session.", "checked_on": "2026-09-23", "procedure": "npm run auth:feasibility:live", "observed_result": "Both identities confirmed successfully through allowed callbacks.", "artifact": "docs/operations/evidence/auth-feasibility-2026-09-23.json"
+    },
+    "login": {
+      "status": "passed", "evidence": "Confirmed synthetic student signed in with password.", "checked_on": "2026-09-23", "procedure": "npm run auth:feasibility:live", "observed_result": "Password login returned a session only after confirmation.", "artifact": "docs/operations/evidence/auth-feasibility-2026-09-23.json"
+    },
+    "account_recovery": {
+      "status": "passed", "evidence": "Recovery was delivered through Mailtrap and preserved the provider subject.", "checked_on": "2026-09-23", "procedure": "npm run auth:feasibility:live", "observed_result": "Old password failed and the replacement succeeded without changing subject.", "artifact": "docs/operations/evidence/auth-feasibility-2026-09-23.json"
+    },
+    "server_identity_validation": {
+      "status": "passed", "evidence": "Online provider validation returned the same subject as login.", "checked_on": "2026-09-23", "procedure": "npm run auth:feasibility:live", "observed_result": "getUser validated the access token and stable provider subject.", "artifact": "docs/operations/evidence/auth-feasibility-2026-09-23.json"
+    },
+    "operator_mfa": {
+      "status": "passed", "evidence": "Synthetic operator enrolled and verified TOTP.", "checked_on": "2026-09-23", "procedure": "npm run auth:feasibility:live", "observed_result": "Challenge verification promoted the session to aal2.", "artifact": "docs/operations/evidence/auth-feasibility-2026-09-23.json"
+    },
+    "mfa_server_enforcement": {
+      "status": "passed", "evidence": "The application-policy proof rejected aal1 and accepted the same current allowlisted operator at aal2.", "checked_on": "2026-09-23", "procedure": "npm run auth:feasibility:application", "observed_result": "The operator endpoint returned MFA_REQUIRED at aal1 and succeeded at aal2.", "artifact": "docs/operations/evidence/auth-application-proof-2026-09-23.json"
+    },
+    "current_session_revocation": {
+      "status": "passed", "evidence": "Synthetic operator global signout revoked session continuation.", "checked_on": "2026-09-23", "procedure": "npm run auth:feasibility:live", "observed_result": "Global signout completed and online validation no longer accepted the captured session.", "artifact": "docs/operations/evidence/auth-feasibility-2026-09-23.json"
+    },
+    "stale_access_token": {
+      "status": "passed", "evidence": "Online provider validation rejected the captured access token after global signout; offline JWT acceptance remains an application risk.", "checked_on": "2026-09-23", "procedure": "npm run auth:feasibility:live", "observed_result": "getUser rejected the captured token after revocation.", "artifact": "docs/operations/evidence/auth-feasibility-2026-09-23.json"
+    },
+    "eligibility_independent_of_provider": {
+      "status": "passed", "evidence": "A public HTTP action backed by the designated PostgreSQL restore project allowed and then denied the same stable user after only application eligibility changed; editable provider metadata was ignored.", "checked_on": "2026-09-23", "procedure": "npm run auth:feasibility:application", "observed_result": "The eligible action returned 200, then returned INELIGIBLE after the database flag was revoked.", "artifact": "docs/operations/evidence/auth-application-proof-2026-09-23.json"
+    },
+    "operator_allowlist_independent_of_provider": {
+      "status": "passed", "evidence": "The application-policy proof resolved the provider subject to a stable user and checked a current PostgreSQL allowlist, ignoring editable admin metadata.", "checked_on": "2026-09-23", "procedure": "npm run auth:feasibility:application", "observed_result": "Removing the allowlist record caused the next aal2 operator action to return OPERATOR_ACCESS_REVOKED.", "artifact": "docs/operations/evidence/auth-application-proof-2026-09-23.json"
+    },
+    "abuse_controls": {
+      "status": "passed", "evidence": "Staging provider rate/session settings were recorded and compared with primary documentation; the application proof exercised a conservative synthetic login boundary without load testing the provider.", "checked_on": "2026-09-23", "procedure": "Review recorded Supabase Auth settings, then run npm run auth:feasibility:application.", "observed_result": "Two attempts returned the same INVALID_CREDENTIALS response; the third returned 429 with Retry-After and no account-existence disclosure.", "artifact": "docs/operations/evidence/auth-application-proof-2026-09-23.json"
+    },
+    "secure_cookies": {
+      "status": "passed", "evidence": "The synthetic HTTP proof inspected its session Set-Cookie header using the proposed server-owned cookie policy.", "checked_on": "2026-09-23", "procedure": "npm run auth:feasibility:application", "observed_result": "Set-Cookie contained HttpOnly, Secure, SameSite=Lax, Path=/, and a bounded Max-Age.", "artifact": "docs/operations/evidence/auth-application-proof-2026-09-23.json"
+    },
+    "origin_csrf": {
+      "status": "passed", "evidence": "The synthetic HTTP proof applied exact Origin validation and a session-bound CSRF token to unsafe cookie-authenticated requests.", "checked_on": "2026-09-23", "procedure": "npm run auth:feasibility:application", "observed_result": "A disallowed Origin and an incorrect CSRF token were independently rejected with 403.", "artifact": "docs/operations/evidence/auth-application-proof-2026-09-23.json"
+    },
+    "auth_outage": {
+      "status": "passed", "evidence": "The proof injected provider unavailability at the Auth adapter boundary.", "checked_on": "2026-09-23", "procedure": "npm run auth:feasibility:application", "observed_result": "A protected mutation returned retryable AUTH_ASSURANCE_UNAVAILABLE while the explicitly permitted non-mutating degraded read remained available.", "artifact": "docs/operations/evidence/auth-application-proof-2026-09-23.json"
+    },
+    "provider_subject_mapping": {
+      "status": "passed",
+      "evidence": "The decision record specifies a unique (provider, provider_subject) mapping to the existing stable users.id; application foreign keys remain unchanged.",
+      "checked_on": "2026-09-23",
+      "procedure": "Review the Stable identity mapping section against pilot-spec.md user story 68 and the current users.id foreign-key model.",
+      "observed_result": "The proposed mapping keeps provider subjects separate and leaves every application relationship attached to users.id.",
+      "artifact": "docs/operations/managed-auth-feasibility.md#stable-identity-mapping"
+    },
+    "duplicate_missing_email": {
+      "status": "passed",
+      "evidence": "The decision record requires a normalized-email collision inventory before migration, rejects provider identities without a usable verified email from automatic claiming, and never treats an obfuscated duplicate-signup response as ownership proof.",
+      "checked_on": "2026-09-23",
+      "procedure": "Compare the Stable identity mapping procedure with Supabase Identity Linking documentation for duplicate and unverified identities.",
+      "observed_result": "The procedure stops on normalized-email collisions and routes missing or unverified email identities to manual review.",
+      "artifact": "docs/operations/managed-auth-feasibility.md#stable-identity-mapping"
+    },
+    "account_claim_fallback": {
+      "status": "passed",
+      "evidence": "The decision record selects controlled claim/reset as the default because password transfer has not been rehearsed; only pre-inventoried stable users may be attached.",
+      "checked_on": "2026-09-23",
+      "procedure": "Review the Controlled claim/reset fallback procedure against pilot-spec.md user story 68 and the unknown deployed password baseline.",
+      "observed_result": "The fallback preserves users.id, requires verified email ownership, audits the link, invalidates legacy sessions, and stops ambiguous claims for review.",
+      "artifact": "docs/operations/managed-auth-feasibility.md#controlled-claimreset-fallback"
+    },
+    "limits_smtp_costs": {
+      "status": "passed",
+      "evidence": "Primary documentation was checked on 2026-09-23: Free includes 50,000 MAU and basic MFA but pauses inactive projects; built-in SMTP is best-effort, restricted, and currently two messages/hour. Pro starts at USD 25/month; SMTP provider cost remains an operator decision.",
+      "checked_on": "2026-09-23",
+      "procedure": "Read the dated Supabase pricing, custom SMTP, rate-limit, session, and backup sources recorded below and compare them with the 20–30-person pilot and recovery objectives.",
+      "observed_result": "Free is sufficient only for development proof; custom SMTP and an approved recovery arrangement remain required costs/decisions for pilot operation.",
+      "artifact": "docs/operations/managed-auth-feasibility.md#limits-and-cost-finding"
+    },
+    "export_restore": {
+      "status": "passed", "evidence": "The designated previous Supabase project was inventoried, backed up, replaced atomically from a verified source logical archive, and compared with the source after restore.", "checked_on": "2026-09-23", "procedure": "Create verified custom-format public-schema archives with pg_dump, restore with pg_restore over Supavisor session mode, compare exact table/column/constraint/row-count fingerprints, and compare aggregate Auth table counts.", "observed_result": "All 30 public tables, three migration-ledger rows, schema definitions, constraints, and row counts matched fingerprint b01132c4...; Auth users, identities, sessions, refresh tokens, and MFA aggregates were zero on both projects.", "artifact": "docs/operations/evidence/auth-restore-proof-2026-09-23.json"
+    }
+  },
+  "sources": [
+    {
+      "title": "Password-based Auth",
+      "url": "https://supabase.com/docs/guides/auth/passwords",
+      "checked_on": "2026-09-23"
+    },
+    {
+      "title": "Send emails with custom SMTP",
+      "url": "https://supabase.com/docs/guides/auth/auth-smtp",
+      "checked_on": "2026-09-23"
+    },
+    {
+      "title": "Auth rate limits",
+      "url": "https://supabase.com/docs/guides/auth/rate-limits",
+      "checked_on": "2026-09-23"
+    },
+    {
+      "title": "Multi-Factor Authentication",
+      "url": "https://supabase.com/docs/guides/auth/auth-mfa",
+      "checked_on": "2026-09-23"
+    },
+    {
+      "title": "User sessions",
+      "url": "https://supabase.com/docs/guides/auth/sessions",
+      "checked_on": "2026-09-23"
+    },
+    {
+      "title": "Signing out",
+      "url": "https://supabase.com/docs/guides/auth/signout",
+      "checked_on": "2026-09-23"
+    },
+    {
+      "title": "Advanced server-side Auth guide",
+      "url": "https://supabase.com/docs/guides/auth/server-side/advanced-guide",
+      "checked_on": "2026-09-23"
+    },
+    {
+      "title": "Identity linking",
+      "url": "https://supabase.com/docs/guides/auth/auth-identity-linking",
+      "checked_on": "2026-09-23"
+    },
+    {
+      "title": "Database backups",
+      "url": "https://supabase.com/docs/guides/platform/backups",
+      "checked_on": "2026-09-23"
+    },
+    {
+      "title": "Backup and Restore using the CLI",
+      "url": "https://supabase.com/docs/guides/platform/migrating-within-supabase/backup-restore",
+      "checked_on": "2026-09-23"
+    },
+    {
+      "title": "Pricing and fees",
+      "url": "https://supabase.com/pricing",
+      "checked_on": "2026-09-23"
+    }
+  ],
+  "recommendation": {
+    "decision": "adopt",
+    "rationale": "Adopt Supabase Auth as the managed authentication provider for the pilot architecture. Synthetic staging proved the provider flows, application-owned authorization policy, browser defenses, outage behavior, and logical recovery path; rollout remains gated on implementing these demonstrated seams in the production API.",
+    "remaining_requirements": [
+      "Implement the demonstrated stable subject mapping, current operator allowlist, aal2/current-session enforcement, and Origin/CSRF policy in the production API before cutover.",
+      "Automate encrypted off-site logical backups or approve a paid managed recovery arrangement before launch.",
+      "Approve the custom SMTP provider and recurring cost before production use."
+    ]
+  }
+}
