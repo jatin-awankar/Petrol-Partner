@@ -6,8 +6,13 @@ import pg from "pg";
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) throw new Error("DATABASE_URL is required");
 const parsedUrl = new URL(databaseUrl);
-if (process.env.TEST_DATABASE_DISPOSABLE !== "true" || !["127.0.0.1", "localhost"].includes(parsedUrl.hostname)) {
-  throw new Error("Rehearsal is destructive and requires TEST_DATABASE_DISPOSABLE=true with a localhost database");
+const databaseName = parsedUrl.pathname.slice(1);
+if (process.env.TEST_DATABASE_DISPOSABLE !== "true"
+    || !["127.0.0.1", "localhost"].includes(parsedUrl.hostname)
+    || !databaseName.endsWith("_test")) {
+  throw new Error(
+    "Rehearsal is destructive and requires TEST_DATABASE_DISPOSABLE=true, a localhost host, and a database name ending in _test",
+  );
 }
 
 const projectRoot = resolve(import.meta.dirname, "..");
@@ -71,6 +76,10 @@ try {
       (id, driver_id, vehicle_id, pickup_location, pickup_lat, pickup_lng, drop_location, drop_lat, drop_lng, date, time, available_seats, price_per_seat_paise, status)
     VALUES
       ('30000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000001', 'Origin', 20, 77, 'Destination', 20.1, 77.1, current_date + 1, '09:00', 2, 12000, 'active');
+    INSERT INTO ride_requests
+      (id, passenger_id, pickup_location, pickup_lat, pickup_lng, drop_location, drop_lat, drop_lng, date, time, seats_required, price_per_seat_paise, status)
+    VALUES
+      ('30000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000002', 'Origin', 20, 77, 'Destination', 20.1, 77.1, current_date + 1, '09:00', 1, 12000, 'active');
     INSERT INTO bookings
       (id, ride_offer_id, created_by_user_id, passenger_id, driver_id, seats_booked, total_amount_paise, platform_fee_paise, status, payment_state, confirmed_at)
     VALUES
@@ -88,6 +97,7 @@ try {
   const before = (await pool.query(`SELECT
     (SELECT count(*)::int FROM users) AS users,
     (SELECT count(*)::int FROM bookings) AS bookings,
+    (SELECT count(*)::int FROM ride_requests WHERE status = 'active') AS active_requests,
     (SELECT coalesce(sum(amount_paise), 0)::bigint FROM payment_orders) AS payment_total,
     (SELECT coalesce(sum(total_due_paise), 0)::bigint FROM booking_settlements) AS settlement_total`)).rows[0];
   run();
@@ -95,14 +105,20 @@ try {
   const after = (await pool.query(`SELECT
     (SELECT count(*)::int FROM users) AS users,
     (SELECT count(*)::int FROM bookings) AS bookings,
+    (SELECT count(*)::int FROM ride_requests WHERE status = 'active') AS active_requests,
     (SELECT coalesce(sum(amount_paise), 0)::bigint FROM payment_orders) AS payment_total,
     (SELECT coalesce(sum(total_due_paise), 0)::bigint FROM booking_settlements) AS settlement_total,
     (SELECT count(*)::int FROM chat_rooms WHERE booking_id = '40000000-0000-4000-8000-000000000001') AS migrated_chat_rooms,
-    (SELECT count(*)::int FROM user_profiles WHERE user_id IN ('00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002')) AS stable_identities`)).rows[0];
+    (SELECT count(*)::int FROM user_profiles WHERE user_id IN ('00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002')) AS stable_identities,
+    (SELECT count(*)::int FROM ride_requests request
+      JOIN users passenger ON passenger.id = request.passenger_id
+      WHERE request.status = 'active') AS preserved_request_passengers`)).rows[0];
 
   if (before.users !== after.users || before.bookings !== after.bookings
+      || before.active_requests !== after.active_requests
       || before.payment_total !== after.payment_total || before.settlement_total !== after.settlement_total
-      || after.migrated_chat_rooms !== 1 || after.stable_identities !== 2) {
+      || after.migrated_chat_rooms !== 1 || after.stable_identities !== 2
+      || after.preserved_request_passengers !== 1) {
     throw new Error(`Representative upgrade invariant failed: ${JSON.stringify({ before, after })}`);
   }
 

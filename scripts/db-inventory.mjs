@@ -73,6 +73,22 @@ try {
     }
   }
 
+  report.eligibilityDecisions = {};
+  for (const [table, column] of [
+    ["user_profiles", "is_verified"],
+    ["user_details", "is_verified"],
+    ["vehicles", "is_verified"],
+  ]) {
+    if (columnSet.has(`${table}.${column}`)) {
+      report.eligibilityDecisions[`${table}.${column}`] = (await client.query(
+        `SELECT count(*) FILTER (WHERE ${quote(column)} IS TRUE)::int AS approved,
+                count(*) FILTER (WHERE ${quote(column)} IS FALSE)::int AS "notApproved",
+                count(*) FILTER (WHERE ${quote(column)} IS NULL)::int AS unknown
+           FROM public.${quote(table)}`,
+      )).rows[0];
+    }
+  }
+
   report.statusCounts = {};
   const statusCandidates = {
     ride_offers: ["status", "ride_offer_status"],
@@ -110,6 +126,24 @@ try {
         `SELECT ${selections.join(", ")} FROM public.${quote(table)}`,
       )).rows[0];
     }
+  }
+
+  report.legacyPaymentHistory = {};
+  if (columnSet.has("bookings.payment_status")) {
+    const identifierCount = async (column) => columnSet.has(`bookings.${column}`)
+      ? Number((await client.query(
+        `SELECT count(*) FILTER (WHERE ${quote(column)} IS NOT NULL AND btrim(${quote(column)}) <> '')::int AS count
+           FROM public.bookings`,
+      )).rows[0].count)
+      : null;
+    report.legacyPaymentHistory.bookings = {
+      paymentStatusCounts: (await client.query(
+        `SELECT payment_status AS status, count(*)::int AS count
+           FROM public.bookings GROUP BY payment_status ORDER BY payment_status`,
+      )).rows,
+      razorpayOrderIdsPresent: await identifierCount("razorpay_order_id"),
+      razorpayPaymentIdsPresent: await identifierCount("razorpay_payment_id"),
+    };
   }
 
   const foreignKeyColumns = (await client.query(
