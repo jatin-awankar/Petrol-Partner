@@ -27,9 +27,9 @@ The histories are structurally incompatible. In particular, the identity primary
 Against PostgreSQL 17.6 on 2026-09-23:
 
 - Clean install produced 30 tables including the checksum ledger; `--check` verified all three checksums.
-- The representative upgrade preserved 2 users, 2 profile-to-user identity mappings, 1 booking, a 12,500-paise historical platform-payment order, and a 12,500-paise settlement.
+- The representative upgrade preserved 2 users, 2 profile-to-user identity mappings, 1 active request with its passenger relationship, 1 booking, a 12,500-paise historical platform-payment order, and a 12,500-paise settlement.
 - `0003_chat.sql` created exactly 1 chat room for the confirmed historical booking.
-- The aggregate inventory found zero orphan rows for every declared foreign key, zero missing or duplicate synthetic emails, 2 verified eligibility records, and the expected offer, booking, settlement, and payment status counts.
+- The aggregate inventory found zero orphan rows for every declared foreign key, 2 verified eligibility records, and the expected offer, request, booking, settlement, and payment status counts. A separate legacy-shape fixture demonstrated one missing email, one case-insensitive duplicate, boolean eligibility decisions, and booking-level Razorpay history without exporting identifier values.
 
 ## Required deployment decision and runbook
 
