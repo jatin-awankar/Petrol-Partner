@@ -33,7 +33,8 @@
     "worker:dev": "npm --prefix apps/worker run dev",
     "worker:build": "npm --prefix apps/worker run build",
     "smoke:staging": "node scripts/staging-smoke-express.mjs",
-    "auth:feasibility": "node scripts/auth-feasibility-report.mjs docs/operations/managed-auth-evidence.json"
+    "auth:feasibility": "node scripts/auth-feasibility-report.mjs docs/operations/managed-auth-evidence.json",
+    "auth:feasibility:live": "node --env-file=.env.auth-feasibility.local scripts/managed-auth-live.mjs"
   },
   "dependencies": {
     "@mapbox/search-js-react": "1.5.0",

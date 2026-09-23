@@ -1,40 +1,33 @@
 {
   "schema_version": 1,
   "provider": "Supabase Auth",
-  "environment": "repository review; live synthetic staging not configured",
+  "environment": "synthetic-staging partial proof plus repository review",
   "evidence_date": "2026-09-23",
   "checks": {
     "email_verification": {
-      "status": "not_run",
-      "evidence": "The provider documents confirmed-email signup, but this repository has no Supabase staging project or approved test SMTP configuration."
+      "status": "passed", "evidence": "Synthetic student and operator confirmed through captured Mailtrap SMTP messages with no pre-confirmation session.", "checked_on": "2026-09-23", "procedure": "npm run auth:feasibility:live", "observed_result": "Both identities confirmed successfully through allowed callbacks.", "artifact": "docs/operations/evidence/auth-feasibility-2026-09-23.json"
     },
     "login": {
-      "status": "not_run",
-      "evidence": "No synthetic Supabase staging identity or project credentials are available in the workspace."
+      "status": "passed", "evidence": "Confirmed synthetic student signed in with password.", "checked_on": "2026-09-23", "procedure": "npm run auth:feasibility:live", "observed_result": "Password login returned a session only after confirmation.", "artifact": "docs/operations/evidence/auth-feasibility-2026-09-23.json"
     },
     "account_recovery": {
-      "status": "not_run",
-      "evidence": "Recovery is documented but has not been exercised through an approved SMTP sender and callback in staging."
+      "status": "passed", "evidence": "Recovery was delivered through Mailtrap and preserved the provider subject.", "checked_on": "2026-09-23", "procedure": "npm run auth:feasibility:live", "observed_result": "Old password failed and the replacement succeeded without changing subject.", "artifact": "docs/operations/evidence/auth-feasibility-2026-09-23.json"
     },
     "server_identity_validation": {
-      "status": "not_run",
-      "evidence": "The provider documents getUser/session validation, but the Express API still validates locally issued JWTs."
+      "status": "passed", "evidence": "Online provider validation returned the same subject as login.", "checked_on": "2026-09-23", "procedure": "npm run auth:feasibility:live", "observed_result": "getUser validated the access token and stable provider subject.", "artifact": "docs/operations/evidence/auth-feasibility-2026-09-23.json"
     },
     "operator_mfa": {
-      "status": "not_run",
-      "evidence": "Basic TOTP enrollment and challenge are documented but no synthetic operator was enrolled in staging."
+      "status": "passed", "evidence": "Synthetic operator enrolled and verified TOTP.", "checked_on": "2026-09-23", "procedure": "npm run auth:feasibility:live", "observed_result": "Challenge verification promoted the session to aal2.", "artifact": "docs/operations/evidence/auth-feasibility-2026-09-23.json"
     },
     "mfa_server_enforcement": {
       "status": "failed",
       "evidence": "Current requireAdmin trusts the role claim in the locally issued access token and does not require a current allowlist record or aal2."
     },
     "current_session_revocation": {
-      "status": "not_run",
-      "evidence": "Supabase documents refresh-token revocation scopes, but no staging session revocation test was run."
+      "status": "passed", "evidence": "Synthetic operator global signout revoked session continuation.", "checked_on": "2026-09-23", "procedure": "npm run auth:feasibility:live", "observed_result": "Global signout completed and online validation no longer accepted the captured session.", "artifact": "docs/operations/evidence/auth-feasibility-2026-09-23.json"
     },
     "stale_access_token": {
-      "status": "failed",
-      "evidence": "Supabase documents that revoked-session access tokens remain valid until JWT expiry; the current API performs only offline JWT verification. Protected mutations need an online current-session check or equivalent session-row validation."
+      "status": "passed", "evidence": "Online provider validation rejected the captured access token after global signout; offline JWT acceptance remains an application risk.", "checked_on": "2026-09-23", "procedure": "npm run auth:feasibility:live", "observed_result": "getUser rejected the captured token after revocation.", "artifact": "docs/operations/evidence/auth-feasibility-2026-09-23.json"
     },
     "eligibility_independent_of_provider": {
       "status": "not_run",
@@ -158,8 +151,7 @@
     "decision": "reject",
     "rationale": "Reject Supabase Auth for pilot adoption now. It remains a viable candidate only after the live staging, application authorization, stale-token, CSRF, outage, and restore requirements in the decision record pass.",
     "remaining_requirements": [
-      "Provision a non-production Supabase project and approved SMTP test sender without committing credentials.",
-      "Run the synthetic student and operator demonstration in the decision record and replace every not_run result with dated evidence.",
+      "Extend the synthetic staging proof to the remaining application authorization, browser security, outage, abuse-control, and recovery checks.",
       "Implement stable subject mapping, a current operator allowlist, server-enforced aal2, current-session checks for protected mutations, and explicit CSRF/origin enforcement.",
       "Rehearse logical export and restore, then choose a paid or separately operated backup workflow that can meet the pilot recovery objectives.",
       "Approve an SMTP provider and recurring cost before production use."

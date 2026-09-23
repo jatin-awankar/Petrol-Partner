@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "environment": "synthetic-staging",
+  "started_at": "2026-09-23T10:43:36.536Z",
+  "completed_at": "2026-09-23T10:46:00.257Z",
+  "synthetic_users_cleaned_up": true,
+  "results": [
+    { "check": "email_verification", "status": "passed", "observed_result": "Student and operator received no pre-confirmation session and confirmed through captured SMTP delivery." },
+    { "check": "login", "status": "passed", "observed_result": "Confirmed synthetic student signed in with password." },
+    { "check": "server_identity_validation", "status": "passed", "observed_result": "Provider server returned the same subject for the access token." },
+    { "check": "account_recovery", "status": "passed", "observed_result": "Recovery changed the password; old login failed and new login succeeded without changing subject." },
+    { "check": "operator_mfa", "status": "passed", "observed_result": "Synthetic operator enrolled TOTP, passed challenge, and received aal2." },
+    { "check": "current_session_revocation", "status": "passed", "observed_result": "Global signout completed and session continuation was revoked." },
+    { "check": "stale_access_token", "status": "passed", "observed_result": "Online provider validation rejected the captured access token after global signout." }
+  ]
+}
