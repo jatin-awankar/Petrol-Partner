@@ -23,6 +23,10 @@ cp apps/worker/.env.example apps/worker/.env
 DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:55432/petrol_partner_test npm run db:migrate
 ```
 
+For migration safety and existing-data inventory, see
+[`docs/operations/migration-baseline.md`](docs/operations/migration-baseline.md). The runner uses checksums and
+a PostgreSQL advisory lock, and intentionally refuses to infer history for a non-empty database.
+
 The examples use only local synthetic credentials and a disposable PostgreSQL database. Never put participant data or production credentials in these files.
 
 ## Running locally

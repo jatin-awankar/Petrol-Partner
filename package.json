@@ -24,6 +24,8 @@
     "check": "npm run lint && npm run typecheck && npm test && npm run build:all",
     "build:all": "npm run build && npm run build --workspaces --if-present",
     "db:migrate": "node scripts/db-migrate.mjs",
+    "db:inventory": "node scripts/db-inventory.mjs",
+    "db:rehearse": "node scripts/db-rehearsal.mjs",
     "hooks:install": "node scripts/install-hooks.mjs",
     "api:dev": "npm --prefix apps/api run dev",
     "api:build": "npm --prefix apps/api run build",
