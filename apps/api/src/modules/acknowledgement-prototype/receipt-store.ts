@@ -68,4 +68,3 @@ export class FileReceiptStore {
     return (await this.list()).find((receipt) => receipt.operationId === operationId);
   }
 }
-
