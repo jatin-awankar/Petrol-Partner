@@ -4,27 +4,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 
-export const REQUIRED_CHECKS = [
-  "email_verification",
-  "login",
-  "account_recovery",
-  "server_identity_validation",
-  "operator_mfa",
-  "mfa_server_enforcement",
-  "current_session_revocation",
-  "stale_access_token",
-  "eligibility_independent_of_provider",
-  "operator_allowlist_independent_of_provider",
-  "abuse_controls",
-  "secure_cookies",
-  "origin_csrf",
-  "auth_outage",
-  "provider_subject_mapping",
-  "duplicate_missing_email",
-  "account_claim_fallback",
-  "limits_smtp_costs",
-  "export_restore",
-];
+import { REQUIRED_AUTH_FEASIBILITY_CHECKS } from "./auth-feasibility-checks.mjs";
 
 const TERMINAL_STATUSES = new Set(["passed", "failed"]);
 const DECISIONS = new Set(["adopt", "reject"]);
@@ -79,7 +59,7 @@ export function assessEvidence(value) {
     fail("checks must be an object");
   }
 
-  const results = REQUIRED_CHECKS.map((name) => {
+  const results = REQUIRED_AUTH_FEASIBILITY_CHECKS.map((name) => {
     const check = value.checks[name];
     if (!check || typeof check.status !== "string") {
       fail(`checks.${name} is required`);
@@ -106,8 +86,7 @@ export function assessEvidence(value) {
 
   const unfinished = results.filter((result) => !TERMINAL_STATUSES.has(result.status));
   const failed = results.filter((result) => result.status === "failed");
-  const inconsistentAdoption = decision === "adopt" && failed.length > 0;
-  const complete = unfinished.length === 0 && !inconsistentAdoption;
+  const complete = unfinished.length === 0 && failed.length === 0;
 
   return {
     complete,
@@ -123,14 +102,16 @@ function render(value, assessment) {
     "Managed authentication feasibility",
     `Evidence: ${value.evidence_date} (${value.environment})`,
     `Decision: ${assessment.decision.toUpperCase()}`,
-    `${assessment.passed.length}/${REQUIRED_CHECKS.length} required checks passed`,
+    `${assessment.passed.length}/${REQUIRED_AUTH_FEASIBILITY_CHECKS.length} required checks passed`,
   ];
 
   for (const result of [...assessment.failed, ...assessment.unfinished]) {
     lines.push(`- ${result.name}: ${result.status} — ${result.evidence}`);
   }
 
-  if (!assessment.complete && value.recommendation?.decision === "adopt") {
+  if (assessment.failed.length > 0) {
+    lines.push("- the ticket cannot complete while any required check fails");
+  } else if (!assessment.complete && value.recommendation?.decision === "adopt") {
     lines.push("- adoption is invalid until every required check passes");
   }
 

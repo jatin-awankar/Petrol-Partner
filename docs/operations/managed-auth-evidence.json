@@ -37,8 +37,8 @@
       "evidence": "Supabase documents that revoked-session access tokens remain valid until JWT expiry; the current API performs only offline JWT verification. Protected mutations need an online current-session check or equivalent session-row validation."
     },
     "eligibility_independent_of_provider": {
-      "status": "passed",
-      "evidence": "Current ride and booking services read student and driver eligibility from application PostgreSQL records rather than identity-provider metadata."
+      "status": "not_run",
+      "evidence": "Repository inspection shows ride and booking services call application-owned eligibility services, but the available focused ride test mocks those checks. No public HTTP plus PostgreSQL demonstration has yet proved rejection and approval independently of provider role or editable metadata."
     },
     "operator_allowlist_independent_of_provider": {
       "status": "failed",

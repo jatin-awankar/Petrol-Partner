@@ -6,30 +6,10 @@ import path from "node:path";
 import { promisify } from "node:util";
 import test from "node:test";
 
+import { REQUIRED_AUTH_FEASIBILITY_CHECKS } from "./auth-feasibility-checks.mjs";
+
 const execFileAsync = promisify(execFile);
 const cliPath = path.resolve("scripts/auth-feasibility-report.mjs");
-
-const requiredChecks = [
-  "email_verification",
-  "login",
-  "account_recovery",
-  "server_identity_validation",
-  "operator_mfa",
-  "mfa_server_enforcement",
-  "current_session_revocation",
-  "stale_access_token",
-  "eligibility_independent_of_provider",
-  "operator_allowlist_independent_of_provider",
-  "abuse_controls",
-  "secure_cookies",
-  "origin_csrf",
-  "auth_outage",
-  "provider_subject_mapping",
-  "duplicate_missing_email",
-  "account_claim_fallback",
-  "limits_smtp_costs",
-  "export_restore",
-];
 
 function evidence(overrides = {}) {
   return {
@@ -38,7 +18,7 @@ function evidence(overrides = {}) {
     environment: "synthetic-staging",
     evidence_date: "2026-09-23",
     checks: Object.fromEntries(
-      requiredChecks.map((name) => [
+      REQUIRED_AUTH_FEASIBILITY_CHECKS.map((name) => [
         name,
         {
           status: "passed",
@@ -114,6 +94,31 @@ test("rejects evidence with an undated non-primary source", async () => {
     (error) => {
       assert.equal(error.code, 1);
       assert.match(error.stderr, /sources\[0\] must be dated Supabase primary documentation/);
+      return true;
+    },
+  );
+});
+
+test("keeps a reject recommendation incomplete while a required check fails", async () => {
+  const value = evidence({
+    recommendation: {
+      decision: "reject",
+      rationale: "A demonstrated requirement failed.",
+      remaining_requirements: ["Resolve or accept the failed requirement."],
+    },
+  });
+  value.checks.stale_access_token = {
+    status: "failed",
+    evidence: "A revoked access token was accepted by the protected endpoint.",
+  };
+  const evidencePath = await writeEvidence(value);
+
+  await assert.rejects(
+    execFileAsync(process.execPath, [cliPath, evidencePath]),
+    (error) => {
+      assert.equal(error.code, 1);
+      assert.match(error.stdout, /Decision: INCOMPLETE/);
+      assert.match(error.stdout, /ticket cannot complete while any required check fails/);
       return true;
     },
   );

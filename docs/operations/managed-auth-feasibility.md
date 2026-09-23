@@ -12,9 +12,10 @@ current application and available environment do not yet prove the pilot's autho
 revocation, outage, SMTP, or recovery requirements.
 
 Run `npm run auth:feasibility` to evaluate the checked-in evidence. The command exits
-non-zero while any required check is `not_run`, while an adoption recommendation has a
-failed check, or when primary sources are missing or undated. This fail-closed result is
-intentional and must not be bypassed for launch approval.
+non-zero while any required check is `not_run` or `failed`, or when primary sources are
+missing or undated. A fully evidenced proof may still recommend rejection, but a failed
+ticket requirement must first be resolved or returned for an explicit scope decision.
+This fail-closed result is intentional and must not be bypassed for launch approval.
 
 ## Current repository findings
 
@@ -231,4 +232,3 @@ measured staging evidence; this document authorizes no purchase.
 - [Database backups](https://supabase.com/docs/guides/platform/backups)
 - [CLI backup and restore](https://supabase.com/docs/guides/platform/migrating-within-supabase/backup-restore)
 - [Pricing](https://supabase.com/pricing)
-
