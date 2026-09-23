@@ -14,19 +14,19 @@ const payloadSchema = z.object({ subject: z.string().min(1).max(100), delta: z.n
 export function createAcknowledgementPrototypeApp(options: {
   databaseUrl: string;
   receiptPath: string;
-  receiptSecret?: string;
-  operatorToken?: string;
+  receiptSecret: string;
+  operatorToken: string;
   crash?: (point: CrashPoint, operationId?: string) => void;
 }) {
   const app = express();
   const pool = new Pool({ connectionString: options.databaseUrl, max: 4 });
   const service = new AcknowledgementService(
     pool,
-    new FileReceiptStore(options.receiptPath, options.receiptSecret ?? "prototype-test-recovery-key"),
+    new FileReceiptStore(options.receiptPath, options.receiptSecret),
     options.crash,
   );
   const requireOperator = (req: express.Request) => {
-    if (req.header("Recovery-Operator-Token") !== (options.operatorToken ?? "prototype-operator-token")) {
+    if (req.header("Recovery-Operator-Token") !== options.operatorToken) {
       throw new AppError(403, "Recovery operator authorization required", "RECOVERY_FORBIDDEN");
     }
   };
@@ -56,8 +56,9 @@ export function createAcknowledgementPrototypeApp(options: {
   }));
   app.post("/prototype/recovery/reopen", asyncHandler(async (req, res) => {
     requireOperator(req);
+    const operatorId = z.string().min(1).max(100).parse(req.header("Recovery-Operator-Id"));
     const input = z.object({ decision: z.string().min(1).max(500) }).parse(req.body);
-    res.json(await service.reopen(input.decision));
+    res.json(await service.reopen(operatorId, input.decision));
   }));
   app.use(errorHandler);
   app.locals.close = () => pool.end();

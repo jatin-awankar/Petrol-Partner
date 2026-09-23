@@ -49,3 +49,10 @@ CREATE TABLE IF NOT EXISTS acknowledgement_notifications (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS acknowledgement_system_events (
+  id bigserial PRIMARY KEY,
+  event text NOT NULL CHECK (event IN ('restricted', 'reopened')),
+  operator_id text,
+  reason text NOT NULL,
+  recorded_at timestamptz NOT NULL DEFAULT now()
+);

@@ -14,7 +14,13 @@ let receiptPath: string;
 const apps: Array<ReturnType<typeof createAcknowledgementPrototypeApp>> = [];
 
 function createPrototypeApp(options: Partial<Parameters<typeof createAcknowledgementPrototypeApp>[0]> = {}) {
-  const app = createAcknowledgementPrototypeApp({ databaseUrl, receiptPath, ...options });
+  const app = createAcknowledgementPrototypeApp({
+    databaseUrl,
+    receiptPath,
+    receiptSecret: "prototype-test-recovery-key",
+    operatorToken: "prototype-operator-token",
+    ...options,
+  });
   apps.push(app);
   return app;
 }
@@ -145,14 +151,14 @@ describe("acknowledgement recovery prototype HTTP seam", () => {
       .send({ subject: "pending-counter", delta: 7 });
 
     const status = await request(app).get(`/prototype/operations/${crashedOperationId}`);
-    const hiddenRead = await request(app).get("/prototype/subjects/pending-counter");
+    const safeRead = await request(app).get("/prototype/subjects/pending-counter");
     const blockedWrite = await request(app).post("/prototype/actions")
       .set("Idempotency-Key", "later-key").set("Idempotency-Scope", "later-scope")
       .send({ subject: "later-counter", delta: 1 });
     const notifications = await verificationPool.query("SELECT count(*)::integer AS count FROM acknowledgement_notifications");
 
     expect(status.body.operation).toEqual({ id: crashedOperationId, state: "pending_unknown", result: null });
-    expect(hiddenRead.status).toBe(503);
+    expect(safeRead.body).toEqual({ subject: "pending-counter", value: 0 });
     expect(blockedWrite.status).toBe(503);
     expect(notifications.rows).toEqual([{ count: 0 }]);
   });
@@ -177,10 +183,11 @@ describe("acknowledgement recovery prototype HTTP seam", () => {
     const recovered = await request(restarted).post("/prototype/actions").set(headers).send(payload);
     expect(recovered.status).toBe(200);
     const stillRestricted = await request(restarted).get("/prototype/subjects/restricted-counter");
-    expect(stillRestricted.status).toBe(503);
+    expect(stillRestricted.body).toEqual({ subject: "restricted-counter", value: 9 });
 
     const reopened = await request(restarted).post("/prototype/recovery/reopen")
       .set("Recovery-Operator-Token", "prototype-operator-token")
+      .set("Recovery-Operator-Id", "operator-17")
       .send({ decision: "receipt verified and predecessor resolved" });
     expect(reopened.body).toMatchObject({ mode: "open", reason: "operator_decision:receipt verified and predecessor resolved" });
   });
@@ -192,7 +199,11 @@ describe("acknowledgement recovery prototype HTTP seam", () => {
       .send({ subject: "restore-counter", delta: 11 });
     const original = await verificationPool.query("SELECT created_at FROM synthetic_actions WHERE operation_id = $1", [created.body.operation.id]);
 
-    await verificationPool.query("TRUNCATE acknowledgement_operations CASCADE");
+    await verificationPool.query(
+      "UPDATE acknowledgement_operations SET state = 'intent', result = NULL, committed_at = NULL, receipt_recorded_at = NULL, acknowledged_at = NULL WHERE id = $1",
+      [created.body.operation.id],
+    );
+    await verificationPool.query("DELETE FROM synthetic_actions WHERE operation_id = $1", [created.body.operation.id]);
     const reconciled = await request(app).post("/prototype/recovery/reconcile")
       .set("Recovery-Operator-Token", "prototype-operator-token").send();
     const repeated = await request(app).post("/prototype/recovery/reconcile")
@@ -211,8 +222,23 @@ describe("acknowledgement recovery prototype HTTP seam", () => {
     }]);
     const reopened = await request(app).post("/prototype/recovery/reopen")
       .set("Recovery-Operator-Token", "prototype-operator-token")
+      .set("Recovery-Operator-Id", "operator-17")
       .send({ decision: "all independent receipts reconciled" });
     expect(reopened.body.mode).toBe("open");
+    const audit = await verificationPool.query(
+      "SELECT event, operator_id, reason FROM acknowledgement_system_events WHERE event = 'reopened' ORDER BY id DESC LIMIT 1",
+    );
+    expect(audit.rows).toEqual([{ event: "reopened", operator_id: "operator-17", reason: "all independent receipts reconciled" }]);
+  });
+
+  it("enters restricted mode before rejecting corrupt surviving evidence", async () => {
+    const app = createPrototypeApp();
+    await writeFile(receiptPath, "not-json\n");
+    const response = await request(app).post("/prototype/recovery/reconcile")
+      .set("Recovery-Operator-Token", "prototype-operator-token").send();
+    const status = await request(app).get("/prototype/system-status");
+    expect(response.status).toBe(500);
+    expect(status.body).toMatchObject({ mode: "restricted", reason: "restore_reconciliation_required" });
   });
 
   it("serializes the same operation across two API instances", async () => {
