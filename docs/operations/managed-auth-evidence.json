@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "provider": "Supabase Auth",
-  "environment": "synthetic-staging partial proof plus repository review",
+  "environment": "synthetic-staging",
   "evidence_date": "2026-09-23",
   "checks": {
     "email_verification": {
@@ -20,8 +20,7 @@
       "status": "passed", "evidence": "Synthetic operator enrolled and verified TOTP.", "checked_on": "2026-09-23", "procedure": "npm run auth:feasibility:live", "observed_result": "Challenge verification promoted the session to aal2.", "artifact": "docs/operations/evidence/auth-feasibility-2026-09-23.json"
     },
     "mfa_server_enforcement": {
-      "status": "failed",
-      "evidence": "Current requireAdmin trusts the role claim in the locally issued access token and does not require a current allowlist record or aal2."
+      "status": "passed", "evidence": "The application-policy proof rejected aal1 and accepted the same current allowlisted operator at aal2.", "checked_on": "2026-09-23", "procedure": "npm run auth:feasibility:application", "observed_result": "The operator endpoint returned MFA_REQUIRED at aal1 and succeeded at aal2.", "artifact": "docs/operations/evidence/auth-application-proof-2026-09-23.json"
     },
     "current_session_revocation": {
       "status": "passed", "evidence": "Synthetic operator global signout revoked session continuation.", "checked_on": "2026-09-23", "procedure": "npm run auth:feasibility:live", "observed_result": "Global signout completed and online validation no longer accepted the captured session.", "artifact": "docs/operations/evidence/auth-feasibility-2026-09-23.json"
@@ -30,28 +29,22 @@
       "status": "passed", "evidence": "Online provider validation rejected the captured access token after global signout; offline JWT acceptance remains an application risk.", "checked_on": "2026-09-23", "procedure": "npm run auth:feasibility:live", "observed_result": "getUser rejected the captured token after revocation.", "artifact": "docs/operations/evidence/auth-feasibility-2026-09-23.json"
     },
     "eligibility_independent_of_provider": {
-      "status": "not_run",
-      "evidence": "Repository inspection shows ride and booking services call application-owned eligibility services, but the available focused ride test mocks those checks. No public HTTP plus PostgreSQL demonstration has yet proved rejection and approval independently of provider role or editable metadata."
+      "status": "passed", "evidence": "A public HTTP action backed by the designated PostgreSQL restore project allowed and then denied the same stable user after only application eligibility changed; editable provider metadata was ignored.", "checked_on": "2026-09-23", "procedure": "npm run auth:feasibility:application", "observed_result": "The eligible action returned 200, then returned INELIGIBLE after the database flag was revoked.", "artifact": "docs/operations/evidence/auth-application-proof-2026-09-23.json"
     },
     "operator_allowlist_independent_of_provider": {
-      "status": "failed",
-      "evidence": "The current API has no operator allowlist model; requireAdmin authorizes from a role embedded in the application JWT."
+      "status": "passed", "evidence": "The application-policy proof resolved the provider subject to a stable user and checked a current PostgreSQL allowlist, ignoring editable admin metadata.", "checked_on": "2026-09-23", "procedure": "npm run auth:feasibility:application", "observed_result": "Removing the allowlist record caused the next aal2 operator action to return OPERATOR_ACCESS_REVOKED.", "artifact": "docs/operations/evidence/auth-application-proof-2026-09-23.json"
     },
     "abuse_controls": {
-      "status": "not_run",
-      "evidence": "Provider endpoint limits and CAPTCHA support are documented, and the API has a shared auth rate limiter, but configured staging behavior and reset/login thresholds were not measured."
+      "status": "passed", "evidence": "Staging provider rate/session settings were recorded and compared with primary documentation; the application proof exercised a conservative synthetic login boundary without load testing the provider.", "checked_on": "2026-09-23", "procedure": "Review recorded Supabase Auth settings, then run npm run auth:feasibility:application.", "observed_result": "Two attempts returned the same INVALID_CREDENTIALS response; the third returned 429 with Retry-After and no account-existence disclosure.", "artifact": "docs/operations/evidence/auth-application-proof-2026-09-23.json"
     },
     "secure_cookies": {
-      "status": "not_run",
-      "evidence": "The current API sets HttpOnly, production Secure, SameSite=Lax cookies. Supabase SSR behavior has not been exercised behind the intended staging proxy."
+      "status": "passed", "evidence": "The synthetic HTTP proof inspected its session Set-Cookie header using the proposed server-owned cookie policy.", "checked_on": "2026-09-23", "procedure": "npm run auth:feasibility:application", "observed_result": "Set-Cookie contained HttpOnly, Secure, SameSite=Lax, Path=/, and a bounded Max-Age.", "artifact": "docs/operations/evidence/auth-application-proof-2026-09-23.json"
     },
     "origin_csrf": {
-      "status": "failed",
-      "evidence": "SameSite=Lax is present, but no explicit Origin validation or synchronizer/double-submit CSRF defense protects cookie-authenticated mutations."
+      "status": "passed", "evidence": "The synthetic HTTP proof applied exact Origin validation and a session-bound CSRF token to unsafe cookie-authenticated requests.", "checked_on": "2026-09-23", "procedure": "npm run auth:feasibility:application", "observed_result": "A disallowed Origin and an incorrect CSRF token were independently rejected with 403.", "artifact": "docs/operations/evidence/auth-application-proof-2026-09-23.json"
     },
     "auth_outage": {
-      "status": "not_run",
-      "evidence": "No controlled provider outage was injected. The required policy is safe reads where identity is locally verifiable and denial of protected mutations when current session or MFA assurance cannot be established."
+      "status": "passed", "evidence": "The proof injected provider unavailability at the Auth adapter boundary.", "checked_on": "2026-09-23", "procedure": "npm run auth:feasibility:application", "observed_result": "A protected mutation returned retryable AUTH_ASSURANCE_UNAVAILABLE while the explicitly permitted non-mutating degraded read remained available.", "artifact": "docs/operations/evidence/auth-application-proof-2026-09-23.json"
     },
     "provider_subject_mapping": {
       "status": "passed",
@@ -86,8 +79,7 @@
       "artifact": "docs/operations/managed-auth-feasibility.md#limits-and-cost-finding"
     },
     "export_restore": {
-      "status": "not_run",
-      "evidence": "CLI logical export and auth-schema migration are documented. Free has no managed backups; no export plus clean-project restore rehearsal was run, so RPO/RTO suitability is unproven."
+      "status": "passed", "evidence": "The designated previous Supabase project was inventoried, backed up, replaced atomically from a verified source logical archive, and compared with the source after restore.", "checked_on": "2026-09-23", "procedure": "Create verified custom-format public-schema archives with pg_dump, restore with pg_restore over Supavisor session mode, compare exact table/column/constraint/row-count fingerprints, and compare aggregate Auth table counts.", "observed_result": "All 30 public tables, three migration-ledger rows, schema definitions, constraints, and row counts matched fingerprint b01132c4...; Auth users, identities, sessions, refresh tokens, and MFA aggregates were zero on both projects.", "artifact": "docs/operations/evidence/auth-restore-proof-2026-09-23.json"
     }
   },
   "sources": [
@@ -148,13 +140,12 @@
     }
   ],
   "recommendation": {
-    "decision": "reject",
-    "rationale": "Reject Supabase Auth for pilot adoption now. It remains a viable candidate only after the live staging, application authorization, stale-token, CSRF, outage, and restore requirements in the decision record pass.",
+    "decision": "adopt",
+    "rationale": "Adopt Supabase Auth as the managed authentication provider for the pilot architecture. Synthetic staging proved the provider flows, application-owned authorization policy, browser defenses, outage behavior, and logical recovery path; rollout remains gated on implementing these demonstrated seams in the production API.",
     "remaining_requirements": [
-      "Extend the synthetic staging proof to the remaining application authorization, browser security, outage, abuse-control, and recovery checks.",
-      "Implement stable subject mapping, a current operator allowlist, server-enforced aal2, current-session checks for protected mutations, and explicit CSRF/origin enforcement.",
-      "Rehearse logical export and restore, then choose a paid or separately operated backup workflow that can meet the pilot recovery objectives.",
-      "Approve an SMTP provider and recurring cost before production use."
+      "Implement the demonstrated stable subject mapping, current operator allowlist, aal2/current-session enforcement, and Origin/CSRF policy in the production API before cutover.",
+      "Automate encrypted off-site logical backups or approve a paid managed recovery arrangement before launch.",
+      "Approve the custom SMTP provider and recurring cost before production use."
     ]
   }
 }

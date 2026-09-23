@@ -4,12 +4,13 @@ Evidence date: 2026-09-23
 
 ## Decision
 
-Reject Supabase Auth for pilot adoption **now**. Keep it as the preferred candidate for a
-synthetic staging proof after the requirements below are implemented and demonstrated.
-This is not a rejection of the provider: its documented email/password recovery, TOTP
-MFA, server APIs, and PostgreSQL export options fit the intended architecture. The
-current application and available environment do not yet prove the pilot's authorization,
-revocation, outage, SMTP, or recovery requirements.
+Adopt Supabase Auth as the managed authentication provider for the pilot architecture.
+The 2026-09-23 synthetic staging run demonstrated email verification, recovery, online
+server validation, TOTP `aal2`, revocation, application-owned authorization, browser
+protections, outage behavior, and a logical restore into the maintainer-designated
+previous Supabase project. This decision establishes feasibility; it does not switch the
+legacy API login path or authorize pilot launch before the demonstrated controls are
+implemented in production.
 
 Run `npm run auth:feasibility` to evaluate the checked-in evidence. The command exits
 non-zero while any required check is `not_run` or `failed`, or when primary sources are
@@ -31,23 +32,41 @@ A completed 19/19 proof additionally requires `environment` to be exactly
 passing the gate; the maintainer reviewing adoption must still inspect the referenced
 artifacts and confirm that they belong to the recorded run.
 
-## Current repository findings
+## Current repository findings and proof boundary
 
 - The Express API issues and verifies its own JWTs. It does not validate a Supabase
   identity server-side.
 - Student and driver eligibility is stored in application PostgreSQL records and checked
   by ride/booking services. This is correctly independent of provider metadata.
-- `requireAdmin` trusts the `role` claim in the locally issued access token. There is no
-  current operator allowlist and no `aal2` check.
-- Auth cookies are `HttpOnly`, `Secure` in production, and `SameSite=Lax`. Cookie-backed
-  mutations have no explicit Origin check or CSRF token.
-- The application has auth endpoint rate limiting, but its login and reset behavior has
-  not been measured against Supabase's configured limits.
-- No Supabase URL/key, synthetic Supabase identity, approved SMTP test sender, or
-  provider backup is configured in this workspace.
+- `requireAdmin` still trusts the `role` claim in the locally issued access token. The
+  feasibility harness proves the replacement policy with current PostgreSQL allowlist
+  and `aal2` checks; production integration remains follow-up work.
+- Auth cookies are `HttpOnly`, `Secure` in production, and `SameSite=Lax`. The feasibility
+  harness demonstrates the required exact-Origin and session-bound CSRF checks; the
+  legacy cookie-backed mutations do not yet use them.
+- Staging Supabase, Mailtrap SMTP, two synthetic identities, TOTP, rate/session settings,
+  source and restore session-pooler URLs, and ignored local logical backups were used.
+  Secrets and row-level personal data are not retained in tracked evidence.
 
-These findings are feasibility evidence, not authorization to migrate existing users or
-replace the current login path.
+These findings are feasibility evidence, not authorization to migrate existing users,
+replace the current login path, or launch the pilot.
+
+## Demonstration results
+
+Run `npm run auth:feasibility:live` for provider email, recovery, identity, MFA, and
+revocation behavior. Run `npm run auth:feasibility:application` for the isolated public
+HTTP plus PostgreSQL proof of stable mapping, eligibility, operator allowlisting, `aal2`,
+cookies, Origin/CSRF, throttling, and outage policy. The latter creates a uniquely named
+synthetic schema and removes it in `finally`.
+
+The approved restore rehearsal first inventoried and backed up the designated previous
+project. A custom-format source archive was then restored over Supavisor session mode.
+Post-restore verification matched 30 public tables, columns, constraints, all row counts,
+and three migration-ledger records exactly. Aggregate `auth` counts for users, identities,
+sessions, refresh tokens, and MFA records were zero on both sides because the live proof
+had already cleaned up its synthetic identities. The pre-restore archive remains in the
+ignored `.scratch/backups` directory with its checksum recorded in the tracked restore
+artifact.
 
 ## Required application design
 
