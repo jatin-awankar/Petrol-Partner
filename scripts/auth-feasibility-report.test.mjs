@@ -1,0 +1,120 @@
+import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { promisify } from "node:util";
+import test from "node:test";
+
+const execFileAsync = promisify(execFile);
+const cliPath = path.resolve("scripts/auth-feasibility-report.mjs");
+
+const requiredChecks = [
+  "email_verification",
+  "login",
+  "account_recovery",
+  "server_identity_validation",
+  "operator_mfa",
+  "mfa_server_enforcement",
+  "current_session_revocation",
+  "stale_access_token",
+  "eligibility_independent_of_provider",
+  "operator_allowlist_independent_of_provider",
+  "abuse_controls",
+  "secure_cookies",
+  "origin_csrf",
+  "auth_outage",
+  "provider_subject_mapping",
+  "duplicate_missing_email",
+  "account_claim_fallback",
+  "limits_smtp_costs",
+  "export_restore",
+];
+
+function evidence(overrides = {}) {
+  return {
+    schema_version: 1,
+    provider: "Supabase Auth",
+    environment: "synthetic-staging",
+    evidence_date: "2026-09-23",
+    checks: Object.fromEntries(
+      requiredChecks.map((name) => [
+        name,
+        {
+          status: "passed",
+          evidence: `Synthetic result for ${name}`,
+        },
+      ]),
+    ),
+    sources: [
+      {
+        title: "Supabase Auth documentation",
+        url: "https://supabase.com/docs/guides/auth",
+        checked_on: "2026-09-23",
+      },
+    ],
+    recommendation: {
+      decision: "adopt",
+      rationale: "Every required check passed in synthetic staging.",
+      remaining_requirements: [],
+    },
+    ...overrides,
+  };
+}
+
+async function writeEvidence(value) {
+  const directory = await mkdtemp(path.join(tmpdir(), "auth-feasibility-"));
+  const evidencePath = path.join(directory, "evidence.json");
+  await writeFile(evidencePath, JSON.stringify(value));
+  return evidencePath;
+}
+
+test("accepts a dated, fully evidenced adopt recommendation", async () => {
+  const evidencePath = await writeEvidence(evidence());
+  const { stdout } = await execFileAsync(process.execPath, [cliPath, evidencePath]);
+
+  assert.match(stdout, /Decision: ADOPT/);
+  assert.match(stdout, /19\/19 required checks passed/);
+});
+
+test("rejects adoption when any required check lacks passing evidence", async () => {
+  const value = evidence();
+  value.checks.operator_mfa = {
+    status: "not_run",
+    evidence: "No staging project was configured.",
+  };
+  const evidencePath = await writeEvidence(value);
+
+  await assert.rejects(
+    execFileAsync(process.execPath, [cliPath, evidencePath]),
+    (error) => {
+      assert.equal(error.code, 1);
+      assert.match(error.stdout, /Decision: INCOMPLETE/);
+      assert.match(error.stdout, /operator_mfa: not_run/);
+      return true;
+    },
+  );
+});
+
+test("rejects evidence with an undated non-primary source", async () => {
+  const evidencePath = await writeEvidence(
+    evidence({
+      sources: [
+        {
+          title: "Third-party summary",
+          url: "https://example.com/supabase",
+          checked_on: "",
+        },
+      ],
+    }),
+  );
+
+  await assert.rejects(
+    execFileAsync(process.execPath, [cliPath, evidencePath]),
+    (error) => {
+      assert.equal(error.code, 1);
+      assert.match(error.stderr, /sources\[0\] must be dated Supabase primary documentation/);
+      return true;
+    },
+  );
+});

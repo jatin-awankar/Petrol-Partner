@@ -32,7 +32,8 @@
     "api:typecheck": "npm --prefix apps/api run typecheck",
     "worker:dev": "npm --prefix apps/worker run dev",
     "worker:build": "npm --prefix apps/worker run build",
-    "smoke:staging": "node scripts/staging-smoke-express.mjs"
+    "smoke:staging": "node scripts/staging-smoke-express.mjs",
+    "auth:feasibility": "node scripts/auth-feasibility-report.mjs docs/operations/managed-auth-evidence.json"
   },
   "dependencies": {
     "@mapbox/search-js-react": "1.5.0",

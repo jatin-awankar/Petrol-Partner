@@ -57,6 +57,16 @@ With the Compose services running, execute the same aggregate check used by CI:
 npm run check
 ```
 
+Managed-auth feasibility evidence is deliberately fail-closed until every required live
+staging check has a dated result:
+
+```bash
+npm run auth:feasibility
+```
+
+See [`docs/operations/managed-auth-feasibility.md`](docs/operations/managed-auth-feasibility.md)
+for the decision, identity mapping, and reproducible synthetic staging procedure.
+
 Focused commands are available as `npm run lint`, `npm run typecheck`, `npm test`, `npm run test:integration`, and `npm run build:all`. API integration tests exercise the public HTTP application with real PostgreSQL and verify committed state through an independent connection. Tables are truncated deterministically between cases. The first test characterizes legacy registration durability; it does not certify the registration flow against the pilot policy.
 
 Both API and worker environment loaders require the explicit `TEST_DATABASE_DISPOSABLE=true` acknowledgement, a loopback host, and a database name ending in `_test` whenever `NODE_ENV=test` or `CI=true`. CI provisions fixed local PostgreSQL and Redis services, so an automated check cannot silently target a remote production database.
