@@ -23,6 +23,7 @@ export class AcknowledgementService {
   constructor(
     pool: Pool,
     private readonly receipts: FileReceiptStore,
+    private readonly operatorToken: string,
     private readonly crash?: (point: CrashPoint, operationId?: string) => void,
   ) {
     this.repository = new AcknowledgementRepository(pool);
@@ -90,6 +91,8 @@ export class AcknowledgementService {
       await repository.insertOperationAudit(committed.id, "success_published");
       return repository.markAcknowledged(committed.id);
     });
+    const status = await this.repository.systemStatus();
+    if (status.mode === "restricted") await this.repository.markReconciled();
     this.crash?.("after_publication", acknowledged.id);
     return { status: intent.existing ? 200 : 201, operation: publicOperation(acknowledged) };
   }
@@ -109,8 +112,15 @@ export class AcknowledgementService {
     return this.repository.systemStatus();
   }
 
-  async reconcile() {
-    await this.repository.restrict("restore_reconciliation_required");
+  authorizeOperator(token: string | undefined, operatorId: string | undefined) {
+    if (token !== this.operatorToken || !operatorId) {
+      throw new AppError(403, "Recovery operator authorization required", "RECOVERY_FORBIDDEN");
+    }
+    return operatorId;
+  }
+
+  async reconcile(operatorId: string) {
+    await this.repository.restrict("restore_reconciliation_required", operatorId);
     const receipts = await this.receipts.list();
     const recovered: string[] = [];
     for (const receipt of receipts) {
@@ -120,6 +130,7 @@ export class AcknowledgementService {
       }
       if (outcome === "recovered") recovered.push(receipt.operationId);
     }
+    await this.repository.markReconciled();
     return { recovered, mode: "restricted" as const };
   }
 
@@ -127,7 +138,9 @@ export class AcknowledgementService {
     if (await this.repository.hasUnresolvedOperation()) {
       throw new AppError(409, "Unresolved operations prevent reopening", "RECOVERY_INCOMPLETE");
     }
-    await this.repository.reopen(operatorId, decision);
+    if (!await this.repository.reopen(operatorId, decision)) {
+      throw new AppError(409, "Successful evidence reconciliation is required before reopening", "RECOVERY_INCOMPLETE");
+    }
     return this.systemStatus();
   }
 }

@@ -3,6 +3,7 @@ CREATE TABLE IF NOT EXISTS acknowledgement_system_state (
   mode text NOT NULL CHECK (mode IN ('open', 'restricted')),
   reason text,
   restricted_since timestamptz,
+  reconciled_at timestamptz,
   reopened_at timestamptz,
   updated_at timestamptz NOT NULL DEFAULT now()
 );
@@ -56,3 +57,6 @@ CREATE TABLE IF NOT EXISTS acknowledgement_system_events (
   reason text NOT NULL,
   recorded_at timestamptz NOT NULL DEFAULT now()
 );
+
+ALTER TABLE acknowledgement_system_state
+  ADD COLUMN IF NOT EXISTS reconciled_at timestamptz;

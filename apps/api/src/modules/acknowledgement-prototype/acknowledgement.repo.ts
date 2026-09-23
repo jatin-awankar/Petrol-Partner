@@ -137,25 +137,32 @@ export class AcknowledgementRepository {
 
   async systemStatus() {
     return (await this.db.query(
-      "SELECT mode, reason, restricted_since, reopened_at FROM acknowledgement_system_state WHERE singleton = true",
+      "SELECT mode, reason, restricted_since, reconciled_at, reopened_at FROM acknowledgement_system_state WHERE singleton = true",
     )).rows[0];
   }
 
-  async restrict(reason: string) {
+  async restrict(reason: string, operatorId?: string) {
     await this.transaction(async (repository) => {
-      const state = await repository.systemStatus();
+      const state = (await repository.db.query<{ mode: string; reason: string | null }>(
+        "SELECT mode, reason FROM acknowledgement_system_state WHERE singleton = true FOR UPDATE",
+      )).rows[0];
+      if (state.mode === "restricted" && state.reason === reason) return;
       await repository.db.query(
         `UPDATE acknowledgement_system_state SET mode = 'restricted', reason = $1,
-         restricted_since = COALESCE(restricted_since, now()), updated_at = now() WHERE singleton = true`,
+         restricted_since = COALESCE(restricted_since, now()), reconciled_at = NULL, updated_at = now() WHERE singleton = true`,
         [reason],
       );
-      if (state.mode !== "restricted") {
-        await repository.db.query(
-          "INSERT INTO acknowledgement_system_events (event, reason) VALUES ('restricted', $1)",
-          [reason],
-        );
-      }
+      await repository.db.query(
+        "INSERT INTO acknowledgement_system_events (event, operator_id, reason) VALUES ('restricted', $1, $2)",
+        [operatorId ?? null, reason],
+      );
     });
+  }
+
+  markReconciled() {
+    return this.db.query(
+      "UPDATE acknowledgement_system_state SET reconciled_at = now(), updated_at = now() WHERE singleton = true",
+    );
   }
 
   async recover(receipt: RecoveryReceipt) {
@@ -165,6 +172,13 @@ export class AcknowledgementRepository {
         existing.payload_digest !== receipt.payloadDigest || existing.scope !== receipt.scope ||
         existing.idempotency_key !== receipt.idempotencyKey
       )) return "conflict" as const;
+      const action = (await repository.db.query<{
+        subject: string; delta: number; resulting_value: number; external_effect_key: string;
+      }>("SELECT subject, delta, resulting_value, external_effect_key FROM synthetic_actions WHERE operation_id = $1", [receipt.operationId])).rows[0];
+      if (action && (action.subject !== receipt.payload.subject || action.delta !== receipt.payload.delta ||
+        action.resulting_value !== receipt.result.value || action.external_effect_key !== receipt.operationId)) {
+        return "conflict" as const;
+      }
 
       if (!existing) {
         await repository.db.query(
@@ -182,12 +196,15 @@ export class AcknowledgementRepository {
       }
       await repository.insertAction(receipt.operationId, receipt.payload, receipt.result.value, receipt.committedAt);
       await repository.insertOperationAudit(receipt.operationId, "restored_from_receipt", receipt.committedAt);
+      await repository.insertNotification(receipt.operationId);
       return existing?.state === "acknowledged" || existing?.state === "recovered" ? "existing" as const : "recovered" as const;
     });
   }
 
   async reopen(operatorId: string, decision: string) {
     return this.transaction(async (repository) => {
+      const status = await repository.systemStatus();
+      if (!status.reconciled_at) return false;
       await repository.db.query(
         `UPDATE acknowledgement_system_state SET mode = 'open', reason = $1,
          reopened_at = now(), updated_at = now() WHERE singleton = true`,
@@ -197,6 +214,7 @@ export class AcknowledgementRepository {
         "INSERT INTO acknowledgement_system_events (event, operator_id, reason) VALUES ('reopened', $1, $2)",
         [operatorId, decision],
       );
+      return true;
     });
   }
 }

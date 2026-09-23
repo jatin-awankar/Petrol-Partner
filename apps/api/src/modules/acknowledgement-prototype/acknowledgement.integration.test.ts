@@ -35,7 +35,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   await writeFile(receiptPath, "", { mode: 0o600 });
   await verificationPool.query("TRUNCATE acknowledgement_operations, synthetic_actions, acknowledgement_notifications, acknowledgement_audit CASCADE");
-  await verificationPool.query("UPDATE acknowledgement_system_state SET mode = 'open', reason = NULL, restricted_since = NULL, reopened_at = NULL WHERE singleton = true");
+  await verificationPool.query("UPDATE acknowledgement_system_state SET mode = 'open', reason = NULL, restricted_since = NULL, reconciled_at = NULL, reopened_at = NULL WHERE singleton = true");
 });
 
 afterAll(async () => {
@@ -205,9 +205,9 @@ describe("acknowledgement recovery prototype HTTP seam", () => {
     );
     await verificationPool.query("DELETE FROM synthetic_actions WHERE operation_id = $1", [created.body.operation.id]);
     const reconciled = await request(app).post("/prototype/recovery/reconcile")
-      .set("Recovery-Operator-Token", "prototype-operator-token").send();
+      .set("Recovery-Operator-Token", "prototype-operator-token").set("Recovery-Operator-Id", "operator-17").send();
     const repeated = await request(app).post("/prototype/recovery/reconcile")
-      .set("Recovery-Operator-Token", "prototype-operator-token").send();
+      .set("Recovery-Operator-Token", "prototype-operator-token").set("Recovery-Operator-Id", "operator-17").send();
     const restored = await verificationPool.query(
       "SELECT resulting_value, external_effect_key, created_at FROM synthetic_actions WHERE operation_id = $1",
       [created.body.operation.id],
@@ -220,6 +220,8 @@ describe("acknowledgement recovery prototype HTTP seam", () => {
       external_effect_key: created.body.operation.id,
       created_at: original.rows[0].created_at,
     }]);
+    const notification = await verificationPool.query("SELECT status FROM acknowledgement_notifications WHERE operation_id = $1", [created.body.operation.id]);
+    expect(notification.rows).toEqual([{ status: "ready" }]);
     const reopened = await request(app).post("/prototype/recovery/reopen")
       .set("Recovery-Operator-Token", "prototype-operator-token")
       .set("Recovery-Operator-Id", "operator-17")
@@ -235,10 +237,27 @@ describe("acknowledgement recovery prototype HTTP seam", () => {
     const app = createPrototypeApp();
     await writeFile(receiptPath, "not-json\n");
     const response = await request(app).post("/prototype/recovery/reconcile")
-      .set("Recovery-Operator-Token", "prototype-operator-token").send();
+      .set("Recovery-Operator-Token", "prototype-operator-token").set("Recovery-Operator-Id", "operator-17").send();
     const status = await request(app).get("/prototype/system-status");
     expect(response.status).toBe(500);
     expect(status.body).toMatchObject({ mode: "restricted", reason: "restore_reconciliation_required" });
+    const reopen = await request(app).post("/prototype/recovery/reopen")
+      .set("Recovery-Operator-Token", "prototype-operator-token").set("Recovery-Operator-Id", "operator-17")
+      .send({ decision: "unsafe bypass" });
+    expect(reopen.body.error.code).toBe("RECOVERY_INCOMPLETE");
+  });
+
+  it("rejects a stale partial business row instead of publishing it", async () => {
+    const app = createPrototypeApp();
+    const created = await request(app).post("/prototype/actions")
+      .set("Idempotency-Key", "stale-partial").set("Idempotency-Scope", "restore-scope")
+      .send({ subject: "stale-counter", delta: 4 });
+    await verificationPool.query("UPDATE synthetic_actions SET resulting_value = 999 WHERE operation_id = $1", [created.body.operation.id]);
+    await verificationPool.query("UPDATE acknowledgement_operations SET state = 'intent', result = NULL WHERE id = $1", [created.body.operation.id]);
+    const response = await request(app).post("/prototype/recovery/reconcile")
+      .set("Recovery-Operator-Token", "prototype-operator-token").set("Recovery-Operator-Id", "operator-17").send();
+    expect(response.status).toBe(409);
+    expect(response.body.error.code).toBe("RECOVERY_CONFLICT");
   });
 
   it("serializes the same operation across two API instances", async () => {
