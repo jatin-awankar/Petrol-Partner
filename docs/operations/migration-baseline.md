@@ -1,8 +1,8 @@
 # Existing-data migration baseline
 
-Status: **candidate repository baseline; deployed baseline unresolved** (investigated 2026-09-23).
+Status: **clean baseline established in a separate Supabase project; application cutover pending** (reviewed 2026-09-23).
 
-No live database was modified during this investigation. The locally configured Supabase direct database host, `db.qqmofdocznefwpbqweud.supabase.co`, failed DNS resolution during an authorized read-only connection attempt. Access needs to be restored with a current read-only connection string (direct or pooler) for the actual deployed database. Until that inventory is captured and reviewed, nobody may adopt a migration baseline or run these migrations against a non-empty shared database.
+The original deployed database was inventoried through Supabase's Session pooler after its direct host could not be resolved locally. It contains test data and has no migration checksum ledger. The operator confirmed that all of its records are test data and may be retired. Rather than stamp unknown history onto that non-empty database, the operator created a separate empty Supabase project and installed the current API migrations there. The Render application still points at the original test database; no database switch or destructive action has occurred.
 
 ## Histories found in the repository
 
@@ -13,6 +13,14 @@ Three independent schema histories exist:
 3. `apps/api/src/db/migrations/0001_init.sql` through `0003_chat.sql` are the migrations used by the current Express API. They were introduced from March through April 2026. This is the **candidate forward history for clean installations only**. It preserves platform-payment history in separate orders, attempts, webhook events, booking payment state, settlements, and events, but it is not declared authoritative for an existing deployment.
 
 The histories are structurally incompatible. In particular, the identity primary key, column names, money units, statuses, and payment tables differ. `CREATE TABLE IF NOT EXISTS` cannot reconcile those differences safely. The migration runner therefore refuses a non-empty database that has no checksum ledger instead of guessing which history was applied.
+
+## Deployed inventory and baseline decision
+
+A restricted aggregate inventory of the original Supabase database on 2026-09-23 found PostgreSQL 17.6, 29 public application tables, 7 application users with profiles, 3 ride offers, 4 ride requests, 6 bookings, and 4 settlement rows. It found no missing or duplicate application emails, no foreign-key orphans, and no `schema_migrations` ledger. All 7 `users.google_id` fields are empty. The operator checked Supabase Authentication separately: `auth.users` has zero rows. The operator confirmed all 7 accounts and related records are test data, with no real participant or financial history to migrate. These findings and the private inventory are retained locally under `.scratch/pilot-readiness/`; no identifiers or credentials are in this document.
+
+**Decision:** Use a new, separate Supabase project as the clean forward baseline for future pilot work. Do not backfill, stamp, or apply the current migration runner to the original non-empty test database. Retain the original project until a separately approved application cutover is verified; retiring it later is a distinct decision. The current API migration history (`0001_init.sql` through `0003_chat.sql`) is authoritative for the new project only. This replaces the representative upgrade of the old dataset because the operator explicitly chose not to migrate its test rows. It does not waive backup, recovery, or identity-continuity requirements once real pilot accounts and trips exist.
+
+The new project was inventoried empty before installation (zero public tables). The migration runner then applied the three files in order, and `--check` verified their checksums. A post-install read-only inventory found 30 public tables, including `schema_migrations` with the same three checksums, zero application users and bookings, and no foreign-key orphans. The only nonempty application table is `pricing_rate_cards` with three seed rows. The new project is not yet serving traffic.
 
 ## Operator commands
 
@@ -43,6 +51,6 @@ Before touching existing data, an authorized maintainer must:
 6. Run the sanitized representative rehearsal, then staging. Compare pre/post row counts, normalized-email exceptions, primary keys, every foreign-key orphan count, active ride/request/booking states, eligibility statuses, settlement totals, and every historical payment table total.
 7. Deploy with one migration runner. If an expansion fails, roll back its transaction and remain on the old application. After a committed backfill or contract step, roll forward with a corrective migration; never edit an applied file or restore over newer accepted writes. A database restore requires reconciliation before writes reopen.
 
-### Unresolved identity exceptions
+### Identity-mapping result
 
-The deployed count and mapping are unknown. Repository evidence shows at least three possible provider representations (`user_profiles.clerk_id` in comments/policies, `users.google_id` in the current schema, and email/password-only users). The deployed inventory and provider export must establish a one-to-one mapping to stable application-user IDs and explicitly list missing, duplicate, or conflicting mappings before authentication migration work can proceed.
+The original database has 7 custom application users, all with profiles and no `google_id`; Supabase Auth has zero users. The operator classified all 7 as test accounts and chose not to transfer them to the new baseline. Ticket 08 must create a controlled account-claim path for any future real application users and must not assume that a Supabase Auth count matches `public.users`. If the original project's data classification changes, this baseline decision must be reopened before cutover.
