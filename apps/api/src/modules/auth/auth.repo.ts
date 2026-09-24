@@ -160,3 +160,117 @@ export async function revokeRefreshToken(tokenId: string, client: Queryable) {
     [tokenId],
   );
 }
+
+export interface AuthIdentityRecord {
+  provider: string;
+  providerSubject: string;
+  userId: string;
+  providerEmail: string;
+  disabledAt: string | Date | null;
+}
+
+export async function findAuthIdentity(provider: string, providerSubject: string, client?: Queryable) {
+  const result = await getDb(client).query<AuthIdentityRecord>(
+    `SELECT provider, provider_subject AS "providerSubject", user_id AS "userId",
+            provider_email AS "providerEmail", disabled_at AS "disabledAt"
+       FROM auth_identities
+      WHERE provider = $1 AND provider_subject = $2`,
+    [provider, providerSubject],
+  );
+  return result.rows[0] ?? null;
+}
+
+export async function lockUsersByNormalizedEmail(email: string, client: PoolClient) {
+  const result = await client.query<{ id: string }>(
+    `SELECT id FROM users WHERE lower(btrim(email)) = lower(btrim($1)) FOR UPDATE`,
+    [email],
+  );
+  return result.rows.map((row) => row.id);
+}
+
+export async function createManagedUser(input: { email: string; fullName: string; college?: string }, client: PoolClient) {
+  const created = await client.query<{ id: string }>(
+    `INSERT INTO users (email, password_hash, email_verified_at)
+     VALUES ($1, NULL, now()) RETURNING id`,
+    [input.email],
+  );
+  const userId = created.rows[0].id;
+  await client.query(
+    `INSERT INTO user_profiles (user_id, full_name, college)
+     VALUES ($1, $2, $3)`,
+    [userId, input.fullName, input.college ?? null],
+  );
+  return userId;
+}
+
+export async function verifyClaimedUserAndRevokeLegacySessions(userId: string, client: PoolClient) {
+  await client.query(`UPDATE users SET email_verified_at = now(), password_hash = NULL WHERE id = $1`, [userId]);
+  await client.query(`UPDATE refresh_tokens SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL`, [userId]);
+}
+
+export async function insertManagedIdentity(input: {
+  provider: string;
+  providerSubject: string;
+  userId: string;
+  email: string;
+  eventType: "registered" | "claimed";
+}, client: PoolClient) {
+  await client.query(
+    `INSERT INTO auth_identities (provider, provider_subject, user_id, provider_email)
+     VALUES ($1, $2, $3, $4)`,
+    [input.provider, input.providerSubject, input.userId, input.email],
+  );
+  await client.query(
+    `INSERT INTO auth_identity_events (user_id, provider, provider_subject, event_type)
+     VALUES ($1, $2, $3, $4)`,
+    [input.userId, input.provider, input.providerSubject, input.eventType],
+  );
+}
+
+export async function touchAuthIdentity(provider: string, providerSubject: string, client?: Queryable) {
+  await getDb(client).query(
+    `UPDATE auth_identities SET last_validated_at = now() WHERE provider = $1 AND provider_subject = $2 AND disabled_at IS NULL`,
+    [provider, providerSubject],
+  );
+}
+
+export async function recordClaimReview(input: {
+  provider: string;
+  providerSubject: string;
+  providerEmail: string | null;
+  reason: "missing_email" | "email_not_verified" | "email_collision" | "identity_conflict";
+}) {
+  await pool.query(
+    `INSERT INTO auth_claim_reviews (provider, provider_subject, provider_email, reason)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (provider, provider_subject, status) DO NOTHING`,
+    [input.provider, input.providerSubject, input.providerEmail, input.reason],
+  );
+}
+
+export async function isManagedCutoverAuthorized() {
+  const result = await pool.query<{ authorized: boolean }>(
+    `SELECT active_provider = 'supabase'
+            AND legacy_login_enabled = false
+            AND authorized_at IS NOT NULL AS authorized
+       FROM auth_cutover_state WHERE singleton = true`,
+  );
+  return result.rows[0]?.authorized === true;
+}
+
+export async function isLegacyAuthAuthorized() {
+  const result = await pool.query<{ authorized: boolean }>(
+    `SELECT active_provider = 'legacy'
+            AND legacy_login_enabled = true AS authorized
+       FROM auth_cutover_state WHERE singleton = true`,
+  );
+  return result.rows[0]?.authorized === true;
+}
+
+export async function isOperatorAllowlisted(userId: string) {
+  const result = await pool.query<{ allowed: boolean }>(
+    `SELECT active AS allowed FROM operator_allowlist WHERE user_id = $1`,
+    [userId],
+  );
+  return result.rows[0]?.allowed === true;
+}

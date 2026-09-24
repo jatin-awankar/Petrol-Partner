@@ -21,6 +21,7 @@ export default function RegisterPage() {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [verificationSent, setVerificationSent] = useState(false);
   const router = useRouter();
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -39,15 +40,19 @@ export default function RegisterPage() {
     setError(null);
 
     try {
-      await register({
+      const user = await register({
         email: formData.email,
         password: formData.password,
         fullName: formData.full_name,
         college: formData.college_name || undefined,
       });
 
-      router.push("/dashboard");
-      router.refresh();
+      if (user) {
+        router.push("/dashboard");
+        router.refresh();
+      } else {
+        setVerificationSent(true);
+      }
     } catch (err: unknown) {
       setError(
         err instanceof ApiError || err instanceof Error
@@ -76,7 +81,13 @@ export default function RegisterPage() {
         </p>
       }
     >
-      <form
+      {verificationSent ? (
+        <div className="mx-auto w-full max-w-md space-y-4">
+          <h1 className="text-2xl font-semibold">Check your email</h1>
+          <p className="text-sm text-muted-foreground">Follow the verification link before signing in. Registration does not grant ride or operator eligibility.</p>
+          <Link className="font-medium text-primary hover:underline" href="/login">Return to sign in</Link>
+        </div>
+      ) : <form
         onSubmit={handleSubmit}
         className="mx-auto w-full max-w-md space-y-4"
       >
@@ -160,7 +171,7 @@ export default function RegisterPage() {
         >
           {loading ? "Creating account..." : "Create Account"}
         </Button>
-      </form>
+      </form>}
     </AuthSplitLayout>
   );
 }

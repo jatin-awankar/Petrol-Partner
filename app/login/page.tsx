@@ -24,6 +24,7 @@ export default function LoginPage() {
       title="Welcome back to your campus ride network"
       description="Sign in to manage ride offers, booking requests, and post-trip settlements with one secure account."
       footer={
+        <div className="space-y-2">
         <p>
           New here?{" "}
           <Link
@@ -33,6 +34,8 @@ export default function LoginPage() {
             Create your account
           </Link>
         </p>
+        <p><Link href="/recover" className="font-medium text-primary hover:underline">Forgot your password?</Link></p>
+        </div>
       }
     >
       <div className="mx-auto w-full max-w-md">

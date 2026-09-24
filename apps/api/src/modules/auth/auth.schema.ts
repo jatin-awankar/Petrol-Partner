@@ -19,5 +19,9 @@ export const loginSchema = z.object({
   password: z.string().min(8).max(72),
 });
 
+export const recoveryRequestSchema = z.object({ email: emailSchema });
+export const passwordUpdateSchema = z.object({ password: z.string().min(8).max(72) });
+export const providerSessionSchema = z.object({ code: z.string().min(1).max(2048) });
+
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;

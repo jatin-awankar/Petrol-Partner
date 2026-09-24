@@ -9,6 +9,8 @@ declare global {
         userId: string;
         email: string;
         role: string;
+        authProvider: "legacy" | "supabase";
+        assuranceLevel?: string | null;
       };
     }
   }

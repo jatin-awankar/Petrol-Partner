@@ -17,4 +17,7 @@ authRouter.post("/register", authRateLimit, asyncHandler(authController.register
 authRouter.post("/login", authRateLimit, asyncHandler(authController.login));
 authRouter.post("/refresh", authRateLimit, asyncHandler(authController.refreshSession));
 authRouter.post("/logout", asyncHandler(authController.logout));
+authRouter.post("/provider-session", authRateLimit, asyncHandler(authController.completeProviderSession));
+authRouter.post("/recovery", authRateLimit, asyncHandler(authController.requestRecovery));
+authRouter.post("/password", authRateLimit, asyncHandler(authController.updatePassword));
 authRouter.get("/me", requireAuth, asyncHandler(authController.me));

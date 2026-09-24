@@ -139,14 +139,31 @@ export async function registerWithBackend(input: {
   phone?: string;
   college?: string;
 }) {
-  const response = await apiRequest<{ user: any }>("/v1/auth/register", {
+  const response = await apiRequest<{ user?: any; pendingVerification?: boolean }>("/v1/auth/register", {
     method: "POST",
     body: JSON.stringify(input),
   });
 
   return {
-    user: normalizeUserProfile(response.user),
+    user: response.user ? normalizeUserProfile(response.user) : null,
+    pendingVerification: response.pendingVerification === true,
   };
+}
+
+export async function completeProviderSession(input: { code: string }) {
+  const response = await apiRequest<{ user: any }>("/v1/auth/provider-session", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return normalizeUserProfile(response.user);
+}
+
+export async function requestAccountRecovery(email: string) {
+  await apiRequest("/v1/auth/recovery", { method: "POST", body: JSON.stringify({ email }) });
+}
+
+export async function updateRecoveredPassword(password: string) {
+  await apiRequest("/v1/auth/password", { method: "POST", body: JSON.stringify({ password }) });
 }
 
 export async function logoutFromBackend() {

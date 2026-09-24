@@ -8,6 +8,7 @@ import { env } from "./config/env";
 import { logger } from "./config/logger";
 import { errorHandler } from "./middleware/error-handler";
 import { optionalAuth } from "./middleware/auth";
+import { browserMutationProtection } from "./middleware/browser-mutation-protection";
 import { notFoundHandler } from "./middleware/not-found";
 import { requestContext } from "./middleware/request-context";
 import { apiRouter } from "./modules";
@@ -46,6 +47,7 @@ export function createApp() {
   app.use(express.urlencoded({ extended: true }));
   app.use(cookieParser());
   app.use(requestContext);
+  app.use(browserMutationProtection);
   app.use(optionalAuth);
 
   app.get("/", (_req, res) => {
