@@ -545,6 +545,7 @@ describe("protected operator pause HTTP/PostgreSQL", () => {
     expect((await agent.get(`/v1/operator/operations/${id}`)).body.state).toBe("committed");
     const publicStatus = await request(createApp()).get("/v1/operator/pilot-status");
     expect(publicStatus.body.recovery.mode).toBe("restricted");
+    expect(publicStatus.body.recovery.cause).toBeUndefined();
     expect(publicStatus.body.capabilities.every((item: { paused: boolean }) => item.paused)).toBe(true);
     await chmod(receiptDirectory, 0o700);
     await rm(receiptDirectory, { recursive: true, force: true });

@@ -20,7 +20,7 @@ export default function OperatorPage() {
   const refresh = useCallback(async () => {
     const operations = await apiRequest<{ operations: Pending[] }>("/v1/operator/pending");
     setAuthorized(true);
-    const next = await apiRequest<PilotStatus>("/v1/operator/pilot-status");
+    const next = await apiRequest<PilotStatus>("/v1/operator/status");
     setStatus(next);
     setPending(operations.operations);
   }, []);

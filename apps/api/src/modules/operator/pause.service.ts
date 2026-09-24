@@ -145,6 +145,11 @@ export class PauseService {
     return { recovery: state.rows[0] ?? { mode: "restricted", cause: "state_unavailable", started_at: null, reconciled_at: null }, capabilities: capabilities.rows.length === 4 ? capabilities.rows : ["offers", "requests", "acceptance", "booking"].map((capability) => ({ capability, paused: true, pending: true })) };
   }
 
+  async publicStatus() {
+    const status = await this.status();
+    return { recovery: { mode: status.recovery.mode }, capabilities: status.capabilities };
+  }
+
   async operation(operatorId: string, id: string) {
     try { await this.verifyEvidence(); } catch { /* An uncertain operation remains pending. */ }
     const row = (await operatorQuery<Operation>(this.database, "pauseOperationForOwner", [id, operatorId])).rows[0];
