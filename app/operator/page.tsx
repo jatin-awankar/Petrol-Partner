@@ -7,7 +7,7 @@ import { useCurrentUser } from "@/hooks/auth/useCurrentUser";
 
 type Capability = "offers" | "requests" | "acceptance" | "booking";
 type PilotStatus = { recovery: { mode: string; cause: string | null; started_at: string | null; reconciled_at: string | null }; capabilities: { capability: Capability; paused: boolean; pending: boolean }[] };
-type Pending = { id: string; capability: Capability; paused: boolean; state: string };
+type Pending = { id: string; capability: Capability; paused: boolean; reason: string; state: string };
 
 export default function OperatorPage() {
   const { user, loading } = useCurrentUser();
@@ -61,6 +61,22 @@ export default function OperatorPage() {
     } catch (error) { setMessage(error instanceof Error ? error.message : "Recovery action failed"); }
     finally { setBusy(false); }
   }
+  async function resumePending(operationId: string) {
+    if (reason.trim().length < 8) { setMessage("Enter a reason for assuming the pending decision."); return; }
+    setBusy(true);
+    try {
+      await apiRequest(`/v1/operator/operations/${operationId}/resume`, { method: "POST", body: JSON.stringify({ reason: reason.trim() }) });
+      setMessage(`Pending decision ${operationId} completed. Reconcile before reopening activity.`);
+    } catch (error) {
+      await checkPendingStatus(operationId, error instanceof Error ? error.message : "Outcome uncertain");
+    } finally { await refresh().catch(() => undefined); setBusy(false); }
+  }
+  async function checkPendingStatus(operationId: string, context = "") {
+    try {
+      const result = await apiRequest<{ state: string }>(`/v1/operator/pending/${operationId}`);
+      setMessage(`${context ? `${context}. ` : ""}Decision ${operationId}: ${result.state}. Reconcile before reopening activity.`);
+    } catch (error) { setMessage(`Unable to check ${operationId}: ${error instanceof Error ? error.message : "unknown error"}`); }
+  }
   if (loading) return <main className="p-8">Checking operator access…</main>;
   if (!user) return <main className="p-8">Sign in to access the operator console. <Link href="/login">Sign in</Link></main>;
   if (authorized === false) return <main className="p-8">Operator access requires current allowlist membership and MFA. {message}</main>;
@@ -76,6 +92,6 @@ export default function OperatorPage() {
     </section>
     <label className="block">Decision reason<input className="mt-1 block w-full rounded border p-2" value={reason} onChange={(event) => setReason(event.target.value)} maxLength={500} /></label>
     <section className="space-y-3"><h2 className="font-semibold">Pause controls</h2>{status?.capabilities.map((item) => <div key={item.capability} className="flex items-center justify-between rounded border p-3"><span>{item.capability}: {item.paused ? "paused" : "open"}{item.pending ? " (pending)" : ""}</span><div className="flex gap-3"><button disabled={busy || reason.trim().length < 8} onClick={() => decide(item.capability, true)}>Pause</button><button disabled={busy || reason.trim().length < 8} onClick={() => decide(item.capability, false)}>Resume</button></div></div>)}</section>
-    <section><h2 className="font-semibold">Uncertain decisions</h2>{pending.length ? pending.map((item) => <p key={item.id}>{item.id} · {item.capability} · {item.state}</p>) : <p>None recorded.</p>}</section>
+    <section><h2 className="font-semibold">Uncertain decisions</h2>{pending.length ? pending.map((item) => <div key={item.id} className="rounded border p-3"><p>{item.id} · {item.capability} · {item.paused ? "pause" : "resume"} · {item.state}</p><p>Original reason: {item.reason}</p><div className="flex gap-3"><button disabled={busy || reason.trim().length < 8} onClick={() => resumePending(item.id)}>Complete pending decision</button><button disabled={busy} onClick={() => checkPendingStatus(item.id)}>Check status</button></div></div>) : <p>None recorded.</p>}</section>
   </main>;
 }

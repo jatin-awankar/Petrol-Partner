@@ -11,10 +11,10 @@ import { assertCurrentOperator } from "./operator.authorization";
 export const capabilities = ["offers", "requests", "acceptance", "booking"] as const;
 export type Capability = typeof capabilities[number];
 export type PauseDecision = { capability: Capability; paused: boolean; reason: string };
-type Operation = { id: string; operator_id: string; idempotency_key: string; payload_digest: string; capability: Capability; paused: boolean; reason: string; state: "intent" | "committed" | "acknowledged" | "recovered"; committed_at: Date | null };
+type Operation = { id: string; operator_id: string; idempotency_key: string; payload_digest: string; capability: Capability; paused: boolean; reason: string; state: "intent" | "committed" | "acknowledged" | "recovered"; committed_at: Date | null; resumed_by: string | null; resume_reason: string | null; resumed_from: "intent" | "committed" | null };
 type ReopenOperation = { id: string; operator_id: string; idempotency_key: string; reason: string; reconciliation_digest: string; state: "committed" | "acknowledged" | "recovered"; committed_at: Date };
 type ReopenReceipt = { operationId: string; operatorId: string; idempotencyKey: string; reason: string; reconciliationDigest: string; committedAt: string };
-type Receipt = { operationId: string; operatorId: string; idempotencyKey: string; payloadDigest: string; capability: Capability; paused: boolean; reason: string; committedAt: string };
+type Receipt = { operationId: string; operatorId: string; idempotencyKey: string; payloadDigest: string; capability: Capability; paused: boolean; reason: string; committedAt: string; resumedBy?: string; resumeReason?: string; resumedFrom?: "intent" | "committed" };
 
 function digest(decision: PauseDecision) {
   return createHash("sha256").update(JSON.stringify(decision)).digest("hex");
@@ -35,8 +35,9 @@ async function transaction<T>(database: Pool, work: (client: PoolClient) => Prom
   catch (error) { await operatorQuery(client, "rollback"); throw error; }
   finally { client.release(); }
 }
-async function restrict(database: Pool, cause: string) {
+async function restrict(database: Pool, cause: string, operatorId?: string) {
   await transaction(database, async (client) => {
+    if (operatorId) await assertCurrentOperator(client, operatorId);
     const status = await operatorQuery(client, "recoveryModeForUpdate");
     if (status.rows[0]?.mode === "restricted") {
       await operatorQuery(client, "preserveRestrictionCause", [cause]);
@@ -73,6 +74,7 @@ export class PauseService {
         return !receipt || receipt.operatorId !== row.operator_id || receipt.idempotencyKey !== row.idempotency_key ||
           receipt.payloadDigest !== row.payload_digest || receipt.capability !== row.capability ||
           receipt.paused !== row.paused || receipt.reason !== row.reason ||
+          (receipt.resumedBy ?? null) !== row.resumed_by || (receipt.resumeReason ?? null) !== row.resume_reason || (receipt.resumedFrom ?? null) !== row.resumed_from ||
           receipt.payloadDigest !== digest({ capability: receipt.capability, paused: receipt.paused, reason: receipt.reason });
       })) throw new AppError(503, "Acknowledged recovery evidence is missing or inconsistent", "RECOVERY_MISSING");
     } catch (error) {
@@ -111,23 +113,60 @@ export class PauseService {
         if (current.state !== "intent") return current;
         await operatorQuery(client, "setCapabilityPause", [decision.capability, decision.paused, operation.id]);
         const row = (await operatorQuery<Operation>(client, "commitPauseOperation", [operation.id])).rows[0];
-        await operatorQuery(client, "insertPauseAudit", [operation.id, operatorId, decision.capability, decision.paused, decision.reason, row.committed_at]);
+        await operatorQuery(client, "insertPauseAudit", [operation.id, operatorId, decision.capability, decision.paused, decision.reason, row.committed_at, operatorId]);
         await operatorQuery(client, "insertPauseFollowup", [operation.id]);
         return row;
       });
     }
-    const receipt: Receipt = { operationId: committed.id, operatorId: committed.operator_id, idempotencyKey: committed.idempotency_key, payloadDigest: committed.payload_digest, capability: committed.capability, paused: committed.paused, reason: committed.reason, committedAt: committed.committed_at!.toISOString() };
-    try { await appendReceipt(receipt); }
+    return this.publish(committed);
+  }
+
+  private async publish(committed: Operation) {
+    let published: Operation;
+    try {
+      published = await transaction(this.database, async (client) => {
+        const row = (await operatorQuery<Operation>(client, "pauseOperationForUpdate", [committed.id])).rows[0];
+        if (row.state === "acknowledged" || row.state === "recovered") return row;
+        if (row.state !== "committed" || !row.committed_at) throw new AppError(409, "Decision has not committed", "OPERATION_PENDING");
+        const receipt: Receipt = { operationId: row.id, operatorId: row.operator_id, idempotencyKey: row.idempotency_key, payloadDigest: row.payload_digest, capability: row.capability, paused: row.paused, reason: row.reason, committedAt: row.committed_at.toISOString() };
+        if (row.resumed_by) receipt.resumedBy = row.resumed_by;
+        if (row.resume_reason) receipt.resumeReason = row.resume_reason;
+        if (row.resumed_from) receipt.resumedFrom = row.resumed_from;
+        await appendReceipt(receipt);
+        return (await operatorQuery<Operation>(client, "acknowledgePauseOperation", [row.id])).rows[0];
+      });
+    }
     catch (error) {
       await restrict(this.database, `evidence_unavailable:${error instanceof Error ? error.message : "unknown"}`);
       throw new AppError(503, "Decision committed; recovery evidence is pending", "OPERATION_PENDING", { operationId: committed.id });
     }
-    const published = await transaction(this.database, async (client) => {
-      const row = (await operatorQuery<Operation>(client, "pauseOperationForUpdate", [committed.id])).rows[0];
-      if (row.state === "acknowledged") return row;
-      return (await operatorQuery<Operation>(client, "acknowledgePauseOperation", [committed.id])).rows[0];
-    });
     return publicOperation(published);
+  }
+
+  async resumePending(operatorId: string, id: string, reason: string) {
+    await this.verifyEvidence();
+    receiptConfig();
+    const existingReceipt = (await listReceipts()).find((item) => item.operationId === id);
+    if (existingReceipt) throw new AppError(409, "Reconcile existing recovery evidence before resuming", "RECOVERY_CONFLICT");
+    const committed = await transaction(this.database, async (client) => {
+      await operatorQuery(client, "recoveryModeForUpdate");
+      await assertCurrentOperator(client, operatorId);
+      const row = (await operatorQuery<Operation>(client, "pauseOperationForUpdate", [id])).rows[0];
+      if (!row || (row.state !== "intent" && row.state !== "committed")) throw new AppError(409, "Only a pending decision can be completed", "OPERATION_NOT_PENDING");
+      let resumed: Operation;
+      if (row.state === "intent") {
+        await operatorQuery(client, "setCapabilityPause", [row.capability, row.paused, id]);
+        resumed = (await operatorQuery<Operation>(client, "resumePauseOperation", [id, operatorId, reason])).rows[0];
+        await operatorQuery(client, "insertPauseAudit", [id, row.operator_id, row.capability, row.paused, row.reason, resumed.committed_at, operatorId]);
+        await operatorQuery(client, "insertPauseFollowup", [id]);
+      } else {
+        if (row.resumed_by && (row.resumed_by !== operatorId || row.resume_reason !== reason)) throw new AppError(409, "Pending decision has another completion review", "RECOVERY_CONFLICT");
+        resumed = (await operatorQuery<Operation>(client, "handoffCommittedPause", [id, operatorId, reason])).rows[0];
+      }
+      await operatorQuery(client, "recordDecisionResume", [id, operatorId, reason]);
+      return resumed;
+    });
+    return this.publish(committed);
   }
 
   async assertAvailable(capability: Capability) {
@@ -154,6 +193,17 @@ export class PauseService {
     try { await this.verifyEvidence(); } catch { /* An uncertain operation remains pending. */ }
     const row = (await operatorQuery<Operation>(this.database, "pauseOperationForOwner", [id, operatorId])).rows[0];
     if (!row) throw new AppError(404, "Operation not found", "OPERATION_NOT_FOUND");
+    return this.statusForOperation(row);
+  }
+
+  async operatorOperation(id: string) {
+    try { await this.verifyEvidence(); } catch { /* Keep an uncertain outcome pending. */ }
+    const row = (await operatorQuery<Operation>(this.database, "pauseOperationById", [id])).rows[0];
+    if (!row) throw new AppError(404, "Operation not found", "OPERATION_NOT_FOUND");
+    return this.statusForOperation(row);
+  }
+
+  private async statusForOperation(row: Operation) {
     const recovery = await operatorQuery<{ mode: string }>(this.database, "recoveryMode");
     if (recovery.rows[0]?.mode === "restricted" && row.state === "acknowledged") return { ...publicOperation(row), state: "pending_unknown" };
     return publicOperation(row);
@@ -170,21 +220,23 @@ export class PauseService {
   }
 
   async reconcile(operatorId: string) {
-    await restrict(this.database, "manual_reconciliation");
+    await restrict(this.database, "manual_reconciliation", operatorId);
     let receipts: Receipt[];
     try { receipts = await listReceipts(); }
     catch (error) { await restrict(this.database, "evidence_unavailable"); throw error; }
     for (const receipt of receipts) {
       if (receipt.payloadDigest !== digest({ capability: receipt.capability, paused: receipt.paused, reason: receipt.reason })) throw new AppError(409, "Recovery payload is inconsistent", "RECOVERY_CONFLICT");
       await transaction(this.database, async (client) => {
+        await assertCurrentOperator(client, operatorId);
         const row = (await operatorQuery<Operation>(client, "pauseOperationForUpdate", [receipt.operationId])).rows[0];
-        if (row && (row.payload_digest !== receipt.payloadDigest || row.operator_id !== receipt.operatorId || row.idempotency_key !== receipt.idempotencyKey || row.capability !== receipt.capability || row.paused !== receipt.paused || row.reason !== receipt.reason)) throw new AppError(409, "Recovery conflict", "RECOVERY_CONFLICT");
+        if (row && (row.payload_digest !== receipt.payloadDigest || row.operator_id !== receipt.operatorId || row.idempotency_key !== receipt.idempotencyKey || row.capability !== receipt.capability || row.paused !== receipt.paused || row.reason !== receipt.reason || (row.state !== "intent" && (row.resumed_by !== (receipt.resumedBy ?? null) || row.resume_reason !== (receipt.resumeReason ?? null) || row.resumed_from !== (receipt.resumedFrom ?? null))))) throw new AppError(409, "Recovery conflict", "RECOVERY_CONFLICT");
         if (!row) {
-          await operatorQuery(client, "restorePauseOperation", [receipt.operationId, receipt.operatorId, receipt.idempotencyKey, receipt.payloadDigest, receipt.capability, receipt.paused, receipt.reason, receipt.committedAt]);
+          await operatorQuery(client, "restorePauseOperation", [receipt.operationId, receipt.operatorId, receipt.idempotencyKey, receipt.payloadDigest, receipt.capability, receipt.paused, receipt.reason, receipt.committedAt, receipt.resumedBy ?? null, receipt.resumeReason ?? null, receipt.resumedFrom ?? null]);
         } else if (row.state !== "acknowledged" && row.state !== "recovered") {
-          await operatorQuery(client, "markPauseRecovered", [receipt.operationId, receipt.committedAt]);
+          await operatorQuery(client, "markPauseRecovered", [receipt.operationId, receipt.committedAt, receipt.resumedBy ?? null, receipt.resumeReason ?? null, receipt.resumedFrom ?? null]);
         }
-        await operatorQuery(client, "restorePauseAudit", [receipt.operationId, receipt.operatorId, receipt.capability, receipt.paused, receipt.reason, receipt.committedAt]);
+        await operatorQuery(client, "restorePauseAudit", [receipt.operationId, receipt.operatorId, receipt.capability, receipt.paused, receipt.reason, receipt.committedAt, receipt.resumedFrom === "intent" ? receipt.resumedBy : receipt.operatorId]);
+        if (receipt.resumedBy && receipt.resumeReason) await operatorQuery(client, "recordDecisionResume", [receipt.operationId, receipt.resumedBy, receipt.resumeReason]);
         await operatorQuery(client, "restorePauseFollowup", [receipt.operationId]);
         const current = await operatorQuery<{ updated_at: Date }>(client, "capabilityStateForUpdate", [receipt.capability]);
         if (!current.rows[0] || current.rows[0].updated_at <= new Date(receipt.committedAt)) {
@@ -194,6 +246,7 @@ export class PauseService {
     }
     for (const receipt of await reopenReceipts().list()) {
       await transaction(this.database, async (client) => {
+        await assertCurrentOperator(client, operatorId);
         const row = (await operatorQuery<ReopenOperation>(client, "reopenOperationForUpdate", [receipt.operationId])).rows[0];
         if (row && (row.operator_id !== receipt.operatorId || row.idempotency_key !== receipt.idempotencyKey || row.reason !== receipt.reason || row.reconciliation_digest !== receipt.reconciliationDigest)) throw new AppError(409, "Reopening recovery conflict", "RECOVERY_CONFLICT");
         if (!row) await operatorQuery(client, "restoreReopenOperation", [receipt.operationId, receipt.operatorId, receipt.idempotencyKey, receipt.reason, receipt.reconciliationDigest, receipt.committedAt]);
@@ -201,8 +254,11 @@ export class PauseService {
         await operatorQuery(client, "restoreReopenAudit", [receipt.operationId, receipt.operatorId, receipt.reason, receipt.committedAt]);
       });
     }
-    await operatorQuery(this.database, "markRecoveryReconciled");
-    await operatorQuery(this.database, "recordReconciliation", [operatorId]);
+    await transaction(this.database, async (client) => {
+      await assertCurrentOperator(client, operatorId);
+      await operatorQuery(client, "markRecoveryReconciled");
+      await operatorQuery(client, "recordReconciliation", [operatorId]);
+    });
     return { receipts: receipts.length, pending: await this.pending() };
   }
 

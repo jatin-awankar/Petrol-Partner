@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { chmod, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
@@ -11,7 +12,7 @@ import { pool } from "../db/pool";
 import { setAuthProviderForTests, setManagedAuthEnabledForTests, type AuthProvider, type ProviderIdentity } from "../modules/auth/auth-provider";
 
 const verificationPool = new Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
-const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql", "0006_operator_allowlist.sql", "0007_operator_pause.sql"];
+const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql", "0006_operator_allowlist.sql", "0007_operator_pause.sql", "0008_operator_intent_handoff.sql"];
 
 function fakeProvider(identity: ProviderIdentity): AuthProvider {
   const session = { accessToken: "provider-access", refreshToken: "provider-refresh", expiresIn: 900, identity };
@@ -413,24 +414,26 @@ describe("protected operator pause HTTP/PostgreSQL", () => {
   let receiptDirectory: string;
   beforeEach(async () => {
     receiptDirectory = await mkdtemp(resolve(tmpdir(), "pilot-pause-"));
-    process.env.PILOT_RECEIPT_PATH = resolve(receiptDirectory, "receipts.jsonl");
+    process.env.PILOT_RECEIPT_PATH = resolve(receiptDirectory, "receipts");
     process.env.PILOT_RECEIPT_SECRET = "integration-test-independent-receipt-secret";
   });
   afterAll(async () => {
     delete process.env.PILOT_RECEIPT_PATH;
     delete process.env.PILOT_RECEIPT_SECRET;
   });
-  async function operator(assuranceLevel: "aal1" | "aal2" = "aal2", allowlisted = true) {
-    const admin = await verificationPool.query<{ id: string }>("INSERT INTO users (email, role, email_verified_at) VALUES ('pause-operator@example.test', 'admin', now()) RETURNING id");
+  async function operator(assuranceLevel: "aal1" | "aal2" = "aal2", allowlisted = true, label = "pause") {
+    const email = `${label}-operator@example.test`;
+    const subject = `${label}-subject`;
+    const admin = await verificationPool.query<{ id: string }>("INSERT INTO users (email, role, email_verified_at) VALUES ($1, 'admin', now()) RETURNING id", [email]);
     const userId = admin.rows[0].id;
     await verificationPool.query("INSERT INTO user_profiles (user_id, full_name) VALUES ($1, 'Pause Operator')", [userId]);
-    await verificationPool.query("INSERT INTO auth_identities (provider, provider_subject, user_id, provider_email) VALUES ('supabase', 'pause-subject', $1, 'pause-operator@example.test')", [userId]);
+    await verificationPool.query("INSERT INTO auth_identities (provider, provider_subject, user_id, provider_email) VALUES ('supabase', $1, $2, $3)", [subject, userId, email]);
     if (allowlisted) await verificationPool.query("INSERT INTO operator_allowlist (user_id, active, reason, reviewed_at) VALUES ($1, true, 'test', now())", [userId]);
     await verificationPool.query("UPDATE auth_cutover_state SET active_provider = 'supabase', legacy_login_enabled = false, authorized_at = now(), authorized_by = 'integration-test'");
     setManagedAuthEnabledForTests(true);
-    setAuthProviderForTests(fakeProvider({ subject: "pause-subject", email: "pause-operator@example.test", emailVerified: true, assuranceLevel, userMetadata: {} }));
+    setAuthProviderForTests(fakeProvider({ subject, email, emailVerified: true, assuranceLevel, userMetadata: {} }));
     const agent = request.agent(createApp());
-    const login = await agent.post("/v1/auth/login").send({ email: "pause-operator@example.test", password: "synthetic-password" });
+    const login = await agent.post("/v1/auth/login").send({ email, password: "synthetic-password" });
     expect(login.status, JSON.stringify(login.body)).toBe(200);
     const csrf = login.headers["set-cookie"]?.find((cookie: string) => cookie.startsWith("pp_csrf_token="))?.split(";", 1)[0]?.split("=", 2)[1];
     expect(csrf).toBeTruthy();
@@ -453,6 +456,90 @@ describe("protected operator pause HTTP/PostgreSQL", () => {
     expect(status.body.state).toBe("acknowledged");
     const byKey = await agent.get("/v1/operator/operations/by-key/pause-1");
     expect(byKey.body.id).toBe(first.body.id);
+    await rm(receiptDirectory, { recursive: true, force: true });
+  });
+  it("resumes a persisted intent through a fresh HTTP app", async () => {
+    const { userId, csrf, cookie } = await operator();
+    const body = { capability: "requests", paused: true, reason: "Restart boundary rehearsal" };
+    const payloadDigest = createHash("sha256").update(JSON.stringify(body)).digest("hex");
+    const intent = await verificationPool.query<{ id: string }>(
+      `INSERT INTO pilot_pause_operations (operator_id, idempotency_key, payload_digest, capability, paused, reason, state)
+       VALUES ($1, 'restart-intent', $2, $3, $4, $5, 'intent') RETURNING id`,
+      [userId, payloadDigest, body.capability, body.paused, body.reason],
+    );
+    expect((await request(createApp()).get("/v1/operator/pilot-status")).body.capabilities.every((item: { paused: boolean }) => item.paused)).toBe(true);
+    const resumed = await request(createApp()).post("/v1/operator/pause")
+      .set("Cookie", cookie).set("Origin", "http://localhost:3000").set("X-CSRF-Token", csrf)
+      .set("Idempotency-Key", "restart-intent").send(body);
+    expect(resumed.status).toBe(200);
+    expect(resumed.body).toMatchObject({ id: intent.rows[0].id, state: "acknowledged" });
+    const records = await verificationPool.query(
+      `SELECT (SELECT count(*)::int FROM pilot_pause_audit WHERE operation_id = $1) AS audit_count,
+              (SELECT count(*)::int FROM pilot_pause_followup WHERE operation_id = $1) AS followup_count`,
+      [intent.rows[0].id],
+    );
+    expect(records.rows[0]).toEqual({ audit_count: 1, followup_count: 1 });
+    await rm(receiptDirectory, { recursive: true, force: true });
+  });
+  it("lets a current MFA operator finish a stranded intent after the original operator is revoked", async () => {
+    const first = await operator();
+    const body = { capability: "offers", paused: true, reason: "Original operator recorded hazard" };
+    const intent = await verificationPool.query<{ id: string }>(
+      `INSERT INTO pilot_pause_operations (operator_id, idempotency_key, payload_digest, capability, paused, reason, state)
+       VALUES ($1, 'stranded-intent', $2, $3, $4, $5, 'intent') RETURNING id`,
+      [first.userId, createHash("sha256").update(JSON.stringify(body)).digest("hex"), body.capability, body.paused, body.reason],
+    );
+    await verificationPool.query("UPDATE operator_allowlist SET active = false WHERE user_id = $1", [first.userId]);
+    const revokedAttempt = await request(createApp()).post(`/v1/operator/operations/${intent.rows[0].id}/resume`)
+      .set("Cookie", first.cookie).set("Origin", "http://localhost:3000").set("X-CSRF-Token", first.csrf)
+      .send({ reason: "Attempt after operator access was revoked" });
+    expect(revokedAttempt.status).toBe(403);
+    const second = await operator("aal2", true, "replacement");
+    const resumed = await request(createApp()).post(`/v1/operator/operations/${intent.rows[0].id}/resume`)
+      .set("Cookie", second.cookie).set("Origin", "http://localhost:3000").set("X-CSRF-Token", second.csrf)
+      .send({ reason: "Reviewed original hazard and assumed pending decision" });
+    expect(resumed.status, JSON.stringify(resumed.body)).toBe(200);
+    expect(resumed.body).toMatchObject({ id: intent.rows[0].id, state: "acknowledged" });
+    expect((await second.agent.get(`/v1/operator/pending/${intent.rows[0].id}`)).body.state).toBe("acknowledged");
+    const audit = await verificationPool.query("SELECT operator_id, executed_by FROM pilot_pause_audit WHERE operation_id = $1", [intent.rows[0].id]);
+    expect(audit.rows[0]).toEqual({ operator_id: first.userId, executed_by: second.userId });
+    const event = await verificationPool.query("SELECT operator_id, reason FROM pilot_recovery_events WHERE operation_id = $1 AND event = 'decision_resumed'", [intent.rows[0].id]);
+    expect(event.rows[0].operator_id).toBe(second.userId);
+    expect(event.rows[0].reason).toContain("Reviewed original hazard");
+    await verificationPool.query("DELETE FROM pilot_recovery_events WHERE operation_id = $1", [intent.rows[0].id]);
+    await verificationPool.query("DELETE FROM pilot_pause_audit WHERE operation_id = $1", [intent.rows[0].id]);
+    await verificationPool.query("DELETE FROM pilot_pause_followup WHERE operation_id = $1", [intent.rows[0].id]);
+    await verificationPool.query("DELETE FROM pilot_pause_operations WHERE id = $1", [intent.rows[0].id]);
+    await verificationPool.query("UPDATE pilot_pause_state SET paused = false, operation_id = NULL, updated_at = now() - interval '1 day' WHERE capability = 'offers'");
+    const restored = await request(createApp()).post("/v1/operator/reconcile")
+      .set("Cookie", second.cookie).set("Origin", "http://localhost:3000").set("X-CSRF-Token", second.csrf).send({});
+    expect(restored.status, JSON.stringify(restored.body)).toBe(200);
+    expect((await verificationPool.query("SELECT executed_by FROM pilot_pause_audit WHERE operation_id = $1", [intent.rows[0].id])).rows[0].executed_by).toBe(second.userId);
+    expect((await verificationPool.query("SELECT operator_id FROM pilot_recovery_events WHERE operation_id = $1 AND event = 'decision_resumed'", [intent.rows[0].id])).rows[0].operator_id).toBe(second.userId);
+    expect((await second.agent.get("/v1/operator/pilot-status")).body.recovery.mode).toBe("restricted");
+    await rm(receiptDirectory, { recursive: true, force: true });
+  });
+  it("hands off a committed decision awaiting evidence without rewriting its business audit", async () => {
+    const first = await operator();
+    const body = { capability: "requests", paused: true, reason: "Commit before evidence outage" };
+    const committed = await verificationPool.query<{ id: string; committed_at: Date }>(
+      `INSERT INTO pilot_pause_operations (operator_id, idempotency_key, payload_digest, capability, paused, reason, state, committed_at)
+       VALUES ($1, 'stranded-commit', $2, $3, $4, $5, 'committed', now()) RETURNING id, committed_at`,
+      [first.userId, createHash("sha256").update(JSON.stringify(body)).digest("hex"), body.capability, body.paused, body.reason],
+    );
+    const id = committed.rows[0].id;
+    await verificationPool.query("UPDATE pilot_pause_state SET paused = true, operation_id = $1 WHERE capability = 'requests'", [id]);
+    await verificationPool.query("INSERT INTO pilot_pause_audit (operation_id, operator_id, capability, paused, reason, recorded_at, executed_by) VALUES ($1, $2, $3, $4, $5, $6, $2)", [id, first.userId, body.capability, body.paused, body.reason, committed.rows[0].committed_at]);
+    await verificationPool.query("INSERT INTO pilot_pause_followup (operation_id, kind) VALUES ($1, 'operator_pause_changed')", [id]);
+    await verificationPool.query("UPDATE operator_allowlist SET active = false WHERE user_id = $1", [first.userId]);
+    const second = await operator("aal2", true, "replacement");
+    const finished = await request(createApp()).post(`/v1/operator/operations/${id}/resume`)
+      .set("Cookie", second.cookie).set("Origin", "http://localhost:3000").set("X-CSRF-Token", second.csrf)
+      .send({ reason: "Inspected committed decision and restored recovery evidence" });
+    expect(finished.status, JSON.stringify(finished.body)).toBe(200);
+    expect(finished.body.state).toBe("acknowledged");
+    expect((await verificationPool.query("SELECT executed_by FROM pilot_pause_audit WHERE operation_id = $1", [id])).rows[0].executed_by).toBe(first.userId);
+    expect((await verificationPool.query("SELECT resumed_by, resumed_from FROM pilot_pause_operations WHERE id = $1", [id])).rows[0]).toEqual({ resumed_by: second.userId, resumed_from: "committed" });
     await rm(receiptDirectory, { recursive: true, force: true });
   });
   it("rejects missing MFA and revoked allowlist", async () => {
@@ -502,7 +589,7 @@ describe("protected operator pause HTTP/PostgreSQL", () => {
     const { agent, csrf, cookie } = await operator();
     const decision = await request(createApp()).post("/v1/operator/pause").set("Cookie", cookie).set("Origin", "http://localhost:3000").set("X-CSRF-Token", csrf).set("Idempotency-Key", "lost-1").send({ capability: "offers", paused: false, reason: "Temporary clear decision" });
     expect(decision.status).toBe(200);
-    await rm(process.env.PILOT_RECEIPT_PATH!, { force: true });
+    await rm(process.env.PILOT_RECEIPT_PATH!, { recursive: true, force: true });
     const status = await agent.get("/v1/operator/pilot-status");
     expect(status.body.recovery.mode).toBe("restricted");
     expect(status.body.capabilities.every((item: { paused: boolean }) => item.paused)).toBe(true);

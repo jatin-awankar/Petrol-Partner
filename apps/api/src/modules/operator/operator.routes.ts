@@ -16,6 +16,10 @@ operatorRouter.get("/status", asyncHandler(async (_req, res) => { res.json(await
 operatorRouter.get("/pending", asyncHandler(async (_req, res) => { res.json({ operations: await pauseService.pending() }); }));
 operatorRouter.get("/operations/by-key/:key", asyncHandler(async (req, res) => { res.json(await pauseService.operationByKey(req.user!.userId, z.string().min(1).max(128).parse(req.params.key))); }));
 operatorRouter.get("/operations/:id", asyncHandler(async (req, res) => { res.json(await pauseService.operation(req.user!.userId, operationId.parse(req.params.id))); }));
+operatorRouter.get("/pending/:id", asyncHandler(async (req, res) => { res.json(await pauseService.operatorOperation(operationId.parse(req.params.id))); }));
+operatorRouter.post("/operations/:id/resume", asyncHandler(async (req, res) => {
+  res.json(await pauseService.resumePending(req.user!.userId, operationId.parse(req.params.id), reopen.parse(req.body).reason));
+}));
 operatorRouter.post("/pause", asyncHandler(async (req, res) => {
   const key = req.header("Idempotency-Key");
   if (!key || key.length > 128) throw new AppError(400, "A stable Idempotency-Key is required", "IDEMPOTENCY_KEY_REQUIRED");

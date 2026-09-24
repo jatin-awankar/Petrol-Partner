@@ -20,7 +20,7 @@ docker compose up -d --wait
 cp .env.example .env.local
 cp apps/api/.env.example apps/api/.env
 cp apps/worker/.env.example apps/worker/.env
-DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:55432/petrol_partner_test npm run db:migrate
+TEST_DATABASE_DISPOSABLE=true DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:55432/petrol_partner_test npm run db:migrate
 ```
 
 For migration safety and existing-data inventory, see
