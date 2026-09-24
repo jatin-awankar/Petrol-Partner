@@ -87,16 +87,16 @@ export function assessEvidence(value) {
     fail("recommendation.remaining_requirements must be an array");
   }
   if (
-    decision === "adopt" &&
-    (!hasText(value.recommendation?.selected_by) ||
-      !ISO_DATE.test(value.recommendation?.selected_on ?? ""))
+    !hasText(value.recommendation?.selected_by) ||
+    !ISO_DATE.test(value.recommendation?.selected_on ?? "")
   ) {
-    fail("adoption requires selected_by and selected_on from the maintainer's explicit choice");
+    fail("a terminal decision requires selected_by and selected_on from the maintainer's explicit choice");
   }
 
   const unfinished = results.filter((result) => !TERMINAL_STATUSES.has(result.status));
   const failed = results.filter((result) => result.status === "failed");
-  const complete = unfinished.length === 0 && failed.length === 0;
+  const complete =
+    unfinished.length === 0 && (decision === "reject" || failed.length === 0);
   if (complete && value.environment !== "synthetic-staging") {
     fail("a complete arrangement requires environment synthetic-staging");
   }
@@ -122,7 +122,7 @@ function render(value, assessment) {
   for (const result of [...assessment.failed, ...assessment.unfinished]) {
     lines.push(`- ${result.name}: ${result.status} — ${result.evidence}`);
   }
-  if (assessment.failed.length > 0) {
+  if (assessment.failed.length > 0 && !assessment.complete) {
     lines.push("- the ticket cannot complete while any required check fails");
   }
   return `${lines.join("\n")}\n`;

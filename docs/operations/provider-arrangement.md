@@ -2,7 +2,7 @@
 
 Evidence date: 2026-09-24
 
-Status: **zero-cost constraint selected; no compliant real-trip arrangement; launch remains blocked**
+Status: **zero-cost constraint selected; reviewed arrangement is not compliant; launch remains blocked**
 
 ## Free-tier result first
 
@@ -36,7 +36,8 @@ be used only for synthetic development/staging within their terms. Render explic
 describes free compute as suitable for exploration and previews, not production. An
 operator laptop is not an acceptable hidden substitute for an always-on worker, backup
 scheduler, or independent monitor. There is consequently no selected provider topology
-for real trips.
+for real trips among the reviewed components. This assessment does not claim to rule out
+every provider in the market.
 
 ## One operating arrangement
 
@@ -137,7 +138,7 @@ notification. A maintainer may run local demonstrations manually, but the machin
 not be represented as production infrastructure and its availability cannot satisfy a
 launch gate.
 
-To revisit this decision, either approve a non-zero budget or produce and validate a new
+To revisit this decision, either approve a non-zero budget or propose and validate a new
 free provider arrangement whose current terms permit this pilot and whose live behavior
 passes every outstanding evidence check. The safety objectives themselves are not
 silently reduced.
@@ -162,10 +163,11 @@ release rehearsal owns production cutover; this ticket does not.
 
 ## Decision recorded
 
-The maintainer selected zero recurring infrastructure spend on 2026-09-24. Because the
-documented free tiers do not form a compliant real-trip arrangement, the consequence is
-to keep real trips blocked. This decision authorizes no purchase, production deployment,
-or weakening of the pilot requirements.
+The maintainer selected zero recurring infrastructure spend on 2026-09-24. This is a
+budget constraint, not selection of a hosting topology or reduced-window workflow.
+Because the reviewed free components do not form a compliant real-trip arrangement, the
+consequence is to keep real trips blocked. This decision authorizes no purchase,
+production deployment, or weakening of the pilot requirements.
 
 Live B2 semantics, executor timing, email delivery, object deletion, backup, restore, and
 monitor tests remain useful only if a future candidate is proposed. Ticket 07 remains

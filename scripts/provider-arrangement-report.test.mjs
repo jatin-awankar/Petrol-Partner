@@ -114,7 +114,7 @@ test("rejects adoption without an explicit maintainer selection", async () => {
 
   await assert.rejects(execFileAsync(process.execPath, [cliPath, evidencePath]), (error) => {
     assert.equal(error.code, 1);
-    assert.match(error.stderr, /adoption requires selected_by and selected_on/);
+    assert.match(error.stderr, /terminal decision requires selected_by and selected_on/);
     return true;
   });
 });
@@ -125,6 +125,50 @@ test("does not accept a documentation-only environment as a complete proof", asy
   await assert.rejects(execFileAsync(process.execPath, [cliPath, evidencePath]), (error) => {
     assert.equal(error.code, 1);
     assert.match(error.stderr, /a complete arrangement requires environment synthetic-staging/);
+    return true;
+  });
+});
+
+test("accepts a fully tested rejection while preserving failed provider evidence", async () => {
+  const value = evidence({
+    recommendation: {
+      decision: "reject",
+      rationale: "The live provider failed a required durability check.",
+      selected_by: "maintainer",
+      selected_on: "2026-09-24",
+      remaining_requirements: ["Keep launch blocked or select another arrangement."],
+    },
+  });
+  value.checks.recovery_provider_semantics = {
+    status: "failed",
+    evidence: "A locked receipt could be deleted before its retention date.",
+  };
+  const evidencePath = await writeEvidence(value);
+  const { stdout } = await execFileAsync(process.execPath, [cliPath, evidencePath]);
+
+  assert.match(stdout, /Decision: REJECT/);
+  assert.match(stdout, /recovery_provider_semantics: failed/);
+});
+
+test("rejects a fully tested provider rejection without the maintainer decision", async () => {
+  const value = evidence({
+    recommendation: {
+      decision: "reject",
+      rationale: "The provider failed a required durability check.",
+      selected_by: "",
+      selected_on: "",
+      remaining_requirements: ["Keep launch blocked."],
+    },
+  });
+  value.checks.recovery_provider_semantics = {
+    status: "failed",
+    evidence: "A locked receipt could be deleted before its retention date.",
+  };
+  const evidencePath = await writeEvidence(value);
+
+  await assert.rejects(execFileAsync(process.execPath, [cliPath, evidencePath]), (error) => {
+    assert.equal(error.code, 1);
+    assert.match(error.stderr, /terminal decision requires selected_by and selected_on/);
     return true;
   });
 });
