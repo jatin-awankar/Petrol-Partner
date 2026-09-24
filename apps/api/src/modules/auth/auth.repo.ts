@@ -198,7 +198,7 @@ export async function linkVerifiedIdentity(input: {
   }
 
   const matches = await client.query<{ id: string }>(
-    `SELECT id FROM users WHERE lower(email) = lower($1) FOR UPDATE`,
+    `SELECT id FROM users WHERE lower(btrim(email)) = lower(btrim($1)) FOR UPDATE`,
     [input.email],
   );
   if (matches.rowCount && matches.rowCount > 1) return null;
@@ -255,4 +255,14 @@ export async function recordClaimReview(input: {
      ON CONFLICT (provider, provider_subject, status) DO NOTHING`,
     [input.provider, input.providerSubject, input.providerEmail, input.reason],
   );
+}
+
+export async function isManagedCutoverAuthorized() {
+  const result = await pool.query<{ authorized: boolean }>(
+    `SELECT active_provider = 'supabase'
+            AND legacy_login_enabled = false
+            AND authorized_at IS NOT NULL AS authorized
+       FROM auth_cutover_state WHERE singleton = true`,
+  );
+  return result.rows[0]?.authorized === true;
 }

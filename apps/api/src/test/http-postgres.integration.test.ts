@@ -36,6 +36,11 @@ beforeEach(async () => {
   await verificationPool.query("TRUNCATE TABLE users CASCADE");
   setManagedAuthEnabledForTests(null);
   setAuthProviderForTests(null);
+  await verificationPool.query(
+    `UPDATE auth_cutover_state
+        SET active_provider = 'legacy', legacy_login_enabled = true,
+            authorized_at = NULL, authorized_by = NULL`,
+  );
 });
 
 afterAll(async () => {
@@ -57,6 +62,10 @@ describe("managed authentication HTTP boundary with PostgreSQL", () => {
       [legacy.rows[0].id],
     );
     setManagedAuthEnabledForTests(true);
+    await verificationPool.query(
+      `UPDATE auth_cutover_state SET active_provider = 'supabase', legacy_login_enabled = false,
+              authorized_at = now(), authorized_by = 'integration-test'`,
+    );
     setAuthProviderForTests(fakeProvider({
       subject: "supabase-subject-1",
       email: "STUDENT@example.test",
@@ -87,6 +96,10 @@ describe("managed authentication HTTP boundary with PostgreSQL", () => {
 
   it("does not map or authenticate an unverified provider address", async () => {
     setManagedAuthEnabledForTests(true);
+    await verificationPool.query(
+      `UPDATE auth_cutover_state SET active_provider = 'supabase', legacy_login_enabled = false,
+              authorized_at = now(), authorized_by = 'integration-test'`,
+    );
     setAuthProviderForTests(fakeProvider({
       subject: "unverified-subject",
       email: "unverified@example.test",

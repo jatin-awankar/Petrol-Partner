@@ -26,6 +26,8 @@ export const optionalAuth: RequestHandler = async (req, _res, next) => {
       userId: "sub" in payload ? payload.sub : payload.userId,
       email: payload.email,
       role: payload.role,
+      authProvider: isManagedAuthEnabled() ? "supabase" : "legacy",
+      assuranceLevel: "assuranceLevel" in payload ? payload.assuranceLevel : undefined,
     };
     req.log = req.log.child({
       userId: req.user.userId,
@@ -56,6 +58,10 @@ export const requireAdmin: RequestHandler = (req, _res, next) => {
 
   if (req.user.role !== "admin") {
     return next(new AppError(403, "Admin access required", "FORBIDDEN"));
+  }
+
+  if (req.user.authProvider === "supabase" && req.user.assuranceLevel !== "aal2") {
+    return next(new AppError(403, "Multi-factor authentication is required", "MFA_REQUIRED"));
   }
 
   next();

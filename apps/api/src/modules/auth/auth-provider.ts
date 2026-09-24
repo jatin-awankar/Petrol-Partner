@@ -55,12 +55,22 @@ async function requestProvider(path: string, init: RequestInit = {}) {
   }
 }
 
-function identityFromUser(user: any): ProviderIdentity {
+function assuranceLevelFromToken(accessToken?: string) {
+  if (!accessToken) return null;
+  try {
+    const payload = JSON.parse(Buffer.from(accessToken.split(".")[1], "base64url").toString("utf8"));
+    return typeof payload.aal === "string" ? payload.aal : null;
+  } catch {
+    return null;
+  }
+}
+
+function identityFromUser(user: any, accessToken?: string): ProviderIdentity {
   return {
     subject: user.id,
     email: user.email ?? null,
     emailVerified: Boolean(user.email_confirmed_at),
-    assuranceLevel: user.aal ?? null,
+    assuranceLevel: assuranceLevelFromToken(accessToken),
     userMetadata: user.user_metadata ?? {},
   };
 }
@@ -70,7 +80,7 @@ function sessionFromBody(body: any): ProviderSession {
     accessToken: body.access_token,
     refreshToken: body.refresh_token,
     expiresIn: body.expires_in,
-    identity: identityFromUser(body.user),
+    identity: identityFromUser(body.user, body.access_token),
   };
 }
 
@@ -93,7 +103,7 @@ export const supabaseAuthProvider: AuthProvider = {
   },
   async validate(accessToken) {
     const user = await requestProvider("/user", { headers: { Authorization: `Bearer ${accessToken}` } });
-    return identityFromUser(user);
+    return identityFromUser(user, accessToken);
   },
   async refresh(refreshToken) {
     return sessionFromBody(await requestProvider("/token?grant_type=refresh_token", {

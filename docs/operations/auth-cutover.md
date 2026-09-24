@@ -8,7 +8,7 @@ This runbook implements ticket 08 without authorizing a production cutover. `use
 2. Apply migration `0005_managed_auth_identities.sql` to a staging copy. Re-run the inventory and capture counts for users, mappings, bookings, vehicles, approvals, settlements, and payment orders.
 3. For every inventoried account, use provider email verification/recovery. Password import is not assumed. A verified exact normalized email may claim its existing `users.id`; collisions, changed/missing email, or an already-linked user require operator review.
 4. Exercise registration, confirmation callback, login, logout, recovery, token refresh, global revocation, provider outage, Origin rejection, and CSRF rejection through public HTTP. Confirm historical foreign keys still reference the same `users.id`.
-5. In staging set `AUTH_PROVIDER=supabase` with the exact callback URL and custom SMTP configuration. Confirm the old password route is no longer active, legacy refresh tokens are revoked on claim, and only the managed path issues sessions.
+5. Record the approved staging rehearsal in `auth_cutover_state` (`active_provider='supabase'`, `legacy_login_enabled=false`, `authorized_at`, and the named authorizer), then set `AUTH_PROVIDER=supabase` with the exact callback URL and custom SMTP configuration. Both gates must agree or managed session issuance fails closed. Confirm the old password route is no longer active, legacy refresh tokens are revoked on claim, and only the managed path issues sessions.
 
 ## Authorized cutover
 
