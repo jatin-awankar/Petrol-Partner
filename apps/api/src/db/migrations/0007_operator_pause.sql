@@ -86,8 +86,25 @@ BEGIN
 END; $$;
 
 DROP TRIGGER IF EXISTS pilot_guard_offer_insert ON ride_offers;
-CREATE TRIGGER pilot_guard_offer_insert BEFORE INSERT ON ride_offers FOR EACH ROW EXECUTE FUNCTION pilot_guard_offer_insert();
+CREATE TRIGGER pilot_guard_offer_insert BEFORE INSERT OR UPDATE ON ride_offers FOR EACH ROW EXECUTE FUNCTION pilot_guard_offer_insert();
 DROP TRIGGER IF EXISTS pilot_guard_request_insert ON ride_requests;
-CREATE TRIGGER pilot_guard_request_insert BEFORE INSERT ON ride_requests FOR EACH ROW EXECUTE FUNCTION pilot_guard_request_insert();
+CREATE TRIGGER pilot_guard_request_insert BEFORE INSERT OR UPDATE ON ride_requests FOR EACH ROW EXECUTE FUNCTION pilot_guard_request_insert();
 DROP TRIGGER IF EXISTS pilot_guard_booking_mutation ON bookings;
 CREATE TRIGGER pilot_guard_booking_mutation BEFORE INSERT OR UPDATE ON bookings FOR EACH ROW EXECUTE FUNCTION pilot_guard_booking_mutation();
+
+CREATE TABLE IF NOT EXISTS pilot_reopen_operations (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  operator_id uuid NOT NULL REFERENCES users(id),
+  idempotency_key text NOT NULL,
+  reason text NOT NULL,
+  state text NOT NULL CHECK (state IN ('committed', 'acknowledged', 'recovered')),
+  committed_at timestamptz NOT NULL DEFAULT now(),
+  acknowledged_at timestamptz,
+  UNIQUE (operator_id, idempotency_key)
+);
+CREATE TABLE IF NOT EXISTS pilot_reopen_audit (
+  operation_id uuid PRIMARY KEY REFERENCES pilot_reopen_operations(id),
+  operator_id uuid NOT NULL REFERENCES users(id),
+  reason text NOT NULL,
+  recorded_at timestamptz NOT NULL
+);

@@ -55,7 +55,7 @@ export default function OperatorPage() {
   async function recovery(action: "reconcile" | "reopen") {
     setBusy(true);
     try {
-      await apiRequest(`/v1/operator/${action}`, { method: "POST", body: JSON.stringify({ reason: reason.trim() }) });
+      await apiRequest(`/v1/operator/${action}`, { method: "POST", headers: action === "reopen" ? { "Idempotency-Key": crypto.randomUUID() } : undefined, body: JSON.stringify({ reason: reason.trim() }) });
       setMessage(`${action} recorded.`);
       await refresh();
     } catch (error) { setMessage(error instanceof Error ? error.message : "Recovery action failed"); }

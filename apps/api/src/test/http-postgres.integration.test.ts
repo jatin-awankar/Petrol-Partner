@@ -37,7 +37,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   await verificationPool.query("TRUNCATE TABLE auth_claim_reviews");
   await verificationPool.query("TRUNCATE TABLE users CASCADE");
-  await verificationPool.query("TRUNCATE pilot_pause_audit, pilot_pause_followup, pilot_pause_operations CASCADE");
+  await verificationPool.query("TRUNCATE pilot_pause_audit, pilot_pause_followup, pilot_pause_operations, pilot_reopen_audit, pilot_reopen_operations CASCADE");
   await verificationPool.query("UPDATE pilot_pause_state SET paused = false, operation_id = NULL");
   await verificationPool.query("INSERT INTO pilot_recovery_state (singleton, mode) VALUES (true, 'open') ON CONFLICT (singleton) DO UPDATE SET mode = 'open', cause = NULL, started_at = NULL, reconciled_at = NULL");
   setManagedAuthEnabledForTests(null);
@@ -466,6 +466,10 @@ describe("protected operator pause HTTP/PostgreSQL", () => {
     await verificationPool.query("UPDATE operator_allowlist SET active = true WHERE user_id = $1", [userId]);
     await verificationPool.query("UPDATE users SET role = 'user' WHERE id = $1", [userId]);
     expect((await agent.get("/v1/operator/pending")).body.error.code).toBe("FORBIDDEN");
+    await verificationPool.query("UPDATE users SET role = 'admin' WHERE id = $1", [userId]);
+    const staleProvider = fakeProvider({ subject: "pause-subject", email: "pause-operator@example.test", emailVerified: true, assuranceLevel: "aal2", userMetadata: {} });
+    setAuthProviderForTests({ ...staleProvider, refresh: async () => { throw new Error("session revoked"); } });
+    expect((await agent.get("/v1/operator/pending")).status).toBe(401);
     await rm(receiptDirectory, { recursive: true, force: true });
   });
   it("recovers an acknowledged pause from a receipt after an older database state", async () => {
@@ -480,10 +484,18 @@ describe("protected operator pause HTTP/PostgreSQL", () => {
     expect(recovered.status).toBe(200);
     expect(recovered.body.receipts).toBe(1);
     expect((await agent.get("/v1/operator/pilot-status")).body.recovery.mode).toBe("restricted");
-    const reopened = await request(createApp()).post("/v1/operator/reopen").set("Cookie", cookie).set("Origin", "http://localhost:3000").set("X-CSRF-Token", csrf).send({ reason: "Reviewed restored receipt and state" });
+    const reopened = await request(createApp()).post("/v1/operator/reopen").set("Idempotency-Key", "reopen-1").set("Cookie", cookie).set("Origin", "http://localhost:3000").set("X-CSRF-Token", csrf).send({ reason: "Reviewed restored receipt and state" });
     expect(reopened.status).toBe(200);
-    expect(reopened.body.capabilities.find((item: { capability: string }) => item.capability === "offers").paused).toBe(true);
+    expect(reopened.body.status.capabilities.find((item: { capability: string }) => item.capability === "offers").paused).toBe(true);
     expect((await agent.get(`/v1/operator/operations/${decision.body.id}`)).body.state).toBe("recovered");
+    const repeatedReopen = await request(createApp()).post("/v1/operator/reopen").set("Idempotency-Key", "reopen-1").set("Cookie", cookie).set("Origin", "http://localhost:3000").set("X-CSRF-Token", csrf).send({ reason: "Reviewed restored receipt and state" });
+    expect(repeatedReopen.body.operationId).toBe(reopened.body.operationId);
+    await verificationPool.query("DELETE FROM pilot_reopen_audit WHERE operation_id = $1", [reopened.body.operationId]);
+    await verificationPool.query("DELETE FROM pilot_reopen_operations WHERE id = $1", [reopened.body.operationId]);
+    const reconciledReopen = await request(createApp()).post("/v1/operator/reconcile").set("Cookie", cookie).set("Origin", "http://localhost:3000").set("X-CSRF-Token", csrf).send({});
+    expect(reconciledReopen.status).toBe(200);
+    expect((await agent.get("/v1/operator/pilot-status")).body.recovery.mode).toBe("restricted");
+    expect((await verificationPool.query("SELECT state FROM pilot_reopen_operations WHERE id = $1", [reopened.body.operationId])).rows[0].state).toBe("recovered");
     await rm(receiptDirectory, { recursive: true, force: true });
   });
   it("restricts reads after acknowledged evidence disappears", async () => {

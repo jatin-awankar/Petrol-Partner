@@ -21,4 +21,8 @@ operatorRouter.post("/pause", asyncHandler(async (req, res) => {
   res.json(await pauseService.decide(req.user!.userId, key, decision.parse(req.body)));
 }));
 operatorRouter.post("/reconcile", asyncHandler(async (req, res) => { res.json(await pauseService.reconcile(req.user!.userId)); }));
-operatorRouter.post("/reopen", asyncHandler(async (req, res) => { res.json(await pauseService.reopen(req.user!.userId, reopen.parse(req.body).reason)); }));
+operatorRouter.post("/reopen", asyncHandler(async (req, res) => {
+  const key = req.header("Idempotency-Key");
+  if (!key || key.length > 128) throw new AppError(400, "A stable Idempotency-Key is required", "IDEMPOTENCY_KEY_REQUIRED");
+  res.json(await pauseService.reopen(req.user!.userId, key, reopen.parse(req.body).reason));
+}));

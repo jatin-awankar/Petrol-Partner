@@ -31,3 +31,4 @@ Follow the local tracker's claim/resolution convention: use `claimed` when work 
 ## Comments
 
 - 2026-09-24: Implementation started on `codex/09-protected-operator-access-pause`. HTTP/PostgreSQL coverage passes for authorization, idempotency, evidence failure, missing evidence, receipt reconciliation, and a separate-connection database guard race. The ticket remains claimed because the production independent receipt provider, deployed database-role inventory/grants, browser rehearsal, and a safe resolution path for an abandoned intent are not yet evidenced. See `docs/operations/operator-pause.md`.
+- 2026-09-24: `TEST_DATABASE_DISPOSABLE=true DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:55432/petrol_partner_test npm run check` passed: 27 root tests, 51 API tests, 6 worker tests, typechecks and all builds. Lint had zero errors and ten pre-existing warnings. The `/operator` page built, but a signed-in browser rehearsal remains outstanding.

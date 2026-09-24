@@ -1,57 +1,32 @@
-import { createHash, createHmac, timingSafeEqual } from "node:crypto";
-import { mkdir, open, readFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { createHash } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
 
 import { env } from "../../config/env";
 import { pool } from "../../db/pool";
 import { AppError } from "../../shared/errors/app-error";
+import { SignedReceiptStore } from "./receipt-store";
 
 export const capabilities = ["offers", "requests", "acceptance", "booking"] as const;
 export type Capability = typeof capabilities[number];
 export type PauseDecision = { capability: Capability; paused: boolean; reason: string };
 type Operation = { id: string; operator_id: string; idempotency_key: string; payload_digest: string; capability: Capability; paused: boolean; reason: string; state: "intent" | "committed" | "acknowledged" | "recovered"; committed_at: Date | null };
+type ReopenOperation = { id: string; operator_id: string; idempotency_key: string; reason: string; state: "committed" | "acknowledged" | "recovered"; committed_at: Date };
+type ReopenReceipt = { operationId: string; operatorId: string; idempotencyKey: string; reason: string; committedAt: string };
 type Receipt = { operationId: string; operatorId: string; idempotencyKey: string; payloadDigest: string; capability: Capability; paused: boolean; reason: string; committedAt: string };
-type SignedReceipt = Receipt & { signature: string };
 
 function digest(decision: PauseDecision) {
   return createHash("sha256").update(JSON.stringify(decision)).digest("hex");
 }
-function receiptBody(receipt: Receipt) { return JSON.stringify(receipt); }
 function receiptConfig() {
   const path = process.env.PILOT_RECEIPT_PATH ?? env.PILOT_RECEIPT_PATH;
   const secret = process.env.PILOT_RECEIPT_SECRET ?? env.PILOT_RECEIPT_SECRET;
   if (!path || !secret || secret.length < 32) throw new AppError(503, "Recovery evidence is not configured", "RECOVERY_UNAVAILABLE");
   return { path, secret };
 }
-async function listReceipts(): Promise<Receipt[]> {
-  const { path, secret } = receiptConfig();
-  let data: string;
-  try { data = await readFile(path, "utf8"); }
-  catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return []; throw error; }
-  return data.split("\n").filter(Boolean).map((line) => {
-    const { signature, ...receipt } = JSON.parse(line) as SignedReceipt;
-    const expected = createHmac("sha256", secret).update(receiptBody(receipt)).digest("hex");
-    if (typeof signature !== "string" || signature.length !== expected.length || !timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) {
-      throw new AppError(503, "Recovery evidence failed verification", "RECOVERY_INVALID");
-    }
-    return receipt;
-  });
-}
-async function appendReceipt(receipt: Receipt) {
-  const { path, secret } = receiptConfig();
-  const existing = (await listReceipts()).find((item) => item.operationId === receipt.operationId);
-  if (existing) {
-    if (receiptBody(existing) !== receiptBody(receipt)) throw new AppError(503, "Recovery evidence conflicts with database", "RECOVERY_CONFLICT");
-    return;
-  }
-  await mkdir(dirname(path), { recursive: true });
-  const handle = await open(path, "a", 0o600);
-  try {
-    await handle.write(`${JSON.stringify({ ...receipt, signature: createHmac("sha256", secret).update(receiptBody(receipt)).digest("hex") })}\n`);
-    await handle.sync();
-  } finally { await handle.close(); }
-}
+function pauseReceipts() { const config = receiptConfig(); return new SignedReceiptStore<Receipt>(config.path, config.secret); }
+async function listReceipts() { return pauseReceipts().list(); }
+async function appendReceipt(receipt: Receipt) { return pauseReceipts().append(receipt); }
+function reopenReceipts() { const config = receiptConfig(); return new SignedReceiptStore<ReopenReceipt>(`${config.path}.reopen`, config.secret); }
 async function transaction<T>(database: Pool, work: (client: PoolClient) => Promise<T>): Promise<T> {
   const client = await database.connect();
   try { await client.query("BEGIN"); const result = await work(client); await client.query("COMMIT"); return result; }
@@ -77,9 +52,27 @@ export class PauseService {
   private async verifyEvidence() {
     try {
       const receipts = await listReceipts();
-      const acknowledged = await this.database.query<{ id: string }>("SELECT id FROM pilot_pause_operations WHERE state IN ('acknowledged', 'recovered')");
-      const ids = new Set(receipts.map((receipt) => receipt.operationId));
-      if (acknowledged.rows.some((row) => !ids.has(row.id))) throw new AppError(503, "Acknowledged recovery evidence is missing", "RECOVERY_MISSING");
+      const acknowledged = await this.database.query<Operation>("SELECT * FROM pilot_pause_operations WHERE state IN ('acknowledged', 'recovered')");
+      const byId = new Map<string, Receipt>();
+      for (const receipt of receipts) {
+        const prior = byId.get(receipt.operationId);
+        if (prior && JSON.stringify(prior) !== JSON.stringify(receipt)) throw new AppError(503, "Recovery evidence contains conflicting receipts", "RECOVERY_CONFLICT");
+        byId.set(receipt.operationId, receipt);
+      }
+      const reopenEvidence = await reopenReceipts().list();
+      const reopenRows = await this.database.query<ReopenOperation>("SELECT * FROM pilot_reopen_operations WHERE state IN ('acknowledged', 'recovered')");
+      const reopenById = new Map(reopenEvidence.map((receipt) => [receipt.operationId, receipt]));
+      if (reopenRows.rows.some((row) => {
+        const receipt = reopenById.get(row.id);
+        return !receipt || receipt.operatorId !== row.operator_id || receipt.idempotencyKey !== row.idempotency_key || receipt.reason !== row.reason;
+      })) throw new AppError(503, "Reopening recovery evidence is missing or inconsistent", "RECOVERY_MISSING");
+      if (acknowledged.rows.some((row) => {
+        const receipt = byId.get(row.id);
+        return !receipt || receipt.operatorId !== row.operator_id || receipt.idempotencyKey !== row.idempotency_key ||
+          receipt.payloadDigest !== row.payload_digest || receipt.capability !== row.capability ||
+          receipt.paused !== row.paused || receipt.reason !== row.reason ||
+          receipt.payloadDigest !== digest({ capability: receipt.capability, paused: receipt.paused, reason: receipt.reason });
+      })) throw new AppError(503, "Acknowledged recovery evidence is missing or inconsistent", "RECOVERY_MISSING");
     } catch (error) {
       await restrict(this.database, `evidence_unavailable:${error instanceof Error ? error.message : "unknown"}`);
       throw error;
@@ -182,9 +175,10 @@ export class PauseService {
     try { receipts = await listReceipts(); }
     catch (error) { await restrict(this.database, "evidence_unavailable"); throw error; }
     for (const receipt of receipts) {
+      if (receipt.payloadDigest !== digest({ capability: receipt.capability, paused: receipt.paused, reason: receipt.reason })) throw new AppError(409, "Recovery payload is inconsistent", "RECOVERY_CONFLICT");
       await transaction(this.database, async (client) => {
         const row = (await client.query<Operation>("SELECT * FROM pilot_pause_operations WHERE id = $1 FOR UPDATE", [receipt.operationId])).rows[0];
-        if (row && (row.payload_digest !== receipt.payloadDigest || row.operator_id !== receipt.operatorId)) throw new AppError(409, "Recovery conflict", "RECOVERY_CONFLICT");
+        if (row && (row.payload_digest !== receipt.payloadDigest || row.operator_id !== receipt.operatorId || row.idempotency_key !== receipt.idempotencyKey || row.capability !== receipt.capability || row.paused !== receipt.paused || row.reason !== receipt.reason)) throw new AppError(409, "Recovery conflict", "RECOVERY_CONFLICT");
         if (!row) {
           await client.query(`INSERT INTO pilot_pause_operations (id, operator_id, idempotency_key, payload_digest, capability, paused, reason, state, committed_at, acknowledged_at)
             VALUES ($1, $2, $3, $4, $5, $6, $7, 'recovered', $8, now())`, [receipt.operationId, receipt.operatorId, receipt.idempotencyKey, receipt.payloadDigest, receipt.capability, receipt.paused, receipt.reason, receipt.committedAt]);
@@ -199,26 +193,56 @@ export class PauseService {
         }
       });
     }
+    for (const receipt of await reopenReceipts().list()) {
+      await transaction(this.database, async (client) => {
+        const row = (await client.query<ReopenOperation>("SELECT * FROM pilot_reopen_operations WHERE id = $1 FOR UPDATE", [receipt.operationId])).rows[0];
+        if (row && (row.operator_id !== receipt.operatorId || row.idempotency_key !== receipt.idempotencyKey || row.reason !== receipt.reason)) throw new AppError(409, "Reopening recovery conflict", "RECOVERY_CONFLICT");
+        if (!row) await client.query("INSERT INTO pilot_reopen_operations (id, operator_id, idempotency_key, reason, state, committed_at, acknowledged_at) VALUES ($1, $2, $3, $4, 'recovered', $5, now())", [receipt.operationId, receipt.operatorId, receipt.idempotencyKey, receipt.reason, receipt.committedAt]);
+        else if (row.state === "committed") await client.query("UPDATE pilot_reopen_operations SET state = 'recovered', acknowledged_at = now() WHERE id = $1", [receipt.operationId]);
+        await client.query("INSERT INTO pilot_reopen_audit (operation_id, operator_id, reason, recorded_at) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING", [receipt.operationId, receipt.operatorId, receipt.reason, receipt.committedAt]);
+      });
+    }
     await this.database.query("UPDATE pilot_recovery_state SET reconciled_at = now() WHERE singleton = true");
     await this.database.query("INSERT INTO pilot_recovery_events (event, operator_id, reason) VALUES ('reconciled', $1, 'signed receipts inspected')", [operatorId]);
     return { receipts: receipts.length, pending: await this.pending() };
   }
 
-  async reopen(operatorId: string, reason: string) {
+  async reopen(operatorId: string, idempotencyKey: string, reason: string) {
     await this.verifyEvidence();
-    const { path } = receiptConfig();
-    await mkdir(dirname(path), { recursive: true });
-    const probe = await open(path, "a", 0o600);
-    try { await probe.sync(); } finally { await probe.close(); }
-    await transaction(this.database, async (client) => {
+    await pauseReceipts().probe();
+    await reopenReceipts().probe();
+    const operation = await transaction(this.database, async (client) => {
       const status = await client.query("SELECT * FROM pilot_recovery_state WHERE singleton = true FOR UPDATE");
-      if (!status.rows[0]?.reconciled_at || (await client.query("SELECT id FROM pilot_pause_operations WHERE state IN ('intent', 'committed') LIMIT 1")).rowCount) {
+      const authorized = await client.query("SELECT 1 FROM users u JOIN operator_allowlist a ON a.user_id = u.id WHERE u.id = $1 AND u.role = 'admin' AND u.status = 'active' AND a.active = true FOR SHARE OF u, a", [operatorId]);
+      if (!authorized.rowCount) throw new AppError(403, "Operator access has been revoked", "OPERATOR_ACCESS_REVOKED");
+      const existing = (await client.query<ReopenOperation>("SELECT * FROM pilot_reopen_operations WHERE operator_id = $1 AND idempotency_key = $2", [operatorId, idempotencyKey])).rows[0];
+      if (existing) {
+        if (existing.reason !== reason) throw new AppError(409, "Idempotency key used with a different decision", "IDEMPOTENCY_PAYLOAD_MISMATCH");
+        return existing;
+      }
+      if (!status.rows[0]?.reconciled_at || (await client.query("SELECT id FROM pilot_pause_operations WHERE state IN ('intent', 'committed') LIMIT 1")).rowCount || (await client.query("SELECT id FROM pilot_reopen_operations WHERE state = 'committed' LIMIT 1")).rowCount) {
         throw new AppError(409, "Reconciliation is incomplete", "RECONCILIATION_REQUIRED");
       }
+      const row = (await client.query<ReopenOperation>("INSERT INTO pilot_reopen_operations (operator_id, idempotency_key, reason, state) VALUES ($1, $2, $3, 'committed') RETURNING *", [operatorId, idempotencyKey, reason])).rows[0];
+      await client.query("INSERT INTO pilot_reopen_audit (operation_id, operator_id, reason, recorded_at) VALUES ($1, $2, $3, $4)", [row.id, operatorId, reason, row.committed_at]);
+      return row;
+    });
+    if (operation.state === "recovered") return { operationId: operation.id, status: await this.status() };
+    const receipt: ReopenReceipt = { operationId: operation.id, operatorId: operation.operator_id, idempotencyKey: operation.idempotency_key, reason: operation.reason, committedAt: operation.committed_at.toISOString() };
+    try { await reopenReceipts().append(receipt); }
+    catch (error) {
+      await restrict(this.database, `reopen_evidence_unavailable:${error instanceof Error ? error.message : "unknown"}`);
+      throw new AppError(503, "Reopening decision is pending evidence", "OPERATION_PENDING", { operationId: operation.id });
+    }
+    await transaction(this.database, async (client) => {
+      await client.query("SELECT mode FROM pilot_recovery_state WHERE singleton = true FOR UPDATE");
+      const row = (await client.query<ReopenOperation>("SELECT * FROM pilot_reopen_operations WHERE id = $1 FOR UPDATE", [operation.id])).rows[0];
+      if (row.state === "acknowledged" || row.state === "recovered") return;
       await client.query("UPDATE pilot_recovery_state SET mode = 'open', cause = NULL, reopened_at = now(), reopened_by = $1 WHERE singleton = true", [operatorId]);
+      await client.query("UPDATE pilot_reopen_operations SET state = 'acknowledged', acknowledged_at = now() WHERE id = $1", [operation.id]);
       await client.query("INSERT INTO pilot_recovery_events (event, operator_id, reason) VALUES ('reopened', $1, $2)", [operatorId, reason]);
     });
-    return this.status();
+    return { operationId: operation.id, status: await this.status() };
   }
 }
 
