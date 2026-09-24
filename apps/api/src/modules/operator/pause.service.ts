@@ -5,13 +5,15 @@ import { env } from "../../config/env";
 import { pool } from "../../db/pool";
 import { AppError } from "../../shared/errors/app-error";
 import { SignedReceiptStore } from "./receipt-store";
+import { operatorQuery } from "./operator.repo";
+import { assertCurrentOperator } from "./operator.authorization";
 
 export const capabilities = ["offers", "requests", "acceptance", "booking"] as const;
 export type Capability = typeof capabilities[number];
 export type PauseDecision = { capability: Capability; paused: boolean; reason: string };
 type Operation = { id: string; operator_id: string; idempotency_key: string; payload_digest: string; capability: Capability; paused: boolean; reason: string; state: "intent" | "committed" | "acknowledged" | "recovered"; committed_at: Date | null };
-type ReopenOperation = { id: string; operator_id: string; idempotency_key: string; reason: string; state: "committed" | "acknowledged" | "recovered"; committed_at: Date };
-type ReopenReceipt = { operationId: string; operatorId: string; idempotencyKey: string; reason: string; committedAt: string };
+type ReopenOperation = { id: string; operator_id: string; idempotency_key: string; reason: string; reconciliation_digest: string; state: "committed" | "acknowledged" | "recovered"; committed_at: Date };
+type ReopenReceipt = { operationId: string; operatorId: string; idempotencyKey: string; reason: string; reconciliationDigest: string; committedAt: string };
 type Receipt = { operationId: string; operatorId: string; idempotencyKey: string; payloadDigest: string; capability: Capability; paused: boolean; reason: string; committedAt: string };
 
 function digest(decision: PauseDecision) {
@@ -29,19 +31,19 @@ async function appendReceipt(receipt: Receipt) { return pauseReceipts().append(r
 function reopenReceipts() { const config = receiptConfig(); return new SignedReceiptStore<ReopenReceipt>(`${config.path}.reopen`, config.secret); }
 async function transaction<T>(database: Pool, work: (client: PoolClient) => Promise<T>): Promise<T> {
   const client = await database.connect();
-  try { await client.query("BEGIN"); const result = await work(client); await client.query("COMMIT"); return result; }
-  catch (error) { await client.query("ROLLBACK"); throw error; }
+  try { await operatorQuery(client, "begin"); const result = await work(client); await operatorQuery(client, "commit"); return result; }
+  catch (error) { await operatorQuery(client, "rollback"); throw error; }
   finally { client.release(); }
 }
 async function restrict(database: Pool, cause: string) {
   await transaction(database, async (client) => {
-    const status = await client.query("SELECT mode FROM pilot_recovery_state WHERE singleton = true FOR UPDATE");
+    const status = await operatorQuery(client, "recoveryModeForUpdate");
     if (status.rows[0]?.mode === "restricted") {
-      await client.query("UPDATE pilot_recovery_state SET cause = COALESCE(cause, $1), started_at = COALESCE(started_at, now()) WHERE singleton = true", [cause]);
+      await operatorQuery(client, "preserveRestrictionCause", [cause]);
       return;
     }
-    await client.query("UPDATE pilot_recovery_state SET mode = 'restricted', cause = $1, started_at = now(), reconciled_at = NULL WHERE singleton = true", [cause]);
-    await client.query("INSERT INTO pilot_recovery_events (event, reason) VALUES ('restricted', $1)", [cause]);
+    await operatorQuery(client, "enterRestrictedMode", [cause]);
+    await operatorQuery(client, "recordRestriction", [cause]);
   });
 }
 function publicOperation(operation: Operation) { return { id: operation.id, state: operation.state, capability: operation.capability, paused: operation.paused }; }
@@ -52,7 +54,7 @@ export class PauseService {
   private async verifyEvidence() {
     try {
       const receipts = await listReceipts();
-      const acknowledged = await this.database.query<Operation>("SELECT * FROM pilot_pause_operations WHERE state IN ('acknowledged', 'recovered')");
+      const acknowledged = await operatorQuery<Operation>(this.database, "acknowledgedPauseOperations");
       const byId = new Map<string, Receipt>();
       for (const receipt of receipts) {
         const prior = byId.get(receipt.operationId);
@@ -60,11 +62,11 @@ export class PauseService {
         byId.set(receipt.operationId, receipt);
       }
       const reopenEvidence = await reopenReceipts().list();
-      const reopenRows = await this.database.query<ReopenOperation>("SELECT * FROM pilot_reopen_operations WHERE state IN ('acknowledged', 'recovered')");
+      const reopenRows = await operatorQuery<ReopenOperation>(this.database, "acknowledgedReopenOperations");
       const reopenById = new Map(reopenEvidence.map((receipt) => [receipt.operationId, receipt]));
       if (reopenRows.rows.some((row) => {
         const receipt = reopenById.get(row.id);
-        return !receipt || receipt.operatorId !== row.operator_id || receipt.idempotencyKey !== row.idempotency_key || receipt.reason !== row.reason;
+        return !receipt || receipt.operatorId !== row.operator_id || receipt.idempotencyKey !== row.idempotency_key || receipt.reason !== row.reason || receipt.reconciliationDigest !== row.reconciliation_digest;
       })) throw new AppError(503, "Reopening recovery evidence is missing or inconsistent", "RECOVERY_MISSING");
       if (acknowledged.rows.some((row) => {
         const receipt = byId.get(row.id);
@@ -83,37 +85,34 @@ export class PauseService {
     await this.verifyEvidence();
     // The state row serializes decisions across instances. Pending predecessors block later decisions.
     const operation = await transaction(this.database, async (client) => {
-      await client.query("SELECT mode FROM pilot_recovery_state WHERE singleton = true FOR UPDATE");
-      const authorized = await client.query("SELECT 1 FROM users u JOIN operator_allowlist a ON a.user_id = u.id WHERE u.id = $1 AND u.role = 'admin' AND u.status = 'active' AND a.active = true FOR SHARE OF u, a", [operatorId]);
-      if (!authorized.rowCount) throw new AppError(403, "Operator access has been revoked", "OPERATOR_ACCESS_REVOKED");
-      await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`pause:${operatorId}:${idempotencyKey}`]);
-      const existing = (await client.query<Operation>("SELECT * FROM pilot_pause_operations WHERE operator_id = $1 AND idempotency_key = $2", [operatorId, idempotencyKey])).rows[0];
+      await operatorQuery(client, "recoveryModeForUpdate");
+      await assertCurrentOperator(client, operatorId);
+      await operatorQuery(client, "lockIdempotencyKey", [`pause:${operatorId}:${idempotencyKey}`]);
+      const existing = (await operatorQuery<Operation>(client, "pauseOperationByKey", [operatorId, idempotencyKey])).rows[0];
       if (existing) {
         if (existing.payload_digest !== digest(decision)) throw new AppError(409, "Idempotency key used with a different decision", "IDEMPOTENCY_PAYLOAD_MISMATCH");
         return existing;
       }
-      const status = await client.query("SELECT mode FROM pilot_recovery_state WHERE singleton = true");
+      const status = await operatorQuery(client, "recoveryMode");
       if (status.rows[0]?.mode !== "open") throw new AppError(503, "Protected writes are restricted", "RECOVERY_RESTRICTED");
-      if ((await client.query("SELECT id FROM pilot_pause_operations WHERE state IN ('intent', 'committed') LIMIT 1")).rowCount) {
+      if ((await operatorQuery(client, "pendingPauseOperation")).rowCount) {
         throw new AppError(503, "An earlier decision is pending", "OPERATION_PENDING");
       }
       receiptConfig();
-      return (await client.query<Operation>(`INSERT INTO pilot_pause_operations (operator_id, idempotency_key, payload_digest, capability, paused, reason, state)
-        VALUES ($1, $2, $3, $4, $5, $6, 'intent') RETURNING *`, [operatorId, idempotencyKey, digest(decision), decision.capability, decision.paused, decision.reason])).rows[0];
+      return (await operatorQuery<Operation>(client, "createPauseIntent", [operatorId, idempotencyKey, digest(decision), decision.capability, decision.paused, decision.reason])).rows[0];
     });
     if (operation.state === "acknowledged" || operation.state === "recovered") return publicOperation(operation);
     let committed = operation;
     if (committed.state === "intent") {
       committed = await transaction(this.database, async (client) => {
-        await client.query("SELECT mode FROM pilot_recovery_state WHERE singleton = true FOR UPDATE");
-        const authorized = await client.query("SELECT 1 FROM users u JOIN operator_allowlist a ON a.user_id = u.id WHERE u.id = $1 AND u.role = 'admin' AND u.status = 'active' AND a.active = true FOR SHARE OF u, a", [operatorId]);
-        if (!authorized.rowCount) throw new AppError(403, "Operator access has been revoked", "OPERATOR_ACCESS_REVOKED");
-        const current = (await client.query<Operation>("SELECT * FROM pilot_pause_operations WHERE id = $1 FOR UPDATE", [operation.id])).rows[0];
+        await operatorQuery(client, "recoveryModeForUpdate");
+        await assertCurrentOperator(client, operatorId);
+        const current = (await operatorQuery<Operation>(client, "pauseOperationForUpdate", [operation.id])).rows[0];
         if (current.state !== "intent") return current;
-        await client.query("UPDATE pilot_pause_state SET paused = $2, operation_id = $3, updated_at = now() WHERE capability = $1", [decision.capability, decision.paused, operation.id]);
-        const row = (await client.query<Operation>("UPDATE pilot_pause_operations SET state = 'committed', committed_at = now() WHERE id = $1 RETURNING *", [operation.id])).rows[0];
-        await client.query("INSERT INTO pilot_pause_audit (operation_id, operator_id, capability, paused, reason, recorded_at) VALUES ($1, $2, $3, $4, $5, $6)", [operation.id, operatorId, decision.capability, decision.paused, decision.reason, row.committed_at]);
-        await client.query("INSERT INTO pilot_pause_followup (operation_id, kind) VALUES ($1, 'operator_pause_changed')", [operation.id]);
+        await operatorQuery(client, "setCapabilityPause", [decision.capability, decision.paused, operation.id]);
+        const row = (await operatorQuery<Operation>(client, "commitPauseOperation", [operation.id])).rows[0];
+        await operatorQuery(client, "insertPauseAudit", [operation.id, operatorId, decision.capability, decision.paused, decision.reason, row.committed_at]);
+        await operatorQuery(client, "insertPauseFollowup", [operation.id]);
         return row;
       });
     }
@@ -124,9 +123,9 @@ export class PauseService {
       throw new AppError(503, "Decision committed; recovery evidence is pending", "OPERATION_PENDING", { operationId: committed.id });
     }
     const published = await transaction(this.database, async (client) => {
-      const row = (await client.query<Operation>("SELECT * FROM pilot_pause_operations WHERE id = $1 FOR UPDATE", [committed.id])).rows[0];
+      const row = (await operatorQuery<Operation>(client, "pauseOperationForUpdate", [committed.id])).rows[0];
       if (row.state === "acknowledged") return row;
-      return (await client.query<Operation>("UPDATE pilot_pause_operations SET state = 'acknowledged', acknowledged_at = now() WHERE id = $1 RETURNING *", [committed.id])).rows[0];
+      return (await operatorQuery<Operation>(client, "acknowledgePauseOperation", [committed.id])).rows[0];
     });
     return publicOperation(published);
   }
@@ -141,32 +140,28 @@ export class PauseService {
 
   async status() {
     try { await this.verifyEvidence(); } catch { /* Recovery mode below reports the restriction. */ }
-    const state = await this.database.query("SELECT mode, cause, started_at, reconciled_at, reopened_at FROM pilot_recovery_state WHERE singleton = true");
-    const capabilities = await this.database.query(`SELECT p.capability,
-      CASE WHEN r.mode <> 'open' OR EXISTS (SELECT 1 FROM pilot_pause_operations WHERE state IN ('intent', 'committed')) THEN true ELSE p.paused END AS paused,
-      EXISTS (SELECT 1 FROM pilot_pause_operations WHERE state IN ('intent', 'committed')) AS pending
-      FROM pilot_pause_state p LEFT JOIN pilot_pause_operations o ON o.id = p.operation_id
-      CROSS JOIN pilot_recovery_state r ORDER BY p.capability`);
+    const state = await operatorQuery(this.database, "recoveryStatus");
+    const capabilities = await operatorQuery(this.database, "effectiveCapabilities");
     return { recovery: state.rows[0] ?? { mode: "restricted", cause: "state_unavailable", started_at: null, reconciled_at: null }, capabilities: capabilities.rows.length === 4 ? capabilities.rows : ["offers", "requests", "acceptance", "booking"].map((capability) => ({ capability, paused: true, pending: true })) };
   }
 
   async operation(operatorId: string, id: string) {
     try { await this.verifyEvidence(); } catch { /* An uncertain operation remains pending. */ }
-    const row = (await this.database.query<Operation>("SELECT * FROM pilot_pause_operations WHERE id = $1 AND operator_id = $2", [id, operatorId])).rows[0];
+    const row = (await operatorQuery<Operation>(this.database, "pauseOperationForOwner", [id, operatorId])).rows[0];
     if (!row) throw new AppError(404, "Operation not found", "OPERATION_NOT_FOUND");
-    const recovery = await this.database.query<{ mode: string }>("SELECT mode FROM pilot_recovery_state WHERE singleton = true");
+    const recovery = await operatorQuery<{ mode: string }>(this.database, "recoveryMode");
     if (recovery.rows[0]?.mode === "restricted" && row.state === "acknowledged") return { ...publicOperation(row), state: "pending_unknown" };
     return publicOperation(row);
   }
 
   async operationByKey(operatorId: string, key: string) {
-    const row = (await this.database.query<Operation>("SELECT id FROM pilot_pause_operations WHERE operator_id = $1 AND idempotency_key = $2", [operatorId, key])).rows[0];
+    const row = (await operatorQuery<Operation>(this.database, "pauseOperationIdByKey", [operatorId, key])).rows[0];
     if (!row) throw new AppError(404, "Operation not found", "OPERATION_NOT_FOUND");
     return this.operation(operatorId, row.id);
   }
 
   async pending() {
-    return (await this.database.query("SELECT id, operator_id, capability, paused, state, committed_at FROM pilot_pause_operations WHERE state IN ('intent', 'committed') ORDER BY id")).rows;
+    return (await operatorQuery(this.database, "pendingPauseOperations")).rows;
   }
 
   async reconcile(operatorId: string) {
@@ -177,33 +172,32 @@ export class PauseService {
     for (const receipt of receipts) {
       if (receipt.payloadDigest !== digest({ capability: receipt.capability, paused: receipt.paused, reason: receipt.reason })) throw new AppError(409, "Recovery payload is inconsistent", "RECOVERY_CONFLICT");
       await transaction(this.database, async (client) => {
-        const row = (await client.query<Operation>("SELECT * FROM pilot_pause_operations WHERE id = $1 FOR UPDATE", [receipt.operationId])).rows[0];
+        const row = (await operatorQuery<Operation>(client, "pauseOperationForUpdate", [receipt.operationId])).rows[0];
         if (row && (row.payload_digest !== receipt.payloadDigest || row.operator_id !== receipt.operatorId || row.idempotency_key !== receipt.idempotencyKey || row.capability !== receipt.capability || row.paused !== receipt.paused || row.reason !== receipt.reason)) throw new AppError(409, "Recovery conflict", "RECOVERY_CONFLICT");
         if (!row) {
-          await client.query(`INSERT INTO pilot_pause_operations (id, operator_id, idempotency_key, payload_digest, capability, paused, reason, state, committed_at, acknowledged_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, 'recovered', $8, now())`, [receipt.operationId, receipt.operatorId, receipt.idempotencyKey, receipt.payloadDigest, receipt.capability, receipt.paused, receipt.reason, receipt.committedAt]);
+          await operatorQuery(client, "restorePauseOperation", [receipt.operationId, receipt.operatorId, receipt.idempotencyKey, receipt.payloadDigest, receipt.capability, receipt.paused, receipt.reason, receipt.committedAt]);
         } else if (row.state !== "acknowledged" && row.state !== "recovered") {
-          await client.query("UPDATE pilot_pause_operations SET state = 'recovered', committed_at = $2, acknowledged_at = now() WHERE id = $1", [receipt.operationId, receipt.committedAt]);
+          await operatorQuery(client, "markPauseRecovered", [receipt.operationId, receipt.committedAt]);
         }
-        await client.query("INSERT INTO pilot_pause_audit (operation_id, operator_id, capability, paused, reason, recorded_at) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING", [receipt.operationId, receipt.operatorId, receipt.capability, receipt.paused, receipt.reason, receipt.committedAt]);
-        await client.query("INSERT INTO pilot_pause_followup (operation_id, kind) VALUES ($1, 'operator_pause_changed') ON CONFLICT DO NOTHING", [receipt.operationId]);
-        const current = await client.query<{ updated_at: Date }>("SELECT updated_at FROM pilot_pause_state WHERE capability = $1 FOR UPDATE", [receipt.capability]);
+        await operatorQuery(client, "restorePauseAudit", [receipt.operationId, receipt.operatorId, receipt.capability, receipt.paused, receipt.reason, receipt.committedAt]);
+        await operatorQuery(client, "restorePauseFollowup", [receipt.operationId]);
+        const current = await operatorQuery<{ updated_at: Date }>(client, "capabilityStateForUpdate", [receipt.capability]);
         if (!current.rows[0] || current.rows[0].updated_at <= new Date(receipt.committedAt)) {
-          await client.query("INSERT INTO pilot_pause_state (capability, paused, operation_id, updated_at) VALUES ($1, $2, $3, $4) ON CONFLICT (capability) DO UPDATE SET paused = EXCLUDED.paused, operation_id = EXCLUDED.operation_id, updated_at = EXCLUDED.updated_at", [receipt.capability, receipt.paused, receipt.operationId, receipt.committedAt]);
+          await operatorQuery(client, "restoreCapabilityState", [receipt.capability, receipt.paused, receipt.operationId, receipt.committedAt]);
         }
       });
     }
     for (const receipt of await reopenReceipts().list()) {
       await transaction(this.database, async (client) => {
-        const row = (await client.query<ReopenOperation>("SELECT * FROM pilot_reopen_operations WHERE id = $1 FOR UPDATE", [receipt.operationId])).rows[0];
-        if (row && (row.operator_id !== receipt.operatorId || row.idempotency_key !== receipt.idempotencyKey || row.reason !== receipt.reason)) throw new AppError(409, "Reopening recovery conflict", "RECOVERY_CONFLICT");
-        if (!row) await client.query("INSERT INTO pilot_reopen_operations (id, operator_id, idempotency_key, reason, state, committed_at, acknowledged_at) VALUES ($1, $2, $3, $4, 'recovered', $5, now())", [receipt.operationId, receipt.operatorId, receipt.idempotencyKey, receipt.reason, receipt.committedAt]);
-        else if (row.state === "committed") await client.query("UPDATE pilot_reopen_operations SET state = 'recovered', acknowledged_at = now() WHERE id = $1", [receipt.operationId]);
-        await client.query("INSERT INTO pilot_reopen_audit (operation_id, operator_id, reason, recorded_at) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING", [receipt.operationId, receipt.operatorId, receipt.reason, receipt.committedAt]);
+        const row = (await operatorQuery<ReopenOperation>(client, "reopenOperationForUpdate", [receipt.operationId])).rows[0];
+        if (row && (row.operator_id !== receipt.operatorId || row.idempotency_key !== receipt.idempotencyKey || row.reason !== receipt.reason || row.reconciliation_digest !== receipt.reconciliationDigest)) throw new AppError(409, "Reopening recovery conflict", "RECOVERY_CONFLICT");
+        if (!row) await operatorQuery(client, "restoreReopenOperation", [receipt.operationId, receipt.operatorId, receipt.idempotencyKey, receipt.reason, receipt.reconciliationDigest, receipt.committedAt]);
+        else if (row.state === "committed") await operatorQuery(client, "markReopenRecovered", [receipt.operationId]);
+        await operatorQuery(client, "restoreReopenAudit", [receipt.operationId, receipt.operatorId, receipt.reason, receipt.committedAt]);
       });
     }
-    await this.database.query("UPDATE pilot_recovery_state SET reconciled_at = now() WHERE singleton = true");
-    await this.database.query("INSERT INTO pilot_recovery_events (event, operator_id, reason) VALUES ('reconciled', $1, 'signed receipts inspected')", [operatorId]);
+    await operatorQuery(this.database, "markRecoveryReconciled");
+    await operatorQuery(this.database, "recordReconciliation", [operatorId]);
     return { receipts: receipts.length, pending: await this.pending() };
   }
 
@@ -211,36 +205,36 @@ export class PauseService {
     await this.verifyEvidence();
     await pauseReceipts().probe();
     await reopenReceipts().probe();
+    const reconciliationDigest = createHash("sha256").update(JSON.stringify({ pauses: await listReceipts(), reopens: await reopenReceipts().list() })).digest("hex");
     const operation = await transaction(this.database, async (client) => {
-      const status = await client.query("SELECT * FROM pilot_recovery_state WHERE singleton = true FOR UPDATE");
-      const authorized = await client.query("SELECT 1 FROM users u JOIN operator_allowlist a ON a.user_id = u.id WHERE u.id = $1 AND u.role = 'admin' AND u.status = 'active' AND a.active = true FOR SHARE OF u, a", [operatorId]);
-      if (!authorized.rowCount) throw new AppError(403, "Operator access has been revoked", "OPERATOR_ACCESS_REVOKED");
-      const existing = (await client.query<ReopenOperation>("SELECT * FROM pilot_reopen_operations WHERE operator_id = $1 AND idempotency_key = $2", [operatorId, idempotencyKey])).rows[0];
+      const status = await operatorQuery(client, "recoveryStateForUpdate");
+      await assertCurrentOperator(client, operatorId);
+      const existing = (await operatorQuery<ReopenOperation>(client, "reopenOperationByKey", [operatorId, idempotencyKey])).rows[0];
       if (existing) {
         if (existing.reason !== reason) throw new AppError(409, "Idempotency key used with a different decision", "IDEMPOTENCY_PAYLOAD_MISMATCH");
         return existing;
       }
-      if (!status.rows[0]?.reconciled_at || (await client.query("SELECT id FROM pilot_pause_operations WHERE state IN ('intent', 'committed') LIMIT 1")).rowCount || (await client.query("SELECT id FROM pilot_reopen_operations WHERE state = 'committed' LIMIT 1")).rowCount) {
+      if (!status.rows[0]?.reconciled_at || (await operatorQuery(client, "pendingPauseOperation")).rowCount || (await operatorQuery(client, "pendingReopenOperation")).rowCount) {
         throw new AppError(409, "Reconciliation is incomplete", "RECONCILIATION_REQUIRED");
       }
-      const row = (await client.query<ReopenOperation>("INSERT INTO pilot_reopen_operations (operator_id, idempotency_key, reason, state) VALUES ($1, $2, $3, 'committed') RETURNING *", [operatorId, idempotencyKey, reason])).rows[0];
-      await client.query("INSERT INTO pilot_reopen_audit (operation_id, operator_id, reason, recorded_at) VALUES ($1, $2, $3, $4)", [row.id, operatorId, reason, row.committed_at]);
+      const row = (await operatorQuery<ReopenOperation>(client, "createReopenOperation", [operatorId, idempotencyKey, reason, reconciliationDigest])).rows[0];
+      await operatorQuery(client, "insertReopenAudit", [row.id, operatorId, reason, row.committed_at]);
       return row;
     });
     if (operation.state === "recovered") return { operationId: operation.id, status: await this.status() };
-    const receipt: ReopenReceipt = { operationId: operation.id, operatorId: operation.operator_id, idempotencyKey: operation.idempotency_key, reason: operation.reason, committedAt: operation.committed_at.toISOString() };
+    const receipt: ReopenReceipt = { operationId: operation.id, operatorId: operation.operator_id, idempotencyKey: operation.idempotency_key, reason: operation.reason, reconciliationDigest: operation.reconciliation_digest, committedAt: operation.committed_at.toISOString() };
     try { await reopenReceipts().append(receipt); }
     catch (error) {
       await restrict(this.database, `reopen_evidence_unavailable:${error instanceof Error ? error.message : "unknown"}`);
       throw new AppError(503, "Reopening decision is pending evidence", "OPERATION_PENDING", { operationId: operation.id });
     }
     await transaction(this.database, async (client) => {
-      await client.query("SELECT mode FROM pilot_recovery_state WHERE singleton = true FOR UPDATE");
-      const row = (await client.query<ReopenOperation>("SELECT * FROM pilot_reopen_operations WHERE id = $1 FOR UPDATE", [operation.id])).rows[0];
+      await operatorQuery(client, "recoveryModeForUpdate");
+      const row = (await operatorQuery<ReopenOperation>(client, "reopenOperationForUpdate", [operation.id])).rows[0];
       if (row.state === "acknowledged" || row.state === "recovered") return;
-      await client.query("UPDATE pilot_recovery_state SET mode = 'open', cause = NULL, reopened_at = now(), reopened_by = $1 WHERE singleton = true", [operatorId]);
-      await client.query("UPDATE pilot_reopen_operations SET state = 'acknowledged', acknowledged_at = now() WHERE id = $1", [operation.id]);
-      await client.query("INSERT INTO pilot_recovery_events (event, operator_id, reason) VALUES ('reopened', $1, $2)", [operatorId, reason]);
+      await operatorQuery(client, "openRecoveryMode", [operatorId]);
+      await operatorQuery(client, "acknowledgeReopenOperation", [operation.id]);
+      await operatorQuery(client, "recordReopening", [operatorId, reason]);
     });
     return { operationId: operation.id, status: await this.status() };
   }

@@ -97,6 +97,7 @@ CREATE TABLE IF NOT EXISTS pilot_reopen_operations (
   operator_id uuid NOT NULL REFERENCES users(id),
   idempotency_key text NOT NULL,
   reason text NOT NULL,
+  reconciliation_digest text NOT NULL,
   state text NOT NULL CHECK (state IN ('committed', 'acknowledged', 'recovered')),
   committed_at timestamptz NOT NULL DEFAULT now(),
   acknowledged_at timestamptz,
@@ -108,3 +109,7 @@ CREATE TABLE IF NOT EXISTS pilot_reopen_audit (
   reason text NOT NULL,
   recorded_at timestamptz NOT NULL
 );
+
+-- Supports repeated disposable rehearsals of this not-yet-deployed migration.
+-- Existing rows without a digest remain restricted until investigated.
+ALTER TABLE pilot_reopen_operations ADD COLUMN IF NOT EXISTS reconciliation_digest text;
