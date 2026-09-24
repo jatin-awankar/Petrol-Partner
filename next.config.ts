@@ -3,10 +3,11 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   async rewrites() {
+    const apiProxyTarget = process.env.API_PROXY_TARGET ?? "https://petrol-partner.onrender.com";
     return [
       {
         source: "/v1/:path*",
-        destination: "https://petrol-partner.onrender.com/v1/:path*",
+        destination: `${apiProxyTarget}/v1/:path*`,
       },
     ];
   },
