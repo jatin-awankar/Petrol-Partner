@@ -275,3 +275,11 @@ export async function isLegacyAuthAuthorized() {
   );
   return result.rows[0]?.authorized === true;
 }
+
+export async function isOperatorAllowlisted(userId: string) {
+  const result = await pool.query<{ allowed: boolean }>(
+    `SELECT active AS allowed FROM operator_allowlist WHERE user_id = $1`,
+    [userId],
+  );
+  return result.rows[0]?.allowed === true;
+}

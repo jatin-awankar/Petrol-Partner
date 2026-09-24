@@ -1,7 +1,7 @@
 import type { Request, Response } from "express";
 
 import { AppError } from "../../shared/errors/app-error";
-import { ACCESS_TOKEN_COOKIE, clearAuthCookies, REFRESH_TOKEN_COOKIE, setAuthCookies } from "../../shared/utils/cookies";
+import { ACCESS_TOKEN_COOKIE, clearAuthCookies, clearPkceVerifierCookie, PKCE_VERIFIER_COOKIE, REFRESH_TOKEN_COOKIE, setAuthCookies, setPkceVerifierCookie } from "../../shared/utils/cookies";
 import { loginSchema, passwordUpdateSchema, providerSessionSchema, recoveryRequestSchema, registerSchema } from "./auth.schema";
 import * as authService from "./auth.service";
 
@@ -23,6 +23,7 @@ export async function register(req: Request, res: Response) {
   const result = await authService.register(input, getSessionMeta(req));
 
   if ("pendingVerification" in result) {
+    setPkceVerifierCookie(res, result.pkceVerifier);
     return res.status(202).json({ pendingVerification: true });
   }
 
@@ -73,14 +74,21 @@ export async function logout(req: Request, res: Response) {
 
 export async function completeProviderSession(req: Request, res: Response) {
   const input = providerSessionSchema.parse(req.body);
-  const result = await authService.completeProviderSession(input.accessToken, input.refreshToken);
-  setAuthCookies(res, result.tokens);
-  res.status(200).json({ user: result.user });
+  const verifier = req.cookies?.[PKCE_VERIFIER_COOKIE];
+  if (!verifier) throw new AppError(400, "PKCE verifier is missing or expired", "PKCE_VERIFIER_MISSING");
+  try {
+    const result = await authService.completeProviderSession(input.code, verifier);
+    setAuthCookies(res, result.tokens);
+    res.status(200).json({ user: result.user });
+  } finally {
+    clearPkceVerifierCookie(res);
+  }
 }
 
 export async function requestRecovery(req: Request, res: Response) {
   const input = recoveryRequestSchema.parse(req.body);
-  await authService.requestRecovery(input.email);
+  const result = await authService.requestRecovery(input.email);
+  setPkceVerifierCookie(res, result.pkceVerifier);
   res.status(202).json({ accepted: true });
 }
 

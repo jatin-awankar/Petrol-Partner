@@ -10,7 +10,7 @@ import { pool } from "../db/pool";
 import { setAuthProviderForTests, setManagedAuthEnabledForTests, type AuthProvider, type ProviderIdentity } from "../modules/auth/auth-provider";
 
 const verificationPool = new Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
-const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql"];
+const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql", "0006_operator_allowlist.sql"];
 
 function fakeProvider(identity: ProviderIdentity): AuthProvider {
   const session = { accessToken: "provider-access", refreshToken: "provider-refresh", expiresIn: 900, identity };
@@ -22,6 +22,7 @@ function fakeProvider(identity: ProviderIdentity): AuthProvider {
     requestRecovery: async () => undefined,
     updatePassword: async () => undefined,
     logout: async () => undefined,
+    exchangeCode: async () => session,
   };
 }
 
@@ -33,6 +34,7 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
+  await verificationPool.query("TRUNCATE TABLE auth_claim_reviews");
   await verificationPool.query("TRUNCATE TABLE users CASCADE");
   setManagedAuthEnabledForTests(null);
   setAuthProviderForTests(null);
@@ -132,6 +134,184 @@ describe("managed authentication HTTP boundary with PostgreSQL", () => {
     expect((await verificationPool.query("SELECT reason FROM auth_claim_reviews")).rows).toEqual([
       { reason: "email_not_verified" },
     ]);
+  });
+
+  it("routes a competing verified identity claim to review without changing the stable owner", async () => {
+    const legacy = await verificationPool.query<{ id: string }>(
+      `INSERT INTO users (email, password_hash) VALUES ('race@example.test', 'legacy-hash') RETURNING id`,
+    );
+    await verificationPool.query(
+      `INSERT INTO user_profiles (user_id, full_name) VALUES ($1, 'Race Student')`,
+      [legacy.rows[0].id],
+    );
+    await verificationPool.query(
+      `UPDATE auth_cutover_state SET active_provider = 'supabase', legacy_login_enabled = false,
+              authorized_at = now(), authorized_by = 'integration-test'`,
+    );
+    setManagedAuthEnabledForTests(true);
+    setAuthProviderForTests({
+      ...fakeProvider({ subject: "unused", email: "race@example.test", emailVerified: true, assuranceLevel: "aal1", userMetadata: {} }),
+      login: async (email) => ({
+        accessToken: `access-${email}`,
+        refreshToken: `refresh-${email}`,
+        expiresIn: 900,
+        identity: {
+          subject: email.startsWith("first") ? "subject-first" : "subject-second",
+          email: "race@example.test",
+          emailVerified: true,
+          assuranceLevel: "aal1",
+          userMetadata: {},
+        },
+      }),
+    });
+
+    const responses = await Promise.all([
+      request(createApp()).post("/v1/auth/login").send({ email: "first@example.test", password: "synthetic-password" }),
+      request(createApp()).post("/v1/auth/login").send({ email: "second@example.test", password: "synthetic-password" }),
+    ]);
+
+    expect(responses.map((response) => response.status).sort()).toEqual([200, 409]);
+    expect(responses.find((response) => response.status === 409)?.body.error.code).toBe("IDENTITY_REVIEW_REQUIRED");
+    expect((await verificationPool.query(
+      `SELECT user_id FROM auth_identities WHERE disabled_at IS NULL`,
+    )).rows).toEqual([{ user_id: legacy.rows[0].id }]);
+  });
+
+  it("starts browser registration with a server-held PKCE verifier", async () => {
+    await verificationPool.query(
+      `UPDATE auth_cutover_state SET active_provider = 'supabase', legacy_login_enabled = false,
+              authorized_at = now(), authorized_by = 'integration-test'`,
+    );
+    setManagedAuthEnabledForTests(true);
+    setAuthProviderForTests(fakeProvider({
+      subject: "pending-subject",
+      email: "pkce@example.test",
+      emailVerified: false,
+      assuranceLevel: null,
+      userMetadata: {},
+    }));
+
+    const response = await request(createApp()).post("/v1/auth/register").send({
+      email: "pkce@example.test",
+      password: "synthetic-password",
+      fullName: "PKCE Student",
+    });
+
+    expect(response.status).toBe(202);
+    expect(response.headers["set-cookie"]?.some((cookie: string) =>
+      cookie.startsWith("pp_pkce_verifier=") && cookie.includes("HttpOnly"),
+    )).toBe(true);
+  });
+
+  it("exchanges a browser authorization code without exposing provider tokens in the URL", async () => {
+    await verificationPool.query(
+      `UPDATE auth_cutover_state SET active_provider = 'supabase', legacy_login_enabled = false,
+              authorized_at = now(), authorized_by = 'integration-test'`,
+    );
+    setManagedAuthEnabledForTests(true);
+    const pendingIdentity: ProviderIdentity = {
+      subject: "pkce-subject",
+      email: "callback@example.test",
+      emailVerified: false,
+      assuranceLevel: null,
+      userMetadata: { full_name: "Callback Student" },
+    };
+    const verifiedIdentity = { ...pendingIdentity, emailVerified: true, assuranceLevel: "aal1" };
+    setAuthProviderForTests({
+      ...fakeProvider(pendingIdentity),
+      exchangeCode: async (code, verifier) => {
+        if (code !== "authorization-code" || !verifier) throw new Error("invalid PKCE exchange");
+        return {
+          accessToken: "callback-access",
+          refreshToken: "callback-refresh",
+          expiresIn: 900,
+          identity: verifiedIdentity,
+        };
+      },
+    });
+    const registration = await request(createApp()).post("/v1/auth/register").send({
+      email: "callback@example.test",
+      password: "synthetic-password",
+      fullName: "Callback Student",
+    });
+    const pkceCookie = registration.headers["set-cookie"]?.find((cookie: string) =>
+      cookie.startsWith("pp_pkce_verifier="),
+    );
+
+    const response = await request(createApp())
+      .post("/v1/auth/provider-session")
+      .set("Cookie", pkceCookie)
+      .send({ code: "authorization-code" });
+
+    expect(response.status).toBe(200);
+    expect(response.body.user).toMatchObject({ email: "callback@example.test", isVerified: false });
+  });
+
+  it("denies an aal2 admin who is not currently operator-allowlisted", async () => {
+    const admin = await verificationPool.query<{ id: string }>(
+      `INSERT INTO users (email, role) VALUES ('operator@example.test', 'admin') RETURNING id`,
+    );
+    await verificationPool.query(
+      `INSERT INTO user_profiles (user_id, full_name) VALUES ($1, 'Test Operator')`,
+      [admin.rows[0].id],
+    );
+    await verificationPool.query(
+      `UPDATE auth_cutover_state SET active_provider = 'supabase', legacy_login_enabled = false,
+              authorized_at = now(), authorized_by = 'integration-test'`,
+    );
+    setManagedAuthEnabledForTests(true);
+    setAuthProviderForTests(fakeProvider({
+      subject: "operator-subject",
+      email: "operator@example.test",
+      emailVerified: true,
+      assuranceLevel: "aal2",
+      userMetadata: { role: "admin" },
+    }));
+    const agent = request.agent(createApp());
+    expect((await agent.post("/v1/auth/login").send({
+      email: "operator@example.test",
+      password: "synthetic-password",
+    })).status).toBe(200);
+
+    const response = await agent.get("/v1/verification/admin/pending");
+
+    expect(response.status).toBe(403);
+    expect(response.body.error.code).toBe("OPERATOR_ACCESS_REVOKED");
+  });
+
+  it("rejects a stale access token when its provider session is revoked", async () => {
+    await verificationPool.query(
+      `UPDATE auth_cutover_state SET active_provider = 'supabase', legacy_login_enabled = false,
+              authorized_at = now(), authorized_by = 'integration-test'`,
+    );
+    setManagedAuthEnabledForTests(true);
+    const identity: ProviderIdentity = {
+      subject: "revoked-subject",
+      email: "revoked@example.test",
+      emailVerified: true,
+      assuranceLevel: "aal1",
+      userMetadata: { full_name: "Revoked Student" },
+    };
+    let revoked = false;
+    const provider = fakeProvider(identity);
+    setAuthProviderForTests({
+      ...provider,
+      refresh: async (refreshToken) => {
+        if (revoked) throw new Error("provider session revoked");
+        return provider.refresh(refreshToken);
+      },
+    });
+    const agent = request.agent(createApp());
+    expect((await agent.post("/v1/auth/login").send({
+      email: "revoked@example.test",
+      password: "synthetic-password",
+    })).status).toBe(200);
+    expect((await agent.get("/v1/auth/me")).status).toBe(200);
+
+    revoked = true;
+    const response = await agent.get("/v1/auth/me");
+
+    expect(response.status).toBe(401);
   });
 });
 

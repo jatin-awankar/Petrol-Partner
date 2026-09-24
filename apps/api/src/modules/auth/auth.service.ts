@@ -70,6 +70,12 @@ function hashToken(value: string) {
   return createHash("sha256").update(value).digest("hex");
 }
 
+function createPkcePair() {
+  const verifier = createHash("sha256").update(randomUUID()).digest("base64url");
+  const challenge = createHash("sha256").update(verifier).digest("base64url");
+  return { verifier, challenge };
+}
+
 function addDays(days: number) {
   return new Date(Date.now() + days * 24 * 60 * 60 * 1000);
 }
@@ -140,8 +146,9 @@ async function issueSession(
 export async function register(input: RegisterInput, meta: SessionMeta) {
   if (isManagedAuthEnabled()) {
     await assertManagedCutoverAuthorized();
-    await getAuthProvider().register(input);
-    return { pendingVerification: true as const };
+    const pkce = createPkcePair();
+    await getAuthProvider().register({ ...input, pkceChallenge: pkce.challenge });
+    return { pendingVerification: true as const, pkceVerifier: pkce.verifier };
   }
   await assertLegacyAuthAuthorized();
   const existingUser = await findUserByEmail(input.email);
@@ -182,13 +189,30 @@ async function resolveManagedIdentity(identity: ProviderIdentity) {
     });
     throw new AppError(403, "Verify email ownership before continuing", "EMAIL_NOT_VERIFIED");
   }
-  const user = await withTransaction((client) => linkVerifiedIdentity({
-    provider: "supabase",
-    providerSubject: identity.subject,
-    email: identity.email!,
-    fullName: typeof identity.userMetadata.full_name === "string" ? identity.userMetadata.full_name : undefined,
-    college: typeof identity.userMetadata.college === "string" ? identity.userMetadata.college : undefined,
-  }, client));
+  let user: UserRecord | null;
+  try {
+    user = await withTransaction((client) => linkVerifiedIdentity({
+      provider: "supabase",
+      providerSubject: identity.subject,
+      email: identity.email!,
+      fullName: typeof identity.userMetadata.full_name === "string" ? identity.userMetadata.full_name : undefined,
+      college: typeof identity.userMetadata.college === "string" ? identity.userMetadata.college : undefined,
+    }, client));
+  } catch (error) {
+    if (!(typeof error === "object" && error && "code" in error && error.code === "23505")) throw error;
+    const mapping = await findAuthIdentity("supabase", identity.subject);
+    if (mapping && !mapping.disabledAt) {
+      user = await findUserById(mapping.userId);
+    } else {
+      await recordClaimReview({
+        provider: "supabase",
+        providerSubject: identity.subject,
+        providerEmail: identity.email,
+        reason: "identity_conflict",
+      });
+      throw new AppError(409, "Account requires operator review", "IDENTITY_REVIEW_REQUIRED");
+    }
+  }
   if (!user) {
     await recordClaimReview({
       provider: "supabase",
@@ -302,15 +326,16 @@ export async function logout(refreshToken?: string, accessToken?: string) {
   }
 }
 
-export async function completeProviderSession(accessToken: string, refreshToken: string) {
+export async function completeProviderSession(code: string, verifier: string) {
   await assertManagedCutoverAuthorized();
-  const identity = await getAuthProvider().validate(accessToken);
-  return managedAuthResult({ accessToken, refreshToken, expiresIn: env.ACCESS_TOKEN_TTL_MINUTES * 60, identity });
+  return managedAuthResult(await getAuthProvider().exchangeCode(code, verifier));
 }
 
 export async function requestRecovery(email: string) {
   await assertManagedCutoverAuthorized();
-  await getAuthProvider().requestRecovery(email);
+  const pkce = createPkcePair();
+  await getAuthProvider().requestRecovery(email, pkce.challenge);
+  return { pkceVerifier: pkce.verifier };
 }
 
 export async function updatePassword(accessToken: string, password: string) {
@@ -319,9 +344,15 @@ export async function updatePassword(accessToken: string, password: string) {
   await getAuthProvider().updatePassword(accessToken, password);
 }
 
-export async function authenticateProviderAccessToken(accessToken: string) {
+export async function authenticateProviderAccessToken(accessToken: string, refreshToken?: string) {
   await assertManagedCutoverAuthorized();
-  const identity = await getAuthProvider().validate(accessToken);
+  if (!refreshToken) throw new AppError(401, "Current provider session cannot be established", "CURRENT_SESSION_REQUIRED");
+  const currentSession = await getAuthProvider().refresh(refreshToken);
+  const accessIdentity = await getAuthProvider().validate(accessToken);
+  if (currentSession.identity.subject !== accessIdentity.subject) {
+    throw new AppError(401, "Provider session identity changed", "INVALID_PROVIDER_SESSION");
+  }
+  const identity = currentSession.identity;
   const mapping = await findAuthIdentity("supabase", identity.subject);
   if (!identity.emailVerified || !mapping || mapping.disabledAt) {
     throw new AppError(401, "Unauthorized", "UNAUTHORIZED");
@@ -329,7 +360,13 @@ export async function authenticateProviderAccessToken(accessToken: string) {
   const user = await findUserById(mapping.userId);
   if (!user || user.status !== "active") throw new AppError(401, "Unauthorized", "UNAUTHORIZED");
   await touchAuthIdentity("supabase", identity.subject);
-  return { userId: user.id, email: user.email, role: user.role, assuranceLevel: identity.assuranceLevel };
+  return {
+    userId: user.id,
+    email: user.email,
+    role: user.role,
+    assuranceLevel: identity.assuranceLevel,
+    tokens: { accessToken: currentSession.accessToken, refreshToken: currentSession.refreshToken },
+  };
 }
 
 export async function me(userId: string) {

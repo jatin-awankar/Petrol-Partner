@@ -25,7 +25,7 @@ test("migration plan is deterministic and includes content checksums", () => {
   const plan = JSON.parse(first.stdout);
   assert.deepEqual(
     plan.map(({ name }) => name),
-    ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql"],
+    ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql", "0006_operator_allowlist.sql"],
   );
   assert.ok(plan.every(({ checksum }) => /^[a-f0-9]{64}$/.test(checksum)));
 });

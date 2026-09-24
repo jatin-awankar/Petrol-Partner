@@ -6,6 +6,7 @@ import { randomBytes } from "node:crypto";
 export const ACCESS_TOKEN_COOKIE = "pp_access_token";
 export const REFRESH_TOKEN_COOKIE = "pp_refresh_token";
 export const CSRF_TOKEN_COOKIE = "pp_csrf_token";
+export const PKCE_VERIFIER_COOKIE = "pp_pkce_verifier";
 
 interface SessionCookiesInput {
   accessToken: string;
@@ -46,4 +47,12 @@ export function clearAuthCookies(res: Response) {
   res.clearCookie(ACCESS_TOKEN_COOKIE, options);
   res.clearCookie(REFRESH_TOKEN_COOKIE, options);
   res.clearCookie(CSRF_TOKEN_COOKIE, { ...options, httpOnly: false });
+}
+
+export function setPkceVerifierCookie(res: Response, verifier: string) {
+  res.cookie(PKCE_VERIFIER_COOKIE, verifier, buildCookieOptions(10 * 60 * 1000));
+}
+
+export function clearPkceVerifierCookie(res: Response) {
+  res.clearCookie(PKCE_VERIFIER_COOKIE, buildCookieOptions(0));
 }

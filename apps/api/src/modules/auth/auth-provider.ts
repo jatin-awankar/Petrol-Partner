@@ -17,11 +17,12 @@ export interface ProviderSession {
 }
 
 export interface AuthProvider {
-  register(input: { email: string; password: string; fullName: string; college?: string }): Promise<void>;
+  register(input: { email: string; password: string; fullName: string; college?: string; pkceChallenge: string }): Promise<void>;
   login(email: string, password: string): Promise<ProviderSession>;
   validate(accessToken: string): Promise<ProviderIdentity>;
   refresh(refreshToken: string): Promise<ProviderSession>;
-  requestRecovery(email: string): Promise<void>;
+  requestRecovery(email: string, pkceChallenge: string): Promise<void>;
+  exchangeCode(code: string, verifier: string): Promise<ProviderSession>;
   updatePassword(accessToken: string, password: string): Promise<void>;
   logout(accessToken: string): Promise<void>;
 }
@@ -92,6 +93,8 @@ export const supabaseAuthProvider: AuthProvider = {
         email: input.email,
         password: input.password,
         data: { full_name: input.fullName, college: input.college ?? null },
+        code_challenge: input.pkceChallenge,
+        code_challenge_method: "s256",
       }),
     });
   },
@@ -111,11 +114,19 @@ export const supabaseAuthProvider: AuthProvider = {
       body: JSON.stringify({ refresh_token: refreshToken }),
     }));
   },
-  async requestRecovery(email) {
+  async requestRecovery(email, pkceChallenge) {
+    const recoveryCallback = new URL(env.AUTH_CALLBACK_URL!);
+    recoveryCallback.searchParams.set("next", "recovery");
     await requestProvider("/recover", {
       method: "POST",
-      body: JSON.stringify({ email, redirect_to: env.AUTH_CALLBACK_URL }),
+      body: JSON.stringify({ email, redirect_to: recoveryCallback.toString(), code_challenge: pkceChallenge, code_challenge_method: "s256" }),
     });
+  },
+  async exchangeCode(code, verifier) {
+    return sessionFromBody(await requestProvider("/token?grant_type=pkce", {
+      method: "POST",
+      body: JSON.stringify({ auth_code: code, code_verifier: verifier }),
+    }));
   },
   async updatePassword(accessToken, password) {
     await requestProvider("/user", {

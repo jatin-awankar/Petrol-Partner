@@ -150,7 +150,7 @@ export async function registerWithBackend(input: {
   };
 }
 
-export async function completeProviderSession(input: { accessToken: string; refreshToken: string }) {
+export async function completeProviderSession(input: { code: string }) {
   const response = await apiRequest<{ user: any }>("/v1/auth/provider-session", {
     method: "POST",
     body: JSON.stringify(input),
