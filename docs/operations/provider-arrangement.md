@@ -2,7 +2,7 @@
 
 Evidence date: 2026-09-24
 
-Status: **zero-cost constraint selected; reviewed arrangement is not compliant; launch remains blocked**
+Status: **zero-cost constraint selected; no accessible compliant arrangement; launch remains blocked**
 
 ## Free-tier result first
 
@@ -39,18 +39,21 @@ scheduler, or independent monitor. There is consequently no selected provider to
 for real trips among the reviewed components. This assessment does not claim to rule out
 every provider in the market.
 
-## Best zero-cost candidate to validate
+## Screened zero-cost candidate
 
 The maintainer conditionally selected an Oracle Cloud Infrastructure (OCI) Always Free
-Ampere A1 VM as the synthetic-staging candidate on 2026-09-24, if it remains the best
-zero-cost fit. Run it in the tenancy's home region for the existing Next.js, Express,
-and worker processes, plus an hourly export scheduler. Retain the already proven
+Ampere A1 VM for synthetic staging on 2026-09-24, if it remained the best zero-cost fit.
+The maintainer then confirmed they have no supported payment card. Oracle requires a
+credit card or eligible debit card to create a Free Tier account, so this candidate is
+unavailable under the current constraints. No OCI resource was provisioned. If that
+access constraint changes, run it in the tenancy's home region for the existing
+Next.js, Express, and worker processes, plus an hourly export scheduler. Retain the already proven
 Supabase Auth integration and use
 Supabase Free for PostgreSQL and private raw evidence, Resend Free for custom SMTP,
 Backblaze B2 Free in a separate account for encrypted exports and signed receipts, and
 an external Better Stack heartbeat for worker and backup freshness. The VM must not
-store the only copy of any accepted business or recovery state. This is a **candidate for
-synthetic staging**, not a selected real-trip topology.
+store the only copy of any accepted business or recovery state. This was a **candidate
+for synthetic staging**, not a selected real-trip topology.
 
 OCI is the closest fit among the free compute options checked for this repository:
 Koyeb's free instance sleeps, cannot run a worker, and is described as unsuitable for
@@ -77,7 +80,7 @@ overage controls, taxes, and commercial-use terms before treating the candidate 
 zero-cost. A paid plan, trial credit, or an operator laptop cannot fill a missing
 requirement under the maintainer's constraint.
 
-### Evidence sequence for ticket 07
+### Evidence sequence if OCI becomes accessible
 
 1. Record the maintainer's OCI home region, existing sender-domain control, whether a
    payment card with any overage exposure is acceptable, exact support window, and the
@@ -110,6 +113,7 @@ requirement under the maintainer's constraint.
 
 Primary documents for this candidate: [OCI Always Free resources](https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm),
 [OCI Free Tier account conditions](https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier.htm),
+[OCI Free Tier card requirements](https://www.oracle.com/asean/cloud/free/faq/),
 [Supabase Free pausing](https://supabase.com/docs/guides/platform/free-project-pausing),
 [Supabase backups](https://supabase.com/docs/guides/platform/backups),
 [Better Stack check frequency](https://betterstack.com/docs/uptime/check-frequency/), and
@@ -254,10 +258,14 @@ staging candidate if it remains the best zero-cost fit. That is a choice of what
 validate next, not a decision that it meets the real-trip launch gates. The final
 support-window and hosting choice remains open until the measured evidence is reviewed.
 
+The maintainer then confirmed no supported card is available and deferred provider
+selection while other unblocked tickets proceed. OCI cannot currently be staged.
+Ticket 07 stays claimed and remains a prerequisite for the complete release staging
+rehearsal (ticket 30), not for the intervening implementation tickets.
+
 Live B2 semantics, executor timing, email delivery, object deletion, backup, restore, and
-monitor tests are now the required proof for the selected staging candidate. Ticket 07
-remains unresolved because an explicit constraint and staging choice do not establish
-that an operating arrangement satisfies the pilot.
+monitor tests remain required for any future accessible candidate. Ticket 07 remains
+unresolved because no accessible operating arrangement satisfies the pilot.
 
 The evidence command treats a rejected arrangement as incomplete for ticket 07 even
 when every failed check is reproducible. A failed technical criterion cannot resolve
