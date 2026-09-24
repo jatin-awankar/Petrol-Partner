@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "arrangement": "render-supabase-resend-backblaze-better-stack",
+  "environment": "documentation-review",
+  "evidence_date": "2026-09-24",
+  "checks": {
+    "authentication_smtp": { "status": "passed", "evidence": "Supabase Auth was previously proven with custom SMTP; Resend's current free envelope covers the conservative pilot model.", "checked_on": "2026-09-24", "procedure": "Compare the completed managed-auth proof and the 600/month, 50/day model with current Resend pricing.", "observed_result": "The model is below 3,000/month and 100/day; custom sender-domain DNS and staging delivery remain runbook prerequisites.", "artifact": "docs/operations/provider-arrangement.md#measured-representative-volume" },
+    "web_api_hosting": { "status": "passed", "evidence": "Paid Render services avoid the documented free idle sleep and supply a compatible Node service shape.", "checked_on": "2026-09-24", "procedure": "Compare render.yaml and repository runtimes with Render free, compute, and deploy documentation.", "observed_result": "Three always-on 0.5c-512mb services are required for the current Next, Express, and worker processes.", "artifact": "docs/operations/provider-arrangement.md#one-operating-arrangement" },
+    "timely_executor": { "status": "not_run", "evidence": "No authorized paid staging worker has run the one-minute/200-job/restart/stall scenario." },
+    "private_evidence_storage": { "status": "not_run", "evidence": "Private-bucket access is documented, but raw-object deletion, cache, internal-copy, and retention behavior have not been tested in the candidate project." },
+    "independent_recovery_storage": { "status": "passed", "evidence": "Backblaze B2 is a separate provider/failure domain with S3 compatibility, encryption options, version retention, and Object Lock.", "checked_on": "2026-09-24", "procedure": "Review B2 pricing, S3 compatibility, Object Lock, lifecycle, and application-key documentation against the prototype assumptions.", "observed_result": "The candidate can represent immutable, versioned, minimally scoped receipt objects; live semantics remain a separate required check.", "artifact": "docs/operations/provider-arrangement.md#recovery-adapter-semantics-to-demonstrate" },
+    "exports": { "status": "passed", "evidence": "Existing restored logical archives measured 94 KiB and 325 KiB; a conservative 10 MiB export rotation models 1.94 GiB.", "checked_on": "2026-09-24", "procedure": "Measure retained rehearsal archives and model 168 hourly plus 30 daily 10 MiB encrypted exports.", "observed_result": "Modeled storage remains below B2's first 10 GB; 25 MiB/export and 5 GiB total are mandatory re-price alerts.", "artifact": "docs/operations/provider-arrangement.md#measured-representative-volume" },
+    "independent_monitoring": { "status": "not_run", "evidence": "Better Stack limits were reviewed, but no independent readiness, worker, or backup heartbeat has been configured and observed." },
+    "recovery_provider_semantics": { "status": "not_run", "evidence": "No authorized B2 bucket/credentials were available for write/read/list, ambiguity, lock/delete, second-reader, or key-recovery tests." },
+    "representative_capacity": { "status": "passed", "evidence": "Backup bytes/operations and email volume were calculated from measured archives and a stated participant-trip workload rather than user count alone.", "checked_on": "2026-09-24", "procedure": "Apply the worked backup and email model in the provider arrangement document.", "observed_result": "1.94 GiB modeled B2 storage, about 2,250 monthly storage operations, and a 600/month, 50/day email envelope fit candidate free allowances.", "artifact": "docs/operations/provider-arrangement.md#measured-representative-volume" },
+    "operating_restrictions": { "status": "passed", "evidence": "The arrangement records free idle sleep, email caps, laptop independence, raw-object deletion uncertainty, and monitoring/commercial-use gates.", "checked_on": "2026-09-24", "procedure": "Compare provider terms/limits with the pilot support, notification, recovery, and deletion invariants.", "observed_result": "Free-only is rejected; onboarding pauses at 50 emails/day; no deletion promise or real trip proceeds before live validation.", "artifact": "docs/operations/provider-arrangement.md#free-tier-result-first" },
+    "current_costs": { "status": "passed", "evidence": "The free result and current base/overage boundaries are separated with tax, FX, domain, and excluded-service assumptions.", "checked_on": "2026-09-24", "procedure": "Read current primary pricing and calculate three Render services, Render Key Value, and Supabase Pro.", "observed_result": "Base is USD 56/month; planning conversion is ₹5,600 before tax or ₹6,608 with assumed 18% tax at ₹100/USD.", "artifact": "docs/operations/provider-arrangement.md#cost-and-operating-restrictions" },
+    "operator_selection": { "status": "passed", "evidence": "The maintainer explicitly required zero recurring infrastructure spend and did not authorize the USD 56/month candidate.", "checked_on": "2026-09-24", "procedure": "Record the maintainer's direct response to the provider arrangement decision request.", "observed_result": "Zero recurring cost is the selected constraint; real trips remain blocked because no reviewed free topology satisfies the pilot objectives.", "artifact": "docs/operations/provider-arrangement.md#decision-recorded" },
+    "staging_prerequisites": { "status": "passed", "evidence": "The topology, secret classes, operator inputs, synthetic-only staging sequence, checks, and handoff boundary are recorded without secrets.", "checked_on": "2026-09-24", "procedure": "Review the staged runbook inputs against ticket 07 and the pilot launch gates.", "observed_result": "The document identifies every provider component, credential class, live check, and non-authorization boundary required before staging.", "artifact": "docs/operations/provider-arrangement.md#staging-prerequisites-and-runbook-inputs" }
+  },
+  "sources": [
+    { "provider": "Render", "title": "Deploy for Free", "url": "https://render.com/docs/free", "checked_on": "2026-09-24" },
+    { "provider": "Render", "title": "Pricing", "url": "https://render.com/pricing", "checked_on": "2026-09-24" },
+    { "provider": "Supabase", "title": "Pricing", "url": "https://supabase.com/pricing", "checked_on": "2026-09-24" },
+    { "provider": "Supabase", "title": "Database Backups", "url": "https://supabase.com/docs/guides/platform/backups", "checked_on": "2026-09-24" },
+    { "provider": "Resend", "title": "Pricing", "url": "https://resend.com/pricing", "checked_on": "2026-09-24" },
+    { "provider": "Backblaze", "title": "B2 Pricing", "url": "https://www.backblaze.com/cloud-storage/pricing", "checked_on": "2026-09-24" },
+    { "provider": "Backblaze", "title": "Object Lock", "url": "https://www.backblaze.com/docs/cloud-storage-object-lock", "checked_on": "2026-09-24" },
+    { "provider": "Better Stack", "title": "Pricing", "url": "https://betterstack.com/pricing", "checked_on": "2026-09-24" }
+  ],
+  "recommendation": {
+    "decision": "reject",
+    "rationale": "Reject the paid candidate under the maintainer's zero-cost constraint and retain the real-trip launch block because the reviewed free tiers do not satisfy the operating and recovery objectives.",
+    "selected_by": "maintainer",
+    "selected_on": "2026-09-24",
+    "remaining_requirements": [
+      "Either approve a non-zero budget or identify a new free arrangement whose terms and live behavior satisfy every pilot requirement.",
+      "Run the paid executor timing/restart/stall proof.",
+      "Run Supabase raw-object deletion/cache/internal-retention checks.",
+      "Run Backblaze write/read/list/ambiguity/lock/delete/key-recovery semantics.",
+      "Configure and observe independent readiness, worker, and backup monitoring."
+    ]
+  }
+}
