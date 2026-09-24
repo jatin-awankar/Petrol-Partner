@@ -36,6 +36,7 @@
     "auth:feasibility": "node scripts/auth-feasibility-report.mjs docs/operations/managed-auth-evidence.json",
     "auth:feasibility:live": "node --env-file=.env.auth-feasibility.local scripts/managed-auth-live.mjs",
     "auth:feasibility:application": "node --env-file=.env.auth-feasibility.local scripts/managed-auth-application-proof.mjs",
+    "auth:identity-inventory": "node scripts/auth-identity-inventory.mjs",
     "provider:arrangement": "node scripts/provider-arrangement-report.mjs docs/operations/provider-arrangement-evidence.json"
   },
   "dependencies": {

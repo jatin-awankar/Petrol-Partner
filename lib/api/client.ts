@@ -103,10 +103,12 @@ function applySetCookieToCookieHeader(
 }
 
 async function tryClientRefreshSession() {
+  const csrf = typeof document === "undefined" ? undefined : document.cookie.split("; ").find((entry) => entry.startsWith("pp_csrf_token="))?.split("=", 2)[1];
   const response = await fetch(buildUrl("/v1/auth/refresh"), {
     method: "POST",
     credentials: "include",
     cache: "no-store",
+    headers: csrf ? { "X-CSRF-Token": decodeURIComponent(csrf) } : undefined,
   });
 
   return response.ok;
@@ -231,6 +233,11 @@ export async function apiRequest<T>(
   init: RequestInit & { skipJsonBody?: boolean; _retryAttempted?: boolean } = {},
 ) {
   const headers = new Headers(init.headers ?? {});
+
+  if (typeof document !== "undefined" && !["GET", "HEAD"].includes((init.method ?? "GET").toUpperCase())) {
+    const csrf = document.cookie.split("; ").find((entry) => entry.startsWith("pp_csrf_token="))?.split("=", 2)[1];
+    if (csrf) headers.set("X-CSRF-Token", decodeURIComponent(csrf));
+  }
 
   if (!headers.has("Content-Type") && !init.skipJsonBody && init.body) {
     headers.set("Content-Type", "application/json");

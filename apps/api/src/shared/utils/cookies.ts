@@ -1,9 +1,11 @@
 import type { CookieOptions, Response } from "express";
 
 import { env, isProduction } from "../../config/env";
+import { randomBytes } from "node:crypto";
 
 export const ACCESS_TOKEN_COOKIE = "pp_access_token";
 export const REFRESH_TOKEN_COOKIE = "pp_refresh_token";
+export const CSRF_TOKEN_COOKIE = "pp_csrf_token";
 
 interface SessionCookiesInput {
   accessToken: string;
@@ -33,10 +35,15 @@ export function setAuthCookies(res: Response, input: SessionCookiesInput) {
     input.refreshToken,
     buildCookieOptions(env.REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000),
   );
+  res.cookie(CSRF_TOKEN_COOKIE, randomBytes(24).toString("base64url"), {
+    ...buildCookieOptions(env.REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000),
+    httpOnly: false,
+  });
 }
 
 export function clearAuthCookies(res: Response) {
   const options = buildCookieOptions(0);
   res.clearCookie(ACCESS_TOKEN_COOKIE, options);
   res.clearCookie(REFRESH_TOKEN_COOKIE, options);
+  res.clearCookie(CSRF_TOKEN_COOKIE, { ...options, httpOnly: false });
 }

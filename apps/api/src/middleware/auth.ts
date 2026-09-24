@@ -3,8 +3,11 @@ import type { RequestHandler } from "express";
 import { AppError } from "../shared/errors/app-error";
 import { verifyAccessToken } from "../shared/jwt/tokens";
 import { ACCESS_TOKEN_COOKIE } from "../shared/utils/cookies";
+import { env } from "../config/env";
+import { authenticateProviderAccessToken } from "../modules/auth/auth.service";
+import { isManagedAuthEnabled } from "../modules/auth/auth-provider";
 
-export const optionalAuth: RequestHandler = (req, _res, next) => {
+export const optionalAuth: RequestHandler = async (req, _res, next) => {
   const bearerToken = req.headers.authorization?.startsWith("Bearer ")
     ? req.headers.authorization.slice("Bearer ".length)
     : undefined;
@@ -16,18 +19,23 @@ export const optionalAuth: RequestHandler = (req, _res, next) => {
   }
 
   try {
-    const payload = verifyAccessToken(accessToken);
+    const payload = isManagedAuthEnabled()
+      ? await authenticateProviderAccessToken(accessToken)
+      : verifyAccessToken(accessToken);
     req.user = {
-      userId: payload.sub,
+      userId: "sub" in payload ? payload.sub : payload.userId,
       email: payload.email,
       role: payload.role,
     };
     req.log = req.log.child({
-      userId: payload.sub,
+      userId: req.user.userId,
       role: payload.role,
     });
-  } catch {
+  } catch (error) {
     req.user = undefined;
+    if (isManagedAuthEnabled() && error instanceof AppError && error.code === "AUTH_ASSURANCE_UNAVAILABLE") {
+      return next(error);
+    }
   }
 
   next();

@@ -13,9 +13,14 @@ import {
   findUserByEmail,
   findUserById,
   insertRefreshToken,
+  findAuthIdentity,
+  linkVerifiedIdentity,
+  touchAuthIdentity,
+  recordClaimReview,
   revokeRefreshToken,
   type UserRecord,
 } from "./auth.repo";
+import { getAuthProvider, isManagedAuthEnabled, type ProviderIdentity, type ProviderSession } from "./auth-provider";
 
 interface SessionMeta {
   userAgent?: string;
@@ -119,6 +124,10 @@ async function issueSession(
 }
 
 export async function register(input: RegisterInput, meta: SessionMeta) {
+  if (isManagedAuthEnabled()) {
+    await getAuthProvider().register(input);
+    return { pendingVerification: true as const };
+  }
   const existingUser = await findUserByEmail(input.email);
 
   if (existingUser) {
@@ -147,7 +156,45 @@ export async function register(input: RegisterInput, meta: SessionMeta) {
   });
 }
 
+async function resolveManagedIdentity(identity: ProviderIdentity) {
+  if (!identity.email || !identity.emailVerified) {
+    await recordClaimReview({
+      provider: "supabase",
+      providerSubject: identity.subject,
+      providerEmail: identity.email,
+      reason: identity.email ? "email_not_verified" : "missing_email",
+    });
+    throw new AppError(403, "Verify email ownership before continuing", "EMAIL_NOT_VERIFIED");
+  }
+  const user = await withTransaction((client) => linkVerifiedIdentity({
+    provider: "supabase",
+    providerSubject: identity.subject,
+    email: identity.email!,
+    fullName: typeof identity.userMetadata.full_name === "string" ? identity.userMetadata.full_name : undefined,
+    college: typeof identity.userMetadata.college === "string" ? identity.userMetadata.college : undefined,
+  }, client));
+  if (!user) {
+    await recordClaimReview({
+      provider: "supabase",
+      providerSubject: identity.subject,
+      providerEmail: identity.email,
+      reason: "email_collision",
+    });
+    throw new AppError(409, "Account requires operator review", "IDENTITY_REVIEW_REQUIRED");
+  }
+  if (user.status !== "active") throw new AppError(403, "Account is not active", "ACCOUNT_DISABLED");
+  return user;
+}
+
+async function managedAuthResult(session: ProviderSession) {
+  const user = await resolveManagedIdentity(session.identity);
+  return { user: toPublicUser(user), tokens: { accessToken: session.accessToken, refreshToken: session.refreshToken } };
+}
+
 export async function login(input: LoginInput, meta: SessionMeta) {
+  if (isManagedAuthEnabled()) {
+    return managedAuthResult(await getAuthProvider().login(input.email, input.password));
+  }
   const user = await findUserByEmail(input.email);
 
   if (!user || !user.passwordHash) {
@@ -168,6 +215,9 @@ export async function login(input: LoginInput, meta: SessionMeta) {
 }
 
 export async function refreshSession(refreshToken: string, meta: SessionMeta) {
+  if (isManagedAuthEnabled()) {
+    return managedAuthResult(await getAuthProvider().refresh(refreshToken));
+  }
   const payload = verifyRefreshToken(refreshToken);
   const refreshTokenRecord = await findRefreshTokenById(payload.tokenId);
 
@@ -199,7 +249,11 @@ export async function refreshSession(refreshToken: string, meta: SessionMeta) {
   });
 }
 
-export async function logout(refreshToken?: string) {
+export async function logout(refreshToken?: string, accessToken?: string) {
+  if (isManagedAuthEnabled()) {
+    if (accessToken) await getAuthProvider().logout(accessToken);
+    return;
+  }
   if (!refreshToken) {
     return;
   }
@@ -213,6 +267,34 @@ export async function logout(refreshToken?: string) {
   } catch {
     return;
   }
+}
+
+export async function completeProviderSession(accessToken: string, refreshToken: string) {
+  const identity = await getAuthProvider().validate(accessToken);
+  return managedAuthResult({ accessToken, refreshToken, expiresIn: env.ACCESS_TOKEN_TTL_MINUTES * 60, identity });
+}
+
+export async function requestRecovery(email: string) {
+  if (!isManagedAuthEnabled()) throw new AppError(503, "Managed account recovery is not configured", "RECOVERY_UNAVAILABLE");
+  await getAuthProvider().requestRecovery(email);
+}
+
+export async function updatePassword(accessToken: string, password: string) {
+  if (!isManagedAuthEnabled()) throw new AppError(503, "Managed account recovery is not configured", "RECOVERY_UNAVAILABLE");
+  await getAuthProvider().validate(accessToken);
+  await getAuthProvider().updatePassword(accessToken, password);
+}
+
+export async function authenticateProviderAccessToken(accessToken: string) {
+  const identity = await getAuthProvider().validate(accessToken);
+  const mapping = await findAuthIdentity("supabase", identity.subject);
+  if (!identity.emailVerified || !mapping || mapping.disabledAt) {
+    throw new AppError(401, "Unauthorized", "UNAUTHORIZED");
+  }
+  const user = await findUserById(mapping.userId);
+  if (!user || user.status !== "active") throw new AppError(401, "Unauthorized", "UNAUTHORIZED");
+  await touchAuthIdentity("supabase", identity.subject);
+  return { userId: user.id, email: user.email, role: user.role, assuranceLevel: identity.assuranceLevel };
 }
 
 export async function me(userId: string) {

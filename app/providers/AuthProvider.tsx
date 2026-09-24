@@ -31,7 +31,7 @@ interface AuthContextValue {
     fullName: string;
     phone?: string;
     college?: string;
-  }) => Promise<BackendAuthUser>;
+  }) => Promise<BackendAuthUser | null>;
   logout: () => Promise<void>;
 }
 
@@ -103,7 +103,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       college?: string;
     }) => {
       const result = await registerWithBackend(input);
-      setUser(result.user);
+      if (result.user) setUser(result.user);
       return result.user;
     },
     [],

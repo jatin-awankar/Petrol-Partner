@@ -33,6 +33,10 @@ const envSchema = z.object({
   RATE_LIMIT_PAYMENT_MAX: z.coerce.number().int().positive().default(30),
   RATE_LIMIT_WEBHOOK_WINDOW_MS: z.coerce.number().int().positive().default(60 * 1000),
   RATE_LIMIT_WEBHOOK_MAX: z.coerce.number().int().positive().default(180),
+  AUTH_PROVIDER: z.enum(["legacy", "supabase"]).default("legacy"),
+  SUPABASE_URL: z.string().url().optional(),
+  SUPABASE_PUBLISHABLE_KEY: z.string().optional(),
+  AUTH_CALLBACK_URL: z.string().url().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -43,6 +47,15 @@ if (!parsed.success) {
 
 if (parsed.data.NODE_ENV === "production" && !parsed.data.REDIS_URL) {
   throw new Error("Invalid API environment configuration: REDIS_URL is required in production");
+}
+
+if (
+  parsed.data.AUTH_PROVIDER === "supabase" &&
+  (!parsed.data.SUPABASE_URL || !parsed.data.SUPABASE_PUBLISHABLE_KEY || !parsed.data.AUTH_CALLBACK_URL)
+) {
+  throw new Error(
+    "Invalid API environment configuration: managed auth requires SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY and AUTH_CALLBACK_URL",
+  );
 }
 
 assertSafeAutomatedDatabase({

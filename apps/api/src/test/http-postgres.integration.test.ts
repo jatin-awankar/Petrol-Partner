@@ -7,9 +7,23 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { createApp } from "../app";
 import { pool } from "../db/pool";
+import { setAuthProviderForTests, setManagedAuthEnabledForTests, type AuthProvider, type ProviderIdentity } from "../modules/auth/auth-provider";
 
 const verificationPool = new Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
-const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql"];
+const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql"];
+
+function fakeProvider(identity: ProviderIdentity): AuthProvider {
+  const session = { accessToken: "provider-access", refreshToken: "provider-refresh", expiresIn: 900, identity };
+  return {
+    register: async () => undefined,
+    login: async () => session,
+    validate: async () => identity,
+    refresh: async () => session,
+    requestRecovery: async () => undefined,
+    updatePassword: async () => undefined,
+    logout: async () => undefined,
+  };
+}
 
 beforeAll(async () => {
   for (const migration of migrations) {
@@ -20,10 +34,79 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await verificationPool.query("TRUNCATE TABLE users CASCADE");
+  setManagedAuthEnabledForTests(null);
+  setAuthProviderForTests(null);
 });
 
 afterAll(async () => {
   await Promise.all([pool.end(), verificationPool.end()]);
+});
+
+describe("managed authentication HTTP boundary with PostgreSQL", () => {
+  it("claims a verified provider identity without changing the stable application owner", async () => {
+    const legacy = await verificationPool.query<{ id: string }>(
+      `INSERT INTO users (email, password_hash) VALUES ('student@example.test', 'legacy-hash') RETURNING id`,
+    );
+    await verificationPool.query(
+      `INSERT INTO user_profiles (user_id, full_name) VALUES ($1, 'Existing Student')`,
+      [legacy.rows[0].id],
+    );
+    await verificationPool.query(
+      `INSERT INTO vehicles (owner_user_id, vehicle_type, registration_number_last4, seat_capacity)
+       VALUES ($1, 'car', '1234', 4)`,
+      [legacy.rows[0].id],
+    );
+    setManagedAuthEnabledForTests(true);
+    setAuthProviderForTests(fakeProvider({
+      subject: "supabase-subject-1",
+      email: "STUDENT@example.test",
+      emailVerified: true,
+      assuranceLevel: "aal1",
+      userMetadata: {},
+    }));
+
+    const response = await request(createApp()).post("/v1/auth/login").send({
+      email: "student@example.test",
+      password: "synthetic-password",
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.user.id).toBe(legacy.rows[0].id);
+    const ownership = await verificationPool.query(
+      `SELECT v.owner_user_id, i.provider_subject, u.password_hash, u.email_verified_at IS NOT NULL AS verified
+         FROM vehicles v JOIN users u ON u.id = v.owner_user_id
+         JOIN auth_identities i ON i.user_id = u.id`,
+    );
+    expect(ownership.rows).toEqual([expect.objectContaining({
+      owner_user_id: legacy.rows[0].id,
+      provider_subject: "supabase-subject-1",
+      password_hash: null,
+      verified: true,
+    })]);
+  });
+
+  it("does not map or authenticate an unverified provider address", async () => {
+    setManagedAuthEnabledForTests(true);
+    setAuthProviderForTests(fakeProvider({
+      subject: "unverified-subject",
+      email: "unverified@example.test",
+      emailVerified: false,
+      assuranceLevel: "aal1",
+      userMetadata: { full_name: "Unverified Student" },
+    }));
+
+    const response = await request(createApp()).post("/v1/auth/login").send({
+      email: "unverified@example.test",
+      password: "synthetic-password",
+    });
+
+    expect(response.status).toBe(403);
+    expect(response.body.error.code).toBe("EMAIL_NOT_VERIFIED");
+    expect((await verificationPool.query("SELECT count(*)::int AS count FROM users")).rows[0].count).toBe(0);
+    expect((await verificationPool.query("SELECT reason FROM auth_claim_reviews")).rows).toEqual([
+      { reason: "email_not_verified" },
+    ]);
+  });
 });
 
 describe("legacy registration HTTP characterization with PostgreSQL", () => {
