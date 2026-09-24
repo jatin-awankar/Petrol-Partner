@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { spawn, type ChildProcess } from "node:child_process";
 import { chmod, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
@@ -9,6 +10,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { createApp } from "../app";
 import { pool } from "../db/pool";
+import { resetRateLimitsForTests } from "../middleware/rate-limit";
 import { setAuthProviderForTests, setManagedAuthEnabledForTests, type AuthProvider, type ProviderIdentity } from "../modules/auth/auth-provider";
 
 const verificationPool = new Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
@@ -36,6 +38,7 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
+  resetRateLimitsForTests();
   await verificationPool.query("TRUNCATE TABLE auth_claim_reviews");
   await verificationPool.query("TRUNCATE TABLE users CASCADE");
   await verificationPool.query("TRUNCATE pilot_pause_audit, pilot_pause_followup, pilot_pause_operations, pilot_reopen_audit, pilot_reopen_operations CASCADE");
@@ -440,6 +443,42 @@ describe("protected operator pause HTTP/PostgreSQL", () => {
     const cookie = login.headers["set-cookie"].map((item: string) => item.split(";", 1)[0]).join("; ");
     return { agent, userId, csrf, cookie };
   }
+  async function startCrashServer(point: string | undefined, receipts: string) {
+    const child = spawn(resolve(process.cwd(), "../../node_modules/.bin/tsx"), [resolve(import.meta.dirname, "operator-crash-server.ts")], {
+      cwd: process.cwd(),
+      env: { ...process.env, NODE_ENV: "test", PILOT_RECEIPT_PATH: receipts, PILOT_RECEIPT_SECRET: "integration-test-independent-receipt-secret", PILOT_TEST_CRASH_POINT: point ?? "" },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stderr = "";
+    child.stderr?.on("data", (chunk: Buffer) => { stderr += chunk.toString(); });
+    const port = await new Promise<number>((resolvePort, reject) => {
+      const timeout = setTimeout(() => { child.kill(); reject(new Error(`Crash server start timed out: ${stderr}`)); }, 10000);
+      let stdout = "";
+      child.stdout?.on("data", (chunk: Buffer) => {
+        stdout += chunk.toString();
+        const match = stdout.match(/READY:(\d+)/);
+        if (match) { clearTimeout(timeout); resolvePort(Number(match[1])); }
+      });
+      child.once("error", (error) => { clearTimeout(timeout); reject(error); });
+      child.once("exit", (code) => { clearTimeout(timeout); reject(new Error(`Crash server exited ${code}: ${stderr}`)); });
+    });
+    return { child, url: `http://127.0.0.1:${port}` };
+  }
+  async function loginToCrashServer(url: string) {
+    const login = await request(url).post("/v1/auth/login").send({ email: "pause-operator@example.test", password: "synthetic-password" });
+    expect(login.status, JSON.stringify(login.body)).toBe(200);
+    return {
+      cookie: login.headers["set-cookie"].map((item: string) => item.split(";", 1)[0]).join("; "),
+      csrf: login.headers["set-cookie"].find((item: string) => item.startsWith("pp_csrf_token="))?.split(";", 1)[0]?.split("=", 2)[1] as string,
+    };
+  }
+  async function stopCrashServer(child: ChildProcess) {
+    if (child.exitCode !== null) return;
+    await new Promise<void>((resolveStop) => {
+      child.once("exit", () => resolveStop());
+      child.kill("SIGTERM");
+    });
+  }
   it("authorizes current allowlist and MFA, then keeps duplicate decisions stable", async () => {
     const { agent, userId, csrf, cookie } = await operator();
     const body = { capability: "offers", paused: true, reason: "Corridor hazard reported" };
@@ -481,6 +520,46 @@ describe("protected operator pause HTTP/PostgreSQL", () => {
     expect(records.rows[0]).toEqual({ audit_count: 1, followup_count: 1 });
     await rm(receiptDirectory, { recursive: true, force: true });
   });
+  it("recovers each acknowledgement boundary after a real process exit", async () => {
+    await operator();
+    const points = ["after_intent", "after_commit", "after_receipt", "after_acknowledgement"] as const;
+    for (const point of points) {
+      await verificationPool.query("TRUNCATE pilot_recovery_events, pilot_pause_audit, pilot_pause_followup, pilot_pause_operations CASCADE");
+      await verificationPool.query("UPDATE pilot_pause_state SET paused = false, operation_id = NULL");
+      await verificationPool.query("UPDATE pilot_recovery_state SET mode = 'open', cause = NULL, started_at = NULL, reconciled_at = NULL WHERE singleton = true");
+      const receipts = resolve(receiptDirectory, point, "receipts");
+      const crashing = await startCrashServer(point, receipts);
+      const body = { capability: "offers", paused: true, reason: `Process crash at ${point}` };
+      const key = `crash-${point}`;
+      try {
+        const auth = await loginToCrashServer(crashing.url);
+        await request(crashing.url).post("/v1/operator/pause")
+          .set("Cookie", auth.cookie).set("Origin", "http://localhost:3000").set("X-CSRF-Token", auth.csrf)
+          .set("Idempotency-Key", key).send(body).catch(() => undefined);
+        await new Promise<void>((resolveExit, reject) => {
+          if (crashing.child.exitCode !== null) { resolveExit(); return; }
+          const timeout = setTimeout(() => reject(new Error(`Process did not exit at ${point}`)), 10000);
+          crashing.child.once("exit", () => { clearTimeout(timeout); resolveExit(); });
+        });
+        expect(crashing.child.exitCode).toBe(92);
+      } finally { await stopCrashServer(crashing.child); }
+      const restarted = await startCrashServer(undefined, receipts);
+      try {
+        const auth = await loginToCrashServer(restarted.url);
+        const retry = await request(restarted.url).post("/v1/operator/pause")
+          .set("Cookie", auth.cookie).set("Origin", "http://localhost:3000").set("X-CSRF-Token", auth.csrf)
+          .set("Idempotency-Key", key).send(body);
+        expect(retry.status, `${point}: ${JSON.stringify(retry.body)}`).toBe(200);
+        expect(retry.body.state).toBe("acknowledged");
+        const counts = await verificationPool.query(`SELECT
+          (SELECT count(*)::int FROM pilot_pause_operations WHERE idempotency_key = $1) AS operations,
+          (SELECT count(*)::int FROM pilot_pause_audit) AS audits,
+          (SELECT count(*)::int FROM pilot_pause_followup) AS followups`, [key]);
+        expect(counts.rows[0]).toEqual({ operations: 1, audits: 1, followups: 1 });
+      } finally { await stopCrashServer(restarted.child); }
+    }
+    await rm(receiptDirectory, { recursive: true, force: true });
+  }, 60000);
   it("lets a current MFA operator finish a stranded intent after the original operator is revoked", async () => {
     const first = await operator();
     const body = { capability: "offers", paused: true, reason: "Original operator recorded hazard" };

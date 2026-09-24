@@ -2,10 +2,11 @@ import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { link, mkdir, open, readFile, readdir, unlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { AppError } from "../../shared/errors/app-error";
+import type { IndependentEvidenceStore } from "../protected-mutation/protocol";
 
 // Each operation owns one immutable file. A temporary file is synced, linked into
 // place without replacement, then the directory is synced before acknowledgement.
-export class SignedReceiptStore<T extends { operationId: string }> {
+export class SignedReceiptStore<T extends { operationId: string }> implements IndependentEvidenceStore<T> {
   constructor(private readonly directory: string, private readonly secret: string) {}
 
   private receiptPath(operationId: string) {

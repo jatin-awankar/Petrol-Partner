@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { Pool, PoolClient } from "pg";
+import type { Pool } from "pg";
 
 import { env } from "../../config/env";
 import { pool } from "../../db/pool";
@@ -7,11 +7,12 @@ import { AppError } from "../../shared/errors/app-error";
 import { SignedReceiptStore } from "./receipt-store";
 import { operatorQuery } from "./operator.repo";
 import { assertCurrentOperator } from "./operator.authorization";
+import { inProtectedTransaction as transaction, type ProtectedOperationState } from "../protected-mutation/protocol";
 
 export const capabilities = ["offers", "requests", "acceptance", "booking"] as const;
 export type Capability = typeof capabilities[number];
 export type PauseDecision = { capability: Capability; paused: boolean; reason: string };
-type Operation = { id: string; operator_id: string; idempotency_key: string; payload_digest: string; capability: Capability; paused: boolean; reason: string; state: "intent" | "committed" | "acknowledged" | "recovered"; committed_at: Date | null; resumed_by: string | null; resume_reason: string | null; resumed_from: "intent" | "committed" | null };
+type Operation = { id: string; operator_id: string; idempotency_key: string; payload_digest: string; capability: Capability; paused: boolean; reason: string; state: ProtectedOperationState; committed_at: Date | null; resumed_by: string | null; resume_reason: string | null; resumed_from: "intent" | "committed" | null };
 type ReopenOperation = { id: string; operator_id: string; idempotency_key: string; reason: string; reconciliation_digest: string; state: "committed" | "acknowledged" | "recovered"; committed_at: Date };
 type ReopenReceipt = { operationId: string; operatorId: string; idempotencyKey: string; reason: string; reconciliationDigest: string; committedAt: string };
 type Receipt = { operationId: string; operatorId: string; idempotencyKey: string; payloadDigest: string; capability: Capability; paused: boolean; reason: string; committedAt: string; resumedBy?: string; resumeReason?: string; resumedFrom?: "intent" | "committed" };
@@ -29,12 +30,6 @@ function pauseReceipts() { const config = receiptConfig(); return new SignedRece
 async function listReceipts() { return pauseReceipts().list(); }
 async function appendReceipt(receipt: Receipt) { return pauseReceipts().append(receipt); }
 function reopenReceipts() { const config = receiptConfig(); return new SignedReceiptStore<ReopenReceipt>(`${config.path}.reopen`, config.secret); }
-async function transaction<T>(database: Pool, work: (client: PoolClient) => Promise<T>): Promise<T> {
-  const client = await database.connect();
-  try { await operatorQuery(client, "begin"); const result = await work(client); await operatorQuery(client, "commit"); return result; }
-  catch (error) { await operatorQuery(client, "rollback"); throw error; }
-  finally { client.release(); }
-}
 async function restrict(database: Pool, cause: string, operatorId?: string) {
   await transaction(database, async (client) => {
     if (operatorId) await assertCurrentOperator(client, operatorId);
@@ -48,6 +43,13 @@ async function restrict(database: Pool, cause: string, operatorId?: string) {
   });
 }
 function publicOperation(operation: Operation) { return { id: operation.id, state: operation.state, capability: operation.capability, paused: operation.paused }; }
+
+export type PauseCrashPoint = "after_intent" | "after_commit" | "after_receipt" | "after_acknowledgement";
+let crashHook: ((point: PauseCrashPoint, operationId: string) => void) | null = null;
+export function setPauseCrashHookForTests(hook: typeof crashHook) {
+  if (process.env.NODE_ENV !== "test") throw new Error("Pause crash hooks are test-only");
+  crashHook = hook;
+}
 
 export class PauseService {
   constructor(private readonly database: Pool = pool) {}
@@ -103,6 +105,7 @@ export class PauseService {
       receiptConfig();
       return (await operatorQuery<Operation>(client, "createPauseIntent", [operatorId, idempotencyKey, digest(decision), decision.capability, decision.paused, decision.reason])).rows[0];
     });
+    if (operation.state === "intent") crashHook?.("after_intent", operation.id);
     if (operation.state === "acknowledged" || operation.state === "recovered") return publicOperation(operation);
     let committed = operation;
     if (committed.state === "intent") {
@@ -117,6 +120,7 @@ export class PauseService {
         await operatorQuery(client, "insertPauseFollowup", [operation.id]);
         return row;
       });
+      crashHook?.("after_commit", committed.id);
     }
     return this.publish(committed);
   }
@@ -133,6 +137,7 @@ export class PauseService {
         if (row.resume_reason) receipt.resumeReason = row.resume_reason;
         if (row.resumed_from) receipt.resumedFrom = row.resumed_from;
         await appendReceipt(receipt);
+        crashHook?.("after_receipt", row.id);
         return (await operatorQuery<Operation>(client, "acknowledgePauseOperation", [row.id])).rows[0];
       });
     }
@@ -140,6 +145,7 @@ export class PauseService {
       await restrict(this.database, `evidence_unavailable:${error instanceof Error ? error.message : "unknown"}`);
       throw new AppError(503, "Decision committed; recovery evidence is pending", "OPERATION_PENDING", { operationId: committed.id });
     }
+    crashHook?.("after_acknowledgement", published.id);
     return publicOperation(published);
   }
 

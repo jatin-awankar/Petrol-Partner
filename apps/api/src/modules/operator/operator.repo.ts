@@ -2,9 +2,6 @@ import type { Pool, PoolClient, QueryResultRow } from "pg";
 
 // SQL for operator pause and recovery is kept in the repository module.
 export const operatorSql = {
-  begin: "BEGIN",
-  commit: "COMMIT",
-  rollback: "ROLLBACK",
   recoveryModeForUpdate: "SELECT mode FROM pilot_recovery_state WHERE singleton = true FOR UPDATE",
   preserveRestrictionCause: "UPDATE pilot_recovery_state SET cause = COALESCE(cause, $1), started_at = COALESCE(started_at, now()) WHERE singleton = true",
   enterRestrictedMode: "UPDATE pilot_recovery_state SET mode = 'restricted', cause = $1, started_at = now(), reconciled_at = NULL WHERE singleton = true",

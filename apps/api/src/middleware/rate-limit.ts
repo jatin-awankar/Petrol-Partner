@@ -13,6 +13,11 @@ interface CreateRateLimitInput {
 
 const rateLimitStore = new Map<string, RateLimitState>();
 
+export function resetRateLimitsForTests() {
+  if (process.env.NODE_ENV !== "test") throw new Error("Rate-limit reset is test-only");
+  rateLimitStore.clear();
+}
+
 function getClientKey(ip: string | undefined, requestId: string, name: string) {
   return `${name}:${ip ?? requestId}`;
 }
