@@ -1,0 +1,16 @@
+export const REQUIRED_PROVIDER_ARRANGEMENT_CHECKS = [
+  "authentication_smtp",
+  "web_api_hosting",
+  "timely_executor",
+  "private_evidence_storage",
+  "independent_recovery_storage",
+  "exports",
+  "independent_monitoring",
+  "recovery_provider_semantics",
+  "representative_capacity",
+  "operating_restrictions",
+  "commercial_eligibility",
+  "current_costs",
+  "operator_selection",
+  "staging_prerequisites",
+];
