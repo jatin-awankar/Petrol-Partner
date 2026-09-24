@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 
+import PilotPauseBanner from "@/components/dashboard/PilotPauseBanner";
 import WelcomeCard from "@/components/dashboard/WelcomeCard";
 import QuickActionCards from "@/components/dashboard/QuickActionCards";
 import SafetyReminders from "@/components/dashboard/SafetyReminders";
@@ -24,6 +25,7 @@ export default async function DashboardPage() {
   return (
     <div className="min-h-screen pb-16 md:pb-0 bg-gradient-hero">
       <main className="page space-y-6">
+        <PilotPauseBanner />
         <WelcomeCard />
 
         <QuickActionCards />

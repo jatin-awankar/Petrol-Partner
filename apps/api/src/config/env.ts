@@ -37,6 +37,8 @@ const envSchema = z.object({
   SUPABASE_URL: z.string().url().optional(),
   SUPABASE_PUBLISHABLE_KEY: z.string().optional(),
   AUTH_CALLBACK_URL: z.string().url().optional(),
+  PILOT_RECEIPT_PATH: z.string().optional(),
+  PILOT_RECEIPT_SECRET: z.string().min(32).optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

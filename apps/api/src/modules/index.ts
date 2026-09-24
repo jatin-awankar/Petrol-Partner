@@ -5,6 +5,7 @@ import { bookingsRouter } from "./bookings/bookings.routes";
 import { chatRouter } from "./chat/chat.routes";
 import { healthRouter } from "./health/health.routes";
 import { matchingRouter } from "./matching/matching.routes";
+import { operatorRouter } from "./operator/operator.routes";
 import { notificationsRouter } from "./notifications/notifications.routes";
 import { paymentsRouter } from "./payments/payments.routes";
 import { pricingRouter } from "./pricing/pricing.routes";
@@ -19,6 +20,7 @@ export const apiRouter = Router();
 
 apiRouter.use(healthRouter);
 apiRouter.use("/auth", authRouter);
+apiRouter.use("/operator", operatorRouter);
 apiRouter.use("/profile", profileRouter);
 apiRouter.use("/rides", ridesRouter);
 apiRouter.use("/bookings", bookingsRouter);
