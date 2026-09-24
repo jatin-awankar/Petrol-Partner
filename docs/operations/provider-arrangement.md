@@ -39,7 +39,86 @@ scheduler, or independent monitor. There is consequently no selected provider to
 for real trips among the reviewed components. This assessment does not claim to rule out
 every provider in the market.
 
-## One operating arrangement
+## Best zero-cost candidate to validate
+
+The maintainer conditionally selected an Oracle Cloud Infrastructure (OCI) Always Free
+Ampere A1 VM as the synthetic-staging candidate on 2026-09-24, if it remains the best
+zero-cost fit. Run it in the tenancy's home region for the existing Next.js, Express,
+and worker processes, plus an hourly export scheduler. Retain the already proven
+Supabase Auth integration and use
+Supabase Free for PostgreSQL and private raw evidence, Resend Free for custom SMTP,
+Backblaze B2 Free in a separate account for encrypted exports and signed receipts, and
+an external Better Stack heartbeat for worker and backup freshness. The VM must not
+store the only copy of any accepted business or recovery state. This is a **candidate for
+synthetic staging**, not a selected real-trip topology.
+
+OCI is the closest fit among the free compute options checked for this repository:
+Koyeb's free instance sleeps, cannot run a worker, and is described as unsuitable for
+production; Fly.io has no ongoing free tier; Cloudflare Workers Free has a 10 ms CPU
+limit per invocation and would require substantial rework of the current Node services.
+This ranking is an inference from provider limits and repository structure, not a
+measured OCI deployment or a claim that every provider was surveyed.
+
+OCI documents 2 OCPUs and 12 GB RAM of Always Free A1 capacity, but allocation depends
+on home-region availability and idle instances may be reclaimed. Supabase Free can pause
+after insufficient activity over a seven-day period and has no managed database backup.
+The current provider evidence therefore does not establish the one-minute work target,
+one-hour recovery point, or four-hour restoration target. Do not generate artificial
+load to avoid reclamation; detect loss, restrict protected writes, and test restoration.
+External monitoring must alert independently of the VM. A three-minute free HTTP check
+alone does not prove the five-minute stalled-work alert; stage a worker heartbeat with
+measured frequency, grace period, and notification latency.
+
+The modeled base charge is USD 0 only while each component stays inside its free
+allowance. OCI account creation commonly requires a card, and a sender domain may cost
+money unless the maintainer already controls one. Confirm exact home-region quotas,
+email sender requirements, object storage operation/egress caps, monitoring limits,
+overage controls, taxes, and commercial-use terms before treating the candidate as
+zero-cost. A paid plan, trial credit, or an operator laptop cannot fill a missing
+requirement under the maintainer's constraint.
+
+### Evidence sequence for ticket 07
+
+1. Record the maintainer's OCI home region, existing sender-domain control, whether a
+   payment card with any overage exposure is acceptable, exact support window, and the
+   operator who can restore service. If a required domain or provider resource cannot
+   be obtained at zero cost, reject this candidate and retain the launch block.
+2. Verify primary terms for commercial use and every quota; provision isolated OCI,
+   Supabase, Resend, B2, and external-monitoring resources with synthetic identities
+   only. Set available spend caps and record any uncapped exposure. No production
+   connection or participant data is needed for this proof.
+3. Measure Next.js/API/worker memory and startup on the A1 shape. Sweep at one-minute
+   cadence with 200 due synthetic jobs, restart during processing, stop the worker,
+   and record the time to an independent five-minute alert. Repeat after VM reboot and
+   simulated unavailability. Prove restricted mode before another protected success.
+4. Add a B2 adapter to the recovery prototype behind its existing HTTP action and
+   status seam, then exercise it with unique keys, timeout-after-send, read/list
+   consistency, retained-object delete and overwrite attempts, a separate
+   recovery reader, key rotation, and post-expiry deletion. Export encrypted Supabase
+   data hourly and daily, verify remote checksums, then restore an older snapshot and
+   reconcile every newer acknowledged synthetic action. Measure RPO and RTO, including
+   recovery when the OCI VM cannot be reused.
+5. Test Auth plus Resend delivery, suppression, and daily limits; private-object
+   access, deletion, caches, and provider-side retention; and external readiness,
+   worker, and backup alerts. Record observed times and raw provider response codes in
+   restricted evidence, with no secrets or participant data in the ticket.
+6. Run `npm run provider:arrangement` against a dated evidence file for this exact
+   topology. Keep every untested or unresolved check `not_run`. Present the results and
+   any reduced support-window dependency to the maintainer for an explicit topology
+   choice. Resolve ticket 07 only if every required criterion has evidence and the
+   choice is recorded; otherwise document the failed limit and leave real trips blocked.
+
+Primary documents for this candidate: [OCI Always Free resources](https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm),
+[OCI Free Tier account conditions](https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier.htm),
+[Supabase Free pausing](https://supabase.com/docs/guides/platform/free-project-pausing),
+[Supabase backups](https://supabase.com/docs/guides/platform/backups),
+[Better Stack check frequency](https://betterstack.com/docs/uptime/check-frequency/), and
+[Better Stack heartbeat behavior](https://betterstack.com/docs/uptime/cron-and-heartbeat-monitor/).
+Comparison sources: [Koyeb instance limits](https://www.koyeb.com/docs/reference/instances),
+[Fly.io cost management](https://fly.io/docs/about/cost-management/), and
+[Cloudflare Workers limits](https://developers.cloudflare.com/workers/platform/limits/).
+
+## Previously reviewed paid arrangement
 
 | Need | Candidate and boundary |
 | --- | --- |
@@ -151,7 +230,8 @@ retention periods. Provision separate staging resources and synthetic identities
 Store these secrets outside git:
 
 - Supabase service/Auth credentials and SMTP secret;
-- Render deploy/runtime credentials;
+- OCI tenancy/runtime credentials for the free candidate (or Render deploy/runtime
+  credentials if the paid alternative is reconsidered);
 - B2 writer and recovery-reader keys, receipt signing key, and export-encryption key; and
 - Better Stack monitor/heartbeat tokens.
 
@@ -169,10 +249,19 @@ Because the reviewed free components do not form a compliant real-trip arrangeme
 consequence is to keep real trips blocked. This decision authorizes no purchase,
 production deployment, or weakening of the pilot requirements.
 
+The maintainer subsequently chose the OCI-based combination above as the synthetic
+staging candidate if it remains the best zero-cost fit. That is a choice of what to
+validate next, not a decision that it meets the real-trip launch gates. The final
+support-window and hosting choice remains open until the measured evidence is reviewed.
+
 Live B2 semantics, executor timing, email delivery, object deletion, backup, restore, and
-monitor tests remain useful only if a future candidate is proposed. Ticket 07 remains
-unresolved because an explicit constraint is decision evidence, not evidence that an
-operating arrangement satisfies the pilot.
+monitor tests are now the required proof for the selected staging candidate. Ticket 07
+remains unresolved because an explicit constraint and staging choice do not establish
+that an operating arrangement satisfies the pilot.
+
+The evidence command treats a rejected arrangement as incomplete for ticket 07 even
+when every failed check is reproducible. A failed technical criterion cannot resolve
+the ticket; its dated procedure and artifact explain why the candidate was rejected.
 
 ## Primary sources
 

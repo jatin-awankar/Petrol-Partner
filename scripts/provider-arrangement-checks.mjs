@@ -9,6 +9,7 @@ export const REQUIRED_PROVIDER_ARRANGEMENT_CHECKS = [
   "recovery_provider_semantics",
   "representative_capacity",
   "operating_restrictions",
+  "commercial_eligibility",
   "current_costs",
   "operator_selection",
   "staging_prerequisites",

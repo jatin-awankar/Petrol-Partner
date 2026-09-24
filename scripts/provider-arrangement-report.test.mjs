@@ -61,7 +61,7 @@ test("accepts a dated, fully evidenced maintainer selection", async () => {
   const { stdout } = await execFileAsync(process.execPath, [cliPath, evidencePath]);
 
   assert.match(stdout, /Decision: ADOPT/);
-  assert.match(stdout, /13\/13 required checks passed/);
+  assert.match(stdout, /14\/14 required checks passed/);
 });
 
 test("keeps the arrangement incomplete while actual provider semantics are untested", async () => {
@@ -76,6 +76,18 @@ test("keeps the arrangement incomplete while actual provider semantics are untes
     assert.equal(error.code, 1);
     assert.match(error.stdout, /Decision: INCOMPLETE/);
     assert.match(error.stdout, /recovery_provider_semantics: not_run/);
+    return true;
+  });
+});
+
+test("requires explicit commercial-use eligibility evidence", async () => {
+  const value = evidence();
+  delete value.checks.commercial_eligibility;
+  const evidencePath = await writeEvidence(value);
+
+  await assert.rejects(execFileAsync(process.execPath, [cliPath, evidencePath]), (error) => {
+    assert.equal(error.code, 1);
+    assert.match(error.stderr, /checks\.commercial_eligibility is required/);
     return true;
   });
 });
@@ -129,7 +141,7 @@ test("does not accept a documentation-only environment as a complete proof", asy
   });
 });
 
-test("accepts a fully tested rejection while preserving failed provider evidence", async () => {
+test("keeps a fully evidenced rejection incomplete while preserving the failed check", async () => {
   const value = evidence({
     recommendation: {
       decision: "reject",
@@ -142,12 +154,42 @@ test("accepts a fully tested rejection while preserving failed provider evidence
   value.checks.recovery_provider_semantics = {
     status: "failed",
     evidence: "A locked receipt could be deleted before its retention date.",
+    checked_on: "2026-09-24",
+    procedure: "Upload and lock a synthetic receipt, then attempt deletion before expiry.",
+    observed_result: "The provider returned success for the premature deletion.",
+    artifact: "artifacts/locked-receipt-deletion.json",
   };
   const evidencePath = await writeEvidence(value);
-  const { stdout } = await execFileAsync(process.execPath, [cliPath, evidencePath]);
 
-  assert.match(stdout, /Decision: REJECT/);
-  assert.match(stdout, /recovery_provider_semantics: failed/);
+  await assert.rejects(execFileAsync(process.execPath, [cliPath, evidencePath]), (error) => {
+    assert.equal(error.code, 1);
+    assert.match(error.stdout, /Decision: REJECT \(INCOMPLETE\)/);
+    assert.match(error.stdout, /recovery_provider_semantics: failed/);
+    return true;
+  });
+});
+
+test("keeps a rejection incomplete when a failed check has only prose", async () => {
+  const value = evidence({
+    recommendation: {
+      decision: "reject",
+      rationale: "The provider failed a required durability check.",
+      selected_by: "maintainer",
+      selected_on: "2026-09-24",
+      remaining_requirements: ["Keep launch blocked."],
+    },
+  });
+  value.checks.recovery_provider_semantics = {
+    status: "failed",
+    evidence: "A locked receipt could be deleted before its retention date.",
+  };
+  const evidencePath = await writeEvidence(value);
+
+  await assert.rejects(execFileAsync(process.execPath, [cliPath, evidencePath]), (error) => {
+    assert.equal(error.code, 1);
+    assert.match(error.stderr, /checks\.recovery_provider_semantics failed evidence requires/);
+    return true;
+  });
 });
 
 test("rejects a fully tested provider rejection without the maintainer decision", async () => {
@@ -163,6 +205,10 @@ test("rejects a fully tested provider rejection without the maintainer decision"
   value.checks.recovery_provider_semantics = {
     status: "failed",
     evidence: "A locked receipt could be deleted before its retention date.",
+    checked_on: "2026-09-24",
+    procedure: "Upload and lock a synthetic receipt, then attempt deletion before expiry.",
+    observed_result: "The provider returned success for the premature deletion.",
+    artifact: "artifacts/locked-receipt-deletion.json",
   };
   const evidencePath = await writeEvidence(value);
 

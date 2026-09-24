@@ -42,7 +42,7 @@ function validateSources(sources) {
   });
 }
 
-function validatePassedEvidence(name, check) {
+function validateTerminalEvidence(name, check) {
   if (
     !ISO_DATE.test(check.checked_on ?? "") ||
     !hasText(check.procedure) ||
@@ -50,7 +50,7 @@ function validatePassedEvidence(name, check) {
     !hasText(check.artifact)
   ) {
     fail(
-      `checks.${name} passed evidence requires checked_on, procedure, observed_result, and artifact`,
+      `checks.${name} ${check.status} evidence requires checked_on, procedure, observed_result, and artifact`,
     );
   }
 }
@@ -72,7 +72,7 @@ export function assessEvidence(value) {
     const check = value.checks[name];
     if (!check || !hasText(check.status)) fail(`checks.${name} is required`);
     if (!hasText(check.evidence)) fail(`checks.${name}.evidence is required`);
-    if (check.status === "passed") validatePassedEvidence(name, check);
+    if (TERMINAL_STATUSES.has(check.status)) validateTerminalEvidence(name, check);
     return { name, status: check.status, evidence: check.evidence.trim() };
   });
 
@@ -96,14 +96,14 @@ export function assessEvidence(value) {
   const unfinished = results.filter((result) => !TERMINAL_STATUSES.has(result.status));
   const failed = results.filter((result) => result.status === "failed");
   const complete =
-    unfinished.length === 0 && (decision === "reject" || failed.length === 0);
+    unfinished.length === 0 && failed.length === 0 && decision === "adopt";
   if (complete && value.environment !== "synthetic-staging") {
     fail("a complete arrangement requires environment synthetic-staging");
   }
 
   return {
     complete,
-    decision: complete ? decision : "incomplete",
+    decision: decision === "reject" ? "reject (incomplete)" : complete ? "adopt" : "incomplete",
     failed,
     passed: results.filter((result) => result.status === "passed"),
     unfinished,
