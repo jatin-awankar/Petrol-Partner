@@ -18,7 +18,7 @@ try {
       FROM users GROUP BY lower(btrim(email)) HAVING count(*) > 1 ORDER BY normalized_email
   `)).rows;
   const mappings = (await pool.query(`
-    SELECT count(*)::int AS active_mappings,
+    SELECT count(*) FILTER (WHERE disabled_at IS NULL)::int AS active_mappings,
       count(*) FILTER (WHERE disabled_at IS NOT NULL)::int AS disabled_mappings
     FROM auth_identities
   `)).rows[0];

@@ -180,64 +180,55 @@ export async function findAuthIdentity(provider: string, providerSubject: string
   return result.rows[0] ?? null;
 }
 
-export async function linkVerifiedIdentity(input: {
-  provider: string;
-  providerSubject: string;
-  email: string;
-  fullName?: string;
-  college?: string;
-}, client: PoolClient) {
-  const existing = await findAuthIdentity(input.provider, input.providerSubject, client);
-  if (existing?.disabledAt) return null;
-  if (existing) {
-    await client.query(
-      `UPDATE auth_identities SET last_validated_at = now() WHERE provider = $1 AND provider_subject = $2`,
-      [input.provider, input.providerSubject],
-    );
-    return findUserById(existing.userId, client);
-  }
-
-  const matches = await client.query<{ id: string }>(
+export async function lockUsersByNormalizedEmail(email: string, client: PoolClient) {
+  const result = await client.query<{ id: string }>(
     `SELECT id FROM users WHERE lower(btrim(email)) = lower(btrim($1)) FOR UPDATE`,
+    [email],
+  );
+  return result.rows.map((row) => row.id);
+}
+
+export async function createManagedUser(input: { email: string; fullName: string; college?: string }, client: PoolClient) {
+  const created = await client.query<{ id: string }>(
+    `INSERT INTO users (email, password_hash, email_verified_at)
+     VALUES ($1, NULL, now()) RETURNING id`,
     [input.email],
   );
-  if (matches.rowCount && matches.rowCount > 1) return null;
+  const userId = created.rows[0].id;
+  await client.query(
+    `INSERT INTO user_profiles (user_id, full_name, college)
+     VALUES ($1, $2, $3)`,
+    [userId, input.fullName, input.college ?? null],
+  );
+  return userId;
+}
 
-  let userId = matches.rows[0]?.id;
-  let eventType = "claimed";
-  if (!userId) {
-    const created = await client.query<{ id: string }>(
-      `INSERT INTO users (email, password_hash, email_verified_at)
-       VALUES ($1, NULL, now()) RETURNING id`,
-      [input.email],
-    );
-    userId = created.rows[0].id;
-    await client.query(
-      `INSERT INTO user_profiles (user_id, full_name, college)
-       VALUES ($1, $2, $3)`,
-      [userId, input.fullName ?? "Student", input.college ?? null],
-    );
-    eventType = "registered";
-  } else {
-    await client.query(`UPDATE users SET email_verified_at = now(), password_hash = NULL WHERE id = $1`, [userId]);
-    await client.query(`UPDATE refresh_tokens SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL`, [userId]);
-  }
+export async function verifyClaimedUserAndRevokeLegacySessions(userId: string, client: PoolClient) {
+  await client.query(`UPDATE users SET email_verified_at = now(), password_hash = NULL WHERE id = $1`, [userId]);
+  await client.query(`UPDATE refresh_tokens SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL`, [userId]);
+}
 
+export async function insertManagedIdentity(input: {
+  provider: string;
+  providerSubject: string;
+  userId: string;
+  email: string;
+  eventType: "registered" | "claimed";
+}, client: PoolClient) {
   await client.query(
     `INSERT INTO auth_identities (provider, provider_subject, user_id, provider_email)
      VALUES ($1, $2, $3, $4)`,
-    [input.provider, input.providerSubject, userId, input.email],
+    [input.provider, input.providerSubject, input.userId, input.email],
   );
   await client.query(
     `INSERT INTO auth_identity_events (user_id, provider, provider_subject, event_type)
      VALUES ($1, $2, $3, $4)`,
-    [userId, input.provider, input.providerSubject, eventType],
+    [input.userId, input.provider, input.providerSubject, input.eventType],
   );
-  return findUserById(userId, client);
 }
 
-export async function touchAuthIdentity(provider: string, providerSubject: string) {
-  await pool.query(
+export async function touchAuthIdentity(provider: string, providerSubject: string, client?: Queryable) {
+  await getDb(client).query(
     `UPDATE auth_identities SET last_validated_at = now() WHERE provider = $1 AND provider_subject = $2 AND disabled_at IS NULL`,
     [provider, providerSubject],
   );

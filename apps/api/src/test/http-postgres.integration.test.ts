@@ -54,6 +54,9 @@ describe("managed authentication HTTP boundary with PostgreSQL", () => {
     const legacy = await verificationPool.query<{ id: string }>(
       `INSERT INTO users (email, password_hash) VALUES ('student@example.test', 'legacy-hash') RETURNING id`,
     );
+    const passenger = await verificationPool.query<{ id: string }>(
+      `INSERT INTO users (email) VALUES ('passenger@example.test') RETURNING id`,
+    );
     await verificationPool.query(
       `INSERT INTO user_profiles (user_id, full_name) VALUES ($1, 'Existing Student')`,
       [legacy.rows[0].id],
@@ -67,6 +70,49 @@ describe("managed authentication HTTP boundary with PostgreSQL", () => {
       `INSERT INTO vehicles (owner_user_id, vehicle_type, registration_number_last4, seat_capacity)
        VALUES ($1, 'car', '1234', 4)`,
       [legacy.rows[0].id],
+    );
+    await verificationPool.query(
+      `INSERT INTO student_verifications
+        (user_id, provider, status, institution_name, eligibility_ends_at)
+       VALUES ($1, 'manual_review', 'verified', 'Synthetic College', now() + interval '1 year')`,
+      [legacy.rows[0].id],
+    );
+    const vehicle = await verificationPool.query<{ id: string }>(
+      `SELECT id FROM vehicles WHERE owner_user_id = $1`,
+      [legacy.rows[0].id],
+    );
+    const offer = await verificationPool.query<{ id: string }>(
+      `INSERT INTO ride_offers
+        (driver_id, vehicle_id, pickup_location, pickup_lat, pickup_lng,
+         drop_location, drop_lat, drop_lng, date, time, available_seats,
+         price_per_seat_paise, status)
+       VALUES ($1, $2, 'Origin', 20, 77, 'Destination', 20.1, 77.1,
+         current_date + 1, '09:00', 2, 12000, 'active') RETURNING id`,
+      [legacy.rows[0].id, vehicle.rows[0].id],
+    );
+    const booking = await verificationPool.query<{ id: string }>(
+      `INSERT INTO bookings
+        (ride_offer_id, created_by_user_id, passenger_id, driver_id, seats_booked,
+         total_amount_paise, platform_fee_paise, status, payment_state, confirmed_at)
+       VALUES ($1, $2, $3, $2, 1, 12500, 500, 'confirmed', 'paid_escrow', now())
+       RETURNING id`,
+      [offer.rows[0].id, legacy.rows[0].id, passenger.rows[0].id],
+    );
+    await verificationPool.query(
+      `INSERT INTO payment_orders
+        (booking_id, user_id, provider, provider_order_id, amount_paise,
+         currency, status, idempotency_key)
+       VALUES ($1, $2, 'historical-razorpay', 'synthetic-order', 12500,
+         'INR', 'paid', 'synthetic-key')`,
+      [booking.rows[0].id, legacy.rows[0].id],
+    );
+    await verificationPool.query(
+      `INSERT INTO booking_settlements
+        (booking_id, payer_user_id, payee_user_id, ride_fare_paise,
+         platform_fee_paise, total_due_paise, paid_amount_paise,
+         preferred_payment_method, status)
+       VALUES ($1, $2, $3, 12000, 500, 12500, 12500, 'online', 'settled')`,
+      [booking.rows[0].id, passenger.rows[0].id, legacy.rows[0].id],
     );
     setManagedAuthEnabledForTests(true);
     await verificationPool.query(
@@ -107,6 +153,27 @@ describe("managed authentication HTTP boundary with PostgreSQL", () => {
       `SELECT revoked_at IS NOT NULL AS revoked FROM refresh_tokens WHERE user_id = $1`,
       [legacy.rows[0].id],
     )).rows).toEqual([{ revoked: true }]);
+    const history = await verificationPool.query(
+      `SELECT b.created_by_user_id, b.passenger_id, b.driver_id,
+              s.payer_user_id, s.payee_user_id, s.total_due_paise,
+              p.user_id AS payment_user_id, p.amount_paise,
+              v.user_id AS approval_user_id
+         FROM bookings b
+         JOIN booking_settlements s ON s.booking_id = b.id
+         JOIN payment_orders p ON p.booking_id = b.id
+         JOIN student_verifications v ON v.user_id = b.driver_id`,
+    );
+    expect(history.rows).toEqual([{
+      created_by_user_id: legacy.rows[0].id,
+      passenger_id: passenger.rows[0].id,
+      driver_id: legacy.rows[0].id,
+      payer_user_id: passenger.rows[0].id,
+      payee_user_id: legacy.rows[0].id,
+      total_due_paise: 12500,
+      payment_user_id: legacy.rows[0].id,
+      amount_paise: 12500,
+      approval_user_id: legacy.rows[0].id,
+    }]);
   });
 
   it("does not map or authenticate an unverified provider address", async () => {

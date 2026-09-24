@@ -14,7 +14,10 @@ import {
   findUserById,
   insertRefreshToken,
   findAuthIdentity,
-  linkVerifiedIdentity,
+  lockUsersByNormalizedEmail,
+  createManagedUser,
+  verifyClaimedUserAndRevokeLegacySessions,
+  insertManagedIdentity,
   touchAuthIdentity,
   recordClaimReview,
   isManagedCutoverAuthorized,
@@ -191,13 +194,38 @@ async function resolveManagedIdentity(identity: ProviderIdentity) {
   }
   let user: UserRecord | null;
   try {
-    user = await withTransaction((client) => linkVerifiedIdentity({
-      provider: "supabase",
-      providerSubject: identity.subject,
-      email: identity.email!,
-      fullName: typeof identity.userMetadata.full_name === "string" ? identity.userMetadata.full_name : undefined,
-      college: typeof identity.userMetadata.college === "string" ? identity.userMetadata.college : undefined,
-    }, client));
+    user = await withTransaction(async (client) => {
+      const existing = await findAuthIdentity("supabase", identity.subject, client);
+      if (existing?.disabledAt) return null;
+      if (existing) {
+        await touchAuthIdentity("supabase", identity.subject, client);
+        return findUserById(existing.userId, client);
+      }
+
+      const matches = await lockUsersByNormalizedEmail(identity.email!, client);
+      if (matches.length > 1) return null;
+
+      let userId = matches[0];
+      let eventType: "registered" | "claimed" = "claimed";
+      if (userId) {
+        await verifyClaimedUserAndRevokeLegacySessions(userId, client);
+      } else {
+        userId = await createManagedUser({
+          email: identity.email!,
+          fullName: typeof identity.userMetadata.full_name === "string" ? identity.userMetadata.full_name : "Student",
+          college: typeof identity.userMetadata.college === "string" ? identity.userMetadata.college : undefined,
+        }, client);
+        eventType = "registered";
+      }
+      await insertManagedIdentity({
+        provider: "supabase",
+        providerSubject: identity.subject,
+        userId,
+        email: identity.email!,
+        eventType,
+      }, client);
+      return findUserById(userId, client);
+    });
   } catch (error) {
     if (!(typeof error === "object" && error && "code" in error && error.code === "23505")) throw error;
     const mapping = await findAuthIdentity("supabase", identity.subject);
