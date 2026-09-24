@@ -18,6 +18,7 @@ import {
   touchAuthIdentity,
   recordClaimReview,
   isManagedCutoverAuthorized,
+  isLegacyAuthAuthorized,
   revokeRefreshToken,
   type UserRecord,
 } from "./auth.repo";
@@ -26,6 +27,12 @@ import { getAuthProvider, isManagedAuthEnabled, type ProviderIdentity, type Prov
 async function assertManagedCutoverAuthorized() {
   if (!isManagedAuthEnabled() || !(await isManagedCutoverAuthorized())) {
     throw new AppError(503, "Managed authentication is not authorized for cutover", "AUTH_CUTOVER_NOT_AUTHORIZED");
+  }
+}
+
+export async function assertLegacyAuthAuthorized() {
+  if (isManagedAuthEnabled() || !(await isLegacyAuthAuthorized())) {
+    throw new AppError(503, "Legacy authentication is disabled", "LEGACY_AUTH_DISABLED");
   }
 }
 
@@ -136,6 +143,7 @@ export async function register(input: RegisterInput, meta: SessionMeta) {
     await getAuthProvider().register(input);
     return { pendingVerification: true as const };
   }
+  await assertLegacyAuthAuthorized();
   const existingUser = await findUserByEmail(input.email);
 
   if (existingUser) {
@@ -204,6 +212,7 @@ export async function login(input: LoginInput, meta: SessionMeta) {
     await assertManagedCutoverAuthorized();
     return managedAuthResult(await getAuthProvider().login(input.email, input.password));
   }
+  await assertLegacyAuthAuthorized();
   const user = await findUserByEmail(input.email);
 
   if (!user || !user.passwordHash) {
@@ -228,6 +237,7 @@ export async function refreshSession(refreshToken: string, meta: SessionMeta) {
     await assertManagedCutoverAuthorized();
     return managedAuthResult(await getAuthProvider().refresh(refreshToken));
   }
+  await assertLegacyAuthAuthorized();
   const payload = verifyRefreshToken(refreshToken);
   const refreshTokenRecord = await findRefreshTokenById(payload.tokenId);
 
@@ -262,9 +272,21 @@ export async function refreshSession(refreshToken: string, meta: SessionMeta) {
 export async function logout(refreshToken?: string, accessToken?: string) {
   if (isManagedAuthEnabled()) {
     await assertManagedCutoverAuthorized();
-    if (accessToken) await getAuthProvider().logout(accessToken);
+    if (accessToken) {
+      try {
+        await getAuthProvider().logout(accessToken);
+        return;
+      } catch (error) {
+        if (!refreshToken) throw error;
+      }
+    }
+    if (refreshToken) {
+      const refreshed = await getAuthProvider().refresh(refreshToken);
+      await getAuthProvider().logout(refreshed.accessToken);
+    }
     return;
   }
+  await assertLegacyAuthAuthorized();
   if (!refreshToken) {
     return;
   }

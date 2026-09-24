@@ -266,3 +266,12 @@ export async function isManagedCutoverAuthorized() {
   );
   return result.rows[0]?.authorized === true;
 }
+
+export async function isLegacyAuthAuthorized() {
+  const result = await pool.query<{ authorized: boolean }>(
+    `SELECT active_provider = 'legacy'
+            AND legacy_login_enabled = true AS authorized
+       FROM auth_cutover_state WHERE singleton = true`,
+  );
+  return result.rows[0]?.authorized === true;
+}

@@ -4,7 +4,7 @@ import { AppError } from "../shared/errors/app-error";
 import { verifyAccessToken } from "../shared/jwt/tokens";
 import { ACCESS_TOKEN_COOKIE } from "../shared/utils/cookies";
 import { env } from "../config/env";
-import { authenticateProviderAccessToken } from "../modules/auth/auth.service";
+import { assertLegacyAuthAuthorized, authenticateProviderAccessToken } from "../modules/auth/auth.service";
 import { isManagedAuthEnabled } from "../modules/auth/auth-provider";
 
 export const optionalAuth: RequestHandler = async (req, _res, next) => {
@@ -21,7 +21,7 @@ export const optionalAuth: RequestHandler = async (req, _res, next) => {
   try {
     const payload = isManagedAuthEnabled()
       ? await authenticateProviderAccessToken(accessToken)
-      : verifyAccessToken(accessToken);
+      : (await assertLegacyAuthAuthorized(), verifyAccessToken(accessToken));
     req.user = {
       userId: "sub" in payload ? payload.sub : payload.userId,
       email: payload.email,
@@ -60,7 +60,7 @@ export const requireAdmin: RequestHandler = (req, _res, next) => {
     return next(new AppError(403, "Admin access required", "FORBIDDEN"));
   }
 
-  if (req.user.authProvider === "supabase" && req.user.assuranceLevel !== "aal2") {
+  if (req.user.authProvider === "legacy" || req.user.assuranceLevel !== "aal2") {
     return next(new AppError(403, "Multi-factor authentication is required", "MFA_REQUIRED"));
   }
 

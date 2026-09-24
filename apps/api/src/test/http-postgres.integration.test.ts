@@ -57,6 +57,11 @@ describe("managed authentication HTTP boundary with PostgreSQL", () => {
       [legacy.rows[0].id],
     );
     await verificationPool.query(
+      `INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at)
+       VALUES ('10000000-0000-4000-8000-000000000008', $1, 'legacy-refresh', now() + interval '1 day')`,
+      [legacy.rows[0].id],
+    );
+    await verificationPool.query(
       `INSERT INTO vehicles (owner_user_id, vehicle_type, registration_number_last4, seat_capacity)
        VALUES ($1, 'car', '1234', 4)`,
       [legacy.rows[0].id],
@@ -92,6 +97,14 @@ describe("managed authentication HTTP boundary with PostgreSQL", () => {
       password_hash: null,
       verified: true,
     })]);
+    expect((await verificationPool.query(
+      `SELECT event_type FROM auth_identity_events WHERE user_id = $1`,
+      [legacy.rows[0].id],
+    )).rows).toEqual([{ event_type: "claimed" }]);
+    expect((await verificationPool.query(
+      `SELECT revoked_at IS NOT NULL AS revoked FROM refresh_tokens WHERE user_id = $1`,
+      [legacy.rows[0].id],
+    )).rows).toEqual([{ revoked: true }]);
   });
 
   it("does not map or authenticate an unverified provider address", async () => {
