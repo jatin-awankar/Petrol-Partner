@@ -27,7 +27,15 @@ let lockClient;
 
 function run(binary, args, connection = databaseUrl) {
   return new Promise((resolve, reject) => {
-    const child = spawn(binary, args, { env: { ...process.env, PGDATABASE: connection, PGCONNECT_TIMEOUT: '10' }, stdio: ['ignore', 'ignore', 'pipe'] });
+    const target = new URL(connection);
+    const child = spawn(binary, args, { env: {
+      ...process.env,
+      PGHOST: target.hostname, PGPORT: target.port || '5432',
+      PGUSER: decodeURIComponent(target.username), PGPASSWORD: decodeURIComponent(target.password),
+      PGDATABASE: decodeURIComponent(target.pathname.slice(1)),
+      PGSSLMODE: target.searchParams.get('sslmode') ?? process.env.PGSSLMODE ?? 'prefer',
+      PGCONNECT_TIMEOUT: '10',
+    }, stdio: ['ignore', 'ignore', 'pipe'] });
     let stderr = '';
     child.stderr.on('data', (part) => { stderr = `${stderr}${part}`.slice(-2000); });
     child.on('error', reject);

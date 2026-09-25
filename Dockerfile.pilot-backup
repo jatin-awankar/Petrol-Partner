@@ -1,0 +1,10 @@
+FROM node:24-alpine
+
+RUN apk add --no-cache postgresql17-client tar
+WORKDIR /app
+
+COPY ops/pilot-backup/package.json ops/pilot-backup/package-lock.json ./
+RUN npm ci --omit=dev --ignore-scripts
+
+COPY scripts/pilot-backup.mjs scripts/pilot-backup.mjs
+CMD ["node", "scripts/pilot-backup.mjs"]

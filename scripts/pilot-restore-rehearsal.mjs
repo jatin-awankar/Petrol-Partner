@@ -9,7 +9,7 @@ import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import pg from 'pg';
 
 const attemptId = process.argv[2];
-if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(attemptId ?? '')) throw new Error('Pass a backup attempt UUID');
+if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(attemptId ?? '')) throw new Error('Pass a backup attempt UUID');
 if (process.env.TEST_DATABASE_DISPOSABLE !== 'true') throw new Error('Restore rehearsal requires an explicitly disposable database');
 const target = new URL(process.env.DATABASE_URL ?? '');
 if (!['localhost', '127.0.0.1', '::1', '[::1]'].includes(target.hostname) || !decodeURIComponent(target.pathname).endsWith('_test')) throw new Error('Restore target must be a localhost _test database');

@@ -1,0 +1,11 @@
+{
+  "name": "@petrol-partner/pilot-backup-runner",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": "24.x" },
+  "dependencies": {
+    "@aws-sdk/client-s3": "3.1140.0",
+    "pg": "8.20.0"
+  }
+}
