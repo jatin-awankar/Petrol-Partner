@@ -736,6 +736,25 @@ describe("protected operator pause HTTP/PostgreSQL", () => {
       else process.env.PILOT_BACKUP_REQUIRED = previous;
     }
   });
+  it("keeps a fresh completed snapshot visible despite many later failures", async () => {
+    const { agent } = await operator();
+    const previous = process.env.PILOT_BACKUP_REQUIRED;
+    process.env.PILOT_BACKUP_REQUIRED = "true";
+    try {
+      await verificationPool.query(`INSERT INTO pilot_backup_attempts (status, snapshot_at, uploaded_at, finished_at, object_key, ciphertext_sha256)
+        VALUES ('complete', now() - interval '10 minutes', now() - interval '9 minutes', now() - interval '9 minutes', 'synthetic/backup', repeat('a', 64))`);
+      await verificationPool.query(`INSERT INTO pilot_backup_attempts (status, started_at, finished_at, error_code)
+        SELECT 'failed', now() - interval '8 minutes' + n * interval '1 second', now(), 'SYNTHETIC_FAILURE'
+          FROM generate_series(1, 25) AS n`);
+      const status = await agent.get("/v1/operator/status");
+      expect(status.body.backup).toMatchObject({ required: true, healthy: true, ageMinutes: 10 });
+      expect(status.body.backup.failedAttempts).toHaveLength(20);
+      expect(status.body.recovery.mode).toBe("open");
+    } finally {
+      if (previous === undefined) delete process.env.PILOT_BACKUP_REQUIRED;
+      else process.env.PILOT_BACKUP_REQUIRED = previous;
+    }
+  });
   it("restricts reads after acknowledged evidence disappears", async () => {
     const { agent, csrf, cookie } = await operator();
     const decision = await request(createApp()).post("/v1/operator/pause").set("Cookie", cookie).set("Origin", "http://localhost:3000").set("X-CSRF-Token", csrf).set("Idempotency-Key", "lost-1").send({ capability: "offers", paused: false, reason: "Temporary clear decision" });

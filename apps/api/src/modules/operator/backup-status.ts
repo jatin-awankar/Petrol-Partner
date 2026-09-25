@@ -17,12 +17,21 @@ type Attempt = {
 };
 
 export async function backupStatus(database: Pool | PoolClient = pool, now = new Date()) {
-  const result = await database.query<Attempt>(
-    `SELECT id, status, started_at, snapshot_at, uploaded_at, finished_at,
-            object_key, ciphertext_sha256, error_code
-       FROM pilot_backup_attempts ORDER BY started_at DESC LIMIT 20`,
-  );
-  const latest = result.rows.find((row) => row.status === "complete" && row.snapshot_at && row.uploaded_at && row.object_key && row.ciphertext_sha256);
+  const [completed, attempts] = await Promise.all([
+    database.query<Attempt>(
+      `SELECT id, status, started_at, snapshot_at, uploaded_at, finished_at,
+              object_key, ciphertext_sha256, error_code
+         FROM pilot_backup_attempts WHERE status = 'complete'
+        ORDER BY snapshot_at DESC LIMIT 1`,
+    ),
+    database.query<Attempt>(
+      `SELECT id, status, started_at, snapshot_at, uploaded_at, finished_at,
+              object_key, ciphertext_sha256, error_code
+         FROM pilot_backup_attempts WHERE status <> 'complete'
+        ORDER BY started_at DESC LIMIT 20`,
+    ),
+  ]);
+  const latest = completed.rows[0];
   const ageMs = latest?.snapshot_at ? now.getTime() - latest.snapshot_at.getTime() : null;
   return {
     required: env.NODE_ENV === "production" || process.env.PILOT_BACKUP_REQUIRED === "true",
@@ -30,7 +39,7 @@ export async function backupStatus(database: Pool | PoolClient = pool, now = new
     maximumAgeMinutes: 50,
     ageMinutes: ageMs === null ? null : Math.floor(ageMs / 60000),
     latest: latest ?? null,
-    failedAttempts: result.rows.filter((row) => row.status === "failed"),
-    runningAttempts: result.rows.filter((row) => row.status === "running"),
+    failedAttempts: attempts.rows.filter((row) => row.status === "failed"),
+    runningAttempts: attempts.rows.filter((row) => row.status === "running"),
   };
 }

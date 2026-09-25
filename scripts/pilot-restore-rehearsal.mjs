@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import pg from 'pg';
 
 const attemptId = process.argv[2];
 if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(attemptId ?? '')) throw new Error('Pass a backup attempt UUID');
@@ -31,6 +32,15 @@ const run = (binary, args) => new Promise((resolve, reject) => {
   child.on('close', (code) => code === 0 ? resolve() : reject(new Error(`${binary} failed (${code}): ${stderr}`)));
 });
 try {
+  const database = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 1 });
+  try {
+    const inventory = await database.query(`SELECT
+      (SELECT count(*)::int FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p', 'v', 'm', 'S', 'f')) AS relations,
+      (SELECT count(*)::int FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname = 'public') AS routines`);
+    if (inventory.rows[0].relations !== 0 || inventory.rows[0].routines !== 0) throw new Error('Restore target contains user objects; use a newly created empty disposable database');
+  } finally { await database.end(); }
   const metadataResponse = await s3.send(new GetObjectCommand({ Bucket: process.env.PILOT_BACKUP_B2_BUCKET, Key: `${prefix}/backups/${attemptId}.json` }));
   if (!metadataResponse.Body) throw new Error('Backup metadata is missing');
   const metadata = JSON.parse(await metadataResponse.Body.transformToString());
@@ -47,7 +57,7 @@ try {
   await run('tar', ['-xf', archive, '-C', directory, 'database.dump', 'roles.sql']);
   if (await hashFile(join(directory, 'database.dump')) !== metadata.dumpSha256 || await hashFile(join(directory, 'roles.sql')) !== metadata.rolesSha256) throw new Error('Backup contents failed verification');
   await run('pg_restore', ['--list', join(directory, 'database.dump')]);
-  await run('pg_restore', ['--clean', '--if-exists', '--no-owner', '--no-acl', '--dbname', decodeURIComponent(target.pathname.slice(1)), join(directory, 'database.dump')]);
+  await run('pg_restore', ['--no-owner', '--no-acl', '--dbname', decodeURIComponent(target.pathname.slice(1)), join(directory, 'database.dump')]);
   console.log(JSON.stringify({ attemptId, snapshotAt: metadata.snapshotAt, restoreElapsedSeconds: Math.ceil((Date.now() - started) / 1000), rolesExported: true, rolesApplied: false, writesRemainRestricted: true }));
 } finally {
   s3.destroy();
