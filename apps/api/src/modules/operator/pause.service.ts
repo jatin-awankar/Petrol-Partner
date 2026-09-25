@@ -9,7 +9,8 @@ import { B2ReceiptStore } from "./b2-receipt-store";
 import { operatorQuery } from "./operator.repo";
 import { assertCurrentOperator } from "./operator.authorization";
 import { inProtectedTransaction as transaction, type ProtectedOperationState } from "../protected-mutation/protocol";
-import { markPauseNotificationReady, recordPauseNotification } from "../notifications/durable.repo";
+import { markPauseNotificationReady, recordPauseNotification, restorePauseNotificationWithoutDelivery } from "../notifications/durable.repo";
+import { backupStatus } from "./backup-status";
 
 export const capabilities = ["offers", "requests", "acceptance", "booking"] as const;
 export type Capability = typeof capabilities[number];
@@ -67,6 +68,8 @@ export class PauseService {
 
   private async verifyEvidence() {
     try {
+      const backup = await backupStatus(this.database);
+      if (backup.required && !backup.healthy) throw new AppError(503, "Database backup is stale or unavailable", "BACKUP_STALE");
       const receipts = await listReceipts();
       const acknowledged = await operatorQuery<Operation>(this.database, "acknowledgedPauseOperations");
       const byId = new Map<string, Receipt>();
@@ -150,6 +153,8 @@ export class PauseService {
         if (row.resumed_from) receipt.resumedFrom = row.resumed_from;
         await appendReceipt(receipt);
         crashHook?.("after_receipt", row.id);
+        const backup = await backupStatus(client);
+        if (backup.required && !backup.healthy) throw new AppError(503, "Database backup is stale or unavailable", "BACKUP_STALE");
         const acknowledged = (await operatorQuery<Operation>(client, "acknowledgePauseOperation", [row.id])).rows[0];
         await markPauseNotificationReady(client, row.id);
         return acknowledged;
@@ -202,7 +207,7 @@ export class PauseService {
     try { await this.verifyEvidence(); } catch { /* Recovery mode below reports the restriction. */ }
     const state = await operatorQuery(this.database, "recoveryStatus");
     const capabilities = await operatorQuery(this.database, "effectiveCapabilities");
-    return { recovery: state.rows[0] ?? { mode: "restricted", cause: "state_unavailable", started_at: null, reconciled_at: null }, capabilities: capabilities.rows.length === 4 ? capabilities.rows : ["offers", "requests", "acceptance", "booking"].map((capability) => ({ capability, paused: true, pending: true })) };
+    return { recovery: state.rows[0] ?? { mode: "restricted", cause: "state_unavailable", started_at: null, reconciled_at: null }, backup: await backupStatus(this.database), capabilities: capabilities.rows.length === 4 ? capabilities.rows : ["offers", "requests", "acceptance", "booking"].map((capability) => ({ capability, paused: true, pending: true })) };
   }
 
   async publicStatus() {
@@ -259,8 +264,7 @@ export class PauseService {
         await operatorQuery(client, "restorePauseAudit", [receipt.operationId, receipt.operatorId, receipt.capability, receipt.paused, receipt.reason, receipt.committedAt, receipt.resumedFrom === "intent" ? receipt.resumedBy : receipt.operatorId]);
         if (receipt.resumedBy && receipt.resumeReason) await operatorQuery(client, "recordDecisionResume", [receipt.operationId, receipt.resumedBy, receipt.resumeReason]);
         await operatorQuery(client, "restorePauseFollowup", [receipt.operationId]);
-        await recordPauseNotification(client, receipt.operationId, receipt.operatorId, receipt.capability, receipt.paused);
-        await markPauseNotificationReady(client, receipt.operationId);
+        await restorePauseNotificationWithoutDelivery(client, receipt.operationId, receipt.operatorId, receipt.capability, receipt.paused);
         const current = await operatorQuery<{ updated_at: Date }>(client, "capabilityStateForUpdate", [receipt.capability]);
         if (!current.rows[0] || current.rows[0].updated_at <= new Date(receipt.committedAt)) {
           await operatorQuery(client, "restoreCapabilityState", [receipt.capability, receipt.paused, receipt.operationId, receipt.committedAt]);
@@ -314,6 +318,8 @@ export class PauseService {
     }
     await transaction(this.database, async (client) => {
       await operatorQuery(client, "recoveryModeForUpdate");
+      const backup = await backupStatus(client);
+      if (backup.required && !backup.healthy) throw new AppError(503, "Database backup is stale or unavailable", "BACKUP_STALE");
       const row = (await operatorQuery<ReopenOperation>(client, "reopenOperationForUpdate", [operation.id])).rows[0];
       if (row.state === "acknowledged" || row.state === "recovered") return;
       await operatorQuery(client, "openRecoveryMode", [operatorId]);

@@ -17,6 +17,26 @@ export async function markPauseNotificationReady(database: Database, operationId
   await markDurableNotificationReady(database, operationId);
 }
 
+// A restored receipt proves the decision, not whether an external email was already sent.
+// Leave any restored job visible for manual review and never queue a second send.
+export async function restorePauseNotificationWithoutDelivery(database: Database, operationId: string, recipientId: string, capability: string, paused: boolean) {
+  await database.query(
+    `INSERT INTO pilot_notification_events
+       (id, origin_type, operation_id, recipient_id, event_type, related_entity_type,
+        related_entity_id, title, body, ready_at)
+     VALUES ($1, 'operator_pause', $1, $2, 'operator_pause_changed',
+             'pilot_pause_operation', $1, 'Pilot operator decision', $3, now())
+     ON CONFLICT (id) DO UPDATE SET ready_at = COALESCE(pilot_notification_events.ready_at, now())`,
+    [operationId, recipientId, `${capability[0].toUpperCase()}${capability.slice(1)} were ${paused ? "paused" : "resumed"} by an operator.`],
+  );
+  await database.query(
+    `UPDATE pilot_email_jobs SET status = 'exhausted', lease_until = NULL,
+            last_error = 'Suppressed after snapshot restore; external delivery outcome requires review', updated_at = now()
+      WHERE event_id = $1 AND status <> 'sent'`,
+    [operationId],
+  );
+}
+
 export async function listDurableNotifications(recipientId: string, database: Database = pool) {
   const result = await database.query(
     `SELECT e.id, e.event_type, e.related_entity_type, e.related_entity_id,
