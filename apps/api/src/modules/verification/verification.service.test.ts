@@ -10,6 +10,8 @@ vi.mock("../../shared/audit/logs", () => ({
 
 vi.mock("./verification.repo", () => ({
   findTransactionEligibilityByUserId: vi.fn(),
+  findStudentVerificationForUpdate: vi.fn(async () => null),
+  studentEvidenceForUpdate: vi.fn(async () => null),
   upsertStudentVerification: vi.fn(async () => ({
     id: "verification-1",
     user_id: "user-1",
@@ -30,10 +32,12 @@ describe("verification.service", () => {
   it("submits student verification as pending review", async () => {
     const result = await verificationService.upsertStudentVerification("user-1", {
       provider: "manual_review",
+      enrolled_name: "Synthetic Student",
+      evidence_category: "enrollment_letter",
+      age_evidence_category: "institution_age_record",
       institution_name: "Example College",
       admission_year: 2024,
       graduation_year: 2028,
-      gender_for_matching: "female",
     });
 
     expect(result).toMatchObject({
@@ -54,7 +58,7 @@ describe("verification.service", () => {
         userId: "user-1",
         isVerified: false,
         college: null,
-        genderForMatching: "female",
+        genderForMatching: null,
       }),
       expect.anything(),
     );
@@ -75,6 +79,7 @@ describe("verification.service", () => {
   it("allows transactions for verified students within eligibility", async () => {
     vi.mocked(verificationRepo.findTransactionEligibilityByUserId).mockResolvedValue({
       student_verification_status: "verified",
+      student_adult_eligible: true,
       student_eligibility_ends_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
       driver_eligibility_status: "approved",
     });

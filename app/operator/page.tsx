@@ -9,12 +9,17 @@ type Capability = "offers" | "requests" | "acceptance" | "booking";
 type PilotStatus = { recovery: { mode: string; cause: string | null; started_at: string | null; reconciled_at: string | null }; backup: { required: boolean; healthy: boolean; maximumAgeMinutes: number; ageMinutes: number | null; latest: { snapshot_at: string; uploaded_at: string; ciphertext_sha256: string } | null; failedAttempts: { id: string; started_at: string; error_code: string | null }[]; runningAttempts: { id: string; started_at: string }[] }; capabilities: { capability: Capability; paused: boolean; pending: boolean }[] };
 type Pending = { id: string; capability: Capability; paused: boolean; reason: string; state: string };
 type Delivery = { jobs: { id: string; operation_id: string; status: string; attempts: number; attempt_count: number; attempt_history: { attempt: number; started_at: string; finished_at: string | null; outcome: string | null }[]; due_at: string; updated_at: string; last_error: string | null }[]; health: { due: number; exhausted: number; expired_leases: number; stalled: number; oldest_open_at: string | null; last_attempt_at: string | null; last_worker_seen_at: string | null } };
+type StudentReview = { user_id: string; status: string; enrolled_name: string | null; institution_name: string; graduation_year: number | null; evidence_category: string | null; age_evidence_category: string | null };
 
 export default function OperatorPage() {
   const { user, loading } = useCurrentUser();
   const [status, setStatus] = useState<PilotStatus | null>(null);
   const [pending, setPending] = useState<Pending[]>([]);
   const [delivery, setDelivery] = useState<Delivery | null>(null);
+  const [studentReviews, setStudentReviews] = useState<StudentReview[]>([]);
+  const [adultFindings, setAdultFindings] = useState<Record<string, boolean>>({});
+  const [evidenceMode, setEvidenceMode] = useState<"closed" | "synthetic" | "real">("closed");
+  const [evidenceRetention, setEvidenceRetention] = useState<{ overdue_count: number; failed_count: number; oldest_due_at: string | null } | null>(null);
   const [reason, setReason] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
@@ -26,6 +31,10 @@ export default function OperatorPage() {
     setStatus(next);
     setPending(operations.operations);
     setDelivery(await apiRequest<Delivery>("/v1/operator/notifications/delivery"));
+    const reviews = await apiRequest<{ student_verifications: StudentReview[] }>("/v1/verification/admin/pending");
+    setStudentReviews(reviews.student_verifications);
+    setEvidenceMode((await apiRequest<{ mode: "closed" | "synthetic" | "real" }>("/v1/verification/evidence-capability")).mode);
+    setEvidenceRetention(await apiRequest<{ overdue_count: number; failed_count: number; oldest_due_at: string | null }>("/v1/verification/admin/student-evidence-retention"));
   }, []);
   useEffect(() => {
     if (user) void refresh().catch((error) => {
@@ -89,6 +98,46 @@ export default function OperatorPage() {
     } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to retry email"); }
     finally { setBusy(false); }
   }
+  async function reviewStudent(userId: string, outcome: "verified" | "rejected") {
+    if (reason.trim().length < 8) { setMessage("Enter a reason of at least eight characters."); return; }
+    const adultEligible = adultFindings[userId] === true;
+    if (outcome === "verified" && !adultEligible) { setMessage("Confirm adult eligibility before approval."); return; }
+    setBusy(true);
+    const storageKey = `student-review:${userId}:${outcome}:${adultEligible}:${reason.trim()}`;
+    const key = sessionStorage.getItem(storageKey) ?? crypto.randomUUID();
+    sessionStorage.setItem(storageKey, key);
+    try {
+      const result = await apiRequest<{ operation: { id: string; state: string } }>(`/v1/verification/admin/student/${userId}/review`, {
+        method: "POST", headers: { "Idempotency-Key": key }, body: JSON.stringify({ outcome, adult_eligible: adultEligible, reason: reason.trim() }),
+      });
+      sessionStorage.removeItem(storageKey);
+      setMessage(`Student review ${outcome}: ${result.operation.state} (${result.operation.id}).`);
+      await refresh();
+    } catch (error) {
+      let reference = key;
+      try {
+        const lookup = await apiRequest<{ operation: { id: string; state: string } }>(`/v1/verification/admin/student/review-operations/by-key/${encodeURIComponent(key)}`);
+        reference = `${lookup.operation.id} (${lookup.operation.state})`;
+      } catch { /* The original key remains available for the next retry. */ }
+      setMessage(`Review outcome uncertain. Reference ${reference}. Retry with the same reason to use the same decision key. ${error instanceof Error ? error.message : ""}`);
+    }
+    finally { setBusy(false); }
+  }
+  async function openEvidence(userId: string, purpose: "enrollment" | "age") {
+    const preview = window.open("about:blank", "_blank");
+    if (preview) preview.opener = null;
+    try {
+      const grant = await apiRequest<{ token: string }>(`/v1/verification/admin/student/${userId}/evidence-access?purpose=${purpose}`, { method: "POST" });
+      const response = await fetch(`/v1/verification/admin/student/${userId}/evidence?purpose=${purpose}`, {
+        credentials: "include", cache: "no-store", headers: { "X-Evidence-Token": grant.token },
+      });
+      if (!response.ok) throw new Error("Evidence link expired or unavailable");
+      const objectUrl = URL.createObjectURL(await response.blob());
+      if (preview) preview.location.href = objectUrl;
+      else { URL.revokeObjectURL(objectUrl); throw new Error("Allow pop-ups to inspect evidence"); }
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+    } catch (error) { preview?.close(); setMessage(error instanceof Error ? error.message : "Unable to open evidence"); }
+  }
   if (loading) return <main className="p-8">Checking operator access…</main>;
   if (!user) return <main className="p-8">Sign in to access the operator console. <Link href="/login">Sign in</Link></main>;
   if (authorized === false) return <main className="p-8">Operator access requires current allowlist membership and MFA. {message}</main>;
@@ -119,6 +168,16 @@ export default function OperatorPage() {
         <p>Due: {new Date(job.due_at).toLocaleString()}</p>{job.last_error && <p>{job.last_error}</p>}
         {job.attempt_history.length > 0 && <ul className="list-disc pl-5">{job.attempt_history.map((attempt, index) => <li key={`${attempt.started_at}-${index}`}>Attempt {attempt.attempt}: {attempt.outcome ?? "in progress"} at {new Date(attempt.started_at).toLocaleString()}</li>)}</ul>}
         {job.status === "exhausted" && <button disabled={busy} onClick={() => retryEmail(job.id, job.updated_at)}>Retry email</button>}</div>)}
+    </section>
+    <section className="space-y-3"><h2 className="font-semibold">Student reviews</h2>
+      <p>{evidenceMode === "real" ? "Inspect the private enrollment and age evidence before deciding." : "Inspect fabricated evidence only. Real evidence intake remains closed pending provider verification."}</p>
+      <p role="status">Evidence deletion: {evidenceRetention?.overdue_count ?? "—"} overdue · {evidenceRetention?.failed_count ?? "—"} failed attempts{evidenceRetention?.oldest_due_at ? ` · oldest due ${new Date(evidenceRetention.oldest_due_at).toLocaleString()}` : ""}.</p>
+      {studentReviews.length ? studentReviews.map((review) => <div key={review.user_id} className="rounded border p-3">
+        <p>{review.enrolled_name ?? "Name missing"} · {review.institution_name} · graduation {review.graduation_year} · {review.evidence_category} · {review.age_evidence_category}</p>
+        <div className="flex gap-3"><button className="underline" onClick={() => openEvidence(review.user_id, "enrollment")}>Enrollment evidence</button><button className="underline" onClick={() => openEvidence(review.user_id, "age")}>Age evidence</button></div>
+        <label className="flex items-center gap-2"><input type="checkbox" checked={adultFindings[review.user_id] === true} onChange={(event) => setAdultFindings((findings) => ({ ...findings, [review.user_id]: event.target.checked }))} />Age evidence confirms this student is at least 18</label>
+        <div className="flex gap-3"><button disabled={busy || adultFindings[review.user_id] !== true} onClick={() => reviewStudent(review.user_id, "verified")}>Approve adult student</button><button disabled={busy} onClick={() => reviewStudent(review.user_id, "rejected")}>Reject</button></div>
+      </div>) : <p>No pending student reviews.</p>}
     </section>
   </main>;
 }
