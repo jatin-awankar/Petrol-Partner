@@ -9,6 +9,7 @@ import { B2ReceiptStore } from "./b2-receipt-store";
 import { operatorQuery } from "./operator.repo";
 import { assertCurrentOperator } from "./operator.authorization";
 import { inProtectedTransaction as transaction, type ProtectedOperationState } from "../protected-mutation/protocol";
+import { recordPauseNotification } from "../notifications/durable.repo";
 
 export const capabilities = ["offers", "requests", "acceptance", "booking"] as const;
 export type Capability = typeof capabilities[number];
@@ -128,6 +129,7 @@ export class PauseService {
         const row = (await operatorQuery<Operation>(client, "commitPauseOperation", [operation.id])).rows[0];
         await operatorQuery(client, "insertPauseAudit", [operation.id, operatorId, decision.capability, decision.paused, decision.reason, row.committed_at, operatorId]);
         await operatorQuery(client, "insertPauseFollowup", [operation.id]);
+        await recordPauseNotification(client, operation.id, operatorId);
         return row;
       });
       crashHook?.("after_commit", committed.id);
@@ -175,6 +177,7 @@ export class PauseService {
         resumed = (await operatorQuery<Operation>(client, "resumePauseOperation", [id, operatorId, reason])).rows[0];
         await operatorQuery(client, "insertPauseAudit", [id, row.operator_id, row.capability, row.paused, row.reason, resumed.committed_at, operatorId]);
         await operatorQuery(client, "insertPauseFollowup", [id]);
+        await recordPauseNotification(client, id, row.operator_id);
       } else {
         if (row.resumed_by && (row.resumed_by !== operatorId || row.resume_reason !== reason)) throw new AppError(409, "Pending decision has another completion review", "RECOVERY_CONFLICT");
         resumed = (await operatorQuery<Operation>(client, "handoffCommittedPause", [id, operatorId, reason])).rows[0];
@@ -254,6 +257,7 @@ export class PauseService {
         await operatorQuery(client, "restorePauseAudit", [receipt.operationId, receipt.operatorId, receipt.capability, receipt.paused, receipt.reason, receipt.committedAt, receipt.resumedFrom === "intent" ? receipt.resumedBy : receipt.operatorId]);
         if (receipt.resumedBy && receipt.resumeReason) await operatorQuery(client, "recordDecisionResume", [receipt.operationId, receipt.resumedBy, receipt.resumeReason]);
         await operatorQuery(client, "restorePauseFollowup", [receipt.operationId]);
+        await recordPauseNotification(client, receipt.operationId, receipt.operatorId);
         const current = await operatorQuery<{ updated_at: Date }>(client, "capabilityStateForUpdate", [receipt.capability]);
         if (!current.rows[0] || current.rows[0].updated_at <= new Date(receipt.committedAt)) {
           await operatorQuery(client, "restoreCapabilityState", [receipt.capability, receipt.paused, receipt.operationId, receipt.committedAt]);

@@ -10,7 +10,7 @@ import { setAuthProviderForTests, setManagedAuthEnabledForTests, type AuthProvid
 
 const live = process.env.PILOT_B2_LIVE_TEST === "true";
 const database = new Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
-const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql", "0006_operator_allowlist.sql", "0007_operator_pause.sql", "0008_operator_intent_handoff.sql"];
+const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql", "0006_operator_allowlist.sql", "0007_operator_pause.sql", "0008_operator_intent_handoff.sql", "0009_durable_notifications.sql"];
 
 it.skipIf(!live)("acknowledges and restores a protected HTTP decision through PostgreSQL and B2", async () => {
   const target = new URL(process.env.DATABASE_URL ?? "postgresql://invalid/");

@@ -14,7 +14,7 @@ import { resetRateLimitsForTests } from "../middleware/rate-limit";
 import { setAuthProviderForTests, setManagedAuthEnabledForTests, type AuthProvider, type ProviderIdentity } from "../modules/auth/auth-provider";
 
 const verificationPool = new Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
-const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql", "0006_operator_allowlist.sql", "0007_operator_pause.sql", "0008_operator_intent_handoff.sql"];
+const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql", "0006_operator_allowlist.sql", "0007_operator_pause.sql", "0008_operator_intent_handoff.sql", "0009_durable_notifications.sql"];
 
 function fakeProvider(identity: ProviderIdentity): AuthProvider {
   const session = { accessToken: "provider-access", refreshToken: "provider-refresh", expiresIn: 900, identity };
@@ -479,6 +479,39 @@ describe("protected operator pause HTTP/PostgreSQL", () => {
       child.kill("SIGTERM");
     });
   }
+  it("commits a recipient notification and email job once, visible after recovery evidence", async () => {
+    const { agent, userId, csrf, cookie } = await operator();
+    const body = { capability: "offers", paused: true, reason: "Corridor access temporarily blocked" };
+    const send = () => request(createApp()).post("/v1/operator/pause")
+      .set("Cookie", cookie).set("Origin", "http://localhost:3000")
+      .set("X-CSRF-Token", csrf).set("Idempotency-Key", "notification-1").send(body);
+    const first = await send();
+    expect(first.status, JSON.stringify(first.body)).toBe(200);
+    expect((await send()).body.id).toBe(first.body.id);
+    const other = await verificationPool.query<{ id: string }>("INSERT INTO users (email) VALUES ('other-notification@example.test') RETURNING id");
+    const event = await verificationPool.query(
+      `SELECT e.recipient_id, j.status, j.attempts, j.due_at <= now() + interval '1 minute' AS timely
+       FROM pilot_notification_events e JOIN pilot_email_jobs j ON j.event_id = e.id
+       WHERE e.operation_id = $1`, [first.body.id],
+    );
+    expect(event.rows).toEqual([{ recipient_id: userId, status: "pending", attempts: 0, timely: true }]);
+    const visible = await agent.get("/v1/notifications/durable");
+    expect(visible.status).toBe(200);
+    expect(visible.body.notifications).toEqual([expect.objectContaining({ related_entity_id: first.body.id })]);
+    expect((await agent.get("/v1/operator/notifications/delivery")).body.health.due).toBe(1);
+    expect((await verificationPool.query("SELECT count(*)::int AS count FROM pilot_notification_events WHERE recipient_id = $1", [other.rows[0].id])).rows[0].count).toBe(0);
+    const second = await operator("aal2", true, "second-notification");
+    expect((await second.agent.get("/v1/notifications/durable")).body.notifications).toEqual([]);
+    const jobId = (await verificationPool.query<{ id: string }>("SELECT id FROM pilot_email_jobs LIMIT 1")).rows[0].id;
+    await verificationPool.query("UPDATE pilot_email_jobs SET status = 'exhausted', attempts = 5, last_error = 'secret provider response' WHERE id = $1", [jobId]);
+    const delivery = await second.agent.get("/v1/operator/notifications/delivery");
+    expect(JSON.stringify(delivery.body)).not.toContain("secret provider response");
+    expect(delivery.body.jobs[0].last_error).toContain("redacted");
+    const retry = await request(createApp()).post(`/v1/operator/notifications/email/${jobId}/retry`)
+      .set("Cookie", second.cookie).set("Origin", "http://localhost:3000").set("X-CSRF-Token", second.csrf).send({});
+    expect(retry.status).toBe(200);
+    expect((await verificationPool.query("SELECT status, attempts FROM pilot_email_jobs WHERE id = $1", [jobId])).rows).toEqual([{ status: "pending", attempts: 0 }]);
+  });
   it("authorizes current allowlist and MFA, then keeps duplicate decisions stable", async () => {
     const { agent, userId, csrf, cookie } = await operator();
     const body = { capability: "offers", paused: true, reason: "Corridor hazard reported" };
@@ -542,6 +575,11 @@ describe("protected operator pause HTTP/PostgreSQL", () => {
           crashing.child.once("exit", () => { clearTimeout(timeout); resolveExit(); });
         });
         expect(crashing.child.exitCode).toBe(92);
+        if (point === "after_commit") {
+          const premature = await verificationPool.query(`SELECT count(*)::int AS count FROM pilot_notification_events e
+            JOIN pilot_pause_operations o ON o.id = e.operation_id WHERE o.state IN ('acknowledged', 'recovered')`);
+          expect(premature.rows[0].count).toBe(0);
+        }
       } finally { await stopCrashServer(crashing.child); }
       const restarted = await startCrashServer(undefined, receipts);
       try {
@@ -554,8 +592,10 @@ describe("protected operator pause HTTP/PostgreSQL", () => {
         const counts = await verificationPool.query(`SELECT
           (SELECT count(*)::int FROM pilot_pause_operations WHERE idempotency_key = $1) AS operations,
           (SELECT count(*)::int FROM pilot_pause_audit) AS audits,
-          (SELECT count(*)::int FROM pilot_pause_followup) AS followups`, [key]);
-        expect(counts.rows[0]).toEqual({ operations: 1, audits: 1, followups: 1 });
+          (SELECT count(*)::int FROM pilot_pause_followup) AS followups,
+          (SELECT count(*)::int FROM pilot_notification_events) AS events,
+          (SELECT count(*)::int FROM pilot_email_jobs) AS email_jobs`, [key]);
+        expect(counts.rows[0]).toEqual({ operations: 1, audits: 1, followups: 1, events: 1, email_jobs: 1 });
       } finally { await stopCrashServer(restarted.child); }
     }
     await rm(receiptDirectory, { recursive: true, force: true });
@@ -588,6 +628,8 @@ describe("protected operator pause HTTP/PostgreSQL", () => {
     await verificationPool.query("DELETE FROM pilot_recovery_events WHERE operation_id = $1", [intent.rows[0].id]);
     await verificationPool.query("DELETE FROM pilot_pause_audit WHERE operation_id = $1", [intent.rows[0].id]);
     await verificationPool.query("DELETE FROM pilot_pause_followup WHERE operation_id = $1", [intent.rows[0].id]);
+    await verificationPool.query("DELETE FROM pilot_email_jobs WHERE event_id IN (SELECT id FROM pilot_notification_events WHERE operation_id = $1)", [intent.rows[0].id]);
+    await verificationPool.query("DELETE FROM pilot_notification_events WHERE operation_id = $1", [intent.rows[0].id]);
     await verificationPool.query("DELETE FROM pilot_pause_operations WHERE id = $1", [intent.rows[0].id]);
     await verificationPool.query("UPDATE pilot_pause_state SET paused = false, operation_id = NULL, updated_at = now() - interval '1 day' WHERE capability = 'offers'");
     const restored = await request(createApp()).post("/v1/operator/reconcile")
@@ -596,6 +638,7 @@ describe("protected operator pause HTTP/PostgreSQL", () => {
     expect((await verificationPool.query("SELECT executed_by FROM pilot_pause_audit WHERE operation_id = $1", [intent.rows[0].id])).rows[0].executed_by).toBe(second.userId);
     expect((await verificationPool.query("SELECT operator_id FROM pilot_recovery_events WHERE operation_id = $1 AND event = 'decision_resumed'", [intent.rows[0].id])).rows[0].operator_id).toBe(second.userId);
     expect((await second.agent.get("/v1/operator/pilot-status")).body.recovery.mode).toBe("restricted");
+    expect((await verificationPool.query("SELECT id FROM pilot_notification_events WHERE operation_id = $1", [intent.rows[0].id])).rows).toEqual([{ id: intent.rows[0].id }]);
     await rm(receiptDirectory, { recursive: true, force: true });
   });
   it("hands off a committed decision awaiting evidence without rewriting its business audit", async () => {
@@ -644,6 +687,8 @@ describe("protected operator pause HTTP/PostgreSQL", () => {
     expect(decision.status).toBe(200);
     await verificationPool.query("DELETE FROM pilot_pause_audit WHERE operation_id = $1", [decision.body.id]);
     await verificationPool.query("DELETE FROM pilot_pause_followup WHERE operation_id = $1", [decision.body.id]);
+    await verificationPool.query("DELETE FROM pilot_email_jobs WHERE event_id IN (SELECT id FROM pilot_notification_events WHERE operation_id = $1)", [decision.body.id]);
+    await verificationPool.query("DELETE FROM pilot_notification_events WHERE operation_id = $1", [decision.body.id]);
     await verificationPool.query("DELETE FROM pilot_pause_operations WHERE id = $1", [decision.body.id]);
     await verificationPool.query("UPDATE pilot_pause_state SET paused = false, operation_id = NULL, updated_at = now() - interval '1 day' WHERE capability = 'offers'");
     const recovered = await request(createApp()).post("/v1/operator/reconcile").set("Cookie", cookie).set("Origin", "http://localhost:3000").set("X-CSRF-Token", csrf).send({});

@@ -1,0 +1,13 @@
+# Pilot durable notifications
+
+The operator pause decision is the first producer of the durable notification contract. In the same PostgreSQL transaction as the pause state and audit, it records a recipient-scoped event and one email job. The event ID is the pause operation ID. Later lifecycle producers must add their own event type, recipient rules, and recovery reconstruction while preserving this transaction boundary. The existing legacy `notifications` table is separate.
+
+The in-app endpoint is `GET /v1/notifications/durable`. It returns only events for the authenticated application user whose originating operation is acknowledged or recovered. The email worker applies the same gate. A committed operation without its signed recovery receipt remains invisible and unsent. Reconciliation recreates a missing event and job from the receipt with the same event ID.
+
+The worker polls PostgreSQL every ten seconds, claims due jobs with `FOR UPDATE SKIP LOCKED`, and holds a 30-second lease. The first attempt is due immediately, so a healthy running worker should start it within ten seconds, inside the one-minute target. Failed attempts use 1, 2, 4, and 8 minute backoff; after five attempts the job is exhausted. Operator retry resets the five-attempt budget, records an audit log, and does not repeat the pause mutation.
+
+Configure `PILOT_EMAIL_ENDPOINT` and `PILOT_EMAIL_TOKEN` for a controlled HTTPS email gateway. The gateway receives a stable `Idempotency-Key` equal to the event ID. Without configuration, sends fail and remain retryable. Provider errors are stored for diagnosis but the operator API returns only a redacted message. Never put personal data or provider response bodies in a notification URL or log.
+
+A timeout may mean the provider accepted a message but the worker did not receive the response. Lease recovery can send that message again. The subject and body identify the same decision by event ID; **external email delivery is not exactly once**. A gateway may suppress duplicates by idempotency key, but this implementation does not assume it does.
+
+`GET /v1/operator/notifications/delivery` exposes job status, due time, attempt history, exhausted count, stalled count, oldest open job, expired leases, and the last worker heartbeat. A later independent monitor must consume those measurements and alert when work is stalled for more than five minutes; the worker itself is not a sufficient alert source. Operators can retry an exhausted job at `POST /v1/operator/notifications/email/:id/retry`. The pilot console shows these records. This slice does not authorize real trips or enable other pilot-disabled channels.

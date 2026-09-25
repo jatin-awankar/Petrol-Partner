@@ -6,6 +6,7 @@ import { createSettlementOverdueWorker } from "./jobs/settlement-overdue.job";
 import { logger } from "./config/logger";
 import { pool } from "./db/pool";
 import { redisConnection, scheduleMaintenanceSweepJobs } from "./queues";
+import { processDueEmail } from "./jobs/durable-email.job";
 
 const workers = [
   createBookingExpiryWorker(),
@@ -15,12 +16,24 @@ const workers = [
   createPayoutWorker(),
 ];
 let shuttingDown = false;
+let emailTimer: ReturnType<typeof setInterval> | undefined;
+let emailBusy = false;
+
+async function sweepEmail() {
+  if (emailBusy) return;
+  emailBusy = true;
+  try { while (await processDueEmail()) { /* Drain work ready now. */ } }
+  catch (error) { logger.error({ error }, "Durable email sweep failed"); }
+  finally { emailBusy = false; }
+}
 
 async function start() {
   await pool.query("SELECT 1");
   await redisConnection.ping();
   await scheduleMaintenanceSweepJobs();
   await Promise.all(workers.map((worker) => worker.waitUntilReady()));
+  emailTimer = setInterval(() => { void sweepEmail(); }, 10000);
+  void sweepEmail();
   logger.info(
     {
       workers: workers.length,
@@ -35,6 +48,7 @@ async function shutdown(signal: NodeJS.Signals) {
   }
 
   shuttingDown = true;
+  if (emailTimer) clearInterval(emailTimer);
   logger.info({ signal }, "Shutting down workers");
   await Promise.all(workers.map((worker) => worker.close()));
   await pool.end();
