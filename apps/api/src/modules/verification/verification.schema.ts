@@ -1,7 +1,6 @@
 import { z } from "zod";
 
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected YYYY-MM-DD");
-const dateTimeSchema = z.string().datetime({ offset: true });
 
 export const vehicleIdParamSchema = z.object({
   id: z.uuid(),
@@ -16,19 +15,15 @@ export const pendingVerificationReviewsQuerySchema = z.object({
 });
 
 export const upsertStudentVerificationSchema = z
-  .object({
+  .strictObject({
     provider: z.enum(["digilocker", "abc_id", "manual_review"]),
-    student_identifier_last4: z.string().trim().min(4).max(4).optional(),
+    enrolled_name: z.string().trim().min(2).max(150),
+    evidence_category: z.enum(["enrollment_letter", "student_card", "college_email", "other_enrollment"]),
     institution_name: z.string().trim().min(2).max(255),
     program_name: z.string().trim().max(255).optional(),
     admission_year: z.coerce.number().int().min(2000).max(2100),
     graduation_year: z.coerce.number().int().min(2000).max(2100),
-    eligibility_starts_at: dateTimeSchema.optional(),
-    eligibility_ends_at: dateTimeSchema.optional(),
-    revalidate_after: dateTimeSchema.optional(),
-    consent_reference: z.string().trim().min(3).max(255).optional(),
-    gender_for_matching: z.enum(["female", "male"]).optional(),
-    metadata: z.record(z.string(), z.unknown()).optional(),
+    // A date of birth and identity number must never enter the normal database.
   })
   .refine((value) => value.graduation_year >= value.admission_year, {
     path: ["graduation_year"],
@@ -58,8 +53,11 @@ export const createVehicleSchema = vehicleBaseSchema;
 export const updateVehicleSchema = vehicleBaseSchema.partial();
 
 export const reviewStudentVerificationSchema = z.object({
-  outcome: z.enum(["verified", "rejected", "suspended"]),
-  reason: z.string().trim().max(1000).optional(),
+  outcome: z.enum(["verified", "rejected"]),
+  adult_eligible: z.boolean(),
+  reason: z.string().trim().min(8).max(1000),
+}).refine((value) => value.outcome !== "verified" || value.adult_eligible, {
+  path: ["adult_eligible"], message: "Adult eligibility is required for approval",
 });
 
 export const reviewDriverEligibilitySchema = z.object({

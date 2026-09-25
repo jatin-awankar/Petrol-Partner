@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, raw } from "express";
 
 import { requireAdmin, requireAuth } from "../../middleware/auth";
 import { asyncHandler } from "../../shared/http/async-handler";
@@ -24,6 +24,7 @@ verificationRouter.use(requireAuth);
 verificationRouter.get("/overview", asyncHandler(verificationController.getOverview));
 verificationRouter.get("/student", asyncHandler(verificationController.getStudentVerification));
 verificationRouter.put("/student", asyncHandler(verificationController.upsertStudentVerification));
+verificationRouter.post("/student/evidence", raw({ type: ["image/jpeg", "image/png", "application/pdf"], limit: "512kb" }), asyncHandler(verificationController.uploadStudentEvidence));
 verificationRouter.get("/driver-eligibility", asyncHandler(verificationController.getDriverEligibility));
 verificationRouter.put("/driver-eligibility", asyncHandler(verificationController.upsertDriverEligibility));
 verificationRouter.get("/vehicles", asyncHandler(verificationController.listVehicles));
@@ -40,6 +41,7 @@ verificationRouter.post(
   requireAdmin,
   asyncHandler(verificationController.reviewStudentVerification),
 );
+verificationRouter.get("/admin/student/:userId/evidence", requireAdmin, asyncHandler(verificationController.getStudentEvidence));
 verificationRouter.post(
   "/admin/driver-eligibility/:userId/review",
   requireAdmin,

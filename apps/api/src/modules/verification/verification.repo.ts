@@ -8,6 +8,9 @@ interface StudentVerificationRow {
   provider: string;
   status: string;
   student_identifier_last4: string | null;
+  enrolled_name: string | null;
+  evidence_category: string | null;
+  adult_eligible: boolean | null;
   institution_name: string;
   program_name: string | null;
   admission_year: number | null;
@@ -61,6 +64,7 @@ interface VehicleRow {
 interface TransactionEligibilityRow {
   student_verification_status: string | null;
   student_eligibility_ends_at: Date | string | null;
+  student_adult_eligible: boolean | null;
   driver_eligibility_status: string | null;
 }
 
@@ -75,6 +79,9 @@ function mapStudentVerification(row: StudentVerificationRow) {
     provider: row.provider,
     status: row.status,
     student_identifier_last4: row.student_identifier_last4,
+    enrolled_name: row.enrolled_name,
+    evidence_category: row.evidence_category,
+    adult_eligible: row.adult_eligible,
     institution_name: row.institution_name,
     program_name: row.program_name,
     admission_year: row.admission_year,
@@ -138,6 +145,9 @@ export async function findStudentVerificationByUserId(userId: string) {
        provider,
        status,
        student_identifier_last4,
+       enrolled_name,
+       evidence_category,
+       adult_eligible,
        institution_name,
        program_name,
        admission_year,
@@ -161,12 +171,46 @@ export async function findStudentVerificationByUserId(userId: string) {
   return result.rows[0] ? mapStudentVerification(result.rows[0]) : null;
 }
 
+export async function findStudentVerificationForUpdate(client: PoolClient, userId: string) {
+  const result = await client.query<StudentVerificationRow>(
+    "SELECT * FROM student_verifications WHERE user_id = $1 FOR UPDATE",
+    [userId],
+  );
+  return result.rows[0] ? mapStudentVerification(result.rows[0]) : null;
+}
+
+export async function studentEvidenceForUpdate(client: PoolClient, userId: string) {
+  const result = await client.query<{
+    id: string; object_key: string; content_type: string; status: string;
+    uploaded_at: Date; delete_after: Date | null;
+  }>("SELECT id, object_key, content_type, status, uploaded_at, delete_after FROM student_evidence WHERE user_id = $1 FOR UPDATE", [userId]);
+  return result.rows[0] ?? null;
+}
+
+export async function recordStudentEvidence(client: PoolClient, userId: string, evidence: {
+  key: string; contentType: string; byteCount: number; sha256: string;
+}) {
+  await client.query(
+    `INSERT INTO student_evidence (user_id, object_key, content_type, byte_count, sha256)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (user_id) DO UPDATE SET object_key = EXCLUDED.object_key,
+       content_type = EXCLUDED.content_type, byte_count = EXCLUDED.byte_count,
+       sha256 = EXCLUDED.sha256, status = 'pending_review', uploaded_at = now(),
+       decision_at = NULL, delete_after = NULL, deleted_at = NULL,
+       delete_attempts = 0, last_delete_error = NULL`,
+    [userId, evidence.key, evidence.contentType, evidence.byteCount, evidence.sha256],
+  );
+}
+
 export async function upsertStudentVerification(
   input: {
     userId: string;
     provider: string;
     status: string;
     studentIdentifierLast4: string | null;
+    enrolledName: string | null;
+    evidenceCategory: string | null;
+    adultEligible: boolean | null;
     institutionName: string;
     programName: string | null;
     admissionYear: number;
@@ -188,6 +232,9 @@ export async function upsertStudentVerification(
        provider,
        status,
        student_identifier_last4,
+       enrolled_name,
+       evidence_category,
+       adult_eligible,
        institution_name,
        program_name,
        admission_year,
@@ -201,12 +248,15 @@ export async function upsertStudentVerification(
        consent_reference,
        metadata
      )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16::jsonb)
+     VALUES ($1, $2, $3, $4, $17, $18, $19, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16::jsonb)
      ON CONFLICT (user_id)
      DO UPDATE SET
        provider = EXCLUDED.provider,
        status = EXCLUDED.status,
        student_identifier_last4 = EXCLUDED.student_identifier_last4,
+       enrolled_name = EXCLUDED.enrolled_name,
+       evidence_category = EXCLUDED.evidence_category,
+       adult_eligible = EXCLUDED.adult_eligible,
        institution_name = EXCLUDED.institution_name,
        program_name = EXCLUDED.program_name,
        admission_year = EXCLUDED.admission_year,
@@ -226,6 +276,9 @@ export async function upsertStudentVerification(
        provider,
        status,
        student_identifier_last4,
+       enrolled_name,
+       evidence_category,
+       adult_eligible,
        institution_name,
        program_name,
        admission_year,
@@ -257,6 +310,9 @@ export async function upsertStudentVerification(
       input.revalidateAfter,
       input.consentReference,
       JSON.stringify(input.metadata),
+      input.enrolledName,
+      input.evidenceCategory,
+      input.adultEligible,
     ],
   );
 
@@ -609,6 +665,7 @@ export async function findTransactionEligibilityByUserId(userId: string) {
     `SELECT
        sv.status AS student_verification_status,
        sv.eligibility_ends_at AS student_eligibility_ends_at,
+       sv.adult_eligible AS student_adult_eligible,
        de.status AS driver_eligibility_status
      FROM users u
      LEFT JOIN student_verifications sv ON sv.user_id = u.id
@@ -659,6 +716,9 @@ export async function listPendingStudentVerifications(limit: number) {
        provider,
        status,
        student_identifier_last4,
+       enrolled_name,
+       evidence_category,
+       adult_eligible,
        institution_name,
        program_name,
        admission_year,

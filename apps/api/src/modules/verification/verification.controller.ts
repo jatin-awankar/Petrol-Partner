@@ -45,6 +45,24 @@ export async function upsertStudentVerification(req: Request, res: Response) {
   });
 }
 
+export async function uploadStudentEvidence(req: Request, res: Response) {
+  if (req.get("X-Synthetic-Evidence") !== "true") {
+    throw new AppError(400, "This adapter accepts synthetic demonstration evidence only", "SYNTHETIC_EVIDENCE_REQUIRED");
+  }
+  if (!Buffer.isBuffer(req.body)) throw new AppError(400, "Evidence body is required", "EVIDENCE_INVALID");
+  const result = await verificationService.uploadStudentEvidence(requireUserId(req), req.body, req.get("content-type") ?? "");
+  res.status(201).json(result);
+}
+
+export async function getStudentEvidence(req: Request, res: Response) {
+  const { userId } = adminReviewUserParamSchema.parse(req.params);
+  const result = await verificationService.readStudentEvidence(requireUserId(req), userId);
+  res.set("Cache-Control", "private, no-store");
+  res.set("X-Content-Type-Options", "nosniff");
+  res.set("Content-Disposition", "attachment");
+  res.type(result.contentType).status(200).send(result.bytes);
+}
+
 export async function getDriverEligibility(req: Request, res: Response) {
   const userId = requireUserId(req);
   const driverEligibility = await verificationService.getDriverEligibility(userId);

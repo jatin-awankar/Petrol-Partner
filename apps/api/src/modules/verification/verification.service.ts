@@ -1,6 +1,8 @@
 import { withTransaction } from "../../db/transaction";
 import { insertAuditLog } from "../../shared/audit/logs";
 import { AppError } from "../../shared/errors/app-error";
+import { assertCurrentOperator } from "../operator/operator.authorization";
+import { deleteEvidence, readEvidence, storeEvidence } from "./student-evidence.storage";
 import type {
   CreateVehicleInput,
   PendingVerificationReviewsQuery,
@@ -16,18 +18,10 @@ import * as verificationRepo from "./verification.repo";
 const ACTIVE_STUDENT_STATUSES = new Set(["verified", "revalidation_due"]);
 
 function deriveEligibilityEndsAt(input: UpsertStudentVerificationInput) {
-  if (input.eligibility_ends_at) {
-    return new Date(input.eligibility_ends_at);
-  }
-
   return new Date(Date.UTC(input.graduation_year, 11, 31, 23, 59, 59));
 }
 
 function deriveRevalidateAfter(input: UpsertStudentVerificationInput, eligibilityEndsAt: Date) {
-  if (input.revalidate_after) {
-    return new Date(input.revalidate_after);
-  }
-
   const sixMonthsFromNow = new Date(Date.now() + 180 * 24 * 60 * 60 * 1000);
   return sixMonthsFromNow < eligibilityEndsAt ? sixMonthsFromNow : eligibilityEndsAt;
 }
@@ -77,7 +71,8 @@ function ensureDriverEligibilityFields(
 function ensureStudentVerificationFields(
   current: Awaited<ReturnType<typeof verificationRepo.findStudentVerificationByUserId>>,
 ) {
-  if (!current?.admission_year || !current?.graduation_year) {
+  if (!current?.admission_year || !current?.graduation_year ||
+      !current.enrolled_name || !current.evidence_category) {
     throw new AppError(
       409,
       "Student verification submission is incomplete and cannot be reviewed",
@@ -110,24 +105,73 @@ export function getStudentVerification(userId: string) {
   return verificationRepo.findStudentVerificationByUserId(userId);
 }
 
+export async function uploadStudentEvidence(userId: string, bytes: Buffer, contentType: string) {
+  let createdKey: string | null = null;
+  try {
+    return await withTransaction(async (client) => {
+      const submission = await verificationRepo.findStudentVerificationForUpdate(client, userId);
+      if (submission?.status !== "pending_review") {
+        throw new AppError(409, "Submit enrollment details before evidence", "STUDENT_SUBMISSION_REQUIRED");
+      }
+      const existing = await verificationRepo.studentEvidenceForUpdate(client, userId);
+      if (existing) {
+        if (existing.status === "retained") throw new AppError(409, "Evidence has already been reviewed", "EVIDENCE_REVIEWED");
+        if (existing.status === "pending_review") {
+          try {
+            await readEvidence(existing.object_key);
+            throw new AppError(409, "Evidence is already available for review", "EVIDENCE_EXISTS");
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+          }
+        }
+      }
+      const stored = await storeEvidence(bytes, contentType);
+      createdKey = stored.key;
+      await verificationRepo.recordStudentEvidence(client, userId, stored);
+      return { status: "pending_review", uploaded_at: new Date().toISOString() };
+    });
+  } catch (error) {
+    if (createdKey) await deleteEvidence(createdKey).catch(() => undefined);
+    throw error;
+  }
+}
+
+export async function readStudentEvidence(adminUserId: string, userId: string) {
+  return withTransaction(async (client) => {
+    await assertCurrentOperator(client, adminUserId);
+    const evidence = await verificationRepo.studentEvidenceForUpdate(client, userId);
+    if (!evidence || evidence.status === "deleted") throw new AppError(404, "Evidence unavailable", "EVIDENCE_NOT_FOUND");
+    return { bytes: await readEvidence(evidence.object_key), contentType: evidence.content_type };
+  });
+}
+
 export async function upsertStudentVerification(
   userId: string,
   input: UpsertStudentVerificationInput,
 ) {
   const eligibilityEndsAt = deriveEligibilityEndsAt(input);
-  const eligibilityStartsAt = input.eligibility_starts_at
-    ? new Date(input.eligibility_starts_at)
-    : null;
+  const eligibilityStartsAt = null;
   const revalidateAfter = deriveRevalidateAfter(input, eligibilityEndsAt);
   const status = deriveStudentVerificationStatus(eligibilityEndsAt);
 
   return withTransaction(async (client) => {
+    const existing = await verificationRepo.findStudentVerificationForUpdate(client, userId);
+    if (existing && existing.status !== "pending_review" && existing.status !== "rejected") {
+      throw new AppError(409, "Reviewed eligibility cannot be replaced by self service", "STUDENT_REVIEW_CONFLICT");
+    }
+    const previousEvidence = await verificationRepo.studentEvidenceForUpdate(client, userId);
+    if (previousEvidence && previousEvidence.status !== "deleted") {
+      throw new AppError(409, "Existing evidence must finish review and retention before resubmission", "EVIDENCE_EXISTS");
+    }
     const studentVerification = await verificationRepo.upsertStudentVerification(
       {
         userId,
         provider: input.provider,
         status,
-        studentIdentifierLast4: input.student_identifier_last4 ?? null,
+        studentIdentifierLast4: null,
+        enrolledName: input.enrolled_name,
+        evidenceCategory: input.evidence_category,
+        adultEligible: null,
         institutionName: input.institution_name,
         programName: input.program_name ?? null,
         admissionYear: input.admission_year,
@@ -138,9 +182,8 @@ export async function upsertStudentVerification(
         eligibilityStartsAt,
         eligibilityEndsAt,
         revalidateAfter,
-        consentReference: input.consent_reference ?? null,
+        consentReference: null,
         metadata: {
-          ...(input.metadata ?? {}),
           submissionSource: "self_service",
           submittedAt: new Date().toISOString(),
         },
@@ -153,7 +196,7 @@ export async function upsertStudentVerification(
         userId,
         isVerified: false,
         college: null,
-        genderForMatching: input.gender_for_matching ?? null,
+        genderForMatching: null,
       },
       client,
     );
@@ -274,6 +317,7 @@ export async function assertVerifiedStudentCanTransact(userId: string) {
 
   if (
     !ACTIVE_STUDENT_STATUSES.has(eligibility.student_verification_status) ||
+    eligibility.student_adult_eligible !== true ||
     (eligibilityEndsAt && eligibilityEndsAt <= new Date())
   ) {
     throw new AppError(
@@ -347,11 +391,20 @@ export async function reviewStudentVerification(
   userId: string,
   input: ReviewStudentVerificationInput,
 ) {
-  const current = ensureStudentVerificationFields(
-    await verificationRepo.findStudentVerificationByUserId(userId),
-  );
-
   return withTransaction(async (client) => {
+    await assertCurrentOperator(client, adminUserId);
+    const current = ensureStudentVerificationFields(
+      await verificationRepo.findStudentVerificationForUpdate(client, userId),
+    );
+    if (current.status !== "pending_review") {
+      throw new AppError(409, "Only pending evidence can be reviewed", "STUDENT_REVIEW_CONFLICT");
+    }
+    const evidence = await verificationRepo.studentEvidenceForUpdate(client, userId);
+    if (!evidence || evidence.status !== "pending_review") {
+      throw new AppError(409, "Enrollment evidence is required", "EVIDENCE_REQUIRED");
+    }
+    try { await readEvidence(evidence.object_key); }
+    catch { throw new AppError(409, "Evidence was lost; request a new upload", "EVIDENCE_LOST"); }
     const reviewedAt = new Date();
     const reviewed = await verificationRepo.upsertStudentVerification(
       {
@@ -359,11 +412,14 @@ export async function reviewStudentVerification(
         provider: current.provider,
         status: input.outcome,
         studentIdentifierLast4: current.student_identifier_last4,
+        enrolledName: current.enrolled_name,
+        evidenceCategory: current.evidence_category,
+        adultEligible: input.adult_eligible,
         institutionName: current.institution_name,
         programName: current.program_name,
         admissionYear: current.admission_year,
         graduationYear: current.graduation_year,
-        verifiedAt: input.outcome === "verified" ? reviewedAt : null,
+        verifiedAt: input.outcome === "verified" && input.adult_eligible ? reviewedAt : null,
         reviewedByUserId: adminUserId,
         reviewedAt,
         eligibilityStartsAt: current.eligibility_starts_at
@@ -373,8 +429,8 @@ export async function reviewStudentVerification(
         revalidateAfter: current.revalidate_after ? new Date(current.revalidate_after) : null,
         consentReference: current.consent_reference,
         metadata: {
-          ...(current.metadata ?? {}),
-          reviewReason: input.reason ?? null,
+          reviewReason: input.reason,
+          submittedAt: current.metadata?.submittedAt,
         },
       },
       client,
@@ -383,8 +439,8 @@ export async function reviewStudentVerification(
     await verificationRepo.syncUserVerificationProfile(
       {
         userId,
-        isVerified: input.outcome === "verified",
-        college: input.outcome === "verified" ? current.institution_name : null,
+        isVerified: input.outcome === "verified" && input.adult_eligible,
+        college: input.outcome === "verified" && input.adult_eligible ? current.institution_name : null,
         genderForMatching: null,
       },
       client,
@@ -398,11 +454,18 @@ export async function reviewStudentVerification(
         entityId: reviewed.id,
         metadata: {
           outcome: input.outcome,
+          adultEligible: input.adult_eligible,
           reviewedUserId: userId,
           reason: input.reason ?? null,
         },
       },
       client,
+    );
+
+    await client.query(
+      `UPDATE student_evidence SET status = 'retained', decision_at = $2,
+         delete_after = $2 + interval '7 days' WHERE user_id = $1`,
+      [userId, reviewedAt],
     );
 
     return reviewed;

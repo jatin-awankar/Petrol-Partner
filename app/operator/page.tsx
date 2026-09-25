@@ -9,12 +9,14 @@ type Capability = "offers" | "requests" | "acceptance" | "booking";
 type PilotStatus = { recovery: { mode: string; cause: string | null; started_at: string | null; reconciled_at: string | null }; backup: { required: boolean; healthy: boolean; maximumAgeMinutes: number; ageMinutes: number | null; latest: { snapshot_at: string; uploaded_at: string; ciphertext_sha256: string } | null; failedAttempts: { id: string; started_at: string; error_code: string | null }[]; runningAttempts: { id: string; started_at: string }[] }; capabilities: { capability: Capability; paused: boolean; pending: boolean }[] };
 type Pending = { id: string; capability: Capability; paused: boolean; reason: string; state: string };
 type Delivery = { jobs: { id: string; operation_id: string; status: string; attempts: number; attempt_count: number; attempt_history: { attempt: number; started_at: string; finished_at: string | null; outcome: string | null }[]; due_at: string; updated_at: string; last_error: string | null }[]; health: { due: number; exhausted: number; expired_leases: number; stalled: number; oldest_open_at: string | null; last_attempt_at: string | null; last_worker_seen_at: string | null } };
+type StudentReview = { user_id: string; status: string; enrolled_name: string | null; institution_name: string; graduation_year: number | null; evidence_category: string | null };
 
 export default function OperatorPage() {
   const { user, loading } = useCurrentUser();
   const [status, setStatus] = useState<PilotStatus | null>(null);
   const [pending, setPending] = useState<Pending[]>([]);
   const [delivery, setDelivery] = useState<Delivery | null>(null);
+  const [studentReviews, setStudentReviews] = useState<StudentReview[]>([]);
   const [reason, setReason] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
@@ -26,6 +28,8 @@ export default function OperatorPage() {
     setStatus(next);
     setPending(operations.operations);
     setDelivery(await apiRequest<Delivery>("/v1/operator/notifications/delivery"));
+    const reviews = await apiRequest<{ student_verifications: StudentReview[] }>("/v1/verification/admin/pending");
+    setStudentReviews(reviews.student_verifications);
   }, []);
   useEffect(() => {
     if (user) void refresh().catch((error) => {
@@ -89,6 +93,18 @@ export default function OperatorPage() {
     } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to retry email"); }
     finally { setBusy(false); }
   }
+  async function reviewStudent(userId: string, outcome: "verified" | "rejected") {
+    if (reason.trim().length < 8) { setMessage("Enter a reason of at least eight characters."); return; }
+    setBusy(true);
+    try {
+      await apiRequest(`/v1/verification/admin/student/${userId}/review`, {
+        method: "POST", body: JSON.stringify({ outcome, adult_eligible: outcome === "verified", reason: reason.trim() }),
+      });
+      setMessage(`Synthetic student review ${outcome}.`);
+      await refresh();
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Review failed"); }
+    finally { setBusy(false); }
+  }
   if (loading) return <main className="p-8">Checking operator access…</main>;
   if (!user) return <main className="p-8">Sign in to access the operator console. <Link href="/login">Sign in</Link></main>;
   if (authorized === false) return <main className="p-8">Operator access requires current allowlist membership and MFA. {message}</main>;
@@ -119,6 +135,14 @@ export default function OperatorPage() {
         <p>Due: {new Date(job.due_at).toLocaleString()}</p>{job.last_error && <p>{job.last_error}</p>}
         {job.attempt_history.length > 0 && <ul className="list-disc pl-5">{job.attempt_history.map((attempt, index) => <li key={`${attempt.started_at}-${index}`}>Attempt {attempt.attempt}: {attempt.outcome ?? "in progress"} at {new Date(attempt.started_at).toLocaleString()}</li>)}</ul>}
         {job.status === "exhausted" && <button disabled={busy} onClick={() => retryEmail(job.id, job.updated_at)}>Retry email</button>}</div>)}
+    </section>
+    <section className="space-y-3"><h2 className="font-semibold">Synthetic student reviews</h2>
+      <p>Inspect the fabricated evidence and confirm adult eligibility before approval. Real decisions remain closed pending recovery and provider verification.</p>
+      {studentReviews.length ? studentReviews.map((review) => <div key={review.user_id} className="rounded border p-3">
+        <p>{review.enrolled_name ?? "Name missing"} · {review.institution_name} · graduation {review.graduation_year} · {review.evidence_category}</p>
+        <a className="underline" href={`/v1/verification/admin/student/${review.user_id}/evidence`}>Download synthetic evidence</a>
+        <div className="flex gap-3"><button disabled={busy} onClick={() => reviewStudent(review.user_id, "verified")}>Approve adult student</button><button disabled={busy} onClick={() => reviewStudent(review.user_id, "rejected")}>Reject</button></div>
+      </div>) : <p>No pending student reviews.</p>}
     </section>
   </main>;
 }

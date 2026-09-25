@@ -6,7 +6,7 @@ import { resolve } from "node:path";
 
 import { Pool } from "pg";
 import request from "supertest";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { createApp } from "../app";
 import { pool } from "../db/pool";
@@ -15,7 +15,7 @@ import { setAuthProviderForTests, setManagedAuthEnabledForTests, type AuthProvid
 import { setBackupObjectProbeForTests } from "../modules/operator/backup-status";
 
 const verificationPool = new Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
-const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql", "0006_operator_allowlist.sql", "0007_operator_pause.sql", "0008_operator_intent_handoff.sql", "0009_durable_notifications.sql", "0010_email_retry_operations.sql", "0011_backup_attempts.sql"];
+const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql", "0006_operator_allowlist.sql", "0007_operator_pause.sql", "0008_operator_intent_handoff.sql", "0009_durable_notifications.sql", "0010_email_retry_operations.sql", "0011_backup_attempts.sql", "0012_student_adult_review.sql"];
 
 function fakeProvider(identity: ProviderIdentity): AuthProvider {
   const session = { accessToken: "provider-access", refreshToken: "provider-refresh", expiresIn: 900, identity };
@@ -413,6 +413,52 @@ describe("legacy registration HTTP characterization with PostgreSQL", () => {
       [response.body.user.id],
     );
     expect(persisted.rows).toEqual([{ email: "synthetic.student@example.test" }]);
+  });
+});
+
+describe("synthetic student evidence HTTP/PostgreSQL", () => {
+  let evidenceDirectory: string;
+  beforeEach(async () => {
+    evidenceDirectory = await mkdtemp(resolve(tmpdir(), "pilot-student-evidence-"));
+    process.env.PILOT_SYNTHETIC_EVIDENCE_DIR = evidenceDirectory;
+    await verificationPool.query("UPDATE auth_cutover_state SET active_provider = 'supabase', legacy_login_enabled = false, authorized_at = now(), authorized_by = 'integration-test'");
+    setManagedAuthEnabledForTests(true);
+  });
+  afterEach(async () => { await rm(evidenceDirectory, { recursive: true, force: true }); });
+  afterAll(async () => { delete process.env.PILOT_SYNTHETIC_EVIDENCE_DIR; });
+
+  async function student(label: string) {
+    const email = `${label}@example.test`;
+    const subject = `${label}-subject`;
+    const user = await verificationPool.query<{ id: string }>("INSERT INTO users (email, email_verified_at) VALUES ($1, now()) RETURNING id", [email]);
+    await verificationPool.query("INSERT INTO user_profiles (user_id, full_name) VALUES ($1, 'Synthetic Student')", [user.rows[0].id]);
+    await verificationPool.query("INSERT INTO auth_identities (provider, provider_subject, user_id, provider_email) VALUES ('supabase', $1, $2, $3)", [subject, user.rows[0].id, email]);
+    const identity = { subject, email, emailVerified: true, assuranceLevel: "aal1" as const, userMetadata: {} };
+    setAuthProviderForTests(fakeProvider(identity));
+    const agent = request.agent(createApp());
+    const login = await agent.post("/v1/auth/login").send({ email, password: "synthetic-password" });
+    expect(login.status).toBe(200);
+    const csrf = login.headers["set-cookie"]?.find((cookie: string) => cookie.startsWith("pp_csrf_token="))?.split(";", 1)[0]?.split("=", 2)[1];
+    const cookie = login.headers["set-cookie"].map((item: string) => item.split(";", 1)[0]).join("; ");
+    return { agent, userId: user.rows[0].id, csrf, cookie, identity };
+  }
+
+  it("keeps document bytes outside PostgreSQL and denies another student access", async () => {
+    const owner = await student("evidence-owner");
+    const details = { provider: "manual_review", enrolled_name: "Synthetic Student", evidence_category: "enrollment_letter", institution_name: "Synthetic College", admission_year: 2025, graduation_year: 2029 };
+    const forbidden = await request(createApp()).put("/v1/verification/student").set("Cookie", owner.cookie).set("Origin", "http://localhost:3000").set("X-CSRF-Token", owner.csrf).send({ ...details, birth_date: "2005-01-01" });
+    expect(forbidden.status).toBe(400);
+    expect((await request(createApp()).put("/v1/verification/student").set("Cookie", owner.cookie).set("Origin", "http://localhost:3000").set("X-CSRF-Token", owner.csrf).send(details)).status).toBe(200);
+    const bytes = Buffer.from("%PDF-1.4\nsynthetic sample\n");
+    const upload = await request(createApp()).post("/v1/verification/student/evidence").set("Cookie", owner.cookie).set("Origin", "http://localhost:3000").set("X-CSRF-Token", owner.csrf).set("X-Synthetic-Evidence", "true").set("Content-Type", "application/pdf").send(bytes);
+    expect(upload.status, JSON.stringify(upload.body)).toBe(201);
+    const row = await verificationPool.query<{ object_key: string; byte_count: number }>("SELECT object_key, byte_count FROM student_evidence WHERE user_id = $1", [owner.userId]);
+    expect(row.rows[0].byte_count).toBe(bytes.length);
+    expect(await readFile(resolve(evidenceDirectory, row.rows[0].object_key))).toEqual(bytes);
+    const unrelated = await student("evidence-unrelated");
+    setAuthProviderForTests(fakeProvider(unrelated.identity));
+    const denied = await unrelated.agent.get(`/v1/verification/admin/student/${owner.userId}/evidence`);
+    expect(denied.status).toBe(403);
   });
 });
 

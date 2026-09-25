@@ -7,6 +7,7 @@ import { logger } from "./config/logger";
 import { pool } from "./db/pool";
 import { redisConnection, scheduleMaintenanceSweepJobs } from "./queues";
 import { processDueEmail } from "./jobs/durable-email.job";
+import { deleteDueStudentEvidence } from "./jobs/student-evidence-retention.job";
 
 const workers = [
   createBookingExpiryWorker(),
@@ -22,7 +23,10 @@ let emailBusy = false;
 async function sweepEmail() {
   if (emailBusy) return;
   emailBusy = true;
-  try { while (await processDueEmail()) { /* Drain work ready now. */ } }
+  try {
+    while (await processDueEmail()) { /* Drain work ready now. */ }
+    while (await deleteDueStudentEvidence()) { /* Drain due evidence. */ }
+  }
   catch (error) { logger.error({ error }, "Durable email sweep failed"); }
   finally { emailBusy = false; }
 }
