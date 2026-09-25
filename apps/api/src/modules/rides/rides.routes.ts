@@ -1,5 +1,6 @@
 import { Router } from "express";
 
+import { requirePilotActivity } from "../operator/pause.middleware";
 import { requireAuth } from "../../middleware/auth";
 import { asyncHandler } from "../../shared/http/async-handler";
 import * as ridesController from "./rides.controller";
@@ -15,11 +16,11 @@ ridesRouter.get("/_status", (_req, res) => {
 });
 
 ridesRouter.get("/offers", asyncHandler(ridesController.listOffers));
-ridesRouter.post("/offers", requireAuth, asyncHandler(ridesController.createOffer));
+ridesRouter.post("/offers", requireAuth, requirePilotActivity("offers"), asyncHandler(ridesController.createOffer));
 ridesRouter.get("/offers/:id", asyncHandler(ridesController.getOfferById));
-ridesRouter.patch("/offers/:id", requireAuth, asyncHandler(ridesController.updateOffer));
+ridesRouter.patch("/offers/:id", requireAuth, requirePilotActivity("offers"), asyncHandler(ridesController.updateOffer));
 
 ridesRouter.get("/requests", asyncHandler(ridesController.listRequests));
-ridesRouter.post("/requests", requireAuth, asyncHandler(ridesController.createRequest));
+ridesRouter.post("/requests", requireAuth, requirePilotActivity("requests"), asyncHandler(ridesController.createRequest));
 ridesRouter.get("/requests/:id", asyncHandler(ridesController.getRequestById));
-ridesRouter.patch("/requests/:id", requireAuth, asyncHandler(ridesController.updateRequest));
+ridesRouter.patch("/requests/:id", requireAuth, requirePilotActivity("requests"), asyncHandler(ridesController.updateRequest));

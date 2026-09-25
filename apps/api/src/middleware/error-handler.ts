@@ -33,6 +33,11 @@ export const errorHandler: ErrorRequestHandler = (error, req, res, _next) => {
     return;
   }
 
+  if (typeof error === "object" && error && "code" in error && error.code === "P0001") {
+    res.status(503).json({ error: { code: "PILOT_PAUSED", message: "Pilot activity is paused" } });
+    return;
+  }
+
   req.log.error({ error }, "Unhandled request error");
 
   res.status(500).json({
