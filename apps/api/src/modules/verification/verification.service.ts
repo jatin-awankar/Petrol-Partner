@@ -145,6 +145,7 @@ export async function grantStudentEvidenceAccess(adminUserId: string, userId: st
     const evidence = await verificationRepo.studentEvidenceForUpdate(client, userId, purpose, submission.review_cycle);
     if (!evidence || evidence.status !== "pending_review") throw new AppError(404, "Evidence unavailable", "EVIDENCE_NOT_FOUND");
     await verificationRepo.createEvidenceAccessGrant(client, createHash("sha256").update(token).digest("hex"), adminUserId, userId, evidence.id);
+    await verificationRepo.recordEvidenceAccessAudit(client, adminUserId, userId, evidence.id, "student_evidence_access_granted");
   });
   return { token, expires_in_seconds: 300 };
 }
@@ -164,6 +165,7 @@ export async function readStudentEvidence(adminUserId: string, userId: string, p
         createHash("sha256").update(bytes).digest("hex") !== evidence.sha256) {
       throw new AppError(409, "Evidence integrity check failed", "EVIDENCE_LOST");
     }
+    await verificationRepo.recordEvidenceAccessAudit(client, adminUserId, userId, evidence.id, "student_evidence_accessed");
     return { bytes, contentType: evidence.content_type };
   });
 }

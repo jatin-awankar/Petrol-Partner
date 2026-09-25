@@ -151,6 +151,9 @@ export class StudentReviewService {
           !current.evidence_category || !current.age_evidence_category ||
           !current.admission_year || !current.graduation_year || !current.eligibility_ends_at) throw new AppError(409,
         "Only complete pending submissions can be reviewed", "STUDENT_REVIEW_CONFLICT");
+      if (input.outcome === "verified" && new Date(current.eligibility_ends_at).getTime() <= Date.now()) {
+        throw new AppError(409, "Enrollment evidence has expired", "STUDENT_ENROLLMENT_EXPIRED");
+      }
       if (!await reviewRepo.verifiedEmailForReview(client, targetUserId)) throw new AppError(409, "Email ownership must be verified", "EMAIL_NOT_VERIFIED");
       const evidenceSnapshot: EvidenceSnapshot[] = [];
       for (const purpose of ["enrollment", "age"] as const) {

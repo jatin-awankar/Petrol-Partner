@@ -209,6 +209,12 @@ export async function consumeEvidenceAccessGrant(client: PoolClient, tokenHash: 
   return Boolean(result.rowCount);
 }
 
+export async function recordEvidenceAccessAudit(client: PoolClient, operatorId: string, targetUserId: string, evidenceId: string, action: "student_evidence_access_granted" | "student_evidence_accessed") {
+  await client.query(`INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, metadata)
+    VALUES ($1, $2, 'student_verification', $3, $4::jsonb)`,
+  [operatorId, action, targetUserId, JSON.stringify({ evidenceId })]);
+}
+
 export async function evidenceRetentionHealth(client: PoolClient) {
   const result = await client.query<{
     overdue_count: number; failed_count: number; oldest_due_at: Date | null;

@@ -17,6 +17,7 @@ export default function OperatorPage() {
   const [pending, setPending] = useState<Pending[]>([]);
   const [delivery, setDelivery] = useState<Delivery | null>(null);
   const [studentReviews, setStudentReviews] = useState<StudentReview[]>([]);
+  const [adultFindings, setAdultFindings] = useState<Record<string, boolean>>({});
   const [evidenceMode, setEvidenceMode] = useState<"closed" | "synthetic" | "real">("closed");
   const [evidenceRetention, setEvidenceRetention] = useState<{ overdue_count: number; failed_count: number; oldest_due_at: string | null } | null>(null);
   const [reason, setReason] = useState("");
@@ -99,13 +100,15 @@ export default function OperatorPage() {
   }
   async function reviewStudent(userId: string, outcome: "verified" | "rejected") {
     if (reason.trim().length < 8) { setMessage("Enter a reason of at least eight characters."); return; }
+    const adultEligible = adultFindings[userId] === true;
+    if (outcome === "verified" && !adultEligible) { setMessage("Confirm adult eligibility before approval."); return; }
     setBusy(true);
-    const storageKey = `student-review:${userId}:${outcome}:${reason.trim()}`;
+    const storageKey = `student-review:${userId}:${outcome}:${adultEligible}:${reason.trim()}`;
     const key = sessionStorage.getItem(storageKey) ?? crypto.randomUUID();
     sessionStorage.setItem(storageKey, key);
     try {
       const result = await apiRequest<{ operation: { id: string; state: string } }>(`/v1/verification/admin/student/${userId}/review`, {
-        method: "POST", headers: { "Idempotency-Key": key }, body: JSON.stringify({ outcome, adult_eligible: outcome === "verified", reason: reason.trim() }),
+        method: "POST", headers: { "Idempotency-Key": key }, body: JSON.stringify({ outcome, adult_eligible: adultEligible, reason: reason.trim() }),
       });
       sessionStorage.removeItem(storageKey);
       setMessage(`Student review ${outcome}: ${result.operation.state} (${result.operation.id}).`);
@@ -172,7 +175,8 @@ export default function OperatorPage() {
       {studentReviews.length ? studentReviews.map((review) => <div key={review.user_id} className="rounded border p-3">
         <p>{review.enrolled_name ?? "Name missing"} · {review.institution_name} · graduation {review.graduation_year} · {review.evidence_category} · {review.age_evidence_category}</p>
         <div className="flex gap-3"><button className="underline" onClick={() => openEvidence(review.user_id, "enrollment")}>Enrollment evidence</button><button className="underline" onClick={() => openEvidence(review.user_id, "age")}>Age evidence</button></div>
-        <div className="flex gap-3"><button disabled={busy} onClick={() => reviewStudent(review.user_id, "verified")}>Approve adult student</button><button disabled={busy} onClick={() => reviewStudent(review.user_id, "rejected")}>Reject</button></div>
+        <label className="flex items-center gap-2"><input type="checkbox" checked={adultFindings[review.user_id] === true} onChange={(event) => setAdultFindings((findings) => ({ ...findings, [review.user_id]: event.target.checked }))} />Age evidence confirms this student is at least 18</label>
+        <div className="flex gap-3"><button disabled={busy || adultFindings[review.user_id] !== true} onClick={() => reviewStudent(review.user_id, "verified")}>Approve adult student</button><button disabled={busy} onClick={() => reviewStudent(review.user_id, "rejected")}>Reject</button></div>
       </div>) : <p>No pending student reviews.</p>}
     </section>
   </main>;
