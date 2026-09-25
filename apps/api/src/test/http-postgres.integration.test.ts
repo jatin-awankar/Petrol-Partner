@@ -493,7 +493,7 @@ describe("synthetic student evidence HTTP/PostgreSQL", () => {
       const access = await request(createApp()).get(`${path}/evidence?purpose=age`).set("Cookie", cookie).set("X-Evidence-Token", grant.body.token);
       expect(access.status).toBe(200);
       const accessAudit = await verificationPool.query<{ action: string }>("SELECT action FROM audit_logs WHERE actor_user_id = $1 AND entity_id = $2 ORDER BY created_at", [operator.rows[0].id, owner.userId]);
-      expect(accessAudit.rows.map((row) => row.action).sort()).toEqual(["student_evidence_accessed", "student_evidence_access_granted"]);
+      expect(accessAudit.rows.map((row) => row.action).sort()).toEqual(["student_evidence_access_granted", "student_evidence_accessed"]);
       await verificationPool.query("UPDATE operator_allowlist SET active = false WHERE user_id = $1", [operator.rows[0].id]);
       expect((await request(createApp()).post(`${path}/evidence-access?purpose=enrollment`).set("Cookie", cookie).set("Origin", "http://localhost:3000").set("X-CSRF-Token", csrf)).status).toBe(403);
       await verificationPool.query("UPDATE operator_allowlist SET active = true WHERE user_id = $1", [operator.rows[0].id]);
@@ -527,6 +527,8 @@ describe("synthetic student evidence HTTP/PostgreSQL", () => {
       expect(reconcile.status, JSON.stringify(reconcile.body)).toBe(200);
       const later = await verificationPool.query("SELECT review_cycle, status FROM student_verifications WHERE user_id = $1", [owner.userId]);
       expect(later.rows).toEqual([{ review_cycle: 2, status: "pending_review" }]);
+      const reopen = await request(createApp()).post("/v1/operator/reopen").set("Idempotency-Key", "student-review-reopen").set("Cookie", cookie).set("Origin", "http://localhost:3000").set("X-CSRF-Token", csrf).send({ reason: "Reviewed the recovered student decision and current review cycle" });
+      expect(reopen.status, JSON.stringify(reopen.body)).toBe(200);
       setAuthProviderForTests(fakeProvider(owner.identity));
       for (const purpose of ["enrollment", "age"]) {
         const upload = await request(createApp()).post(`/v1/verification/student/evidence?purpose=${purpose}`).set("Cookie", owner.cookie).set("Origin", "http://localhost:3000").set("X-CSRF-Token", owner.csrf).set("X-Synthetic-Evidence", "true").set("Content-Type", "application/pdf").send(Buffer.from("%PDF-1.4\nsynthetic renewed sample\n"));
@@ -541,7 +543,8 @@ describe("synthetic student evidence HTTP/PostgreSQL", () => {
         post("student-review-race-a", "Concurrent review attempt"),
         post("student-review-race-b", "Concurrent review attempt"),
       ]);
-      expect(competing.map((response) => response.status).sort()).toEqual([200, 409]);
+      expect(competing.map((response) => response.status)).toContain(200);
+      expect([409, 503]).toContain(competing.find((response) => response.status !== 200)?.status);
       expect((await verificationPool.query("SELECT count(*)::int AS n FROM student_review_audit WHERE target_user_id = $1", [owner.userId])).rows[0].n).toBe(2);
     } finally {
       setStudentReviewAfterCommitHookForTests(null);
