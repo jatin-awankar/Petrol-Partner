@@ -39,15 +39,23 @@ function backend() {
 async function objectRequest(method: string, key: string, body?: Buffer, contentType?: string) {
   if (!/^[0-9a-f-]{36}$/.test(key)) throw new AppError(400, "Invalid evidence reference", "EVIDENCE_INVALID");
   const config = supabaseConfig();
-  const url = new URL(`/storage/v1/object/${config.bucket}/${key}`, config.url);
+  const url = new URL(method === "DELETE"
+    ? `/storage/v1/object/${config.bucket}`
+    : `/storage/v1/object/${config.bucket}/${key}`, config.url);
   const response = await fetch(url, { method, cache: "no-store", headers: {
     apikey: config.key, Authorization: `Bearer ${config.key}`,
+    ...(method === "DELETE" ? { "Content-Type": "application/json" } : {}),
     ...(contentType ? { "Content-Type": contentType, "Cache-Control": "no-store", "x-upsert": "false" } : {}),
-  }, body: body ? Uint8Array.from(body) : undefined });
-  if (response.status === 404 && method === "GET") {
-    throw Object.assign(new Error("Evidence object missing"), { code: "ENOENT" });
+  }, body: method === "DELETE" ? JSON.stringify({ prefixes: [key] }) : body ? Uint8Array.from(body) : undefined });
+  if (!response.ok) {
+    const failure = await response.json().catch(() => null) as
+      | { error?: string; statusCode?: string } | null;
+    if (method === "GET" && (response.status === 404 ||
+        (failure?.error === "not_found" && failure.statusCode === "404"))) {
+      throw Object.assign(new Error("Evidence object missing"), { code: "ENOENT" });
+    }
+    throw new AppError(503, "Private evidence storage operation failed", "EVIDENCE_STORAGE_UNAVAILABLE");
   }
-  if (!response.ok) throw new AppError(503, "Private evidence storage operation failed", "EVIDENCE_STORAGE_UNAVAILABLE");
   return response;
 }
 

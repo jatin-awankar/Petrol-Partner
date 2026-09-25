@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { readEvidence, storeEvidence } from "./student-evidence.storage";
+import { deleteEvidence, readEvidence, storeEvidence } from "./student-evidence.storage";
 
 const keys = ["PILOT_EVIDENCE_BACKEND", "PILOT_EVIDENCE_SUPABASE_URL",
   "PILOT_EVIDENCE_SUPABASE_SERVICE_KEY", "PILOT_EVIDENCE_SUPABASE_BUCKET",
@@ -37,10 +37,23 @@ describe("private evidence adapter", () => {
     enableProvider();
     const key = "00000000-0000-4000-8000-000000000001";
     vi.stubGlobal("fetch", vi.fn(async (url: URL) =>
-      String(url).includes("/bucket/") ? Response.json({ public: false }) : new Response(null, { status: 404 })));
+      String(url).includes("/bucket/") ? Response.json({ public: false }) :
+        Response.json({ error: "not_found", statusCode: "404", message: "Object not found" }, { status: 400 })));
     await expect(readEvidence(key)).rejects.toMatchObject({ code: "ENOENT" });
     vi.stubGlobal("fetch", vi.fn(async (url: URL) =>
       String(url).includes("/bucket/") ? Response.json({ public: false }) : new Response(null, { status: 503 })));
     await expect(readEvidence(key)).rejects.toMatchObject({ code: "EVIDENCE_STORAGE_UNAVAILABLE" });
+  });
+
+  it("deletes through the bucket remove API with an exact object path", async () => {
+    enableProvider();
+    const fetcher = vi.fn(async () => Response.json([{ name: "removed" }]));
+    vi.stubGlobal("fetch", fetcher);
+    const key = "00000000-0000-4000-8000-000000000001";
+    await deleteEvidence(key);
+    const [url, options] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(url.pathname).toBe("/storage/v1/object/pilot-student-evidence");
+    expect(options.method).toBe("DELETE");
+    expect(JSON.parse(String(options.body))).toEqual({ prefixes: [key] });
   });
 });

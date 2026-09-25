@@ -11,13 +11,27 @@ async function removeObject(key: string, directory: string | undefined) {
     if (!root?.startsWith("https://") || !serviceKey ||
         process.env.PILOT_EVIDENCE_SUPABASE_BUCKET !== "pilot-student-evidence" ||
         process.env.PILOT_EVIDENCE_PROVIDER_VERIFIED !== "true") throw new Error("Provider unavailable");
-    const url = new URL(`/storage/v1/object/pilot-student-evidence/${key}`, root);
+    const url = new URL("/storage/v1/object/pilot-student-evidence", root);
     const response = await fetch(url, { method: "DELETE", headers: {
       apikey: serviceKey, Authorization: `Bearer ${serviceKey}`,
-    } });
+      "Content-Type": "application/json",
+    }, body: JSON.stringify({ prefixes: [key] }) });
     if (response.status === 404) return "already_missing";
     if (!response.ok) throw new Error("Provider deletion failed");
-    return "deleted";
+    const removed = await response.json() as unknown;
+    if (!Array.isArray(removed) || removed.some((item) => !item || item.name !== key)) {
+      throw new Error("Provider deletion response did not match the object key");
+    }
+    if (removed.length) return "deleted";
+    const probe = await fetch(new URL(`/storage/v1/object/info/pilot-student-evidence/${key}`, root), {
+      headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` },
+    });
+    if (probe.status === 404) return "already_missing";
+    const missing = await probe.json().catch(() => null) as { error?: string; statusCode?: string } | null;
+    if (probe.status === 400 && missing?.error === "not_found" && missing.statusCode === "404") {
+      return "already_missing";
+    }
+    throw new Error("Provider did not confirm evidence absence");
   }
   if (backend !== "synthetic" || process.env.NODE_ENV === "production" || !directory) throw new Error("Provider unavailable");
   try { await unlink(join(directory, key)); return "deleted"; }

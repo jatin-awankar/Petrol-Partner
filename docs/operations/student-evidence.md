@@ -55,3 +55,8 @@ never be indefinite.
 The local synthetic adapter uses a private directory outside the repository with
 mode-0600 files. It demonstrates application behavior but cannot establish Supabase
 retention, version deletion, or CDN behavior. Real evidence is not permitted in it.
+
+The existing project's private bucket and an immediate synthetic upload/read/delete
+rehearsal are recorded in [the 2026-09-25 Storage evidence](evidence/ticket12-supabase-storage-2026-09-25.md).
+Provider internal retention, B2 receipt lifecycle, and operational project health
+remain open; neither verification flag is enabled.
