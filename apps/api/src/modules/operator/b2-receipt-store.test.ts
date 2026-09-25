@@ -18,6 +18,7 @@ function fixture() {
   let deleted = false;
   let unavailable = false;
   let shortenUpload = false;
+  let losePutResponse = false;
   const client = {
     async send(command: unknown) {
       if (unavailable) throw new Error("provider unavailable");
@@ -39,6 +40,7 @@ function fixture() {
           modified: new Date(), until: shortenUpload ? new Date(Date.now() + 1000) : command.input.ObjectLockRetainUntilDate!, encrypted: true,
         };
         versions.push(version);
+        if (losePutResponse) { losePutResponse = false; throw new Error("timeout after send"); }
         return { VersionId: version.id };
       }
       if (command instanceof GetObjectCommand) {
@@ -58,6 +60,7 @@ function fixture() {
     deleteMarker: () => { deleted = true; },
     outage: () => { unavailable = true; },
     shortUpload: () => { shortenUpload = true; },
+    timeoutAfterPut: () => { losePutResponse = true; },
   };
 }
 
@@ -96,4 +99,14 @@ it("fails closed on a deletion marker, missing encryption, or provider outage", 
   const two = fixture();
   two.outage();
   await expect(two.store.append(receipt)).rejects.toThrow("provider unavailable");
+});
+
+it("resolves an ambiguous upload from its surviving signed version on retry", async () => {
+  const { store, versions, timeoutAfterPut } = fixture();
+  const receipt = { operationId: randomUUID(), decision: "pause" };
+  timeoutAfterPut();
+  await expect(store.append(receipt)).rejects.toThrow("timeout after send");
+  await store.append(receipt);
+  expect(versions).toHaveLength(1);
+  expect(await store.list()).toEqual([receipt]);
 });

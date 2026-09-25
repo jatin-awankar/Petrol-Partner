@@ -4,7 +4,7 @@
 
 **Blocked by:** 04 (Prove acknowledgement recovery); 08 (Verified account access with preserved identities).
 
-**Status:** claimed
+**Status:** resolved
 
 **Work type:** Feature slice
 
@@ -12,14 +12,14 @@
 
 ## Acceptance criteria
 
-- [ ] Create a minimal operator interface protected by current allowlist membership, active account and verified MFA assurance; reject wrong-role, stale-session and missing-MFA access server-side.
-- [ ] Deliver independent pause controls for new offers, requests, acceptance and overall booking activity. Expose current state safely to participant views.
-- [ ] Apply the proven protected-mutation protocol to pause decisions: transactionally record state/audit/idempotency result, persist required independent evidence, then publish success.
-- [ ] Show a stable operation reference and authenticated pending/status lookup after ambiguous outcomes. Prevent reads and other instances from reporting unprotected success.
-- [ ] Persist restricted-mode cause/start time when evidence is unavailable, preserve safe reads and require manual reopening after reconciliation and healthy recovery evidence.
-- [ ] Keep application and migration database roles appropriately restricted; browser access cannot bypass operator or domain authorization.
-- [ ] Test duplicate requests, changed-payload retries, MFA/session changes, evidence outages and restart recovery through HTTP/PostgreSQL plus the operator browser view.
-- [ ] Provide the shared protocol/authorization interfaces consumed by later feature slices without treating this first protected action as proof for all future operations.
+- [x] Create a minimal operator interface protected by current allowlist membership, active account and verified MFA assurance; reject wrong-role, stale-session and missing-MFA access server-side.
+- [x] Deliver independent pause controls for new offers, requests, acceptance and overall booking activity. Expose current state safely to participant views.
+- [x] Apply the proven protected-mutation protocol to pause decisions: transactionally record state/audit/idempotency result, persist required independent evidence, then publish success.
+- [x] Show a stable operation reference and authenticated pending/status lookup after ambiguous outcomes. Prevent reads and other instances from reporting unprotected success.
+- [x] Persist restricted-mode cause/start time when evidence is unavailable, preserve safe reads and require manual reopening after reconciliation and healthy recovery evidence.
+- [x] Keep application and migration database roles appropriately restricted; browser access cannot bypass operator or domain authorization.
+- [x] Test duplicate requests, changed-payload retries, MFA/session changes, evidence outages and restart recovery through HTTP/PostgreSQL plus the operator browser view.
+- [x] Provide the shared protocol/authorization interfaces consumed by later feature slices without treating this first protected action as proof for all future operations.
 
 ## Completion evidence
 
@@ -27,6 +27,16 @@ Record the demonstrated behavior, checks run and their results, remaining limita
 
 Follow the local tracker's claim/resolution convention: use `claimed` when work starts and `resolved` only when the acceptance criteria are evidenced. Add an Answer section with the outcome and append subsequent discussion under Comments. Readiness describes who may do the work; it does not override the blocking edges.
 
+
+## Answer
+
+Resolved for the approved **code-only pilot** on `codex/09-protected-operator-access-pause`. The operator console and participant status implement the four pause controls, current allowlist/MFA/session/role authorization, stable idempotency and pending lookup, restricted mode, manual reconciliation/reopening, audit and durable follow-up. The B2 adapter verifies signed, encrypted, governance-retained versions before acknowledgement and rejects conflicting or missing evidence. A second authorized operator can complete a stranded intent while preserving the original actor. The shared protected-mutation interface is available to later slices, which require their own domain proof.
+
+The maintainer approved 30-day receipt retention, the separate clean Supabase project’s backup/runtime-role/forward-migration changes, and confirmed second-operator access to recovery secrets in an independent password manager. A verified encrypted pre-change backup preceded migrations `0007`–`0008`; all eight checksums match. The clean project’s `pilot_api_runtime` role has DML access without schema creation, elevated role privileges, table ownership, or migration-ledger updates. Its public status route reports restricted mode and all four controls paused. The original Render-connected database was not changed.
+
+Evidence: `docs/operations/operator-pause.md` and `docs/operations/evidence/ticket09-b2-2026-09-25.md`. The signed-in browser rehearsal, HTTP/PostgreSQL authorization/race/crash tests, live synthetic B2-backed HTTP/PostgreSQL acknowledgement/retry/reconstruction/manual reopen, and full repository checks passed. Final `npm run check` passed with 30 root tests, 61 API tests and one opt-in live test skipped, 6 worker tests, all typechecks/builds, and lint with zero errors and ten pre-existing warnings. The opt-in live B2 test passed separately in a dedicated disposable database and fresh synthetic namespace.
+
+This resolution does **not** authorize real trips or deployment cutover. Render still points at the original test database; B2 settings and the new runtime role are not deployed. A full provider backup restore, key rotation, provider-wide outage drill, ongoing backup/monitoring, paid hosting decision, and the remaining launch gates in `docs/pilot-spec.md` remain release work. Keep all four controls paused and recovery restricted until those gates have recorded evidence.
 
 ## Comments
 
