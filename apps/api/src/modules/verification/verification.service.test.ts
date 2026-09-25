@@ -34,6 +34,7 @@ describe("verification.service", () => {
       provider: "manual_review",
       enrolled_name: "Synthetic Student",
       evidence_category: "enrollment_letter",
+      age_evidence_category: "institution_age_record",
       institution_name: "Example College",
       admission_year: 2024,
       graduation_year: 2028,

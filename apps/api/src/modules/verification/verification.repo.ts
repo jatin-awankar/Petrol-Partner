@@ -10,6 +10,8 @@ interface StudentVerificationRow {
   student_identifier_last4: string | null;
   enrolled_name: string | null;
   evidence_category: string | null;
+  age_evidence_category: string | null;
+  review_cycle: number;
   adult_eligible: boolean | null;
   institution_name: string;
   program_name: string | null;
@@ -81,6 +83,8 @@ function mapStudentVerification(row: StudentVerificationRow) {
     student_identifier_last4: row.student_identifier_last4,
     enrolled_name: row.enrolled_name,
     evidence_category: row.evidence_category,
+    age_evidence_category: row.age_evidence_category,
+    review_cycle: row.review_cycle,
     adult_eligible: row.adult_eligible,
     institution_name: row.institution_name,
     program_name: row.program_name,
@@ -147,6 +151,8 @@ export async function findStudentVerificationByUserId(userId: string) {
        student_identifier_last4,
        enrolled_name,
        evidence_category,
+       age_evidence_category,
+       review_cycle,
        adult_eligible,
        institution_name,
        program_name,
@@ -179,34 +185,62 @@ export async function findStudentVerificationForUpdate(client: PoolClient, userI
   return result.rows[0] ? mapStudentVerification(result.rows[0]) : null;
 }
 
-export async function studentEvidenceForUpdate(client: PoolClient, userId: string) {
+export async function studentEvidenceForUpdate(client: PoolClient, userId: string, purpose: "enrollment" | "age", reviewCycle: number) {
   const result = await client.query<{
-    id: string; object_key: string; content_type: string; status: string;
+    id: string; object_key: string; content_type: string; status: string; byte_count: number; sha256: string;
     uploaded_at: Date; delete_after: Date | null;
-  }>("SELECT id, object_key, content_type, status, uploaded_at, delete_after FROM student_evidence WHERE user_id = $1 FOR UPDATE", [userId]);
+  }>("SELECT id, object_key, content_type, status, byte_count, sha256, uploaded_at, delete_after FROM student_evidence WHERE user_id = $1 AND purpose = $2 AND review_cycle = $3 FOR UPDATE", [userId, purpose, reviewCycle]);
   return result.rows[0] ?? null;
 }
 
-export async function recordStudentEvidence(client: PoolClient, userId: string, evidence: {
+export async function createEvidenceAccessGrant(client: PoolClient, tokenHash: string, operatorId: string, targetUserId: string, evidenceId: string) {
+  await client.query(`INSERT INTO student_evidence_access_grants
+    (token_hash, operator_id, target_user_id, evidence_id, expires_at)
+    VALUES ($1, $2, $3, $4, now() + interval '5 minutes')`,
+  [tokenHash, operatorId, targetUserId, evidenceId]);
+}
+
+export async function consumeEvidenceAccessGrant(client: PoolClient, tokenHash: string, operatorId: string, targetUserId: string, evidenceId: string) {
+  const result = await client.query(`UPDATE student_evidence_access_grants
+    SET consumed_at = now()
+    WHERE token_hash = $1 AND operator_id = $2 AND target_user_id = $3 AND evidence_id = $4
+      AND consumed_at IS NULL AND expires_at > now() RETURNING token_hash`,
+  [tokenHash, operatorId, targetUserId, evidenceId]);
+  return Boolean(result.rowCount);
+}
+
+export async function evidenceRetentionHealth(client: PoolClient) {
+  const result = await client.query<{
+    overdue_count: number; failed_count: number; oldest_due_at: Date | null;
+  }>(`SELECT count(*) FILTER (WHERE status = 'retained' AND delete_after <= now()
+       AND (hold_until IS NULL OR hold_until <= now()))::int AS overdue_count,
+       count(*) FILTER (WHERE status = 'retained' AND deletion_outcome = 'failed')::int AS failed_count,
+       min(delete_after) FILTER (WHERE status = 'retained' AND delete_after <= now()
+       AND (hold_until IS NULL OR hold_until <= now())) AS oldest_due_at
+     FROM student_evidence`);
+  return result.rows[0];
+}
+
+export async function recordStudentEvidence(client: PoolClient, userId: string, purpose: "enrollment" | "age", reviewCycle: number, evidence: {
   key: string; contentType: string; byteCount: number; sha256: string;
 }) {
   await client.query(
-    `INSERT INTO student_evidence (user_id, object_key, content_type, byte_count, sha256)
-     VALUES ($1, $2, $3, $4, $5)
-     ON CONFLICT (user_id) DO UPDATE SET object_key = EXCLUDED.object_key,
+    `INSERT INTO student_evidence (user_id, purpose, review_cycle, object_key, content_type, byte_count, sha256)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     ON CONFLICT (user_id, review_cycle, purpose) DO UPDATE SET object_key = EXCLUDED.object_key,
        content_type = EXCLUDED.content_type, byte_count = EXCLUDED.byte_count,
        sha256 = EXCLUDED.sha256, status = 'pending_review', uploaded_at = now(),
        decision_at = NULL, delete_after = NULL, deleted_at = NULL,
        delete_attempts = 0, last_delete_error = NULL`,
-    [userId, evidence.key, evidence.contentType, evidence.byteCount, evidence.sha256],
+    [userId, purpose, reviewCycle, evidence.key, evidence.contentType, evidence.byteCount, evidence.sha256],
   );
 }
 
-export async function scheduleStudentEvidenceDeletion(client: PoolClient, userId: string, decidedAt: Date) {
+export async function scheduleStudentEvidenceDeletion(client: PoolClient, userId: string, reviewCycle: number, decidedAt: Date) {
   await client.query(
     `UPDATE student_evidence SET status = 'retained', decision_at = $2,
-       delete_after = $2 + interval '7 days' WHERE user_id = $1`,
-    [userId, decidedAt],
+       delete_after = $2::timestamptz + interval '7 days' WHERE user_id = $1 AND review_cycle = $3 AND status = 'pending_review'`,
+    [userId, decidedAt, reviewCycle],
   );
 }
 
@@ -218,6 +252,8 @@ export async function upsertStudentVerification(
     studentIdentifierLast4: string | null;
     enrolledName: string | null;
     evidenceCategory: string | null;
+    ageEvidenceCategory: string | null;
+    reviewCycle: number;
     adultEligible: boolean | null;
     institutionName: string;
     programName: string | null;
@@ -242,6 +278,8 @@ export async function upsertStudentVerification(
        student_identifier_last4,
        enrolled_name,
        evidence_category,
+       age_evidence_category,
+       review_cycle,
        adult_eligible,
        institution_name,
        program_name,
@@ -256,7 +294,7 @@ export async function upsertStudentVerification(
        consent_reference,
        metadata
      )
-     VALUES ($1, $2, $3, $4, $17, $18, $19, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16::jsonb)
+     VALUES ($1, $2, $3, $4, $17, $18, $20, $21, $19, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16::jsonb)
      ON CONFLICT (user_id)
      DO UPDATE SET
        provider = EXCLUDED.provider,
@@ -264,6 +302,8 @@ export async function upsertStudentVerification(
        student_identifier_last4 = EXCLUDED.student_identifier_last4,
        enrolled_name = EXCLUDED.enrolled_name,
        evidence_category = EXCLUDED.evidence_category,
+       age_evidence_category = EXCLUDED.age_evidence_category,
+       review_cycle = EXCLUDED.review_cycle,
        adult_eligible = EXCLUDED.adult_eligible,
        institution_name = EXCLUDED.institution_name,
        program_name = EXCLUDED.program_name,
@@ -286,6 +326,8 @@ export async function upsertStudentVerification(
        student_identifier_last4,
        enrolled_name,
        evidence_category,
+       age_evidence_category,
+       review_cycle,
        adult_eligible,
        institution_name,
        program_name,
@@ -321,6 +363,8 @@ export async function upsertStudentVerification(
       input.enrolledName,
       input.evidenceCategory,
       input.adultEligible,
+      input.ageEvidenceCategory,
+      input.reviewCycle,
     ],
   );
 
@@ -340,10 +384,7 @@ export async function syncUserVerificationProfile(
     `UPDATE user_profiles
      SET
        is_verified = $2,
-       college = CASE
-         WHEN $3::text IS NULL OR college IS NOT NULL THEN college
-         ELSE $3::text
-       END,
+       college = $3::text,
        gender_for_matching = CASE
          WHEN $4::text IS NULL THEN gender_for_matching
          ELSE $4::text
@@ -726,6 +767,8 @@ export async function listPendingStudentVerifications(limit: number) {
        student_identifier_last4,
        enrolled_name,
        evidence_category,
+       age_evidence_category,
+       review_cycle,
        adult_eligible,
        institution_name,
        program_name,

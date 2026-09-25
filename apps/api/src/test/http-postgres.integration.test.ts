@@ -13,9 +13,10 @@ import { pool } from "../db/pool";
 import { resetRateLimitsForTests } from "../middleware/rate-limit";
 import { setAuthProviderForTests, setManagedAuthEnabledForTests, type AuthProvider, type ProviderIdentity } from "../modules/auth/auth-provider";
 import { setBackupObjectProbeForTests } from "../modules/operator/backup-status";
+import { setStudentReviewAfterCommitHookForTests } from "../modules/verification/student-review.service";
 
 const verificationPool = new Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
-const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql", "0006_operator_allowlist.sql", "0007_operator_pause.sql", "0008_operator_intent_handoff.sql", "0009_durable_notifications.sql", "0010_email_retry_operations.sql", "0011_backup_attempts.sql", "0012_student_adult_review.sql"];
+const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql", "0006_operator_allowlist.sql", "0007_operator_pause.sql", "0008_operator_intent_handoff.sql", "0009_durable_notifications.sql", "0010_email_retry_operations.sql", "0011_backup_attempts.sql", "0012_student_adult_review.sql", "0013_student_review_cycles.sql", "0014_student_review_operations.sql", "0015_student_evidence_access.sql", "0016_student_evidence_deletion_outcomes.sql", "0017_student_evidence_retry_schedule.sql"];
 
 function fakeProvider(identity: ProviderIdentity): AuthProvider {
   const session = { accessToken: "provider-access", refreshToken: "provider-refresh", expiresIn: 900, identity };
@@ -445,20 +446,86 @@ describe("synthetic student evidence HTTP/PostgreSQL", () => {
 
   it("keeps document bytes outside PostgreSQL and denies another student access", async () => {
     const owner = await student("evidence-owner");
-    const details = { provider: "manual_review", enrolled_name: "Synthetic Student", evidence_category: "enrollment_letter", institution_name: "Synthetic College", admission_year: 2025, graduation_year: 2029 };
+    const details = { provider: "manual_review", enrolled_name: "Synthetic Student", evidence_category: "enrollment_letter", age_evidence_category: "institution_age_record", institution_name: "Synthetic College", admission_year: 2025, graduation_year: 2029 };
     const forbidden = await request(createApp()).put("/v1/verification/student").set("Cookie", owner.cookie).set("Origin", "http://localhost:3000").set("X-CSRF-Token", owner.csrf).send({ ...details, birth_date: "2005-01-01" });
     expect(forbidden.status).toBe(400);
     expect((await request(createApp()).put("/v1/verification/student").set("Cookie", owner.cookie).set("Origin", "http://localhost:3000").set("X-CSRF-Token", owner.csrf).send(details)).status).toBe(200);
     const bytes = Buffer.from("%PDF-1.4\nsynthetic sample\n");
-    const upload = await request(createApp()).post("/v1/verification/student/evidence").set("Cookie", owner.cookie).set("Origin", "http://localhost:3000").set("X-CSRF-Token", owner.csrf).set("X-Synthetic-Evidence", "true").set("Content-Type", "application/pdf").send(bytes);
+    const upload = await request(createApp()).post("/v1/verification/student/evidence?purpose=enrollment").set("Cookie", owner.cookie).set("Origin", "http://localhost:3000").set("X-CSRF-Token", owner.csrf).set("X-Synthetic-Evidence", "true").set("Content-Type", "application/pdf").send(bytes);
     expect(upload.status, JSON.stringify(upload.body)).toBe(201);
-    const row = await verificationPool.query<{ object_key: string; byte_count: number }>("SELECT object_key, byte_count FROM student_evidence WHERE user_id = $1", [owner.userId]);
+    const row = await verificationPool.query<{ object_key: string; byte_count: number }>("SELECT object_key, byte_count FROM student_evidence WHERE user_id = $1 AND purpose = 'enrollment'", [owner.userId]);
     expect(row.rows[0].byte_count).toBe(bytes.length);
     expect(await readFile(resolve(evidenceDirectory, row.rows[0].object_key))).toEqual(bytes);
     const unrelated = await student("evidence-unrelated");
     setAuthProviderForTests(fakeProvider(unrelated.identity));
-    const denied = await unrelated.agent.get(`/v1/verification/admin/student/${owner.userId}/evidence`);
+    const denied = await unrelated.agent.get(`/v1/verification/admin/student/${owner.userId}/evidence?purpose=enrollment`);
     expect(denied.status).toBe(403);
+  });
+
+  it("reviews both documents once, publishes the recipient event, and rejects a changed retry", async () => {
+    const receiptDirectory = await mkdtemp(resolve(tmpdir(), "pilot-student-receipt-"));
+    process.env.PILOT_RECEIPT_PATH = resolve(receiptDirectory, "receipts");
+    process.env.PILOT_RECEIPT_SECRET = "integration-test-independent-receipt-secret";
+    try {
+      const owner = await student("review-owner");
+      const details = { provider: "manual_review", enrolled_name: "Synthetic Student", evidence_category: "enrollment_letter", age_evidence_category: "institution_age_record", institution_name: "Synthetic College", admission_year: 2025, graduation_year: 2029 };
+      expect((await request(createApp()).put("/v1/verification/student").set("Cookie", owner.cookie).set("Origin", "http://localhost:3000").set("X-CSRF-Token", owner.csrf).send(details)).status).toBe(200);
+      for (const purpose of ["enrollment", "age"]) {
+        const upload = await request(createApp()).post(`/v1/verification/student/evidence?purpose=${purpose}`).set("Cookie", owner.cookie).set("Origin", "http://localhost:3000").set("X-CSRF-Token", owner.csrf).set("X-Synthetic-Evidence", "true").set("Content-Type", "application/pdf").send(Buffer.from("%PDF-1.4\nsynthetic sample\n"));
+        expect(upload.status, JSON.stringify(upload.body)).toBe(201);
+      }
+      const email = "student-review-operator@example.test";
+      const subject = "student-review-operator-subject";
+      const operator = await verificationPool.query<{ id: string }>("INSERT INTO users (email, role, email_verified_at) VALUES ($1, 'admin', now()) RETURNING id", [email]);
+      await verificationPool.query("INSERT INTO user_profiles (user_id, full_name) VALUES ($1, 'Review Operator')", [operator.rows[0].id]);
+      await verificationPool.query("INSERT INTO auth_identities (provider, provider_subject, user_id, provider_email) VALUES ('supabase', $1, $2, $3)", [subject, operator.rows[0].id, email]);
+      await verificationPool.query("INSERT INTO operator_allowlist (user_id, active, reason, reviewed_at) VALUES ($1, true, 'test', now())", [operator.rows[0].id]);
+      setAuthProviderForTests(fakeProvider({ subject, email, emailVerified: true, assuranceLevel: "aal2", userMetadata: {} }));
+      const login = await request(createApp()).post("/v1/auth/login").send({ email, password: "synthetic-password" });
+      expect(login.status).toBe(200);
+      const cookie = login.headers["set-cookie"].map((item: string) => item.split(";", 1)[0]).join("; ");
+      const csrf = login.headers["set-cookie"].find((item: string) => item.startsWith("pp_csrf_token="))?.split(";", 1)[0]?.split("=", 2)[1];
+      const path = `/v1/verification/admin/student/${owner.userId}`;
+      const post = (key: string, reason: string) => request(createApp()).post(`${path}/review`).set("Cookie", cookie).set("Origin", "http://localhost:3000").set("X-CSRF-Token", csrf).set("Idempotency-Key", key).send({ outcome: "verified", adult_eligible: true, reason });
+      const grant = await request(createApp()).post(`${path}/evidence-access?purpose=age`).set("Cookie", cookie).set("Origin", "http://localhost:3000").set("X-CSRF-Token", csrf);
+      expect(grant.status, JSON.stringify(grant.body)).toBe(201);
+      expect((await request(createApp()).get(`${path}/evidence?purpose=enrollment`).set("Cookie", cookie).set("X-Evidence-Token", grant.body.token)).status).toBe(403);
+      const access = await request(createApp()).get(`${path}/evidence?purpose=age`).set("Cookie", cookie).set("X-Evidence-Token", grant.body.token);
+      expect(access.status).toBe(200);
+      expect((await request(createApp()).get(`${path}/evidence?purpose=age`).set("Cookie", cookie).set("X-Evidence-Token", grant.body.token)).status).toBe(403);
+      const expiring = await request(createApp()).post(`${path}/evidence-access?purpose=enrollment`).set("Cookie", cookie).set("Origin", "http://localhost:3000").set("X-CSRF-Token", csrf);
+      expect(expiring.status).toBe(201);
+      await verificationPool.query("UPDATE student_evidence_access_grants SET expires_at = now() - interval '1 second' WHERE target_user_id = $1", [owner.userId]);
+      expect((await request(createApp()).get(`${path}/evidence?purpose=enrollment`).set("Cookie", cookie).set("X-Evidence-Token", expiring.body.token)).status).toBe(403);
+      setStudentReviewAfterCommitHookForTests(() => { throw new Error("synthetic process interruption after commit"); });
+      const interrupted = await post("student-review-1", "Both documents checked");
+      expect(interrupted.status).toBe(500);
+      const pending = await verificationPool.query("SELECT id, state FROM student_review_operations WHERE idempotency_key = 'student-review-1'");
+      expect(pending.rows[0].state).toBe("committed");
+      expect((await verificationPool.query("SELECT ready_at FROM pilot_notification_events WHERE operation_id = $1", [pending.rows[0].id])).rows[0].ready_at).toBeNull();
+      setStudentReviewAfterCommitHookForTests(null);
+      const first = await post("student-review-1", "Both documents checked");
+      expect(first.status, JSON.stringify(first.body)).toBe(200);
+      expect(first.body.operation.state).toBe("acknowledged");
+      expect((await post("student-review-1", "Both documents checked")).body.operation.id).toBe(first.body.operation.id);
+      expect((await post("student-review-1", "Changed review reason")).status).toBe(409);
+      const events = await verificationPool.query("SELECT recipient_id, ready_at FROM pilot_notification_events WHERE origin_type = 'student_review'");
+      expect(events.rows).toHaveLength(1);
+      expect(events.rows[0].recipient_id).toBe(owner.userId);
+      expect(events.rows[0].ready_at).toBeTruthy();
+      expect((await verificationPool.query("SELECT count(*)::int AS n FROM student_review_audit")).rows[0].n).toBe(1);
+      await verificationPool.query("UPDATE student_verifications SET review_cycle = 2, status = 'pending_review', reviewed_at = NULL, adult_eligible = NULL WHERE user_id = $1", [owner.userId]);
+      await verificationPool.query("UPDATE user_profiles SET is_verified = false, college = NULL WHERE user_id = $1", [owner.userId]);
+      const reconcile = await request(createApp()).post("/v1/operator/reconcile").set("Cookie", cookie).set("Origin", "http://localhost:3000").set("X-CSRF-Token", csrf).send({});
+      expect(reconcile.status, JSON.stringify(reconcile.body)).toBe(200);
+      const later = await verificationPool.query("SELECT review_cycle, status FROM student_verifications WHERE user_id = $1", [owner.userId]);
+      expect(later.rows).toEqual([{ review_cycle: 2, status: "pending_review" }]);
+    } finally {
+      setStudentReviewAfterCommitHookForTests(null);
+      delete process.env.PILOT_RECEIPT_PATH;
+      delete process.env.PILOT_RECEIPT_SECRET;
+      await rm(receiptDirectory, { recursive: true, force: true });
+    }
   });
 });
 

@@ -24,7 +24,7 @@ export type B2ReceiptConfig = {
 export class B2ReceiptStore<T extends { operationId: string }> implements IndependentEvidenceStore<T> {
   private readonly client: Pick<S3Client, "send">;
 
-  constructor(private readonly config: B2ReceiptConfig, private readonly kind: "pause" | "reopen", client?: Pick<S3Client, "send">) {
+  constructor(private readonly config: B2ReceiptConfig, private readonly kind: "pause" | "reopen" | "student-review", client?: Pick<S3Client, "send">) {
     const endpoint = new URL(config.endpoint);
     if (endpoint.protocol !== "https:" || !/^s3\.[a-z0-9-]+\.backblazeb2\.com$/.test(endpoint.hostname) ||
         !/^[a-z0-9][a-z0-9/-]*[a-z0-9]$/.test(config.prefix) || config.prefix.includes("//") ||

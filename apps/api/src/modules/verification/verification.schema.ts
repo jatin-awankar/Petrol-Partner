@@ -10,6 +10,8 @@ export const adminReviewUserParamSchema = z.object({
   userId: z.uuid(),
 });
 
+export const evidencePurposeSchema = z.object({ purpose: z.enum(["enrollment", "age"]) });
+
 export const pendingVerificationReviewsQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(100).default(25),
 });
@@ -19,6 +21,7 @@ export const upsertStudentVerificationSchema = z
     provider: z.enum(["digilocker", "abc_id", "manual_review"]),
     enrolled_name: z.string().trim().min(2).max(150),
     evidence_category: z.enum(["enrollment_letter", "student_card", "college_email", "other_enrollment"]),
+    age_evidence_category: z.enum(["redacted_government_id", "redacted_birth_certificate", "institution_age_record", "other_age_record"]),
     institution_name: z.string().trim().min(2).max(255),
     program_name: z.string().trim().max(255).optional(),
     admission_year: z.coerce.number().int().min(2000).max(2100),

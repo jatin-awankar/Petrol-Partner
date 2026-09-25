@@ -15,6 +15,52 @@ function directory() {
   return path;
 }
 
+function supabaseConfig() {
+  const url = process.env.PILOT_EVIDENCE_SUPABASE_URL;
+  const key = process.env.PILOT_EVIDENCE_SUPABASE_SERVICE_KEY;
+  const bucket = process.env.PILOT_EVIDENCE_SUPABASE_BUCKET;
+  if (!url || !url.startsWith("https://") || !key || bucket !== "pilot-student-evidence" ||
+      process.env.PILOT_EVIDENCE_PROVIDER_VERIFIED !== "true") {
+    throw new AppError(503, "Private evidence storage is unavailable", "EVIDENCE_STORAGE_UNAVAILABLE");
+  }
+  if (process.env.PILOT_STUDENT_REVIEW_RECEIPT_RETENTION_VERIFIED !== "true") {
+    throw new AppError(503, "Student review receipt retention is unverified", "EVIDENCE_STORAGE_UNAVAILABLE");
+  }
+  return { url: new URL(url), key, bucket };
+}
+
+function backend() {
+  const value = process.env.PILOT_EVIDENCE_BACKEND ?? "synthetic";
+  if (value !== "synthetic" && value !== "supabase") throw new AppError(503, "Evidence storage is unavailable", "EVIDENCE_STORAGE_UNAVAILABLE");
+  if (process.env.NODE_ENV === "production" && value !== "supabase") throw new AppError(503, "Evidence storage is unavailable", "EVIDENCE_STORAGE_UNAVAILABLE");
+  return value;
+}
+
+async function objectRequest(method: string, key: string, body?: Buffer, contentType?: string) {
+  if (!/^[0-9a-f-]{36}$/.test(key)) throw new AppError(400, "Invalid evidence reference", "EVIDENCE_INVALID");
+  const config = supabaseConfig();
+  const url = new URL(`/storage/v1/object/${config.bucket}/${key}`, config.url);
+  const response = await fetch(url, { method, cache: "no-store", headers: {
+    apikey: config.key, Authorization: `Bearer ${config.key}`,
+    ...(contentType ? { "Content-Type": contentType, "Cache-Control": "no-store", "x-upsert": "false" } : {}),
+  }, body: body ? Uint8Array.from(body) : undefined });
+  if (response.status === 404 && method === "GET") {
+    throw Object.assign(new Error("Evidence object missing"), { code: "ENOENT" });
+  }
+  if (!response.ok) throw new AppError(503, "Private evidence storage operation failed", "EVIDENCE_STORAGE_UNAVAILABLE");
+  return response;
+}
+
+async function assertPrivateBucket() {
+  const config = supabaseConfig();
+  const response = await fetch(new URL(`/storage/v1/bucket/${config.bucket}`, config.url), {
+    headers: { apikey: config.key, Authorization: `Bearer ${config.key}` }, cache: "no-store",
+  });
+  if (!response.ok || (await response.json() as { public?: boolean }).public !== false) {
+    throw new AppError(503, "Private evidence bucket is unavailable", "EVIDENCE_STORAGE_UNAVAILABLE");
+  }
+}
+
 function pathFor(key: string) {
   if (!/^[0-9a-f-]{36}$/.test(key)) throw new AppError(400, "Invalid evidence reference", "EVIDENCE_INVALID");
   return join(directory(), key);
@@ -36,6 +82,11 @@ export function validateEvidence(bytes: Buffer, contentType: string): asserts co
 export async function storeEvidence(bytes: Buffer, contentType: string) {
   validateEvidence(bytes, contentType);
   const key = randomUUID();
+  if (backend() === "supabase") {
+    await assertPrivateBucket();
+    await objectRequest("POST", key, bytes, contentType);
+    return { key, contentType, byteCount: bytes.length, sha256: createHash("sha256").update(bytes).digest("hex") };
+  }
   const path = pathFor(key);
   await mkdir(directory(), { recursive: true, mode: 0o700 });
   const handle = await open(path, "wx", 0o600);
@@ -46,9 +97,14 @@ export async function storeEvidence(bytes: Buffer, contentType: string) {
 }
 
 export async function readEvidence(key: string) {
+  if (backend() === "supabase") {
+    await assertPrivateBucket();
+    return Buffer.from(await (await objectRequest("GET", key)).arrayBuffer());
+  }
   return readFile(pathFor(key));
 }
 
 export async function deleteEvidence(key: string) {
+  if (backend() === "supabase") { await objectRequest("DELETE", key); return; }
   await unlink(pathFor(key));
 }

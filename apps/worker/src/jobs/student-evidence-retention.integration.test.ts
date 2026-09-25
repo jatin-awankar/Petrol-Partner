@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -11,7 +11,7 @@ const database = new Pool({ connectionString: process.env.DATABASE_URL, max: 2 }
 let directory: string;
 
 beforeAll(async () => {
-  for (const migration of ["0001_init.sql", "0012_student_adult_review.sql"]) {
+  for (const migration of ["0001_init.sql", "0012_student_adult_review.sql", "0013_student_review_cycles.sql", "0016_student_evidence_deletion_outcomes.sql", "0017_student_evidence_retry_schedule.sql"]) {
     await database.query(await readFile(resolve(import.meta.dirname, "../../../api/src/db/migrations", migration), "utf8"));
   }
 });
@@ -52,5 +52,19 @@ describe("student evidence retention PostgreSQL worker", () => {
     const item = await evidence("2000-01-01T00:00:00Z", "2099-01-01T00:00:00Z");
     expect(await deleteDueStudentEvidence()).toBe(false);
     expect(await readFile(join(directory, item.key))).toEqual(item.bytes);
+  });
+
+  it("records a non-sensitive failure and retries deletion", async () => {
+    const item = await evidence("2000-01-01T00:00:00Z");
+    await rm(join(directory, item.key));
+    await mkdir(join(directory, item.key));
+    expect(await deleteDueStudentEvidence()).toBe(true);
+    const failed = await database.query("SELECT status, deletion_outcome, delete_attempts, last_delete_error, delete_after <= now() AS overdue, next_delete_attempt_at > now() AS retry_scheduled FROM student_evidence WHERE id = $1", [item.id]);
+    expect(failed.rows).toEqual([{ status: "retained", deletion_outcome: "failed", delete_attempts: 1, last_delete_error: "private storage deletion failed", overdue: true, retry_scheduled: true }]);
+    await rm(join(directory, item.key), { recursive: true });
+    await database.query("UPDATE student_evidence SET next_delete_attempt_at = now() - interval '1 second' WHERE id = $1", [item.id]);
+    expect(await deleteDueStudentEvidence()).toBe(true);
+    expect((await database.query("SELECT status, deletion_outcome, delete_attempts FROM student_evidence WHERE id = $1", [item.id])).rows)
+      .toEqual([{ status: "deleted", deletion_outcome: "already_missing", delete_attempts: 2 }]);
   });
 });

@@ -1,13 +1,56 @@
-# Student eligibility evidence: synthetic adapter
+# Student evidence storage gate
 
-## Selected production provider
+Ticket 12 selects a dedicated private Supabase Storage bucket named
+`pilot-student-evidence`. The application uses server-side service credentials only.
+The API accepts at most 512 KB JPEG, PNG, or PDF objects; document bytes are stored
+outside PostgreSQL, audit records, notification payloads, and database dumps.
+Operators obtain a five-minute, single-use access token bound to their current
+MFA-authorized identity and one document. The browser passes the token in a header,
+views the object through an in-memory blob URL, and revokes that URL after one minute.
+The API sends `Cache-Control: private, no-store` and `X-Content-Type-Options: nosniff`.
 
-Use a dedicated private Supabase Storage bucket named `pilot-student-evidence` for the production adapter. This fits the existing Supabase account and keeps raw objects outside ordinary PostgreSQL backups: [Supabase database backup documentation](https://supabase.com/docs/guides/platform/backups) says Storage objects are excluded. Keep object operations server-side with a restricted service credential; do not issue signed URLs or expose object keys to clients. [Private bucket access](https://supabase.com/docs/guides/storage/buckets/fundamentals) is authorization controlled. Delete through the Storage API, since [removing only `storage.objects` metadata](https://supabase.com/docs/guides/storage/schema/design) leaves physical files behind. [Supabase CDN documentation](https://supabase.com/docs/guides/storage/cdn/smart-cdn) says deletion invalidates cached objects, but propagation and provider-side retention still require a live synthetic rehearsal. No bucket has been provisioned and no provider erasure claim has been made.
+Real intake remains **closed** until an operator configures all of:
 
-Ticket 12 is still open. The current upload path is a synthetic demonstration adapter only. Set `PILOT_SYNTHETIC_EVIDENCE_DIR` to an absolute private directory outside the repository and ordinary database backup paths in both API and worker processes. The API refuses this adapter in production. The upload request requires `X-Synthetic-Evidence: true`; this is a declaration, not a content classifier, so operators must use fabricated documents and must not ask students to submit real identity material to this path.
+- `PILOT_EVIDENCE_BACKEND=supabase`
+- `PILOT_EVIDENCE_SUPABASE_URL` (HTTPS project URL)
+- `PILOT_EVIDENCE_SUPABASE_SERVICE_KEY` (server and worker only)
+- `PILOT_EVIDENCE_SUPABASE_BUCKET=pilot-student-evidence`
+- `PILOT_EVIDENCE_PROVIDER_VERIFIED=true`
+- `PILOT_STUDENT_REVIEW_RECEIPT_RETENTION_VERIFIED=true`
 
-The API accepts only JPEG, PNG, or PDF with a matching initial file signature and at most 512 KiB. Files are created with mode `0600` in a directory requested with mode `0700`. This is not malware scanning or a provider retention guarantee. No persistent thumbnail or preview is created. Operator access is a direct authenticated MFA request; the response has `Cache-Control: private, no-store`, `nosniff`, and attachment disposition. There are no shareable links. Do not place raw evidence, full birth dates, or identity numbers in request logs, audit payloads, database metadata, exports, or support messages.
+The two verification flags are recorded operator decisions after staging rehearsals,
+not substitutes for them. The separate database backup does not contain Storage objects.
+The chosen bucket must be private, have a 512 KB object size ceiling, allow only the
+three MIME types, deny client uploads and public reads, and have a documented
+provider-side orphan-object lifecycle. The service checks the private bucket state
+before each upload. The storage worker must share the same configuration and run
+often enough to delete decided evidence no later than seven days; it records
+`deleted`, `already_missing`, or `failed`, with a five-minute retry after failure.
+The original deadline never moves. The operator console shows overdue and failed
+counts and the oldest deadline; any overdue item requires immediate storage-provider
+escalation and a recorded incident decision, since repeated attempts alone do not
+meet the seven-day policy.
 
-The worker deletes an evidenced file at seven days after decision. A missing file is recorded as deleted, while other deletion failures remain visible in `student_evidence` with a generic error and are retried after five minutes. PostgreSQL worker tests cover a future deadline, a due file, and an active hold. An incident hold has schema fields but no authorized operation to create or release a hold yet. The local adapter cannot prove removal from filesystem snapshots, provider versions, caches, or backups. Select and verify the real private provider, its access controls, temporary-copy behavior, retention, and deletion semantics before real evidence is accepted or permanent erasure is claimed.
+Before enabling the flag, use fabricated documents in a dedicated staging project
+to demonstrate upload, authorized read, public-read denial, expiry and one-time
+access, deletion, listing and metadata removal, object version behavior, CDN and
+signed-URL cache behavior, temporary browser previews, and the provider's internal
+backup/replica retention. Capture exact provider settings and timestamps. Supabase's
+Storage API deletion alone does not prove all copies have been erased; do not make a
+permanent-erasure claim until the provider's residual retention is known. Record a
+separate decision for the signed student-review receipt lifecycle: receipts include
+the review's identity and enrollment snapshot and must not remain past the pilot's
+90-day personal-data limit. The current B2 receipt lifecycle has not been verified
+for this new receipt prefix.
 
-Approval/rejection still needs a protected operation ID, independent recovery receipt, recipient-specific notification event, and restoration reconciliation. Until that is implemented and tested, this slice is not pilot ready. The API rejects student review decisions in production; the current review path is only for synthetic development exercises.
+An incident hold is exceptional. It requires a written incident or review reason,
+an expiry, and an authorized operator decision recorded in the audit log before
+setting `student_evidence.hold_reason` and `hold_until`. Releasing a hold likewise
+requires an audited decision. No normal UI can place a hold; the operator should
+keep protected activity restricted and use the supervised database change process.
+The worker will skip an active hold and resume deletion when it expires. A hold must
+never be indefinite.
+
+The local synthetic adapter uses a private directory outside the repository with
+mode-0600 files. It demonstrates application behavior but cannot establish Supabase
+retention, version deletion, or CDN behavior. Real evidence is not permitted in it.
