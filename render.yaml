@@ -82,29 +82,3 @@ services:
         sync: false
       - key: MAINTENANCE_SWEEP_INTERVAL_MS
         value: "60000"
-
-  - type: cron
-    name: petrol-partner-pilot-backup
-    runtime: docker
-    dockerfilePath: Dockerfile.pilot-backup
-    schedule: "*/20 * * * *"
-    plan: 0.5c-512mb
-    envVars:
-      - key: PILOT_BACKUP_DATABASE_URL
-        sync: false
-      - key: PILOT_BACKUP_GLOBALS_DATABASE_URL
-        sync: false
-      - key: PILOT_BACKUP_B2_ENDPOINT
-        sync: false
-      - key: PILOT_BACKUP_B2_BUCKET
-        sync: false
-      - key: PILOT_BACKUP_B2_KEY_ID
-        sync: false
-      - key: PILOT_BACKUP_B2_KEY
-        sync: false
-      - key: PILOT_BACKUP_B2_PREFIX
-        sync: false
-      - key: PILOT_BACKUP_ENCRYPTION_KEY
-        sync: false
-      - key: PILOT_BACKUP_DATA_APPROVED
-        sync: false

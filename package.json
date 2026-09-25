@@ -28,6 +28,7 @@
     "db:rehearse": "node scripts/db-rehearsal.mjs",
     "backup:pilot": "node scripts/pilot-backup.mjs",
     "restore:pilot:rehearse": "node scripts/pilot-restore-rehearsal.mjs",
+    "recovery:status:offline": "node scripts/pilot-offline-status.mjs",
     "hooks:install": "node scripts/install-hooks.mjs",
     "api:dev": "npm --prefix apps/api run dev",
     "api:build": "npm --prefix apps/api run build",

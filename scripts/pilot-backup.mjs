@@ -52,7 +52,11 @@ async function digestStream(stream) {
 try {
   lockClient = await database.connect();
   const lock = await lockClient.query("SELECT pg_try_advisory_lock(hashtext('petrol-partner-pilot-backup')) AS acquired");
-  if (!lock.rows[0].acquired) throw new Error('Another pilot backup is still running');
+  if (!lock.rows[0].acquired) {
+    await database.query(`INSERT INTO pilot_backup_attempts (id, status, finished_at, error_code)
+      VALUES ($1, 'failed', now(), 'BACKUP_OVERLAP')`, [attemptId]);
+    throw new Error('Another pilot backup is still running');
+  }
   await database.query(`INSERT INTO pilot_backup_attempts (id, status) VALUES ($1, 'running')`, [attemptId]);
   attemptRecorded = true;
   const snapshotAt = new Date();
