@@ -8,7 +8,7 @@ import { useCurrentUser } from "@/hooks/auth/useCurrentUser";
 type Capability = "offers" | "requests" | "acceptance" | "booking";
 type PilotStatus = { recovery: { mode: string; cause: string | null; started_at: string | null; reconciled_at: string | null }; capabilities: { capability: Capability; paused: boolean; pending: boolean }[] };
 type Pending = { id: string; capability: Capability; paused: boolean; reason: string; state: string };
-type Delivery = { jobs: { id: string; operation_id: string; status: string; attempts: number; attempt_count: number; attempt_history: { attempt: number; started_at: string; finished_at: string | null; outcome: string | null }[]; due_at: string; last_error: string | null }[]; health: { due: number; exhausted: number; expired_leases: number; stalled: number; oldest_open_at: string | null; last_attempt_at: string | null; last_worker_seen_at: string | null } };
+type Delivery = { jobs: { id: string; operation_id: string; status: string; attempts: number; attempt_count: number; attempt_history: { attempt: number; started_at: string; finished_at: string | null; outcome: string | null }[]; due_at: string; updated_at: string; last_error: string | null }[]; health: { due: number; exhausted: number; expired_leases: number; stalled: number; oldest_open_at: string | null; last_attempt_at: string | null; last_worker_seen_at: string | null } };
 
 export default function OperatorPage() {
   const { user, loading } = useCurrentUser();
@@ -80,10 +80,10 @@ export default function OperatorPage() {
       setMessage(`${context ? `${context}. ` : ""}Decision ${operationId}: ${result.state}. Reconcile before reopening activity.`);
     } catch (error) { setMessage(`Unable to check ${operationId}: ${error instanceof Error ? error.message : "unknown error"}`); }
   }
-  async function retryEmail(jobId: string) {
+  async function retryEmail(jobId: string, exhaustedAt: string) {
     setBusy(true);
     try {
-      await apiRequest(`/v1/operator/notifications/email/${jobId}/retry`, { method: "POST", body: JSON.stringify({}) });
+      await apiRequest(`/v1/operator/notifications/email/${jobId}/retry`, { method: "POST", headers: { "Idempotency-Key": `email-retry:${jobId}:${exhaustedAt}` }, body: JSON.stringify({}) });
       setMessage(`Email job ${jobId} queued for retry.`);
       await refresh();
     } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to retry email"); }
@@ -111,7 +111,7 @@ export default function OperatorPage() {
       {delivery?.jobs.map((job) => <div key={job.id} className="rounded border p-3"><p>Operation {job.operation_id} · {job.status} · {job.attempt_count} delivery attempts</p>
         <p>Due: {new Date(job.due_at).toLocaleString()}</p>{job.last_error && <p>{job.last_error}</p>}
         {job.attempt_history.length > 0 && <ul className="list-disc pl-5">{job.attempt_history.map((attempt, index) => <li key={`${attempt.started_at}-${index}`}>Attempt {attempt.attempt}: {attempt.outcome ?? "in progress"} at {new Date(attempt.started_at).toLocaleString()}</li>)}</ul>}
-        {job.status === "exhausted" && <button disabled={busy} onClick={() => retryEmail(job.id)}>Retry email</button>}</div>)}
+        {job.status === "exhausted" && <button disabled={busy} onClick={() => retryEmail(job.id, job.updated_at)}>Retry email</button>}</div>)}
     </section>
   </main>;
 }

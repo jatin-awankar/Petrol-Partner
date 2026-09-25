@@ -1,31 +1,20 @@
 import type { Pool, PoolClient } from "pg";
 import { pool } from "../../db/pool";
+import { markDurableNotificationReady, recordDurableNotification } from "./contract.repo";
 
 type Database = Pool | PoolClient;
 
 // Called inside the same transaction as the pause state and audit.
-export async function recordPauseNotification(database: Database, operationId: string, recipientId: string) {
-  const event = await database.query<{ id: string }>(
-    `INSERT INTO pilot_notification_events
-       (id, origin_type, operation_id, recipient_id, event_type, related_entity_type, related_entity_id, title, body)
-     VALUES ($1, 'operator_pause', $1, $2, 'operator_pause_changed', 'pilot_pause_operation', $1,
-             'Pilot operator decision', 'An operator changed pilot availability.')
-     ON CONFLICT (origin_type, operation_id, recipient_id, event_type)
-     DO UPDATE SET operation_id = EXCLUDED.operation_id RETURNING id`,
-    [operationId, recipientId],
-  );
-  await database.query(
-    `INSERT INTO pilot_email_jobs (event_id, recipient_id) VALUES ($1, $2)
-     ON CONFLICT (event_id) DO NOTHING`,
-    [event.rows[0].id, recipientId],
-  );
+export async function recordPauseNotification(database: Database, operationId: string, recipientId: string, capability: string, paused: boolean) {
+  await recordDurableNotification(database, {
+    eventId: operationId, originType: "operator_pause", operationId, recipientId,
+    eventType: "operator_pause_changed", relatedEntityType: "pilot_pause_operation", relatedEntityId: operationId,
+    title: "Pilot operator decision", body: `${capability[0].toUpperCase()}${capability.slice(1)} were ${paused ? "paused" : "resumed"} by an operator.`,
+  });
 }
 
 export async function markPauseNotificationReady(database: Database, operationId: string) {
-  await database.query(
-    `UPDATE pilot_notification_events SET ready_at = now()
-     WHERE origin_type = 'operator_pause' AND operation_id = $1 AND ready_at IS NULL`, [operationId],
-  );
+  await markDurableNotificationReady(database, operationId);
 }
 
 export async function listDurableNotifications(recipientId: string, database: Database = pool) {
@@ -70,6 +59,20 @@ export async function operatorDeliveryStatus(database: Database = pool) {
 export async function emailJobForUpdate(client: PoolClient, jobId: string) {
   const result = await client.query<{ status: string }>("SELECT status FROM pilot_email_jobs WHERE id = $1 FOR UPDATE", [jobId]);
   return result.rows[0];
+}
+
+export async function emailRetryByKey(client: PoolClient, operatorId: string, key: string) {
+  const result = await client.query<{ job_id: string }>(
+    "SELECT job_id FROM pilot_email_retry_operations WHERE operator_id = $1 AND idempotency_key = $2", [operatorId, key],
+  );
+  return result.rows[0];
+}
+
+export async function recordEmailRetry(client: PoolClient, operatorId: string, key: string, jobId: string) {
+  await client.query(
+    "INSERT INTO pilot_email_retry_operations (operator_id, idempotency_key, job_id) VALUES ($1, $2, $3)",
+    [operatorId, key, jobId],
+  );
 }
 
 export async function resetEmailJob(client: PoolClient, jobId: string) {

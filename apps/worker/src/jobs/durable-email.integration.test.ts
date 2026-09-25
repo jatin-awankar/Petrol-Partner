@@ -3,9 +3,10 @@ import { resolve } from "node:path";
 import { Pool } from "pg";
 import { beforeAll, afterAll, beforeEach, describe, expect, it } from "vitest";
 import { processDueEmail, type EmailMessage } from "./durable-email.job";
+import { recordDurableNotification, markDurableNotificationReady } from "../../../api/src/modules/notifications/contract.repo";
 
 const database = new Pool({ connectionString: process.env.DATABASE_URL, max: 3 });
-const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql", "0006_operator_allowlist.sql", "0007_operator_pause.sql", "0008_operator_intent_handoff.sql", "0009_durable_notifications.sql"];
+const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql", "0006_operator_allowlist.sql", "0007_operator_pause.sql", "0008_operator_intent_handoff.sql", "0009_durable_notifications.sql", "0010_email_retry_operations.sql"];
 
 beforeAll(async () => {
   for (const migration of migrations) await database.query(await readFile(resolve(import.meta.dirname, "../../../api/src/db/migrations", migration), "utf8"));
@@ -36,16 +37,23 @@ async function seed(state: "committed" | "acknowledged" = "acknowledged") {
 describe("durable email PostgreSQL worker", () => {
   it("delivers a ready event from another lifecycle origin without a pause operation", async () => {
     const user = await database.query<{ id: string }>("INSERT INTO users (email) VALUES ('future@example.test') RETURNING id");
-    const event = await database.query<{ id: string }>(
-      `INSERT INTO pilot_notification_events
-         (origin_type, operation_id, recipient_id, event_type, related_entity_type, related_entity_id, title, body, ready_at)
-       VALUES ('ride_acceptance', gen_random_uuid(), $1, 'seat_accepted', 'ride_offer', gen_random_uuid(),
-               'Seat accepted', 'Your request was accepted.', now()) RETURNING id`, [user.rows[0].id],
-    );
-    await database.query("INSERT INTO pilot_email_jobs (event_id, recipient_id) VALUES ($1, $2)", [event.rows[0].id, user.rows[0].id]);
+    const eventId = crypto.randomUUID();
+    const operationId = crypto.randomUUID();
+    const client = await database.connect();
+    try {
+      await client.query("BEGIN");
+      await recordDurableNotification(client, {
+        originType: "ride_acceptance", operationId, recipientId: user.rows[0].id,
+        eventType: "seat_accepted", relatedEntityType: "ride_offer", relatedEntityId: crypto.randomUUID(),
+        title: "Seat accepted", body: "Your request was accepted.", eventId,
+      });
+      await client.query("COMMIT");
+    } finally { client.release(); }
     const sent: EmailMessage[] = [];
+    expect(await processDueEmail(database, { async send(message) { sent.push(message); } })).toBe(false);
+    await markDurableNotificationReady(database, eventId);
     expect(await processDueEmail(database, { async send(message) { sent.push(message); } })).toBe(true);
-    expect(sent[0]).toMatchObject({ eventId: event.rows[0].id, to: "future@example.test", subject: "Seat accepted" });
+    expect(sent[0]).toMatchObject({ eventId, to: "future@example.test", subject: "Seat accepted" });
   });
   it("waits for recovery evidence and retries a failed send without repeating the business action", async () => {
     const seeded = await seed("committed");
@@ -73,5 +81,14 @@ describe("durable email PostgreSQL worker", () => {
     expect(calls).toBe(1);
     expect((await database.query("SELECT status, attempts, lease_until FROM pilot_email_jobs WHERE id = $1", [seeded.jobId])).rows).toEqual([{ status: "exhausted", attempts: 5, lease_until: null }]);
     expect(await processDueEmail(database, { async send() { calls++; } })).toBe(false);
+  });
+
+  it("closes the final attempt when its lease expires", async () => {
+    const seeded = await seed();
+    await database.query("UPDATE pilot_email_jobs SET status = 'leased', attempts = 5, lease_until = now() - interval '1 second' WHERE id = $1", [seeded.jobId]);
+    await database.query("INSERT INTO pilot_email_attempts (job_id, attempt, started_at) VALUES ($1, 5, now() - interval '1 minute')", [seeded.jobId]);
+    expect(await processDueEmail(database, { async send() { throw new Error("unexpected send"); } })).toBe(false);
+    const result = await database.query("SELECT j.status, a.outcome, a.finished_at IS NOT NULL AS finished FROM pilot_email_jobs j JOIN pilot_email_attempts a ON a.job_id = j.id WHERE j.id = $1", [seeded.jobId]);
+    expect(result.rows).toEqual([{ status: "exhausted", outcome: "failed", finished: true }]);
   });
 });

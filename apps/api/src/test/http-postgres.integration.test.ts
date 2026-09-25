@@ -14,7 +14,7 @@ import { resetRateLimitsForTests } from "../middleware/rate-limit";
 import { setAuthProviderForTests, setManagedAuthEnabledForTests, type AuthProvider, type ProviderIdentity } from "../modules/auth/auth-provider";
 
 const verificationPool = new Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
-const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql", "0006_operator_allowlist.sql", "0007_operator_pause.sql", "0008_operator_intent_handoff.sql", "0009_durable_notifications.sql"];
+const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql", "0006_operator_allowlist.sql", "0007_operator_pause.sql", "0008_operator_intent_handoff.sql", "0009_durable_notifications.sql", "0010_email_retry_operations.sql"];
 
 function fakeProvider(identity: ProviderIdentity): AuthProvider {
   const session = { accessToken: "provider-access", refreshToken: "provider-refresh", expiresIn: 900, identity };
@@ -498,6 +498,7 @@ describe("protected operator pause HTTP/PostgreSQL", () => {
     const visible = await agent.get("/v1/notifications/durable");
     expect(visible.status).toBe(200);
     expect(visible.body.notifications).toEqual([expect.objectContaining({ related_entity_id: first.body.id })]);
+    expect(visible.body.notifications[0].body).toBe("Offers were paused by an operator.");
     expect((await agent.get("/v1/operator/notifications/delivery")).body.health.due).toBe(1);
     expect((await verificationPool.query("SELECT count(*)::int AS count FROM pilot_notification_events WHERE recipient_id = $1", [other.rows[0].id])).rows[0].count).toBe(0);
     const second = await operator("aal2", true, "second-notification");
@@ -508,9 +509,14 @@ describe("protected operator pause HTTP/PostgreSQL", () => {
     expect(JSON.stringify(delivery.body)).not.toContain("secret provider response");
     expect(delivery.body.jobs[0].last_error).toContain("redacted");
     const retry = await request(createApp()).post(`/v1/operator/notifications/email/${jobId}/retry`)
-      .set("Cookie", second.cookie).set("Origin", "http://localhost:3000").set("X-CSRF-Token", second.csrf).send({});
+      .set("Cookie", second.cookie).set("Origin", "http://localhost:3000").set("X-CSRF-Token", second.csrf).set("Idempotency-Key", "email-retry-1").send({});
     expect(retry.status).toBe(200);
     expect((await verificationPool.query("SELECT status, attempts FROM pilot_email_jobs WHERE id = $1", [jobId])).rows).toEqual([{ status: "pending", attempts: 0 }]);
+    await verificationPool.query("UPDATE pilot_email_jobs SET status = 'exhausted', attempts = 5 WHERE id = $1", [jobId]);
+    const repeated = await request(createApp()).post(`/v1/operator/notifications/email/${jobId}/retry`)
+      .set("Cookie", second.cookie).set("Origin", "http://localhost:3000").set("X-CSRF-Token", second.csrf).set("Idempotency-Key", "email-retry-1").send({});
+    expect(repeated.status).toBe(200);
+    expect((await verificationPool.query("SELECT status, attempts FROM pilot_email_jobs WHERE id = $1", [jobId])).rows).toEqual([{ status: "exhausted", attempts: 5 }]);
   });
   it("authorizes current allowlist and MFA, then keeps duplicate decisions stable", async () => {
     const { agent, userId, csrf, cookie } = await operator();

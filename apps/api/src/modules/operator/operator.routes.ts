@@ -16,7 +16,9 @@ operatorRouter.use(requireAdmin);
 operatorRouter.get("/status", asyncHandler(async (_req, res) => { res.json(await pauseService.status()); }));
 operatorRouter.get("/notifications/delivery", asyncHandler(async (_req, res) => { res.json(await deliveryStatus()); }));
 operatorRouter.post("/notifications/email/:id/retry", asyncHandler(async (req, res) => {
-  await retryDelivery(req.user!.userId, operationId.parse(req.params.id));
+  const key = req.header("Idempotency-Key");
+  if (!key || key.length > 128) throw new AppError(400, "A stable Idempotency-Key is required", "IDEMPOTENCY_KEY_REQUIRED");
+  await retryDelivery(req.user!.userId, operationId.parse(req.params.id), key);
   res.json({ status: "pending" });
 }));
 operatorRouter.get("/pending", asyncHandler(async (_req, res) => { res.json({ operations: await pauseService.pending() }); }));
