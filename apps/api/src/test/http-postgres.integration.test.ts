@@ -514,6 +514,8 @@ describe("synthetic student evidence HTTP/PostgreSQL", () => {
       expect(events.rows[0].recipient_id).toBe(owner.userId);
       expect(events.rows[0].ready_at).toBeTruthy();
       expect((await verificationPool.query("SELECT count(*)::int AS n FROM student_review_audit")).rows[0].n).toBe(1);
+      const retention = await verificationPool.query("SELECT EXTRACT(EPOCH FROM (delete_after - decision_at))::int AS seconds FROM student_evidence WHERE user_id = $1", [owner.userId]);
+      expect(retention.rows).toEqual([{ seconds: 6 * 24 * 60 * 60 }, { seconds: 6 * 24 * 60 * 60 }]);
       await verificationPool.query("UPDATE student_verifications SET review_cycle = 2, status = 'pending_review', reviewed_at = NULL, adult_eligible = NULL WHERE user_id = $1", [owner.userId]);
       await verificationPool.query("UPDATE user_profiles SET is_verified = false, college = NULL WHERE user_id = $1", [owner.userId]);
       const reconcile = await request(createApp()).post("/v1/operator/reconcile").set("Cookie", cookie).set("Origin", "http://localhost:3000").set("X-CSRF-Token", csrf).send({});

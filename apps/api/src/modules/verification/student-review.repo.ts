@@ -168,7 +168,7 @@ export async function restoreDecision(client: PoolClient, row: StudentReviewOper
       `INSERT INTO student_evidence
          (user_id, review_cycle, purpose, object_key, content_type, byte_count,
           sha256, status, uploaded_at, decision_at, delete_after)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 'retained', $8, $9::timestamptz, $9::timestamptz + interval '7 days')
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'retained', $8, $9::timestamptz, $9::timestamptz + interval '6 days')
        ON CONFLICT (user_id, review_cycle, purpose) DO UPDATE SET
          status = CASE WHEN student_evidence.status = 'deleted' THEN 'deleted' ELSE 'retained' END,
          decision_at = COALESCE(student_evidence.decision_at, EXCLUDED.decision_at),

@@ -24,14 +24,15 @@ The chosen bucket must be private, have a 512 KB object size ceiling, allow only
 three MIME types, deny client uploads and public reads, and have a documented
 provider-side orphan-object lifecycle. The service checks the private bucket state
 before each upload. The storage worker must share the same configuration and run
-often enough to delete decided evidence no later than seven days; it records
+often enough to delete decided evidence no later than seven days. Deletion is
+scheduled six days after decision to leave one day for retries; the worker records
 `deleted`, `already_missing`, or `failed`, with a five-minute retry after failure.
 The original deadline never moves. The operator console shows overdue and failed
 counts and the oldest deadline; any overdue item requires immediate storage-provider
 escalation and a recorded incident decision, since repeated attempts alone do not
 meet the seven-day policy.
 
-Before enabling the flag, use fabricated documents in a dedicated staging project
+Before enabling either verification flag, use fabricated documents in a dedicated staging project
 to demonstrate upload, authorized read, public-read denial, expiry and one-time
 access, deletion, listing and metadata removal, object version behavior, CDN and
 signed-URL cache behavior, temporary browser previews, and the provider's internal

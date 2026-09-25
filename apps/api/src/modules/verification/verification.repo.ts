@@ -239,7 +239,7 @@ export async function recordStudentEvidence(client: PoolClient, userId: string, 
 export async function scheduleStudentEvidenceDeletion(client: PoolClient, userId: string, reviewCycle: number, decidedAt: Date) {
   await client.query(
     `UPDATE student_evidence SET status = 'retained', decision_at = $2,
-       delete_after = $2::timestamptz + interval '7 days' WHERE user_id = $1 AND review_cycle = $3 AND status = 'pending_review'`,
+       delete_after = $2::timestamptz + interval '6 days' WHERE user_id = $1 AND review_cycle = $3 AND status = 'pending_review'`,
     [userId, decidedAt, reviewCycle],
   );
 }
