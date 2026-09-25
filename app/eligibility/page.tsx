@@ -36,6 +36,16 @@ export default function EligibilityPage() {
     } catch (error) { setMessage(error instanceof Error ? error.message : "Submission failed"); }
     finally { setBusy(false); }
   }
+  async function replaceLostEvidence(event: React.FormEvent) {
+    event.preventDefault();
+    if (!file) { setMessage("Choose a synthetic sample file."); return; }
+    setBusy(true);
+    try {
+      await apiRequest("/v1/verification/student/evidence", { method: "POST", headers: { "Content-Type": file.type, "X-Synthetic-Evidence": "true" }, body: file, skipJsonBody: true });
+      setMessage("Replacement synthetic evidence received.");
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Replacement failed"); }
+    finally { setBusy(false); }
+  }
   if (loading) return <main className="p-8">Checking account…</main>;
   if (!user) return <main className="p-8">Sign in to check eligibility. <Link href="/login">Sign in</Link></main>;
   return <main className="mx-auto max-w-2xl space-y-6 p-8">
@@ -49,7 +59,14 @@ export default function EligibilityPage() {
       {review?.metadata?.reviewReason && <p>Reason: {review.metadata.reviewReason}</p>}
       {review?.status === "verified" && <p>Phone ownership and separate driver and car approvals are still required for applicable actions.</p>}
     </section>
-    {(!review || review.status === "rejected" || review.status === "pending_review") && <form onSubmit={submit} className="space-y-3 rounded border p-4">
+    {review?.status === "rejected" && <p>Resubmission opens after the prior synthetic document has been deleted under the retention schedule.</p>}
+    {review?.status === "pending_review" && <form onSubmit={replaceLostEvidence} className="space-y-3 rounded border p-4">
+      <h2 className="font-semibold">Replace lost unreviewed evidence</h2>
+      <p>Use this only if the operator reports that your synthetic document is missing. An available document cannot be replaced.</p>
+      <input type="file" accept="image/jpeg,image/png,application/pdf" required onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
+      <button disabled={busy}>Upload replacement</button>
+    </form>}
+    {!review && <form onSubmit={submit} className="space-y-3 rounded border p-4">
       <h2 className="font-semibold">Synthetic submission</h2>
       <label className="block">Enrolled name<input className="block w-full border p-2" required minLength={2} maxLength={150} value={name} onChange={(event) => setName(event.target.value)} /></label>
       <label className="block">Institution<input className="block w-full border p-2" required minLength={2} maxLength={255} value={institution} onChange={(event) => setInstitution(event.target.value)} /></label>

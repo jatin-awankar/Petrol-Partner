@@ -113,6 +113,9 @@ export async function listPendingReviews(req: Request, res: Response) {
 }
 
 export async function reviewStudentVerification(req: Request, res: Response) {
+  if (process.env.NODE_ENV === "production") {
+    throw new AppError(503, "Student reviews remain closed until protected recovery is verified", "STUDENT_REVIEW_UNAVAILABLE");
+  }
   const adminUserId = requireUserId(req);
   const { userId } = adminReviewUserParamSchema.parse(req.params);
   const input = reviewStudentVerificationSchema.parse(req.body);

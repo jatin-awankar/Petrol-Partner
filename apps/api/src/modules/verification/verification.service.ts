@@ -140,7 +140,7 @@ export async function readStudentEvidence(adminUserId: string, userId: string) {
   return withTransaction(async (client) => {
     await assertCurrentOperator(client, adminUserId);
     const evidence = await verificationRepo.studentEvidenceForUpdate(client, userId);
-    if (!evidence || evidence.status === "deleted") throw new AppError(404, "Evidence unavailable", "EVIDENCE_NOT_FOUND");
+    if (!evidence || evidence.status !== "pending_review") throw new AppError(404, "Evidence unavailable", "EVIDENCE_NOT_FOUND");
     return { bytes: await readEvidence(evidence.object_key), contentType: evidence.content_type };
   });
 }
@@ -462,11 +462,7 @@ export async function reviewStudentVerification(
       client,
     );
 
-    await client.query(
-      `UPDATE student_evidence SET status = 'retained', decision_at = $2,
-         delete_after = $2 + interval '7 days' WHERE user_id = $1`,
-      [userId, reviewedAt],
-    );
+    await verificationRepo.scheduleStudentEvidenceDeletion(client, userId, reviewedAt);
 
     return reviewed;
   });

@@ -202,6 +202,14 @@ export async function recordStudentEvidence(client: PoolClient, userId: string, 
   );
 }
 
+export async function scheduleStudentEvidenceDeletion(client: PoolClient, userId: string, decidedAt: Date) {
+  await client.query(
+    `UPDATE student_evidence SET status = 'retained', decision_at = $2,
+       delete_after = $2 + interval '7 days' WHERE user_id = $1`,
+    [userId, decidedAt],
+  );
+}
+
 export async function upsertStudentVerification(
   input: {
     userId: string;
