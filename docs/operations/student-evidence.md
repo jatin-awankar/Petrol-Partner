@@ -60,3 +60,9 @@ The existing project's private bucket and an immediate synthetic upload/read/del
 rehearsal are recorded in [the 2026-09-25 Storage evidence](evidence/ticket12-supabase-storage-2026-09-25.md).
 Provider internal retention, B2 receipt lifecycle, and operational project health
 remain open; neither verification flag is enabled.
+The existing Backblaze account passed a fabricated student-review receipt writer
+and independent-reader rehearsal under its bounded synthetic prefix. See
+[the B2 evidence](evidence/ticket12-b2-student-review-2026-09-25.md). Its real
+review prefix has no lifecycle rule; configuring expiry requires a corresponding
+bounded recovery policy because the application currently checks every historical
+acknowledged review receipt.
