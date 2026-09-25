@@ -6,7 +6,7 @@ import { apiRequest, ApiError } from "@/lib/api/client";
 import { useCurrentUser } from "@/hooks/auth/useCurrentUser";
 
 type Capability = "offers" | "requests" | "acceptance" | "booking";
-type PilotStatus = { recovery: { mode: string; cause: string | null; started_at: string | null; reconciled_at: string | null }; capabilities: { capability: Capability; paused: boolean; pending: boolean }[] };
+type PilotStatus = { recovery: { mode: string; cause: string | null; started_at: string | null; reconciled_at: string | null }; backup: { required: boolean; healthy: boolean; maximumAgeMinutes: number; ageMinutes: number | null; latest: { snapshot_at: string; uploaded_at: string; ciphertext_sha256: string } | null; failedAttempts: { id: string; started_at: string; error_code: string | null }[]; runningAttempts: { id: string; started_at: string }[] }; capabilities: { capability: Capability; paused: boolean; pending: boolean }[] };
 type Pending = { id: string; capability: Capability; paused: boolean; reason: string; state: string };
 type Delivery = { jobs: { id: string; operation_id: string; status: string; attempts: number; attempt_count: number; attempt_history: { attempt: number; started_at: string; finished_at: string | null; outcome: string | null }[]; due_at: string; updated_at: string; last_error: string | null }[]; health: { due: number; exhausted: number; expired_leases: number; stalled: number; oldest_open_at: string | null; last_attempt_at: string | null; last_worker_seen_at: string | null } };
 
@@ -101,6 +101,13 @@ export default function OperatorPage() {
       {status?.recovery.started_at && <p>Since: {new Date(status.recovery.started_at).toLocaleString()}</p>}
       <div className="mt-3 flex gap-3"><button disabled={busy} onClick={() => recovery("reconcile")}>Reconcile receipts</button>
       <button disabled={busy || !status?.recovery.reconciled_at || reason.trim().length < 8} onClick={() => recovery("reopen")}>Manually reopen</button></div>
+    </section>
+    <section className="space-y-2 rounded border p-4"><h2 className="font-semibold">Database backup</h2>
+      <p>Protection: {status?.backup.required ? "required" : "rehearsal only"} · {status?.backup.healthy ? "fresh" : "stale or unavailable"} · Maximum age: {status?.backup.maximumAgeMinutes ?? 50} minutes</p>
+      <p>Latest snapshot: {status?.backup.latest?.snapshot_at ? new Date(status.backup.latest.snapshot_at).toLocaleString() : "None"} · Age: {status?.backup.ageMinutes ?? "—"} minutes</p>
+      <p>Upload completed: {status?.backup.latest?.uploaded_at ? new Date(status.backup.latest.uploaded_at).toLocaleString() : "None"}</p>
+      <p>Running attempts: {status?.backup.runningAttempts.length ?? 0} · Failed attempts: {status?.backup.failedAttempts.length ?? 0}</p>
+      {status?.backup.failedAttempts.map((attempt) => <p key={attempt.id}>Failed {new Date(attempt.started_at).toLocaleString()}: {attempt.error_code ?? "unknown"}</p>)}
     </section>
     <label className="block">Decision reason<input className="mt-1 block w-full rounded border p-2" value={reason} onChange={(event) => setReason(event.target.value)} maxLength={500} /></label>
     <section className="space-y-3"><h2 className="font-semibold">Pause controls</h2>{status?.capabilities.map((item) => <div key={item.capability} className="flex items-center justify-between rounded border p-3"><span>{item.capability}: {item.paused ? "paused" : "open"}{item.pending ? " (pending)" : ""}</span><div className="flex gap-3"><button disabled={busy || reason.trim().length < 8} onClick={() => decide(item.capability, true)}>Pause</button><button disabled={busy || reason.trim().length < 8} onClick={() => decide(item.capability, false)}>Resume</button></div></div>)}</section>
