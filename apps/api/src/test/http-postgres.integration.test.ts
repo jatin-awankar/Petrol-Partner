@@ -12,6 +12,7 @@ import { createApp } from "../app";
 import { pool } from "../db/pool";
 import { resetRateLimitsForTests } from "../middleware/rate-limit";
 import { setAuthProviderForTests, setManagedAuthEnabledForTests, type AuthProvider, type ProviderIdentity } from "../modules/auth/auth-provider";
+import { setBackupObjectProbeForTests } from "../modules/operator/backup-status";
 
 const verificationPool = new Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
 const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql", "0006_operator_allowlist.sql", "0007_operator_pause.sql", "0008_operator_intent_handoff.sql", "0009_durable_notifications.sql", "0010_email_retry_operations.sql", "0011_backup_attempts.sql"];
@@ -47,6 +48,7 @@ beforeEach(async () => {
   await verificationPool.query("INSERT INTO pilot_recovery_state (singleton, mode) VALUES (true, 'open') ON CONFLICT (singleton) DO UPDATE SET mode = 'open', cause = NULL, started_at = NULL, reconciled_at = NULL");
   setManagedAuthEnabledForTests(null);
   setAuthProviderForTests(null);
+  setBackupObjectProbeForTests(null);
   await verificationPool.query(
     `UPDATE auth_cutover_state
         SET active_provider = 'legacy', legacy_login_enabled = true,
@@ -736,8 +738,28 @@ describe("protected operator pause HTTP/PostgreSQL", () => {
       else process.env.PILOT_BACKUP_REQUIRED = previous;
     }
   });
+  it("restricts acknowledgements when a recent backup cannot be verified off site", async () => {
+    const { agent, csrf, cookie } = await operator();
+    setBackupObjectProbeForTests(async () => false);
+    const previous = process.env.PILOT_BACKUP_REQUIRED;
+    process.env.PILOT_BACKUP_REQUIRED = "true";
+    try {
+      await verificationPool.query(`INSERT INTO pilot_backup_attempts (status, snapshot_at, uploaded_at, finished_at, object_key, ciphertext_sha256)
+        VALUES ('complete', now() - interval '10 minutes', now() - interval '9 minutes', now() - interval '9 minutes', 'synthetic/missing', repeat('a', 64))`);
+      const result = await request(createApp()).post("/v1/operator/pause").set("Cookie", cookie).set("Origin", "http://localhost:3000")
+        .set("X-CSRF-Token", csrf).set("Idempotency-Key", "missing-backup-1")
+        .send({ capability: "offers", paused: true, reason: "Backup object missing" });
+      expect(result.status).toBe(503);
+      const status = await agent.get("/v1/operator/status");
+      expect(status.body.backup).toMatchObject({ required: true, healthy: false, ageMinutes: 10 });
+    } finally {
+      if (previous === undefined) delete process.env.PILOT_BACKUP_REQUIRED;
+      else process.env.PILOT_BACKUP_REQUIRED = previous;
+    }
+  });
   it("keeps a fresh completed snapshot visible despite many later failures", async () => {
     const { agent } = await operator();
+    setBackupObjectProbeForTests(async () => true);
     const previous = process.env.PILOT_BACKUP_REQUIRED;
     process.env.PILOT_BACKUP_REQUIRED = "true";
     try {
@@ -747,7 +769,7 @@ describe("protected operator pause HTTP/PostgreSQL", () => {
         SELECT 'failed', now() - interval '8 minutes' + n * interval '1 second', now(), 'SYNTHETIC_FAILURE'
           FROM generate_series(1, 25) AS n`);
       const status = await agent.get("/v1/operator/status");
-      expect(status.body.backup).toMatchObject({ required: true, healthy: true, ageMinutes: 10 });
+      expect(status.body.backup).toMatchObject({ required: true, healthy: true, objectVerified: true, ageMinutes: 10 });
       expect(status.body.backup.failedAttempts).toHaveLength(20);
       expect(status.body.recovery.mode).toBe("open");
     } finally {
