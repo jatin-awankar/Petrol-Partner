@@ -557,6 +557,7 @@ describe("protected operator pause HTTP/PostgreSQL", () => {
     await operator();
     const points = ["after_intent", "after_commit", "after_receipt", "after_acknowledgement"] as const;
     for (const point of points) {
+      await verificationPool.query("TRUNCATE pilot_email_attempts, pilot_email_jobs, pilot_notification_events CASCADE");
       await verificationPool.query("TRUNCATE pilot_recovery_events, pilot_pause_audit, pilot_pause_followup, pilot_pause_operations CASCADE");
       await verificationPool.query("UPDATE pilot_pause_state SET paused = false, operation_id = NULL");
       await verificationPool.query("UPDATE pilot_recovery_state SET mode = 'open', cause = NULL, started_at = NULL, reconciled_at = NULL WHERE singleton = true");

@@ -1,15 +1,17 @@
 import type { Pool, PoolClient } from "pg";
 import { pool } from "../../db/pool";
-import { AppError } from "../../shared/errors/app-error";
 
 type Database = Pool | PoolClient;
 
 // Called inside the same transaction as the pause state and audit.
 export async function recordPauseNotification(database: Database, operationId: string, recipientId: string) {
   const event = await database.query<{ id: string }>(
-    `INSERT INTO pilot_notification_events (id, operation_id, recipient_id, event_type, related_entity_id)
-     VALUES ($1, $1, $2, 'operator_pause_changed', $1)
-     ON CONFLICT (operation_id) DO UPDATE SET operation_id = EXCLUDED.operation_id RETURNING id`,
+    `INSERT INTO pilot_notification_events
+       (id, origin_type, operation_id, recipient_id, event_type, related_entity_type, related_entity_id, title, body)
+     VALUES ($1, 'operator_pause', $1, $2, 'operator_pause_changed', 'pilot_pause_operation', $1,
+             'Pilot operator decision', 'An operator changed pilot availability.')
+     ON CONFLICT (origin_type, operation_id, recipient_id, event_type)
+     DO UPDATE SET operation_id = EXCLUDED.operation_id RETURNING id`,
     [operationId, recipientId],
   );
   await database.query(
@@ -19,13 +21,19 @@ export async function recordPauseNotification(database: Database, operationId: s
   );
 }
 
+export async function markPauseNotificationReady(database: Database, operationId: string) {
+  await database.query(
+    `UPDATE pilot_notification_events SET ready_at = now()
+     WHERE origin_type = 'operator_pause' AND operation_id = $1 AND ready_at IS NULL`, [operationId],
+  );
+}
+
 export async function listDurableNotifications(recipientId: string, database: Database = pool) {
   const result = await database.query(
-    `SELECT e.id, e.event_type, e.related_entity_id, e.created_at,
-            o.capability, o.paused, o.acknowledged_at
+    `SELECT e.id, e.event_type, e.related_entity_type, e.related_entity_id,
+            e.title, e.body, e.created_at, e.ready_at
        FROM pilot_notification_events e
-       JOIN pilot_pause_operations o ON o.id = e.operation_id
-      WHERE e.recipient_id = $1 AND o.state IN ('acknowledged', 'recovered')
+      WHERE e.recipient_id = $1 AND e.ready_at IS NOT NULL
       ORDER BY e.created_at DESC LIMIT 100`, [recipientId],
   );
   return result.rows;
@@ -59,23 +67,15 @@ export async function operatorDeliveryStatus(database: Database = pool) {
   return { jobs: jobs.rows, health: { ...health.rows[0], last_worker_seen_at: worker.rows[0]?.last_seen_at ?? null } };
 }
 
-export async function retryEmailJob(database: Pool, jobId: string, operatorId: string) {
-  const client = await database.connect();
-  try {
-    await client.query("BEGIN");
-    const operator = await client.query(
-      `SELECT 1 FROM users u JOIN operator_allowlist a ON a.user_id = u.id
-       WHERE u.id = $1 AND u.role = 'admin' AND u.status = 'active' AND a.active FOR SHARE OF u, a`, [operatorId],
-    );
-    if (!operator.rowCount) throw new AppError(403, "Operator access has been revoked", "OPERATOR_ACCESS_REVOKED");
-    const job = await client.query<{ status: string }>("SELECT status FROM pilot_email_jobs WHERE id = $1 FOR UPDATE", [jobId]);
-    if (!job.rowCount) throw new AppError(404, "Email job not found", "EMAIL_JOB_NOT_FOUND");
-    if (job.rows[0].status !== "exhausted") throw new AppError(409, "Only exhausted email can be retried", "EMAIL_RETRY_CONFLICT");
-    await client.query("UPDATE pilot_email_jobs SET status = 'pending', attempts = 0, due_at = now(), last_error = NULL, updated_at = now() WHERE id = $1", [jobId]);
-    await client.query("INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id) VALUES ($1, 'email_retry', 'pilot_email_job', $2)", [operatorId, jobId]);
-    await client.query("COMMIT");
-  } catch (error) {
-    await client.query("ROLLBACK");
-    throw error;
-  } finally { client.release(); }
+export async function emailJobForUpdate(client: PoolClient, jobId: string) {
+  const result = await client.query<{ status: string }>("SELECT status FROM pilot_email_jobs WHERE id = $1 FOR UPDATE", [jobId]);
+  return result.rows[0];
+}
+
+export async function resetEmailJob(client: PoolClient, jobId: string) {
+  await client.query("UPDATE pilot_email_jobs SET status = 'pending', attempts = 0, due_at = now(), last_error = NULL, updated_at = now() WHERE id = $1", [jobId]);
+}
+
+export async function recordEmailRetryAudit(client: PoolClient, operatorId: string, jobId: string) {
+  await client.query("INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id) VALUES ($1, 'email_retry', 'pilot_email_job', $2)", [operatorId, jobId]);
 }

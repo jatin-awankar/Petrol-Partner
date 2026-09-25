@@ -3,7 +3,7 @@ import { Router } from "express";
 import { requireAuth } from "../../middleware/auth";
 import { asyncHandler } from "../../shared/http/async-handler";
 import * as notificationsController from "./notifications.controller";
-import { listDurableNotifications } from "./durable.repo";
+import { recipientNotifications } from "./durable.service";
 
 export const notificationsRouter = Router();
 
@@ -22,7 +22,7 @@ notificationsRouter.get("/_status", (_req, res) => {
 
 notificationsRouter.use(requireAuth);
 notificationsRouter.get("/durable", asyncHandler(async (req, res) => {
-  res.json({ notifications: await listDurableNotifications(req.user!.userId) });
+  res.json({ notifications: await recipientNotifications(req.user!.userId) });
 }));
 
 notificationsRouter.get("/", asyncHandler(notificationsController.listNotifications));

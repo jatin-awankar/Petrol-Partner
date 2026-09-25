@@ -23,20 +23,37 @@ async function seed(state: "committed" | "acknowledged" = "acknowledged") {
      VALUES ($1, 'worker-test', 'digest', 'offers', true, 'Operator decision', $2, now()) RETURNING id`, [user.rows[0].id, state],
   );
   const event = await database.query<{ id: string }>(
-    "INSERT INTO pilot_notification_events (operation_id, recipient_id, event_type, related_entity_id) VALUES ($1, $2, 'operator_pause_changed', $1) RETURNING id",
-    [operation.rows[0].id, user.rows[0].id],
+    `INSERT INTO pilot_notification_events
+       (id, origin_type, operation_id, recipient_id, event_type, related_entity_type, related_entity_id, title, body, ready_at)
+     VALUES ($1, 'operator_pause', $1, $2, 'operator_pause_changed', 'pilot_pause_operation', $1,
+             'Pilot operator decision', 'An operator changed pilot availability.', $3) RETURNING id`,
+    [operation.rows[0].id, user.rows[0].id, state === "acknowledged" ? new Date() : null],
   );
   const job = await database.query<{ id: string }>("INSERT INTO pilot_email_jobs (event_id, recipient_id) VALUES ($1, $2) RETURNING id", [event.rows[0].id, user.rows[0].id]);
   return { operationId: operation.rows[0].id, jobId: job.rows[0].id, eventId: event.rows[0].id };
 }
 
 describe("durable email PostgreSQL worker", () => {
+  it("delivers a ready event from another lifecycle origin without a pause operation", async () => {
+    const user = await database.query<{ id: string }>("INSERT INTO users (email) VALUES ('future@example.test') RETURNING id");
+    const event = await database.query<{ id: string }>(
+      `INSERT INTO pilot_notification_events
+         (origin_type, operation_id, recipient_id, event_type, related_entity_type, related_entity_id, title, body, ready_at)
+       VALUES ('ride_acceptance', gen_random_uuid(), $1, 'seat_accepted', 'ride_offer', gen_random_uuid(),
+               'Seat accepted', 'Your request was accepted.', now()) RETURNING id`, [user.rows[0].id],
+    );
+    await database.query("INSERT INTO pilot_email_jobs (event_id, recipient_id) VALUES ($1, $2)", [event.rows[0].id, user.rows[0].id]);
+    const sent: EmailMessage[] = [];
+    expect(await processDueEmail(database, { async send(message) { sent.push(message); } })).toBe(true);
+    expect(sent[0]).toMatchObject({ eventId: event.rows[0].id, to: "future@example.test", subject: "Seat accepted" });
+  });
   it("waits for recovery evidence and retries a failed send without repeating the business action", async () => {
     const seeded = await seed("committed");
     const delivered: EmailMessage[] = [];
     const adapter = { async send(message: EmailMessage) { delivered.push(message); if (delivered.length === 1) throw new Error("provider timeout with sensitive detail"); } };
     expect(await processDueEmail(database, adapter)).toBe(false);
     await database.query("UPDATE pilot_pause_operations SET state = 'acknowledged', acknowledged_at = now() WHERE id = $1", [seeded.operationId]);
+    await database.query("UPDATE pilot_notification_events SET ready_at = now() WHERE operation_id = $1", [seeded.operationId]);
     expect(await processDueEmail(database, adapter)).toBe(true);
     const afterFailure = await database.query("SELECT status, attempts, last_error, due_at > now() AS backed_off FROM pilot_email_jobs WHERE id = $1", [seeded.jobId]);
     expect(afterFailure.rows).toEqual([{ status: "pending", attempts: 1, last_error: "provider timeout with sensitive detail", backed_off: true }]);

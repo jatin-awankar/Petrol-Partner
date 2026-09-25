@@ -4,8 +4,7 @@ import { requireAdmin } from "../../middleware/auth";
 import { asyncHandler } from "../../shared/http/async-handler";
 import { AppError } from "../../shared/errors/app-error";
 import { pauseService } from "./pause.service";
-import { operatorDeliveryStatus, retryEmailJob } from "../notifications/durable.repo";
-import { pool } from "../../db/pool";
+import { deliveryStatus, retryDelivery } from "../notifications/durable.service";
 
 export const operatorRouter = Router();
 const decision = z.object({ capability: z.enum(["offers", "requests", "acceptance", "booking"]), paused: z.boolean(), reason: z.string().trim().min(8).max(500) });
@@ -15,9 +14,9 @@ const operationId = z.uuid();
 operatorRouter.get("/pilot-status", asyncHandler(async (_req, res) => { res.json(await pauseService.publicStatus()); }));
 operatorRouter.use(requireAdmin);
 operatorRouter.get("/status", asyncHandler(async (_req, res) => { res.json(await pauseService.status()); }));
-operatorRouter.get("/notifications/delivery", asyncHandler(async (_req, res) => { res.json(await operatorDeliveryStatus()); }));
+operatorRouter.get("/notifications/delivery", asyncHandler(async (_req, res) => { res.json(await deliveryStatus()); }));
 operatorRouter.post("/notifications/email/:id/retry", asyncHandler(async (req, res) => {
-  await retryEmailJob(pool, operationId.parse(req.params.id), req.user!.userId);
+  await retryDelivery(req.user!.userId, operationId.parse(req.params.id));
   res.json({ status: "pending" });
 }));
 operatorRouter.get("/pending", asyncHandler(async (_req, res) => { res.json({ operations: await pauseService.pending() }); }));

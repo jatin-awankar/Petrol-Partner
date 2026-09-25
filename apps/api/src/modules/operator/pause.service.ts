@@ -9,7 +9,7 @@ import { B2ReceiptStore } from "./b2-receipt-store";
 import { operatorQuery } from "./operator.repo";
 import { assertCurrentOperator } from "./operator.authorization";
 import { inProtectedTransaction as transaction, type ProtectedOperationState } from "../protected-mutation/protocol";
-import { recordPauseNotification } from "../notifications/durable.repo";
+import { markPauseNotificationReady, recordPauseNotification } from "../notifications/durable.repo";
 
 export const capabilities = ["offers", "requests", "acceptance", "booking"] as const;
 export type Capability = typeof capabilities[number];
@@ -150,7 +150,9 @@ export class PauseService {
         if (row.resumed_from) receipt.resumedFrom = row.resumed_from;
         await appendReceipt(receipt);
         crashHook?.("after_receipt", row.id);
-        return (await operatorQuery<Operation>(client, "acknowledgePauseOperation", [row.id])).rows[0];
+        const acknowledged = (await operatorQuery<Operation>(client, "acknowledgePauseOperation", [row.id])).rows[0];
+        await markPauseNotificationReady(client, row.id);
+        return acknowledged;
       });
     }
     catch (error) {
@@ -258,6 +260,7 @@ export class PauseService {
         if (receipt.resumedBy && receipt.resumeReason) await operatorQuery(client, "recordDecisionResume", [receipt.operationId, receipt.resumedBy, receipt.resumeReason]);
         await operatorQuery(client, "restorePauseFollowup", [receipt.operationId]);
         await recordPauseNotification(client, receipt.operationId, receipt.operatorId);
+        await markPauseNotificationReady(client, receipt.operationId);
         const current = await operatorQuery<{ updated_at: Date }>(client, "capabilityStateForUpdate", [receipt.capability]);
         if (!current.rows[0] || current.rows[0].updated_at <= new Date(receipt.committedAt)) {
           await operatorQuery(client, "restoreCapabilityState", [receipt.capability, receipt.paused, receipt.operationId, receipt.committedAt]);
