@@ -39,6 +39,13 @@ const envSchema = z.object({
   AUTH_CALLBACK_URL: z.string().url().optional(),
   PILOT_RECEIPT_PATH: z.string().optional(),
   PILOT_RECEIPT_SECRET: z.string().min(32).optional(),
+  PILOT_RECEIPT_BACKEND: z.enum(["file", "b2"]).default("file"),
+  PILOT_B2_BUCKET: z.string().optional(),
+  PILOT_B2_ENDPOINT: z.string().url().optional(),
+  PILOT_B2_WRITER_KEY_ID: z.string().optional(),
+  PILOT_B2_WRITER_KEY: z.string().optional(),
+  PILOT_B2_PREFIX: z.string().optional(),
+  PILOT_B2_RETENTION_DAYS: z.coerce.number().int().positive().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

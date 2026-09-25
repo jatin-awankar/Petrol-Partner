@@ -5,6 +5,7 @@ import { env } from "../../config/env";
 import { pool } from "../../db/pool";
 import { AppError } from "../../shared/errors/app-error";
 import { SignedReceiptStore } from "./receipt-store";
+import { B2ReceiptStore } from "./b2-receipt-store";
 import { operatorQuery } from "./operator.repo";
 import { assertCurrentOperator } from "./operator.authorization";
 import { inProtectedTransaction as transaction, type ProtectedOperationState } from "../protected-mutation/protocol";
@@ -23,13 +24,22 @@ function digest(decision: PauseDecision) {
 function receiptConfig() {
   const path = process.env.PILOT_RECEIPT_PATH ?? env.PILOT_RECEIPT_PATH;
   const secret = process.env.PILOT_RECEIPT_SECRET ?? env.PILOT_RECEIPT_SECRET;
-  if (!path || !secret || secret.length < 32) throw new AppError(503, "Recovery evidence is not configured", "RECOVERY_UNAVAILABLE");
-  return { path, secret };
+  if (!secret || secret.length < 32) throw new AppError(503, "Recovery evidence is not configured", "RECOVERY_UNAVAILABLE");
+  if (env.PILOT_RECEIPT_BACKEND === "b2") {
+    const { PILOT_B2_BUCKET: bucket, PILOT_B2_ENDPOINT: endpoint, PILOT_B2_WRITER_KEY_ID: keyId,
+      PILOT_B2_WRITER_KEY: applicationKey, PILOT_B2_PREFIX: prefix, PILOT_B2_RETENTION_DAYS: retentionDays } = env;
+    if (!bucket || !endpoint || !keyId || !applicationKey || !prefix || !retentionDays) {
+      throw new AppError(503, "Recovery evidence is not configured", "RECOVERY_UNAVAILABLE");
+    }
+    return { backend: "b2" as const, config: { bucket, endpoint, keyId, applicationKey, prefix, retentionDays, secret } };
+  }
+  if (env.NODE_ENV === "production" || !path) throw new AppError(503, "Recovery evidence is not configured", "RECOVERY_UNAVAILABLE");
+  return { backend: "file" as const, path, secret };
 }
-function pauseReceipts() { const config = receiptConfig(); return new SignedReceiptStore<Receipt>(config.path, config.secret); }
+function pauseReceipts() { const config = receiptConfig(); return config.backend === "b2" ? new B2ReceiptStore<Receipt>(config.config, "pause") : new SignedReceiptStore<Receipt>(config.path, config.secret); }
 async function listReceipts() { return pauseReceipts().list(); }
 async function appendReceipt(receipt: Receipt) { return pauseReceipts().append(receipt); }
-function reopenReceipts() { const config = receiptConfig(); return new SignedReceiptStore<ReopenReceipt>(`${config.path}.reopen`, config.secret); }
+function reopenReceipts() { const config = receiptConfig(); return config.backend === "b2" ? new B2ReceiptStore<ReopenReceipt>(config.config, "reopen") : new SignedReceiptStore<ReopenReceipt>(`${config.path}.reopen`, config.secret); }
 async function restrict(database: Pool, cause: string, operatorId?: string) {
   await transaction(database, async (client) => {
     if (operatorId) await assertCurrentOperator(client, operatorId);
