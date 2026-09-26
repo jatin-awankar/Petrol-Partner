@@ -101,12 +101,15 @@ describe("pilot seat requests through HTTP and PostgreSQL", () => {
       const post = (actor:typeof first,key:string) => request(createApp()).post("/v1/seat-requests")
         .set("Authorization",`Bearer ${actor.token}`).set("Idempotency-Key",key)
         .send({offer_id:offer.body.offer.id,seats:1});
-      const [one,two] = await Promise.all([post(first,"request-one"),post(second,"request-two")]);
+      const one = await post(first,"request-one");
+      const two = await post(second,"request-two");
       expect([one.status,two.status]).toEqual([201,201]);
-      const otherRequests = await Promise.all([first,second].map((actor,index) =>
-        request(createApp()).post("/v1/seat-requests")
+      const otherRequests = [];
+      for (const [index,actor] of [first,second].entries()) {
+        otherRequests.push(await request(createApp()).post("/v1/seat-requests")
           .set("Authorization",`Bearer ${actor.token}`).set("Idempotency-Key",`other-request-${index}`)
-          .send({offer_id:otherOffer.body.offer.id,seats:1})));
+          .send({offer_id:otherOffer.body.offer.id,seats:1}));
+      }
       expect(otherRequests.map(value => value.status)).toEqual([201,201]);
       const driverPending = await request(createApp()).post("/v1/seat-requests")
         .set("Authorization",`Bearer ${driver.token}`).set("Idempotency-Key","driver-pending-other-offer")
@@ -219,16 +222,20 @@ describe("pilot seat requests through HTTP and PostgreSQL", () => {
       laterDeparture.setUTCDate(laterDeparture.getUTCDate()+3);
       while (new Intl.DateTimeFormat("en-GB",{timeZone:"Asia/Kolkata",weekday:"short"}).format(laterDeparture) === "Sun")
         laterDeparture.setUTCDate(laterDeparture.getUTCDate()+1);
-      const laterOffers = await Promise.all([[driver,car,"later-first"],[otherDriver,otherCar,"later-second"]]
-        .map(([actor,vehicleId,key]) => request(createApp()).post("/v1/corridor-offers")
-          .set("Authorization",`Bearer ${(actor as typeof driver).token}`).set("Idempotency-Key",key as string)
+      const laterOffers = [];
+      for (const [actor,vehicleId,key] of [[driver,car,"later-first"],[otherDriver,otherCar,"later-second"]] as const) {
+        laterOffers.push(await request(createApp()).post("/v1/corridor-offers")
+          .set("Authorization",`Bearer ${actor.token}`).set("Idempotency-Key",key)
           .send({vehicle_id:vehicleId,origin_code:"university",destination_code:"prmitr",
-            departure_at:laterDeparture.toISOString(),capacity:1})));
+            departure_at:laterDeparture.toISOString(),capacity:1}));
+      }
       expect(laterOffers.map(value => value.status)).toEqual([201,201]);
-      const laterRequests = await Promise.all(laterOffers.map((item,index) =>
-        request(createApp()).post("/v1/seat-requests")
+      const laterRequests = [];
+      for (const [index,item] of laterOffers.entries()) {
+        laterRequests.push(await request(createApp()).post("/v1/seat-requests")
           .set("Authorization",`Bearer ${winnerPassenger.token}`).set("Idempotency-Key",`later-request-${index}`)
-          .send({offer_id:item.body.offer.id,seats:1})));
+          .send({offer_id:item.body.offer.id,seats:1}));
+      }
       expect(laterRequests.map(value => value.status)).toEqual([201,201]);
       const passengerGate = await verificationPool.connect();
       let overlappingAcceptances:Awaited<ReturnType<typeof accept>>[];
