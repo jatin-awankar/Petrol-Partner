@@ -16,6 +16,7 @@ import { DriverCarReviewService } from "../verification/driver-car-review.servic
 import { DepartureService } from "../rides/departure.service";
 import { CorridorOffersService } from "../rides/corridor-offers.service";
 import { SeatRequestsService } from "../rides/seat-requests.service";
+import { CancellationsService } from "../rides/cancellations.service";
 
 export const capabilities = ["offers", "requests", "acceptance", "booking"] as const;
 export type Capability = typeof capabilities[number];
@@ -73,6 +74,7 @@ export class PauseService {
   private studentReviews() { return new StudentReviewService(this.database); }
   private driverCarReviews() { return new DriverCarReviewService(this.database); }
   private departures() { return new DepartureService(this.database); }
+  private cancellations() { return new CancellationsService(this.database); }
 
   private async verifyEvidence() {
     try {
@@ -105,6 +107,7 @@ export class PauseService {
       await this.driverCarReviews().verifyEvidence();
       await new CorridorOffersService(this.database).verifyEvidence();
       await new SeatRequestsService(this.database).verifyEvidence();
+      await this.cancellations().verifyEvidence();
       await this.departures().verifyEvidence();
     } catch (error) {
       await restrict(this.database, `evidence_unavailable:${error instanceof Error ? error.message : "unknown"}`);
@@ -266,6 +269,7 @@ export class PauseService {
     await this.studentReviews().reconcileReceipts(operatorId);
     await new CorridorOffersService(this.database).reconcileReceipts(operatorId);
     await new SeatRequestsService(this.database).reconcileReceipts(operatorId);
+    await this.cancellations().reconcileReceipts(operatorId);
     await this.departures().reconcileReceipts(operatorId);
     await this.driverCarReviews().reconcileReceipts(operatorId);
     for (const receipt of receipts) {

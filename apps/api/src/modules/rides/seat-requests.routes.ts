@@ -4,6 +4,7 @@ import { requireAuth } from "../../middleware/auth";
 import { asyncHandler } from "../../shared/http/async-handler";
 import { AppError } from "../../shared/errors/app-error";
 import { seatRequestsService } from "./seat-requests.service";
+import { cancellationsService } from "./cancellations.service";
 
 export const seatRequestsRouter = Router();
 seatRequestsRouter.use(requireAuth);
@@ -32,6 +33,16 @@ seatRequestsRouter.get("/confirmed/:offerId",asyncHandler(async(req,res) => {
 seatRequestsRouter.get("/operations/:id",asyncHandler(async(req,res) => {
   const {id} = z.strictObject({id:z.uuid()}).parse(req.params);
   res.json({operation:await seatRequestsService.operation(actor(req),id)});
+}));
+seatRequestsRouter.get("/cancellations/:id",asyncHandler(async(req,res) => {
+  const {id}=z.strictObject({id:z.uuid()}).parse(req.params);
+  res.json({operation:await cancellationsService.operation(actor(req),id)});
+}));
+seatRequestsRouter.post("/:id/cancel",asyncHandler(async(req,res) => {
+  const {id}=z.strictObject({id:z.uuid()}).parse(req.params);
+  const {reason}=z.strictObject({reason:z.string().trim().max(500).nullable().optional()}).parse(req.body ?? {});
+  const result=await cancellationsService.cancel(actor(req),key(req.get("Idempotency-Key")),"request",id,reason ?? null);
+  res.status("kind" in result && result.kind === "review_required" ? 202 : 200).json(result);
 }));
 seatRequestsRouter.post("/",asyncHandler(async(req,res) => {
   const {offer_id,seats} = z.strictObject({offer_id:z.uuid(),seats:z.literal(1)}).parse(req.body);

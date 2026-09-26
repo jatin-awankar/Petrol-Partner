@@ -10,6 +10,8 @@ type PilotStatus = { recovery: { mode: string; cause: string | null; started_at:
 type Pending = { id: string; capability: Capability; paused: boolean; reason: string; state: string };
 type Delivery = { jobs: { id: string; operation_id: string; status: string; attempts: number; attempt_count: number; attempt_history: { attempt: number; started_at: string; finished_at: string | null; outcome: string | null }[]; due_at: string; updated_at: string; last_error: string | null }[]; health: { due: number; exhausted: number; expired_leases: number; stalled: number; oldest_open_at: string | null; last_attempt_at: string | null; last_worker_seen_at: string | null } };
 type StudentReview = { user_id: string; status: string; enrolled_name: string | null; institution_name: string; graduation_year: number | null; evidence_category: string | null; age_evidence_category: string | null };
+type CancellationReview = {id:string;actor_id:string;offer_id:string;target_type:string;
+  target_id:string;reason:string|null;created_at:string;status:string};
 
 export default function OperatorPage() {
   const { user, loading } = useCurrentUser();
@@ -17,6 +19,7 @@ export default function OperatorPage() {
   const [pending, setPending] = useState<Pending[]>([]);
   const [delivery, setDelivery] = useState<Delivery | null>(null);
   const [studentReviews, setStudentReviews] = useState<StudentReview[]>([]);
+  const [cancellationReviews,setCancellationReviews] = useState<CancellationReview[]>([]);
   const [adultFindings, setAdultFindings] = useState<Record<string, boolean>>({});
   const [evidenceMode, setEvidenceMode] = useState<"closed" | "synthetic" | "real">("closed");
   const [evidenceRetention, setEvidenceRetention] = useState<{ overdue_count: number; failed_count: number; oldest_due_at: string | null } | null>(null);
@@ -31,6 +34,7 @@ export default function OperatorPage() {
     setStatus(next);
     setPending(operations.operations);
     setDelivery(await apiRequest<Delivery>("/v1/operator/notifications/delivery"));
+    setCancellationReviews((await apiRequest<{cases:CancellationReview[]}>("/v1/operator/cancellation-reviews")).cases);
     const reviews = await apiRequest<{ student_verifications: StudentReview[] }>("/v1/verification/admin/pending");
     setStudentReviews(reviews.student_verifications);
     setEvidenceMode((await apiRequest<{ mode: "closed" | "synthetic" | "real" }>("/v1/verification/evidence-capability")).mode);
@@ -168,6 +172,14 @@ export default function OperatorPage() {
         <p>Due: {new Date(job.due_at).toLocaleString()}</p>{job.last_error && <p>{job.last_error}</p>}
         {job.attempt_history.length > 0 && <ul className="list-disc pl-5">{job.attempt_history.map((attempt, index) => <li key={`${attempt.started_at}-${index}`}>Attempt {attempt.attempt}: {attempt.outcome ?? "in progress"} at {new Date(attempt.started_at).toLocaleString()}</li>)}</ul>}
         {job.status === "exhausted" && <button disabled={busy} onClick={() => retryEmail(job.id, job.updated_at)}>Retry email</button>}</div>)}
+    </section>
+    <section className="space-y-3"><h2 className="font-semibold">Cancellation review cases</h2>
+      {cancellationReviews.length ? cancellationReviews.map(item => <div key={item.id} className="rounded border p-3">
+        <p>Case {item.id} · {item.target_type} {item.target_id} · offer {item.offer_id}</p>
+        <p>Requested by {item.actor_id} on {new Date(item.created_at).toLocaleString("en-IN",{timeZone:"Asia/Kolkata"})} IST.</p>
+        {item.reason && <p>Reason: {item.reason}</p>}
+        <p>Status: {item.status}. The ride and seat remain unchanged pending operator resolution.</p>
+      </div>) : <p>No open cancellation review cases.</p>}
     </section>
     <section className="space-y-3"><h2 className="font-semibold">Student reviews</h2>
       <p>{evidenceMode === "real" ? "Inspect the private enrollment and age evidence before deciding." : "Inspect fabricated evidence only. Real evidence intake remains closed pending provider verification."}</p>

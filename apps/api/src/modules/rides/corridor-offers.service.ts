@@ -14,6 +14,7 @@ import { assertCurrentDriverCarEligibility, assertCurrentStudentForSubmission } 
 import { assertCommitmentsEligible, assertWithinSupportWindow } from "./commitment.service";
 import type { CorridorOfferInput } from "./corridor-offers.schema";
 import * as repo from "./corridor-offers.repo";
+import { CancellationsService } from "./cancellations.service";
 
 type Receipt = { operationId: string; actorId: string; key: string; digest: string;
   offerId: string; action: string; result: Record<string, unknown>;
@@ -81,6 +82,7 @@ export class CorridorOffersService {
       provisional:!policy.approved_for_real_trips,stops:await repo.stops(this.db,policy.id),
       permitted_pairs:await repo.pairs(this.db,policy.id) };
   }
+  async mine(userId:string) {return repo.mine(this.db,userId);}
   async discover(userId: string,origin: string,destination: string,date?: string) {
     await pauseService.assertAvailable("offers");
     await pauseService.assertAvailable("booking");
@@ -142,7 +144,8 @@ export class CorridorOffersService {
           for (const field of ["driver_id","vehicle_id","date","time","price_per_seat_paise",
             "pilot_policy_id","pilot_policy_snapshot","pilot_origin_code","pilot_destination_code",
             "pilot_capacity","pilot_currency","pilot_request_cutoff_at","pilot_acceptance_cutoff_at",
-            "pilot_commitment_until"]) {
+            "pilot_commitment_until","pilot_replaces_offer_id"]) {
+            if (field === "pilot_replaces_offer_id" && !(field in item.offerSnapshot)) continue;
             if (JSON.stringify(live[field]) !== JSON.stringify(item.offerSnapshot[field]))
               throw new AppError(409,"Offer recovery state conflicts with receipt","RECOVERY_CONFLICT");
           }
@@ -166,6 +169,8 @@ export class CorridorOffersService {
     const version = command.kind === "update" ? command.version : undefined;
     const action = command.kind === "update" ? "updated" : "published";
     const payloadDigest = digest(action,offerId ?? null,{...input,version});
+    if (command.kind === "update" && input.replaces_offer_id)
+      throw new AppError(400,"An edit cannot replace an offer","REPLACEMENT_INVALID");
     const existing = await repo.byKey(this.db,actorId,key);
     if (existing && existing.payload_digest !== payloadDigest)
       throw new AppError(409,"Idempotency payload mismatch","IDEMPOTENCY_PAYLOAD_MISMATCH");
@@ -173,6 +178,7 @@ export class CorridorOffersService {
     if (existing && recovery.rows[0]?.mode !== "open") return this.operation(actorId,existing.id);
     if (!existing) await pauseService.assertAvailable("offers");
     await this.verifyEvidence({ actorId,key });
+    if (input.replaces_offer_id) await new CancellationsService(this.db).verifyEvidence();
     const operation = await inProtectedTransaction(this.db,async client => {
       const recovery = await operatorQuery<{mode:string}>(client,"recoveryModeForUpdate");
       await operatorQuery(client,"lockIdempotencyKey",[`corridor-offer:${actorId}:${key}`]);
@@ -188,6 +194,13 @@ export class CorridorOffersService {
       if (current && current.driver_id !== actorId) throw new AppError(403,"Only the driver may edit this offer","FORBIDDEN");
       if (current && (current.status !== "active" || current.pilot_version !== version || await repo.requestCount(client,offerId!)))
         throw new AppError(409,"Offer terms are frozen or version is stale","OFFER_FROZEN");
+      if (input.replaces_offer_id) {
+        const replaced=await repo.offerForUpdate(client,input.replaces_offer_id);
+        if (!replaced || replaced.driver_id !== actorId || replaced.status !== "cancelled")
+          throw new AppError(409,"Replacement requires your cancelled offer","REPLACEMENT_INVALID");
+        if (await repo.replacementExists(client,input.replaces_offer_id))
+          throw new AppError(409,"A replacement already exists","REPLACEMENT_EXISTS");
+      }
       const { policy,origin,destination,departure,snapshot } = await policySnapshot(client,input,new Date());
       await assertCurrentDriverCarEligibility(client,actorId,input.vehicle_id);
       const capacity = await repo.vehicleCapacity(client,input.vehicle_id);
@@ -200,13 +213,15 @@ export class CorridorOffersService {
       const commitmentUntil = new Date(departure.getTime()+(policy.expected_minutes+policy.buffer_minutes)*60_000);
       const saved = await repo.saveOffer(client,{actorId,vehicleId:input.vehicle_id,origin,destination,
         departure,contributionPaise:snapshot.contribution_paise,capacity:input.capacity,policyId:policy.id,
-        snapshot,requestCutoff,acceptanceCutoff,commitmentUntil},offerId);
+        snapshot,requestCutoff,acceptanceCutoff,commitmentUntil,
+        replacesOfferId:input.replaces_offer_id},offerId);
       const offerSnapshot = await repo.offerSnapshot(client,saved.id);
       const result = { id:saved.id,version:saved.pilot_version,policy_version:policy.version,
         origin_code:origin.code,destination_code:destination.code,departure_at:departure.toISOString(),
         capacity:input.capacity,contribution_paise:snapshot.contribution_paise,currency:"INR",
         request_cutoff_at:requestCutoff,acceptance_cutoff_at:acceptanceCutoff,commitment_until:commitmentUntil,
         cancellation_notice:policy.cancellation_notice,contact_notice:policy.contact_notice };
+      if (input.replaces_offer_id) Object.assign(result,{replaces_offer_id:input.replaces_offer_id});
       const row = await repo.createOperation(client,{actorId,key,digest:payloadDigest,offerId:saved.id,
         action,result,snapshot:offerSnapshot});
       await repo.auditOperation(client,row.id,saved.id,actorId,action);

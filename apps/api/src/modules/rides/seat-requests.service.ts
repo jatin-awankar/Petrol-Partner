@@ -32,10 +32,11 @@ function relatedEventId(operationId:string,kind:string,requestId:string) {
   const hash = createHash("sha256").update(`${operationId}:${kind}:${requestId}`).digest("hex");
   return `${hash.slice(0,8)}-${hash.slice(8,12)}-4${hash.slice(13,16)}-8${hash.slice(17,20)}-${hash.slice(20,32)}`;
 }
-let clock = () => new Date();
+let clockOverride:(() => Date)|null=null;
+const clock=() => clockOverride?.() ?? new Date();
 export function setSeatRequestClockForTests(next:(() => Date)|null) {
   if (env.NODE_ENV !== "test") throw new Error("Seat request clock override is test-only");
-  clock = next ?? (() => new Date());
+  clockOverride = next;
 }
 function visibleRequest(row:repo.SeatRequest) {
   const confirmed = row.status === "accepted";
@@ -133,6 +134,9 @@ export class SeatRequestsService {
     for (const [id,expected] of latest) {
       const actual = await repo.requestSnapshot(this.db,id);
       for (const field of ["offer_id","passenger_id","driver_id","status","offer_version","offer_terms","decision_deadline_at"] as const) {
+        if (field === "status" && actual?.status === "cancelled"
+          && (expected.status === "pending" || expected.status === "accepted")
+          && await repo.hasCancellationAudit(this.db,id)) continue;
         if (!actual || JSON.stringify(actual[field]) !== JSON.stringify(expected[field]))
           throw new AppError(409,"Seat request recovery state conflicts with receipt","RECOVERY_CONFLICT");
       }
@@ -146,21 +150,21 @@ export class SeatRequestsService {
     const recovery = await operatorQuery<{mode:string}>(this.db,"recoveryMode");
     const state = recovery.rows[0]?.mode === "restricted" && row.state === "acknowledged"
       ? "pending_unknown" : row.state;
-    if (row.action === "accepted" && !await repo.acceptedTripVisible(this.db,row.request_id,actorId))
+    if (row.action === "accepted" && !await repo.acceptedTripVisible(this.db,row.request_id,actorId,clockOverride ? clock() : undefined))
       return {operation_id:row.id,state};
     return {operation_id:row.id,state,...row.result};
   }
 
   async list(actorId:string) {
-    return (await repo.listForParticipant(this.db,actorId)).map(visibleRequest);
+    return (await repo.listForParticipant(this.db,actorId,clockOverride ? clock() : undefined)).map(visibleRequest);
   }
 
   async confirmed(actorId:string) {
-    return repo.listConfirmedForParticipant(this.db,actorId);
+    return repo.listConfirmedForParticipant(this.db,actorId,undefined,clockOverride ? clock() : undefined);
   }
 
   async confirmedTrip(actorId:string,offerId:string) {
-    const bookings = await repo.listConfirmedForParticipant(this.db,actorId,offerId);
+    const bookings = await repo.listConfirmedForParticipant(this.db,actorId,offerId,clockOverride ? clock() : undefined);
     if (!bookings.length) throw new AppError(404,"Confirmed trip not found","TRIP_NOT_FOUND");
     return {offer_id:offerId,bookings};
   }
