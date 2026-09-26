@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { apiRequest } from "@/lib/api/client";
+import { apiRequest, ApiError } from "@/lib/api/client";
 import { useCurrentUser } from "@/hooks/auth/useCurrentUser";
+import { SeatRequestList, type SeatRequest } from "@/components/searchRides/SeatRequestList";
 
 type Stop = {code:string;label:string};
 type Policy = {stops:Stop[];permitted_pairs:{origin_code:string;destination_code:string}[]};
@@ -12,18 +13,64 @@ type Offer = {id:string;origin_code:string;destination_code:string;departure_at:
   contribution_paise:number;currency:string;capacity:number;available_seats:number;
   request_cutoff_at:string;cancellation_notice:string;contact_notice:string};
 export default function SearchRidesPage() {
-  const {isAuthenticated,loading} = useCurrentUser();
+  const {isAuthenticated,loading,user} = useCurrentUser();
   const router = useRouter();
   const [policy,setPolicy] = useState<Policy | null>(null);
   const [origin,setOrigin] = useState("");
   const [destination,setDestination] = useState("");
   const [offers,setOffers] = useState<Offer[]>([]);
   const [message,setMessage] = useState("");
+  const [requests,setRequests] = useState<SeatRequest[]>([]);
+  const [busy,setBusy] = useState<string | null>(null);
   useEffect(() => {if (!loading && !isAuthenticated) router.replace("/login");},[loading,isAuthenticated,router]);
   useEffect(() => {if (!isAuthenticated) return;
     void apiRequest<{policy:Policy}>("/v1/corridor-offers/policy").then(result => setPolicy(result.policy))
       .catch(error => setMessage(error instanceof Error ? error.message : "Corridor policy is unavailable"));
   },[isAuthenticated]);
+  async function refreshRequests() {
+    const result = await apiRequest<{requests:SeatRequest[]}>("/v1/seat-requests");
+    setRequests(result.requests);
+  }
+  useEffect(() => {if (isAuthenticated) void refreshRequests().catch(() => undefined);},[isAuthenticated]);
+  async function changeRequest(path:string,body:Record<string,unknown>,key:string) {
+    setBusy(key);setMessage("");
+    const storageKey = `seat-request:${user?.id ?? "unknown"}:${key}`;
+    const operationKey = window.sessionStorage.getItem(storageKey) ?? crypto.randomUUID();
+    window.sessionStorage.setItem(storageKey,operationKey);
+    try {
+      const result = await apiRequest<{operation_id:string;state:string}>(path,
+        {method:"POST",headers:{"Idempotency-Key":operationKey},body:JSON.stringify(body)});
+      if (result.state !== "acknowledged" && result.state !== "recovered") {
+        setMessage("Request outcome is pending. Retry this action to check the same operation.");
+        return;
+      }
+      window.sessionStorage.removeItem(storageKey);
+      const refreshed = await refreshRequests().then(() => true,() => false);
+      setMessage(refreshed ? "Seat request updated. Pending requests are not confirmed and reserve no seat."
+        : "Seat request recorded. Reload this page to see its latest status.");
+    } catch(error) {
+      if (error instanceof ApiError && error.status < 500 && error.code !== "OPERATION_PENDING") {
+        window.sessionStorage.removeItem(storageKey);
+        setMessage(error.message);
+        return;
+      }
+      const operationId = error instanceof ApiError && typeof error.details === "object" && error.details !== null
+        && "operationId" in error.details ? error.details.operationId : null;
+      if (typeof operationId === "string") {
+        const status = await apiRequest<{operation:{state:string}}>(`/v1/seat-requests/operations/${operationId}`)
+          .catch(() => null);
+        if (status?.operation.state === "acknowledged" || status?.operation.state === "recovered") {
+          window.sessionStorage.removeItem(storageKey);
+          await refreshRequests().catch(() => undefined);
+          setMessage("Seat request updated. Pending requests are not confirmed and reserve no seat.");
+        } else setMessage("Request outcome is pending. Retry this action to check the same operation.");
+      } else {
+        setMessage(error instanceof Error ? `${error.message} Retry uses the same operation.`
+          : "Outcome unknown. Retry uses the same operation.");
+      }
+    }
+    finally {setBusy(null);}
+  }
   async function search(event:React.FormEvent) {
     event.preventDefault();setMessage("");
     try {
@@ -49,6 +96,13 @@ export default function SearchRidesPage() {
       <p>₹{(offer.contribution_paise/100).toFixed(2)} {offer.currency} per passenger · {offer.available_seats} of {offer.capacity} seats available</p>
       <p className="text-sm">Requests close {new Date(offer.request_cutoff_at).toLocaleString("en-IN",{timeZone:"Asia/Kolkata"})} IST</p>
       <p className="mt-2 text-sm">{offer.cancellation_notice} {offer.contact_notice}</p>
+      <button className="mt-3 rounded bg-primary px-4 py-2 text-primary-foreground disabled:opacity-50"
+        disabled={busy !== null || requests.some(item => item.offer_id === offer.id && item.status === "pending")}
+        onClick={() => void changeRequest("/v1/seat-requests",{offer_id:offer.id,seats:1},offer.id)}>
+        Request one seat
+      </button>
     </li>)}</ul>
+    <SeatRequestList requests={requests} currentUserId={user?.id} busy={busy !== null}
+      onReject={id => void changeRequest(`/v1/seat-requests/${id}/reject`,{},id)} />
   </main>;
 }

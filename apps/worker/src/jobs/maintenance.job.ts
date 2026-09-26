@@ -3,6 +3,7 @@ import { Worker } from "bullmq";
 import { env } from "../config/env";
 import { logger } from "../config/logger";
 import { pool } from "../db/pool";
+import { expirePilotSeatRequests } from "./pilot-seat-expiry";
 import {
   bookingExpiryQueue,
   maintenanceQueueName,
@@ -185,6 +186,9 @@ export function createMaintenanceWorker() {
           break;
         case "delete-locked-chat-rooms":
           result = await deleteLockedChatRooms();
+          break;
+        case "expire-pilot-seat-requests":
+          result = await expirePilotSeatRequests(pool);
           break;
         default:
           result = { skipped: true };

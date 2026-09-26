@@ -1,0 +1,207 @@
+import { createHash } from "node:crypto";
+import type { Pool } from "pg";
+import { env } from "../../config/env";
+import { pool } from "../../db/pool";
+import { AppError } from "../../shared/errors/app-error";
+import { recordDurableNotification } from "../notifications/contract.repo";
+import { backupStatus } from "../operator/backup-status";
+import { operatorQuery } from "../operator/operator.repo";
+import { assertCurrentOperator } from "../operator/operator.authorization";
+import { pauseService } from "../operator/pause.service";
+import { inProtectedTransaction } from "../protected-mutation/protocol";
+import { pilotReceiptStore, restrictProtectedWrites } from "../protected-mutation/receipt-evidence";
+import { assertCurrentDriverCarEligibility, assertCurrentStudentForSubmission } from "../verification/verification.service";
+import * as repo from "./seat-requests.repo";
+
+type Receipt = { operationId:string; actorId:string; key:string; digest:string; requestId:string;
+  action:string; result:Record<string,unknown>; snapshot:repo.SeatRequest; createdAt:string };
+function receipt(row:repo.RequestOperation):Receipt {
+  return {operationId:row.id,actorId:row.actor_id,key:row.idempotency_key,digest:row.payload_digest,
+    requestId:row.request_id,action:row.action,result:row.result,snapshot:row.request_snapshot,
+    createdAt:row.created_at.toISOString()};
+}
+function store() {
+  return pilotReceiptStore<Receipt>("seat-request","Seat request recovery evidence unavailable");
+}
+function digest(action:string,id:string) {
+  return createHash("sha256").update(JSON.stringify({action,id})).digest("hex");
+}
+let clock = () => new Date();
+export function setSeatRequestClockForTests(next:(() => Date)|null) {
+  if (env.NODE_ENV !== "test") throw new Error("Seat request clock override is test-only");
+  clock = next ?? (() => new Date());
+}
+function visibleRequest(row:repo.SeatRequest) {
+  return {...row,status:row.status === "pending" && row.decision_deadline_at <= clock() ? "expired" : row.status,
+    confirmed:false,seats_reserved:0};
+}
+function notification(row:repo.RequestOperation,snapshot:repo.SeatRequest) {
+  return {eventId:row.id,originType:"seat_request",operationId:row.id,
+    recipientId:row.action === "requested" ? snapshot.driver_id : snapshot.passenger_id,
+    eventType:row.action,relatedEntityType:"seat_request",relatedEntityId:row.request_id,
+    title:row.action === "requested" ? "Seat request received" : "Seat request rejected",
+    body:row.action === "requested" ? "A passenger requested one seat. No seat is reserved yet."
+      : "The driver rejected your seat request."};
+}
+
+export class SeatRequestsService {
+  constructor(private readonly db:Pool = pool) {}
+
+  async receipts() {return store().list();}
+  async pending() {return repo.pendingOperations(this.db);}
+  async verifyEvidence(retry?:{actorId:string;key:string}) {
+    try {
+      const backup = await backupStatus(this.db);
+      if (backup.required && !backup.healthy) throw new AppError(503,"Database backup is stale","BACKUP_STALE");
+      const receipts = new Map((await store().list()).map(item => [item.operationId,item]));
+      const rows = await repo.allOperations(this.db);
+      const operations = new Map(rows.map(row => [row.id,row]));
+      for (const item of receipts.values()) {
+        const row = operations.get(item.operationId);
+        if (!row || JSON.stringify(receipt(row)) !== JSON.stringify(item))
+          throw new AppError(503,"Seat request recovery evidence conflicts with database","RECOVERY_CONFLICT");
+      }
+      for (const row of rows.filter(item => item.state !== "committed")) {
+        if (JSON.stringify(receipts.get(row.id)) !== JSON.stringify(receipt(row)))
+          throw new AppError(503,"Seat request recovery evidence is missing","RECOVERY_MISSING");
+      }
+      const pending = rows.filter(item => item.state === "committed");
+      if (pending.length && (!retry || pending.some(item => item.actor_id !== retry.actorId || item.idempotency_key !== retry.key)))
+        throw new AppError(503,"Seat request recovery is pending","OPERATION_PENDING",{operationId:pending[0].id});
+    } catch (error) {
+      if (!(error instanceof AppError && error.code === "OPERATION_PENDING"))
+        await restrictProtectedWrites(this.db,"seat_request_evidence_unavailable");
+      throw error;
+    }
+  }
+
+  async reconcileReceipts(operatorId:string) {
+    await inProtectedTransaction(this.db,client => assertCurrentOperator(client,operatorId));
+    for (const row of await this.pending()) await store().append(receipt(row));
+    const receipts = (await store().list()).sort((a,b) => a.createdAt.localeCompare(b.createdAt));
+    for (const item of receipts) {
+      await inProtectedTransaction(this.db,async client => {
+        await assertCurrentOperator(client,operatorId);
+        const row = await repo.restoreOperation(client,item);
+        if (JSON.stringify(receipt(row)) !== JSON.stringify(item))
+          throw new AppError(409,"Seat request recovery conflicts with receipt","RECOVERY_CONFLICT");
+        if (row.state === "committed") await repo.markRecovered(client,row.id);
+        await repo.restoreAudit(client,row);
+        await recordDurableNotification(client,notification(row,item.snapshot));
+        await repo.readyNotifications(client,row.id);
+      });
+    }
+    const latest = new Map<string,repo.SeatRequest>();
+    for (const item of receipts) {
+      if (item.action === "rejected" || !latest.has(item.requestId)) latest.set(item.requestId,item.snapshot);
+    }
+    for (const [id,expected] of latest) {
+      const actual = await repo.requestSnapshot(this.db,id);
+      for (const field of ["offer_id","passenger_id","driver_id","status","offer_version","offer_terms","decision_deadline_at"] as const) {
+        if (!actual || JSON.stringify(actual[field]) !== JSON.stringify(expected[field]))
+          throw new AppError(409,"Seat request recovery state conflicts with receipt","RECOVERY_CONFLICT");
+      }
+    }
+    return receipts.length;
+  }
+
+  async operation(actorId:string,id:string) {
+    const row = await repo.byId(this.db,id,actorId);
+    if (!row) throw new AppError(404,"Operation not found","OPERATION_NOT_FOUND");
+    const recovery = await operatorQuery<{mode:string}>(this.db,"recoveryMode");
+    return {operation_id:row.id,state:recovery.rows[0]?.mode === "restricted" && row.state === "acknowledged"
+      ? "pending_unknown" : row.state,...row.result};
+  }
+
+  async list(actorId:string) {
+    return (await repo.listForParticipant(this.db,actorId)).map(visibleRequest);
+  }
+
+  async mutate(actorId:string,key:string,action:"requested"|"rejected",id:string) {
+    const payloadDigest = digest(action,id);
+    const existing = await repo.byKey(this.db,actorId,key);
+    if (existing && existing.payload_digest !== payloadDigest)
+      throw new AppError(409,"Idempotency payload mismatch","IDEMPOTENCY_PAYLOAD_MISMATCH");
+    if (existing) return this.operation(actorId,existing.id);
+    await pauseService.assertAvailable("requests");
+    await this.verifyEvidence({actorId,key});
+    const recovery = await operatorQuery<{mode:string}>(this.db,"recoveryMode");
+    if (recovery.rows[0]?.mode !== "open") throw new AppError(503,"Protected writes are restricted","RECOVERY_RESTRICTED");
+    const evidence = store();
+    try {
+      await evidence.probe();
+      const backup = await backupStatus(this.db);
+      if (backup.required && !backup.healthy) throw new AppError(503,"Database backup is stale","BACKUP_STALE");
+    } catch (error) {
+      await restrictProtectedWrites(this.db,"seat_request_evidence_unavailable");
+      throw error;
+    }
+    const operation = await inProtectedTransaction(this.db,async client => {
+      const currentRecovery = await operatorQuery<{mode:string}>(client,"recoveryModeForUpdate");
+      await operatorQuery(client,"lockIdempotencyKey",[`seat-request:${actorId}:${key}`]);
+      const prior = await repo.byKey(client,actorId,key);
+      if (prior) {
+        if (prior.payload_digest !== payloadDigest)
+          throw new AppError(409,"Idempotency payload mismatch","IDEMPOTENCY_PAYLOAD_MISMATCH");
+        return prior;
+      }
+      if (currentRecovery.rows[0]?.mode !== "open") throw new AppError(503,"Protected writes are restricted","RECOVERY_RESTRICTED");
+      await assertCurrentStudentForSubmission(client,actorId);
+      let requestId:string;
+      if (action === "requested") {
+        const offer = await repo.offerForUpdate(client,id);
+        if (!offer) throw new AppError(404,"Offer not found","RIDE_NOT_FOUND");
+        if (offer.status !== "active" || !offer.pilot_request_cutoff_at ||
+            offer.pilot_request_cutoff_at <= clock())
+          throw new AppError(409,"Requests are closed","REQUEST_WINDOW_CLOSED");
+        if (offer.driver_id === actorId) throw new AppError(409,"You cannot request your own offer","SELF_BOOKING_FORBIDDEN");
+        if (offer.pilot_capacity <= 0) throw new AppError(409,"Offer has no seats","INSUFFICIENT_SEATS");
+        await assertCurrentDriverCarEligibility(client,offer.driver_id,offer.vehicle_id);
+        try { requestId = await repo.insertRequest(client,offer,actorId); }
+        catch (error) {
+          if ((error as {code?:string}).code === "23505")
+            throw new AppError(409,"An active request already exists","DUPLICATE_ACTIVE_REQUEST");
+          throw error;
+        }
+      } else {
+        const initial = await repo.requestForUpdate(client,id);
+        if (!initial) throw new AppError(404,"Request not found","REQUEST_NOT_FOUND");
+        // Match the offer edit lock order for every decision.
+        const offer = await repo.offerForUpdate(client,initial.offer_id);
+        if (!offer) throw new AppError(404,"Offer not found","RIDE_NOT_FOUND");
+        if (initial.driver_id !== actorId) throw new AppError(403,"Only the driver may reject","FORBIDDEN");
+        await assertCurrentDriverCarEligibility(client,actorId,offer.vehicle_id);
+        if (initial.status !== "pending" || initial.decision_deadline_at <= clock())
+          throw new AppError(409,"Request is no longer pending","REQUEST_NOT_PENDING");
+        await repo.rejectRequest(client,id);
+        requestId = id;
+      }
+      const snapshot = await repo.requestSnapshot(client,requestId);
+      const result = {request:visibleRequest(snapshot)};
+      const row = await repo.insertOperation(client,{actorId,key,digest:payloadDigest,requestId,action,result,snapshot});
+      await repo.audit(client,row);
+      await recordDurableNotification(client,notification(row,snapshot));
+      return row;
+    });
+    if (operation.state !== "committed") return this.operation(actorId,operation.id);
+    try {
+      const acknowledged = await inProtectedTransaction(this.db,async client => {
+        const row = await repo.operationById(client,operation.id);
+        if (!row) throw new AppError(503,"Request operation missing","RECOVERY_MISSING");
+        if (row.state !== "committed") return row;
+        await evidence.append(receipt(row));
+        const backup = await backupStatus(client);
+        if (backup.required && !backup.healthy) throw new AppError(503,"Database backup is stale","BACKUP_STALE");
+        const result = await repo.acknowledge(client,row.id);
+        await repo.readyNotifications(client,row.id);
+        return result;
+      });
+      return {operation_id:acknowledged.id,state:acknowledged.state,...acknowledged.result};
+    } catch {
+      await restrictProtectedWrites(this.db,"seat_request_evidence_pending");
+      throw new AppError(503,"Request committed; recovery evidence pending","OPERATION_PENDING",{operationId:operation.id});
+    }
+  }
+}
+
+export const seatRequestsService = new SeatRequestsService();

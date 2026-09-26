@@ -4,7 +4,7 @@
 
 **Blocked by:** 15 (Publish and discover a corridor offer).
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 **Work type:** Feature slice
 
@@ -26,3 +26,15 @@
 Record the demonstrated behavior, checks run and their results, remaining limitations, and any required operator decision. A technical ticket is not resolved while a required criterion fails or depends on missing evidence. Human-led tickets require the actual human findings or decision; agent-generated assumptions cannot close them.
 
 Follow the local tracker's claim/resolution convention: use `claimed` when work starts and `resolved` only when the acceptance criteria are evidenced. Add an Answer section with the outcome and append subsequent discussion under Comments. Readiness describes who may do the work; it does not override the blocking edges.
+
+## Comments
+
+- Implemented the pilot request and rejection HTTP flow, separate from legacy bookings, with one-seat validation, current student and driver-car checks, unchanged capacity, offer freeze, idempotency, audit, durable notifications, and independent recovery receipts. Due processing emits recipient-specific expiry notices without changing capacity.
+- PostgreSQL HTTP integration covers competing requests, request/edit race, duplicate and self requests, cutoff checks, wrong-owner rejection, logical expiry, notification rollback, and idempotent expiry delivery. `npm run typecheck`, `npm run lint`, `npm test`, and `npm run build:all` passed on 2026-09-26. Lint has ten pre-existing warnings.
+- A focused recovery rehearsal restored four request/rejection operations from independent receipts after deleting their database rows. Restored notification events retain stable IDs and pending email work so provider retries use the same event key. Browser actions retain their idempotency key through uncertain outcomes, and an open request list updates at the decision deadline.
+
+## Answer
+
+Verified one-seat requests and driver rejection through HTTP and participant views. Pending requests keep capacity unchanged, offer edits freeze after the first request, and deadline expiry remains visible without the worker. The due sweep records one expiry notice per recipient and keeps provider idempotency IDs stable. PostgreSQL HTTP tests cover authorization, eligibility, retries, duplicate requests, competing requests, request/edit races, exact before/at/after boundaries for both cutoffs, notification rollback, and receipt restoration. A browser component test covers pending, rejected, and deadline-expired states.
+
+Checks: `npm run typecheck`, `npm run lint` (ten existing warnings), `npm test`, and `npm run build:all` passed on 2026-09-26. No deployed schema or user population was migrated or inventoried. Real trips still require the launch gates in `docs/pilot-spec.md`; no operator decision is required to close this technical slice.

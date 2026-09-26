@@ -33,6 +33,7 @@ interface LockedRideRow {
   counterparty_gender_preference: string;
   date: Date | string;
   time: Date | string;
+  pilot_policy_id: string | null;
 }
 
 interface LockedBookingRow {
@@ -208,7 +209,8 @@ export function findRideOfferForUpdate(id: string, client: PoolClient) {
        status,
        counterparty_gender_preference,
        date,
-       time
+       time,
+       pilot_policy_id
      FROM ride_offers
      WHERE id = $1
      FOR UPDATE`,

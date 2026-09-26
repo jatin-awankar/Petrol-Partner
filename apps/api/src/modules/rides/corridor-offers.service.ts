@@ -4,8 +4,7 @@ import { env } from "../../config/env";
 import { pool } from "../../db/pool";
 import { AppError } from "../../shared/errors/app-error";
 import { inProtectedTransaction } from "../protected-mutation/protocol";
-import { B2ReceiptStore } from "../operator/b2-receipt-store";
-import { SignedReceiptStore } from "../operator/receipt-store";
+import { pilotReceiptStore, restrictProtectedWrites } from "../protected-mutation/receipt-evidence";
 import { backupStatus } from "../operator/backup-status";
 import { operatorQuery } from "../operator/operator.repo";
 import { assertCurrentOperator } from "../operator/operator.authorization";
@@ -30,27 +29,7 @@ function receipt(row: repo.Operation): Receipt {
     result: row.result, offerSnapshot: row.offer_snapshot, createdAt: row.created_at.toISOString() };
 }
 function store() {
-  const secret = process.env.PILOT_RECEIPT_SECRET ?? env.PILOT_RECEIPT_SECRET;
-  if (!secret || secret.length < 32) throw new AppError(503,"Offer recovery evidence unavailable","RECOVERY_UNAVAILABLE");
-  if (env.PILOT_RECEIPT_BACKEND === "b2") {
-    const { PILOT_B2_BUCKET: bucket, PILOT_B2_ENDPOINT: endpoint, PILOT_B2_WRITER_KEY_ID: keyId,
-      PILOT_B2_WRITER_KEY: applicationKey, PILOT_B2_PREFIX: prefix,
-      PILOT_B2_RETENTION_DAYS: retentionDays } = env;
-    if (!bucket || !endpoint || !keyId || !applicationKey || !prefix || !retentionDays)
-      throw new AppError(503,"Offer recovery evidence unavailable","RECOVERY_UNAVAILABLE");
-    return new B2ReceiptStore<Receipt>({ bucket,endpoint,keyId,applicationKey,prefix,retentionDays,secret },"corridor-offer");
-  }
-  const path = process.env.PILOT_RECEIPT_PATH ?? env.PILOT_RECEIPT_PATH;
-  if (env.NODE_ENV === "production" || !path)
-    throw new AppError(503,"Offer recovery evidence unavailable","RECOVERY_UNAVAILABLE");
-  return new SignedReceiptStore<Receipt>(`${path}.corridor-offer`,secret);
-}
-async function restrict(db: Pool, cause: string) {
-  await inProtectedTransaction(db, async client => {
-    await operatorQuery(client,"recoveryModeForUpdate");
-    await operatorQuery(client,"enterRestrictedMode",[cause]);
-    await operatorQuery(client,"recordRestriction",[cause]);
-  });
+  return pilotReceiptStore<Receipt>("corridor-offer","Offer recovery evidence unavailable");
 }
 async function policySnapshot(db: PoolClient, input: CorridorOfferInput, now: Date) {
   const policy = await repo.currentPolicy(db);
@@ -139,7 +118,7 @@ export class CorridorOffersService {
       }
     } catch (error) {
       if (!(error instanceof AppError && error.code === "OPERATION_PENDING"))
-        await restrict(this.db,"corridor_offer_evidence_unavailable");
+        await restrictProtectedWrites(this.db,"corridor_offer_evidence_unavailable");
       throw error;
     }
   }
@@ -251,7 +230,7 @@ export class CorridorOffersService {
       });
       return {operation_id:saved.id,state:saved.state,...saved.result};
     } catch {
-      await restrict(this.db,"corridor_offer_evidence_pending");
+      await restrictProtectedWrites(this.db,"corridor_offer_evidence_pending");
       throw new AppError(503,"Offer committed; recovery evidence pending","OPERATION_PENDING",{operationId:operation.id});
     }
   }
