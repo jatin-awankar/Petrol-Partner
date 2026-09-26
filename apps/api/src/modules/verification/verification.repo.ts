@@ -735,6 +735,14 @@ export async function findTransactionEligibilityByUserId(userId: string) {
   return result.rows[0] ?? null;
 }
 
+export async function findStudentEligibilityForUpdate(client: PoolClient, userId: string) {
+  const result = await client.query<{
+    status: string; adult_eligible: boolean | null; eligibility_ends_at: Date;
+  }>(`SELECT status, adult_eligible, eligibility_ends_at
+      FROM student_verifications WHERE user_id = $1 FOR UPDATE`, [userId]);
+  return result.rows[0] ?? null;
+}
+
 export async function findApprovedVehicleForOwner(userId: string, vehicleId: string) {
   const result = await dbQuery<VehicleRow>(
     `SELECT

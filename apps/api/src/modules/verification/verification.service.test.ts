@@ -10,6 +10,7 @@ vi.mock("../../shared/audit/logs", () => ({
 
 vi.mock("./verification.repo", () => ({
   findTransactionEligibilityByUserId: vi.fn(),
+  findStudentEligibilityForUpdate: vi.fn(),
   findApprovedVehicleForOwner: vi.fn(),
   findStudentVerificationForUpdate: vi.fn(async () => null),
   studentEvidenceForUpdate: vi.fn(async () => null),

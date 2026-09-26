@@ -1,4 +1,5 @@
 import { withTransaction } from "../../db/transaction";
+import type { PoolClient } from "pg";
 import { createHash, randomUUID } from "node:crypto";
 import { insertAuditLog } from "../../shared/audit/logs";
 import { AppError } from "../../shared/errors/app-error";
@@ -16,6 +17,14 @@ import type {
 import * as verificationRepo from "./verification.repo";
 
 const ACTIVE_STUDENT_STATUSES = new Set(["verified", "revalidation_due"]);
+
+async function assertCurrentStudentForSubmission(client: PoolClient, userId: string) {
+  const student = await verificationRepo.findStudentEligibilityForUpdate(client, userId);
+  if (!student || !ACTIVE_STUDENT_STATUSES.has(student.status) ||
+      student.adult_eligible !== true || new Date(student.eligibility_ends_at) <= new Date()) {
+    throw new AppError(403, "Current student approval is required", "STUDENT_VERIFICATION_INACTIVE");
+  }
+}
 
 function deriveEligibilityEndsAt(input: UpsertStudentVerificationInput) {
   return new Date(Date.UTC(input.graduation_year, 11, 31, 23, 59, 59));
@@ -249,7 +258,7 @@ export function upsertDriverEligibility(userId: string, input: UpsertDriverEligi
   const status = deriveDriverEligibilityStatus(input);
 
   return withTransaction(async (client) => {
-    await assertVerifiedStudentCanTransact(userId);
+    await assertCurrentStudentForSubmission(client, userId);
     return verificationRepo.upsertDriverEligibility(
       {
         userId,
@@ -279,7 +288,7 @@ export function listVehicles(userId: string) {
 
 export function createVehicle(userId: string, input: CreateVehicleInput) {
   return withTransaction(async (client) => {
-    await assertVerifiedStudentCanTransact(userId);
+    await assertCurrentStudentForSubmission(client, userId);
     return verificationRepo.createVehicle(
       {
         ownerUserId: userId,
@@ -307,6 +316,7 @@ export async function updateVehicle(userId: string, vehicleId: string, input: Up
   }
 
   return withTransaction(async (client) => {
+    await assertCurrentStudentForSubmission(client, userId);
     const vehicle = await verificationRepo.updateVehicle(
       {
         ownerUserId: userId,
