@@ -82,6 +82,9 @@ export class SeatRequestsService {
         const row = operations.get(item.operationId);
         if (!row || JSON.stringify(receipt(row)) !== JSON.stringify(item))
           throw new AppError(503,"Seat request recovery evidence conflicts with database","RECOVERY_CONFLICT");
+        if (item.action === "accepted" &&
+            !await repo.acceptedAllocationMatches(this.db,item.result.booking as repo.Allocation))
+          throw new AppError(503,"Accepted seat allocation conflicts with recovery evidence","RECOVERY_CONFLICT");
       }
       for (const row of rows.filter(item => item.state !== "committed")) {
         if (JSON.stringify(receipts.get(row.id)) !== JSON.stringify(receipt(row)))
@@ -107,6 +110,8 @@ export class SeatRequestsService {
         const row = await repo.restoreOperation(client,item);
         if (JSON.stringify(receipt(row)) !== JSON.stringify(item))
           throw new AppError(409,"Seat request recovery conflicts with receipt","RECOVERY_CONFLICT");
+        if (item.action === "accepted")
+          await repo.reconcileAcceptedAllocation(client,item.result.booking as repo.Allocation);
         if (row.state === "committed") await repo.markRecovered(client,row.id);
         await repo.restoreAudit(client,row);
         if (row.action === "accepted") await repo.auditWithdrawals(client,row.id,

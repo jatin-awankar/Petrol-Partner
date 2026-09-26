@@ -23,7 +23,9 @@ export default function SearchRidesPage() {
   const [requests,setRequests] = useState<SeatRequest[]>([]);
   const [bookings,setBookings] = useState<Array<{id:string;offer_id:string;contribution_paise:number;currency:string;
     departure_at:string;status:string;origin_code:string;destination_code:string;
-    car_registration_last4:string;driver_verified_name:string|null;passenger_verified_name:string|null}>>([]);
+    driver_id:string;passenger_id:string;passenger_origin_code:string;passenger_destination_code:string;
+    pickup_location:string;car_registration_last4:string;car_make:string|null;car_model:string|null;
+    car_color:string|null;driver_verified_name:string|null;passenger_verified_name:string|null}>>([]);
   const [busy,setBusy] = useState<string | null>(null);
   useEffect(() => {if (!loading && !isAuthenticated) router.replace("/login");},[loading,isAuthenticated,router]);
   useEffect(() => {if (!isAuthenticated) return;
@@ -116,10 +118,12 @@ export default function SearchRidesPage() {
         {booking.origin_code} → {booking.destination_code} · One seat ·
         {new Date(booking.departure_at).toLocaleString("en-IN",{timeZone:"Asia/Kolkata"})} IST ·
         ₹{(booking.contribution_paise/100).toFixed(2)} {booking.currency} · {booking.status}
-        <span className="block text-sm">Car registration ending {booking.car_registration_last4}.
-          {booking.driver_verified_name && ` Driver: ${booking.driver_verified_name}.`}
-          {booking.passenger_verified_name && ` Passenger: ${booking.passenger_verified_name}.`}
-          No contribution is due before journey confirmation.</span>
+        <span className="block text-sm">Pickup: {booking.pickup_location}. Car: {[booking.car_color,
+          booking.car_make,booking.car_model].filter(Boolean).join(" ") || "Details pending"}, registration ending {booking.car_registration_last4}.</span>
+        <span className="block text-sm">{booking.passenger_id === user?.id
+          ? `Driver: ${booking.driver_verified_name ?? "Name pending"}.`
+          : `Passenger: ${booking.passenger_verified_name ?? "Name pending"}; ${booking.passenger_origin_code} → ${booking.passenger_destination_code}.`}
+          {" "}Phone numbers remain private until ownership verification is available. No contribution is due before journey confirmation.</span>
       </li>)}</ul>
     </section>
   </main>;

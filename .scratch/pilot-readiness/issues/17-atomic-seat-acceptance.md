@@ -35,3 +35,7 @@ PostgreSQL HTTP coverage uses separate connections for last-seat and overlapping
 Checks on 2026-09-26: `npm run lint` passed with 11 warnings and no errors; `npm run typecheck` passed; `npm test` passed (82 API tests, one skipped, 16 worker tests, plus repository script tests); `npm run build:all` passed. The two-axis review against `main` found notification duplication, role withdrawal, detail retention and uncertain-outcome coverage gaps; all were corrected and rechecked.
 
 No deployed schema or user population was inventoried or migrated. Real trips remain subject to the launch gates in `docs/pilot-spec.md`. No operator decision is required to close this technical slice.
+
+## Review follow-up (2026-09-26)
+
+Recovery now compares accepted allocation identity and frozen terms with the independent receipt before protected writes proceed. Reconciliation restores a missing allocation when the operation survives in the database; the PostgreSQL regression test proves both behaviors. Confirmed-booking views now show the car's make, model, colour, registration suffix, pickup location, and passenger stop pair. Phone numbers remain hidden by explicit maintainer decision until a later ticket establishes phone ownership verification and updates the contact-sharing notice. The phone portion of the broader pilot contact contract remains a launch dependency.

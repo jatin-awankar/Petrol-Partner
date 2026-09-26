@@ -136,18 +136,57 @@ export async function auditWithdrawals(db:PoolClient,operationId:string,requestI
 }
 export async function listConfirmedForParticipant(db:Database,userId:string) {
   return (await db.query<Allocation & {origin_code:string;destination_code:string;
-    car_registration_last4:string;driver_verified_name:string|null;passenger_verified_name:string|null}>(
+    passenger_origin_code:string;passenger_destination_code:string;pickup_location:string;
+    car_registration_last4:string;car_make:string|null;car_model:string|null;car_color:string|null;
+    driver_verified_name:string|null;passenger_verified_name:string|null}>(
     `SELECT a.*,r.offer_terms->>'origin_code' AS origin_code,
       r.offer_terms->>'destination_code' AS destination_code,
+      r.offer_terms->>'origin_code' AS passenger_origin_code,
+      r.offer_terms->>'destination_code' AS passenger_destination_code,
+      o.pickup_location,
       v.registration_number_last4 AS car_registration_last4,
+      v.make AS car_make,v.model AS car_model,v.color AS car_color,
       ds.enrolled_name AS driver_verified_name,ps.enrolled_name AS passenger_verified_name
       FROM pilot_seat_allocations a JOIN pilot_seat_requests r ON r.id=a.request_id
+      JOIN ride_offers o ON o.id=a.offer_id
       JOIN vehicles v ON v.id=a.vehicle_id
       LEFT JOIN student_verifications ds ON ds.user_id=a.driver_id
       LEFT JOIN student_verifications ps ON ps.user_id=a.passenger_id
       WHERE (a.driver_id=$1 OR a.passenger_id=$1)
         AND (a.status IN ('confirmed','held') OR a.ended_at > now()-interval '24 hours')
       ORDER BY a.accepted_at DESC LIMIT 100`,[userId])).rows;
+}
+export async function reconcileAcceptedAllocation(db:PoolClient,expected:Allocation) {
+  const existing = (await db.query<Allocation>(
+    "SELECT * FROM pilot_seat_allocations WHERE id=$1 FOR UPDATE",[expected.id])).rows[0];
+  if (!existing) {
+    await db.query(`INSERT INTO pilot_seat_allocations
+      (id,request_id,offer_id,driver_id,passenger_id,vehicle_id,seats,contribution_paise,
+       currency,offer_version,policy_version,departure_at,commitment_until,status,accepted_at,ended_at)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+      [expected.id,expected.request_id,expected.offer_id,expected.driver_id,expected.passenger_id,
+       expected.vehicle_id,expected.seats,expected.contribution_paise,expected.currency,
+       expected.offer_version,expected.policy_version,expected.departure_at,expected.commitment_until,
+       expected.status,expected.accepted_at,expected.ended_at]);
+    return;
+  }
+  if (!sameAcceptedAllocation(existing,expected))
+    throw new Error("Accepted allocation conflicts with recovery receipt");
+}
+function sameAcceptedAllocation(existing:Allocation,expected:Allocation) {
+  for (const field of ["request_id","offer_id","driver_id","passenger_id","vehicle_id","seats",
+    "contribution_paise","currency","offer_version","policy_version","departure_at",
+    "commitment_until","accepted_at"] as const) {
+    if (String(existing[field]) !== String(field === "departure_at" || field === "commitment_until" || field === "accepted_at"
+      ? new Date(expected[field]) : expected[field]))
+      return false;
+  }
+  return true;
+}
+export async function acceptedAllocationMatches(db:Database,expected:Allocation) {
+  const existing = (await db.query<Allocation>(
+    "SELECT * FROM pilot_seat_allocations WHERE id=$1",[expected.id])).rows[0];
+  return Boolean(existing && sameAcceptedAllocation(existing,expected));
 }
 export async function restoreOperation(db:PoolClient,item:{operationId:string;actorId:string;key:string;
   digest:string;requestId:string;action:string;result:Record<string,unknown>;

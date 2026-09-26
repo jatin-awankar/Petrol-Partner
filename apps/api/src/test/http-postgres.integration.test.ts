@@ -71,6 +71,7 @@ describe("pilot seat requests through HTTP and PostgreSQL", () => {
         (owner_user_id,vehicle_type,registration_number_last4,seat_capacity,status,verification_status,
          use_category,applicable_document_required,insurance_expires_at,review_after)
         VALUES($1,'car','1234',2,'active','approved','private',true,'2099-12-31','2099-12-30') RETURNING id`,[driver.id])).rows[0].id;
+      await verificationPool.query("UPDATE vehicles SET make='Tata',model='Tiago',color='Blue' WHERE id=$1",[car]);
       await verificationPool.query(`INSERT INTO driver_vehicle_approvals
         (driver_user_id,vehicle_id,permission_category,status,review_after)
         VALUES($1,$2,'owner','approved','2099-12-30')`,[driver.id,car]);
@@ -261,7 +262,10 @@ describe("pilot seat requests through HTTP and PostgreSQL", () => {
       const bookings = await request(createApp()).get("/v1/seat-requests/confirmed")
         .set("Authorization",`Bearer ${driver.token}`);
       expect(bookings.body.bookings).toEqual(expect.arrayContaining([
-        expect.objectContaining({offer_id:offer.body.offer.id,contribution_paise:2500})]));
+        expect.objectContaining({offer_id:offer.body.offer.id,contribution_paise:2500,
+          car_make:"Tata",car_model:"Tiago",car_color:"Blue",
+          pickup_location:"Amravati University",passenger_origin_code:"university",
+          passenger_destination_code:"prmitr"})]));
       expect((await verificationPool.query<{count:number}>(`SELECT count(*)::int AS count
         FROM pilot_seat_allocations WHERE offer_id=$1`,[offer.body.offer.id])).rows[0].count).toBe(1);
       await verificationPool.query(`UPDATE pilot_seat_allocations SET status='completed',
@@ -300,6 +304,15 @@ describe("pilot seat requests through HTTP and PostgreSQL", () => {
       expect(await new SeatRequestsService().reconcileReceipts(operatorId)).toBe(9);
       expect((await verificationPool.query<{count:number}>(`SELECT count(*)::int AS count
         FROM pilot_seat_allocations WHERE offer_id=$1`,[offer.body.offer.id])).rows[0].count).toBe(1);
+      await verificationPool.query("DELETE FROM pilot_seat_allocations WHERE offer_id=$1",[offer.body.offer.id]);
+      expect(await new SeatRequestsService().reconcileReceipts(operatorId)).toBe(9);
+      expect((await verificationPool.query<{count:number}>(`SELECT count(*)::int AS count
+        FROM pilot_seat_allocations WHERE offer_id=$1`,[offer.body.offer.id])).rows[0].count).toBe(1);
+      await verificationPool.query("UPDATE pilot_recovery_state SET mode='open' WHERE singleton=true");
+      await verificationPool.query("DELETE FROM pilot_seat_allocations WHERE offer_id=$1",[offer.body.offer.id]);
+      await expect(new SeatRequestsService().verifyEvidence()).rejects.toMatchObject({
+        statusCode:503,code:"RECOVERY_CONFLICT"});
+      expect(await new SeatRequestsService().reconcileReceipts(operatorId)).toBe(9);
       await verificationPool.query("UPDATE pilot_recovery_state SET mode='open' WHERE singleton=true");
       await verificationPool.query(`CREATE OR REPLACE FUNCTION delay_acceptance_receipt_for_test()
         RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
