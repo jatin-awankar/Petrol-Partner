@@ -52,6 +52,11 @@ async function notifications(client:PoolClient,row:repo.CancellationOperation) {
 
 export class CancellationsService {
   constructor(private readonly db:Pool=pool) {}
+  async reportInterruption(actorId:string,key:string,offerId:string,reason:string) {
+    if(await repo.offerStatus(this.db,offerId)!=="departed")
+      throw new AppError(409,"Only an active trip can be interrupted","TRIP_NOT_STARTED");
+    return this.cancel(actorId,key,"offer",offerId,`Interruption: ${reason}`);
+  }
   async openReviews(operatorId:string) {
     await inProtectedTransaction(this.db,client => assertCurrentOperator(client,operatorId));
     return repo.openReviews(this.db);

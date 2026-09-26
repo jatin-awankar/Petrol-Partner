@@ -4,14 +4,15 @@ import {useState} from "react";
 import {ApiError,apiRequest} from "@/lib/api/client";
 
 export type BoardingBooking={id:string;offer_id:string;driver_id:string;passenger_id:string;
-  passenger_verified_name:string|null;trip_state:string;boarded:boolean|null;started_at:string|null};
+  passenger_verified_name:string|null;status:string;trip_state:string;boarded:boolean|null;started_at:string|null};
 
 export function PilotBoarding({bookings,userId,onRefresh}:{bookings:BoardingBooking[];
   userId:string|undefined;onRefresh:()=>Promise<void>}) {
   const [selected,setSelected]=useState<Record<string,boolean>>({});
   const [busy,setBusy]=useState<string|null>(null);
   const [message,setMessage]=useState("");
-  const groups=Object.values(bookings.reduce<Record<string,BoardingBooking[]>>((out,row)=>{
+  const groups=Object.values(bookings.filter(row=>row.status==='confirmed')
+    .reduce<Record<string,BoardingBooking[]>>((out,row)=>{
     (out[row.offer_id]??=[]).push(row);return out;
   },{}));
   async function depart(rows:BoardingBooking[]) {

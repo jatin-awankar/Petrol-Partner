@@ -90,7 +90,12 @@ export async function restore(db:PoolClient,item:{operationId:string;offerId:str
   confirmedIds:string[];startedAt:string}) {
   const current=await byId(db,item.operationId,true);
   if(current && (current.offer_id!==item.offerId||current.actor_id!==item.actorId||
-    current.payload_digest!==item.digest||JSON.stringify(current.confirmed_allocation_ids)!==JSON.stringify(item.confirmedIds)))
+    current.driver_id!==item.driverId||current.idempotency_key!==item.key||
+    current.kind!==item.kind||current.reason!==item.reason||
+    current.started_at.toISOString()!==item.startedAt||
+    current.payload_digest!==item.digest||
+    JSON.stringify(current.boarded_allocation_ids)!==JSON.stringify(item.boardedIds)||
+    JSON.stringify(current.confirmed_allocation_ids)!==JSON.stringify(item.confirmedIds)))
     throw new Error("Pilot departure recovery conflict");
   if(!current) await db.query(`INSERT INTO pilot_departure_operations
     (id,offer_id,actor_id,driver_id,idempotency_key,payload_digest,kind,reason,
@@ -101,11 +106,12 @@ export async function restore(db:PoolClient,item:{operationId:string;offerId:str
   else if(current.state==='committed') await db.query(`UPDATE pilot_departure_operations
     SET state='recovered',acknowledged_at=now() WHERE id=$1`,[item.operationId]);
   const ride=await offer(db,item.offerId);
-  if(!ride||ride.driver_id!==item.driverId||!['active','departed'].includes(ride.status))
+  if(!ride||ride.driver_id!==item.driverId||!['active','departed','completed'].includes(ride.status))
     throw new Error("Pilot offer requires manual recovery");
   const ids=(await allocations(db,item.offerId)).map(row=>row.id).sort();
   if(JSON.stringify(ids)!==JSON.stringify(item.confirmedIds)) throw new Error("Pilot allocations require manual recovery");
-  await db.query("UPDATE ride_offers SET status='departed',updated_at=$2 WHERE id=$1",[item.offerId,item.startedAt]);
+  if(ride.status==='active') await db.query("UPDATE ride_offers SET status='departed',updated_at=$2 WHERE id=$1",
+    [item.offerId,item.startedAt]);
   await db.query(`INSERT INTO pilot_departure_boarding(operation_id,allocation_id,boarded,recorded_at)
     SELECT $1,id,id=ANY($2::uuid[]),$4 FROM pilot_seat_allocations WHERE id=ANY($3::uuid[])
     ON CONFLICT (operation_id,allocation_id) DO NOTHING`,

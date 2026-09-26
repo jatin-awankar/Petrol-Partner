@@ -67,7 +67,7 @@ export class PilotDepartureService {
       ? {operation_id:id,state:"pending_unknown"} : result(row);
   }
   async start(actorId:string,key:string,offerId:string,boardedIds:string[],
-    kind:repo.Operation["kind"]="departure",reason:string|null=null,now=new Date()) {
+    kind:repo.Operation["kind"]="departure",reason:string|null=null,now?:Date) {
     const sorted=[...boardedIds].sort();
     if(new Set(sorted).size!==sorted.length) throw new AppError(400,"Duplicate boarding IDs","BOARDING_INVALID");
     if(kind==='late_departure'&&(!reason||reason.trim().length<8))
@@ -97,25 +97,28 @@ export class PilotDepartureService {
       if(kind==='departure'&&ride.driver_id!==actorId) throw new AppError(403,"Only the driver may depart","FORBIDDEN");
       if(kind==='late_departure') await assertCurrentOperator(client,actorId);
       if(ride.status!=="active") throw new AppError(409,"Offer is not active","DEPARTURE_INVALID");
-      const delta=now.getTime()-ride.departure_at.getTime();
+      await assertCurrentDriverCarEligibility(client,ride.driver_id,ride.vehicle_id);
+      const allocations=await repo.allocations(client,offerId);
+      if(allocations.some(row=>row.status!=='confirmed')) throw new AppError(409,"A booking is held","BOOKING_HELD");
+      const commitment={driverId:ride.driver_id,vehicleId:ride.vehicle_id,
+        passengerIds:allocations.map(row=>row.passenger_id),rideId:offerId,
+        durationMinutes:Math.ceil((ride.pilot_commitment_until.getTime()-ride.departure_at.getTime())/60_000)};
+      await assertCommitmentsEligible(client,{...commitment,departureAt:ride.departure_at});
+      const decisionAt=now??new Date();
+      const delta=decisionAt.getTime()-ride.departure_at.getTime();
       if(kind==='departure'&&(delta< -15*60_000||delta>30*60_000))
         throw new AppError(409,"Departure is outside the allowed window","DEPARTURE_WINDOW_CLOSED");
       if(kind==='late_departure'&&delta<=30*60_000)
         throw new AppError(409,"Late resolution requires a delayed ride","RIDE_NOT_DELAYED");
-      assertWithinSupportWindow(now);
-      await assertCurrentDriverCarEligibility(client,ride.driver_id,ride.vehicle_id);
-      const allocations=await repo.allocations(client,offerId);
-      if(allocations.some(row=>row.status!=='confirmed')) throw new AppError(409,"A booking is held","BOOKING_HELD");
-      await assertCommitmentsEligible(client,{driverId:ride.driver_id,vehicleId:ride.vehicle_id,
-        passengerIds:allocations.map(row=>row.passenger_id),rideId:offerId,
-        departureAt:ride.departure_at,durationMinutes:Math.ceil((ride.pilot_commitment_until.getTime()-ride.departure_at.getTime())/60_000)});
+      assertWithinSupportWindow(decisionAt);
+      await assertCommitmentsEligible(client,{...commitment,departureAt:decisionAt});
       if(await repo.stillActiveTrip(client,offerId,ride.driver_id,ride.vehicle_id,
         allocations.map(row=>row.passenger_id)))
         throw new AppError(409,"A participant or car still has an active trip","ACTIVE_TRIP_CONFLICT");
       const confirmedIds=allocations.map(row=>row.id).sort();
       if(sorted.some(id=>!confirmedIds.includes(id))) throw new AppError(409,"Boarding requires confirmed seats","BOARDING_INVALID");
       const row=await repo.record(client,{offerId,actorId,driverId:ride.driver_id,key,digest:payloadDigest,
-        kind,reason,boardedIds:sorted,confirmedIds,at:now});
+        kind,reason,boardedIds:sorted,confirmedIds,at:decisionAt});
       await notifications(client,row,allocations.map(item=>item.passenger_id));
       return row;
     });

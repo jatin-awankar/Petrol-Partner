@@ -7,7 +7,6 @@ import { corridorOfferInput,corridorOfferUpdate,corridorOfferSearch } from "./co
 import { corridorOffersService } from "./corridor-offers.service";
 import { cancellationsService } from "./cancellations.service";
 import { pilotDepartureService } from "./pilot-departure.service";
-import {pool} from "../../db/pool";
 
 export const corridorOffersRouter = Router();
 function key(value: string | undefined) {
@@ -53,10 +52,8 @@ corridorOffersRouter.post("/:id/interruption",requireAuth,asyncHandler(async(req
   if(!req.user) throw new AppError(401,"Unauthorized","UNAUTHORIZED");
   const {id}=z.strictObject({id:z.uuid()}).parse(req.params);
   const {reason}=z.strictObject({reason:z.string().trim().min(8).max(500)}).parse(req.body);
-  const state=(await pool.query<{status:string}>("SELECT status FROM ride_offers WHERE id=$1",[id])).rows[0];
-  if(state?.status!=="departed") throw new AppError(409,"Only an active trip can be interrupted","TRIP_NOT_STARTED");
-  const result=await cancellationsService.cancel(req.user.userId,key(req.get("Idempotency-Key")),
-    "offer",id,`Interruption: ${reason}`);
+  const result=await cancellationsService.reportInterruption(req.user.userId,
+    key(req.get("Idempotency-Key")),id,reason);
   res.status(202).json(result);
 }));
 corridorOffersRouter.post("/:id/cancel",requireAuth,asyncHandler(async(req,res) => {

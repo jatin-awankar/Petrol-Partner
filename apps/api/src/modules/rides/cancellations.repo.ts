@@ -71,6 +71,9 @@ export async function activeAccount(db:PoolClient,id:string) {
 export async function driverForOffer(db:PoolClient,id:string) {
   return (await db.query<{driver_id:string}>("SELECT driver_id FROM ride_offers WHERE id=$1",[id])).rows[0]?.driver_id ?? null;
 }
+export async function offerStatus(db:Database,id:string) {
+  return (await db.query<{status:string}>("SELECT status FROM ride_offers WHERE id=$1",[id])).rows[0]?.status??null;
+}
 export async function offerForUpdate(db:PoolClient,id:string) {
   return (await db.query<{id:string;driver_id:string;status:string;departure_at:Date}>(`
     SELECT id,driver_id,status,(date+time) AT TIME ZONE 'Asia/Kolkata' AS departure_at

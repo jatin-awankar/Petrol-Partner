@@ -56,6 +56,14 @@ describe("pilot coordination notice on offer and request pages",() => {
     expect(screen.queryByText(/Driver: Verified Driver/)).toBeNull();
     expect(screen.getByRole("button",{name:/Start trip and record boarding/})).not.toBeNull();
   });
+  it("excludes a canceled historical seat from boarding choices",async()=>{
+    session.userId="driver";
+    session.bookings=[booking,{...booking,id:"canceled",status:"cancelled",
+      passenger_verified_name:"Former Passenger"}];
+    render(<SearchRidesPage />);
+    expect(await screen.findByText(/Passenger: Former Passenger/)).not.toBeNull();
+    expect(screen.queryByLabelText("Former Passenger")).toBeNull();
+  });
   it("shows delayed and departed states without offering an automatic transition",async()=>{
     session.bookings=[{...booking,trip_state:"delayed"}];
     render(<SearchRidesPage />);
