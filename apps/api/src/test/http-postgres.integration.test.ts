@@ -101,6 +101,13 @@ describe("pilot seat requests through HTTP and PostgreSQL", () => {
       expect(race.map(item => item.status)).toEqual([201,201]);
       const first = race[0].body.request;
       expect(first).toMatchObject({status:"pending",confirmed:false,seats_reserved:0});
+      await verificationPool.query("UPDATE student_verifications SET eligibility_ends_at=now()-interval '1 second' WHERE user_id=$1",[passenger.id]);
+      const lapsedList = await request(createApp()).get("/v1/seat-requests")
+        .set("Authorization",`Bearer ${passenger.token}`);
+      expect(lapsedList.status).toBe(200);
+      expect(lapsedList.body.requests).toEqual(expect.arrayContaining([
+        expect.objectContaining({id:first.id,status:"pending",offer_terms:first.offer_terms})]));
+      await verificationPool.query("UPDATE student_verifications SET eligibility_ends_at=now()+interval '1 year' WHERE user_id=$1",[passenger.id]);
       expect((await verificationPool.query("SELECT available_seats FROM ride_offers WHERE id=$1",[offerId])).rows[0].available_seats).toBe(2);
       expect((await post(passenger.token,"request-a",{offer_id:offerId,seats:1})).body.operation_id)
         .toBe(race[0].body.operation_id);
