@@ -6,6 +6,7 @@ export const corridorOfferInput = z.strictObject({
   destination_code: z.string().min(1).max(40),
   departure_at: z.iso.datetime({ offset: true }),
   capacity: z.number().int().min(1).max(12),
+  replaces_offer_id: z.uuid().optional(),
 });
 export const corridorOfferUpdate = corridorOfferInput.extend({ version: z.number().int().positive() });
 export const corridorOfferSearch = z.strictObject({

@@ -5,6 +5,7 @@ import { asyncHandler } from "../../shared/http/async-handler";
 import { AppError } from "../../shared/errors/app-error";
 import { corridorOfferInput,corridorOfferUpdate,corridorOfferSearch } from "./corridor-offers.schema";
 import { corridorOffersService } from "./corridor-offers.service";
+import { cancellationsService } from "./cancellations.service";
 
 export const corridorOffersRouter = Router();
 function key(value: string | undefined) {
@@ -15,6 +16,10 @@ corridorOffersRouter.get("/policy",requireAuth,asyncHandler(async (_req,res) => 
   if (!_req.user) throw new AppError(401,"Unauthorized","UNAUTHORIZED");
   res.json({policy:await corridorOffersService.policy(_req.user.userId)});
 }));
+corridorOffersRouter.get("/mine",requireAuth,asyncHandler(async(req,res) => {
+  if (!req.user) throw new AppError(401,"Unauthorized","UNAUTHORIZED");
+  res.json({offers:await corridorOffersService.mine(req.user.userId)});
+}));
 corridorOffersRouter.get("/",requireAuth,asyncHandler(async (req,res) => {
   if (!req.user) throw new AppError(401,"Unauthorized","UNAUTHORIZED");
   const query = corridorOfferSearch.parse(req.query);
@@ -24,6 +29,17 @@ corridorOffersRouter.get("/operations/:id",requireAuth,asyncHandler(async (req,r
   if (!req.user) throw new AppError(401,"Unauthorized","UNAUTHORIZED");
   const {id} = z.strictObject({id:z.uuid()}).parse(req.params);
   res.json({operation:await corridorOffersService.operation(req.user.userId,id)});
+}));
+corridorOffersRouter.get("/cancellations/:id",requireAuth,asyncHandler(async(req,res) => {
+  if (!req.user) throw new AppError(401,"Unauthorized","UNAUTHORIZED");
+  const {id}=z.strictObject({id:z.uuid()}).parse(req.params);
+  res.json({operation:await cancellationsService.operation(req.user.userId,id)});
+}));
+corridorOffersRouter.post("/:id/cancel",requireAuth,asyncHandler(async(req,res) => {
+  if (!req.user) throw new AppError(401,"Unauthorized","UNAUTHORIZED");
+  const {id}=z.strictObject({id:z.uuid()}).parse(req.params);
+  const {reason}=z.strictObject({reason:z.string().trim().max(500).nullable().optional()}).parse(req.body ?? {});
+  res.json(await cancellationsService.cancel(req.user.userId,key(req.get("Idempotency-Key")),"offer",id,reason ?? null));
 }));
 corridorOffersRouter.post("/",requireAuth,asyncHandler(async (req,res) => {
   if (!req.user) throw new AppError(401,"Unauthorized","UNAUTHORIZED");

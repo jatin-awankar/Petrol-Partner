@@ -56,15 +56,20 @@ export async function requestCount(db: PoolClient, id: string) {
     ((SELECT count(*) FROM bookings WHERE ride_offer_id=$1) +
     (SELECT count(*) FROM pilot_seat_requests WHERE offer_id=$1))::int AS count`,[id])).rows[0].count;
 }
+export async function replacementExists(db:PoolClient,id:string) {
+  return Boolean((await db.query("SELECT 1 FROM ride_offers WHERE pilot_replaces_offer_id=$1 LIMIT 1",[id])).rowCount);
+}
 export type OfferTerms = { actorId:string; vehicleId:string; origin:Stop; destination:Stop;
   departure:Date; contributionPaise:number; capacity:number; policyId:string;
+  replacesOfferId?:string;
   snapshot:Record<string,unknown>; requestCutoff:Date; acceptanceCutoff:Date;
   commitmentUntil:Date };
 export async function saveOffer(db:PoolClient,terms:OfferTerms,offerId?:string) {
   const args=[terms.actorId,terms.vehicleId,terms.origin.label,terms.origin.latitude,terms.origin.longitude,
     terms.destination.label,terms.destination.latitude,terms.destination.longitude,terms.departure,
     terms.contributionPaise,terms.capacity,terms.policyId,JSON.stringify(terms.snapshot),
-    terms.origin.code,terms.destination.code,terms.requestCutoff,terms.acceptanceCutoff,terms.commitmentUntil];
+    terms.origin.code,terms.destination.code,terms.requestCutoff,terms.acceptanceCutoff,terms.commitmentUntil,
+    terms.replacesOfferId ?? null];
   const sql=offerId?`UPDATE ride_offers SET driver_id=$1,vehicle_id=$2,pickup_location=$3,pickup_lat=$4,pickup_lng=$5,
     drop_location=$6,drop_lat=$7,drop_lng=$8,date=($9::timestamptz AT TIME ZONE 'Asia/Kolkata')::date,
     time=($9::timestamptz AT TIME ZONE 'Asia/Kolkata')::time,price_per_seat_paise=$10,available_seats=$11,
@@ -74,11 +79,11 @@ export async function saveOffer(db:PoolClient,terms:OfferTerms,offerId?:string) 
     WHERE id=$19 RETURNING id,pilot_version`:`INSERT INTO ride_offers(driver_id,vehicle_id,pickup_location,pickup_lat,pickup_lng,
     drop_location,drop_lat,drop_lng,date,time,price_per_seat_paise,available_seats,pilot_policy_id,
     pilot_policy_snapshot,pilot_origin_code,pilot_destination_code,pilot_request_cutoff_at,
-    pilot_acceptance_cutoff_at,pilot_commitment_until,pilot_capacity,pilot_currency)
+    pilot_acceptance_cutoff_at,pilot_commitment_until,pilot_capacity,pilot_currency,pilot_replaces_offer_id)
     VALUES($1,$2,$3,$4,$5,$6,$7,$8,($9::timestamptz AT TIME ZONE 'Asia/Kolkata')::date,
-    ($9::timestamptz AT TIME ZONE 'Asia/Kolkata')::time,$10,$11,$12,$13::jsonb,$14,$15,$16,$17,$18,$11,'INR')
+    ($9::timestamptz AT TIME ZONE 'Asia/Kolkata')::time,$10,$11,$12,$13::jsonb,$14,$15,$16,$17,$18,$11,'INR',$19)
     RETURNING id,pilot_version`;
-  return (await db.query<{id:string;pilot_version:number}>(sql,offerId?[...args,offerId]:args)).rows[0];
+  return (await db.query<{id:string;pilot_version:number}>(sql,offerId?[...args.slice(0,18),offerId]:args)).rows[0];
 }
 export async function offerSnapshot(db:PoolClient,id:string) {
   return (await db.query<{snapshot:Record<string,unknown>}>("SELECT to_jsonb(r) AS snapshot FROM ride_offers r WHERE id=$1",[id])).rows[0].snapshot;
@@ -125,7 +130,8 @@ export async function updateOfferSnapshot(db:PoolClient,id:string,snapshot:Recor
     pilot_origin_code=s.pilot_origin_code,pilot_destination_code=s.pilot_destination_code,
     pilot_capacity=s.pilot_capacity,pilot_currency=s.pilot_currency,
     pilot_request_cutoff_at=s.pilot_request_cutoff_at,pilot_acceptance_cutoff_at=s.pilot_acceptance_cutoff_at,
-    pilot_commitment_until=s.pilot_commitment_until,pilot_version=s.pilot_version,updated_at=s.updated_at
+    pilot_commitment_until=s.pilot_commitment_until,pilot_replaces_offer_id=s.pilot_replaces_offer_id,
+    pilot_version=s.pilot_version,updated_at=s.updated_at
     FROM jsonb_populate_record(NULL::ride_offers,$2::jsonb) s WHERE ride_offers.id=$1`,[id,JSON.stringify(snapshot)]);
 }
 export async function discover(db: Pool, origin: string, destination: string, date?: string) {
@@ -152,4 +158,18 @@ export async function discover(db: Pool, origin: string, destination: string, da
       AND EXISTS (SELECT 1 FROM pilot_corridor_contributions c WHERE c.policy_id=p.id
        AND c.origin_code=$1 AND c.destination_code=$2)
     ORDER BY r.date,r.time LIMIT 50`,[origin,destination,date ?? null])).rows;
+}
+export async function mine(db:Pool,driverId:string) {
+  return (await db.query(`SELECT r.id,r.status,r.pilot_origin_code AS origin_code,
+    r.pilot_destination_code AS destination_code,
+    (r.date+r.time) AT TIME ZONE 'Asia/Kolkata' AS departure_at,
+    r.pilot_capacity AS capacity,r.price_per_seat_paise AS contribution_paise,
+    r.pilot_replaces_offer_id AS replaces_offer_id,
+    c.actor_id AS cancelled_by,c.created_at AS cancelled_at,c.reason AS cancellation_reason
+    FROM ride_offers r LEFT JOIN LATERAL (
+      SELECT actor_id,created_at,reason FROM pilot_cancellation_operations
+      WHERE target_type='offer' AND target_id=r.id AND state IN ('acknowledged','recovered')
+      ORDER BY created_at DESC LIMIT 1) c ON true
+    WHERE r.driver_id=$1 AND r.pilot_policy_id IS NOT NULL
+    ORDER BY r.created_at DESC LIMIT 50`,[driverId])).rows;
 }

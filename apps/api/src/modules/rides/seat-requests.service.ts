@@ -133,6 +133,9 @@ export class SeatRequestsService {
     for (const [id,expected] of latest) {
       const actual = await repo.requestSnapshot(this.db,id);
       for (const field of ["offer_id","passenger_id","driver_id","status","offer_version","offer_terms","decision_deadline_at"] as const) {
+        if (field === "status" && actual?.status === "cancelled"
+          && (expected.status === "pending" || expected.status === "accepted")
+          && await repo.hasCancellationAudit(this.db,id)) continue;
         if (!actual || JSON.stringify(actual[field]) !== JSON.stringify(expected[field]))
           throw new AppError(409,"Seat request recovery state conflicts with receipt","RECOVERY_CONFLICT");
       }
@@ -146,7 +149,7 @@ export class SeatRequestsService {
     const recovery = await operatorQuery<{mode:string}>(this.db,"recoveryMode");
     const state = recovery.rows[0]?.mode === "restricted" && row.state === "acknowledged"
       ? "pending_unknown" : row.state;
-    if (row.action === "accepted" && !await repo.acceptedTripVisible(this.db,row.request_id,actorId))
+    if (row.action === "accepted" && !await repo.acceptedTripVisible(this.db,row.request_id,actorId,clock()))
       return {operation_id:row.id,state};
     return {operation_id:row.id,state,...row.result};
   }
@@ -156,11 +159,11 @@ export class SeatRequestsService {
   }
 
   async confirmed(actorId:string) {
-    return repo.listConfirmedForParticipant(this.db,actorId);
+    return repo.listConfirmedForParticipant(this.db,actorId,undefined,clock());
   }
 
   async confirmedTrip(actorId:string,offerId:string) {
-    const bookings = await repo.listConfirmedForParticipant(this.db,actorId,offerId);
+    const bookings = await repo.listConfirmedForParticipant(this.db,actorId,offerId,clock());
     if (!bookings.length) throw new AppError(404,"Confirmed trip not found","TRIP_NOT_FOUND");
     return {offer_id:offerId,bookings};
   }
