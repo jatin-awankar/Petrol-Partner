@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { apiRequest } from "@/lib/api/client";
+import { ApiError, apiRequest } from "@/lib/api/client";
 import { useCurrentUser } from "@/hooks/auth/useCurrentUser";
 
 type Stop = { code: string; label: string };
@@ -26,6 +26,7 @@ export default function PostRide() {
   const [capacity,setCapacity] = useState(1);
   const [message,setMessage] = useState("");
   const [busy,setBusy] = useState(false);
+  const [operationId,setOperationId] = useState<string | null>(null);
   const pendingOperation = useRef<{payload:string;key:string} | null>(null);
   useEffect(() => { if (!loading && !isAuthenticated) router.replace("/login"); },[loading,isAuthenticated,router]);
   useEffect(() => {
@@ -50,8 +51,28 @@ export default function PostRide() {
         method:"POST",headers:{"Idempotency-Key":pendingOperation.current.key},body:payload,
       });
       if (result.offer.state === "acknowledged") pendingOperation.current = null;
+      if (result.offer.state !== "acknowledged") setOperationId((result.offer as {operation_id?:string}).operation_id ?? null);
+      else setOperationId(null);
       setMessage(result.offer.state === "acknowledged" ? "Offer published for the supervised corridor." : "Offer publication is pending recovery confirmation.");
-    } catch(error) {setMessage(error instanceof Error ? error.message : "Could not publish offer");}
+    } catch(error) {
+      const pendingId = error instanceof ApiError && error.code === "OPERATION_PENDING"
+        ? (error.details as {operationId?:string} | undefined)?.operationId : undefined;
+      if (pendingId) setOperationId(pendingId);
+      setMessage(pendingId ? "Offer publication is pending recovery confirmation." : error instanceof Error ? error.message : "Could not publish offer");
+    }
+    finally {setBusy(false);}
+  }
+  async function checkOperation() {
+    if (!operationId) return;
+    setBusy(true);
+    try {
+      const {operation} = await apiRequest<{operation:{state:string}}>(`/v1/corridor-offers/operations/${operationId}`);
+      if (operation.state === "acknowledged" || operation.state === "recovered") {
+        pendingOperation.current = null;
+        setOperationId(null);
+        setMessage("Offer published for the supervised corridor.");
+      } else setMessage("Offer publication is pending recovery confirmation.");
+    } catch(error) {setMessage(error instanceof Error ? error.message : "Could not check offer status");}
     finally {setBusy(false);}
   }
   return <main className="mx-auto max-w-2xl space-y-6 p-6">
@@ -70,5 +91,6 @@ export default function PostRide() {
       <button className="rounded bg-primary px-4 py-2 text-primary-foreground disabled:opacity-50" disabled={busy || !pair || !policy}>Publish offer</button>
     </form>
     {message && <p role="status" className="rounded border p-3">{message}</p>}
+    {operationId && <div className="space-y-2 text-sm"><p>Operation ID: {operationId}</p><button type="button" className="rounded border px-3 py-2" disabled={busy} onClick={checkOperation}>Check publication status</button></div>}
   </main>;
 }

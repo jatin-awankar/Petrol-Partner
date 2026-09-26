@@ -19,6 +19,8 @@ import * as repo from "./corridor-offers.repo";
 type Receipt = { operationId: string; actorId: string; key: string; digest: string;
   offerId: string; action: string; result: Record<string, unknown>;
   offerSnapshot: Record<string, unknown>; createdAt: string };
+type OfferCommand = { kind: "publish"; input: CorridorOfferInput } |
+  { kind: "update"; offerId: string; version: number; input: CorridorOfferInput };
 function digest(action: string, offerId: string | null, input: CorridorOfferInput & { version?: number }) {
   return createHash("sha256").update(JSON.stringify({ action, offerId, input })).digest("hex");
 }
@@ -82,6 +84,14 @@ export class CorridorOffersService {
   constructor(private readonly db: Pool = pool) {}
   async receipts() { return store().list(); }
   async pending() { return repo.pending(this.db); }
+  async operation(actorId: string,id: string) {
+    try { await this.verifyEvidence(); } catch { /* An uncertain operation stays pending. */ }
+    const row = await repo.operationForActor(this.db,id,actorId);
+    if (!row) throw new AppError(404,"Operation not found","OPERATION_NOT_FOUND");
+    const recovery = await operatorQuery<{mode:string}>(this.db,"recoveryMode");
+    return {operation_id:row.id,state:recovery.rows[0]?.mode === "restricted" && row.state === "acknowledged"
+      ? "pending_unknown" : row.state,...row.result};
+  }
   async policy(userId: string) {
     await inProtectedTransaction(this.db, client => assertCurrentStudentForSubmission(client,userId));
     const policy = await repo.currentPolicy(this.db);
@@ -171,9 +181,18 @@ export class CorridorOffersService {
     }
     return receipts.length;
   }
-  async publish(actorId: string,key: string,input: CorridorOfferInput,offerId?: string,version?: number) {
-    const action = offerId ? "updated" : "published";
+  async publish(actorId: string,key: string,command: OfferCommand) {
+    const {input} = command;
+    const offerId = command.kind === "update" ? command.offerId : undefined;
+    const version = command.kind === "update" ? command.version : undefined;
+    const action = command.kind === "update" ? "updated" : "published";
     const payloadDigest = digest(action,offerId ?? null,{...input,version});
+    const existing = await repo.byKey(this.db,actorId,key);
+    if (existing && existing.payload_digest !== payloadDigest)
+      throw new AppError(409,"Idempotency payload mismatch","IDEMPOTENCY_PAYLOAD_MISMATCH");
+    const recovery = await operatorQuery<{mode:string}>(this.db,"recoveryMode");
+    if (existing && recovery.rows[0]?.mode !== "open") return this.operation(actorId,existing.id);
+    if (!existing) await pauseService.assertAvailable("offers");
     await this.verifyEvidence({ actorId,key });
     const operation = await inProtectedTransaction(this.db,async client => {
       const recovery = await operatorQuery<{mode:string}>(client,"recoveryModeForUpdate");

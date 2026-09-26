@@ -1129,7 +1129,22 @@ describe("corridor offer publication and discovery", () => {
       const winnerKey = race[0].status === 201 ? "offer-1" : "offer-2";
       const loserKey = race[0].status === 201 ? "offer-2" : "offer-1";
       expect(first.body.offer).toMatchObject({state:"acknowledged",contribution_paise:2500,currency:"INR",capacity:2});
+      const operationStatus = await request(createApp()).get(`/v1/corridor-offers/operations/${first.body.offer.operation_id}`)
+        .set("Authorization",`Bearer ${driver.token}`);
+      expect(operationStatus.status).toBe(200);
+      expect(operationStatus.body.operation).toMatchObject({state:"acknowledged",id:first.body.offer.id});
+      expect((await request(createApp()).get(`/v1/corridor-offers/operations/${first.body.offer.operation_id}`)
+        .set("Authorization",`Bearer ${users[1].token}`)).status).toBe(404);
       expect((await publish(winnerKey)).body.offer.operation_id).toBe(first.body.offer.operation_id);
+      await verificationPool.query("UPDATE pilot_recovery_state SET mode='restricted' WHERE singleton=true");
+      await verificationPool.query("UPDATE pilot_pause_state SET paused=true WHERE capability='offers'");
+      expect((await publish(winnerKey)).body.offer.operation_id).toBe(first.body.offer.operation_id);
+      const uncertainStatus = await request(createApp()).get(`/v1/corridor-offers/operations/${first.body.offer.operation_id}`)
+        .set("Authorization",`Bearer ${driver.token}`);
+      expect(uncertainStatus.body.operation.state).toBe("pending_unknown");
+      expect((await publish("new-while-restricted")).status).toBe(503);
+      await verificationPool.query("UPDATE pilot_pause_state SET paused=false WHERE capability='offers'");
+      await verificationPool.query("UPDATE pilot_recovery_state SET mode='open' WHERE singleton=true");
       expect((await publish(loserKey)).status).toBe(409);
       expect((await publish(winnerKey,{...input,capacity:1})).status).toBe(409);
       const secondDriver = (await verificationPool.query<{id:string}>(
@@ -1148,6 +1163,21 @@ describe("corridor offer publication and discovery", () => {
       await verificationPool.query("UPDATE driver_eligibility SET status='suspended' WHERE user_id=$1",[driver.id]);
       expect((await publish("stale-driver",input)).status).toBe(403);
       await verificationPool.query("UPDATE driver_eligibility SET status='approved' WHERE user_id=$1",[driver.id]);
+      const beforeFailure = await verificationPool.query<{n:number}>("SELECT count(*)::int AS n FROM pilot_offer_audit");
+      await verificationPool.query(`CREATE OR REPLACE FUNCTION reject_offer_notification_for_test() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN IF NEW.origin_type='corridor_offer' THEN RAISE EXCEPTION 'synthetic notification failure'; END IF; RETURN NEW; END $$`);
+      await verificationPool.query("CREATE TRIGGER reject_offer_notification_for_test BEFORE INSERT ON pilot_notification_events FOR EACH ROW EXECUTE FUNCTION reject_offer_notification_for_test()");
+      try {
+        const failedEdit = await request(createApp()).patch(`/v1/corridor-offers/${first.body.offer.id}`)
+          .set("Authorization",`Bearer ${driver.token}`).set("Idempotency-Key","offer-edit-notification-failure")
+          .send({...input,capacity:1,version:1});
+        expect(failedEdit.status).toBeGreaterThanOrEqual(500);
+        expect((await verificationPool.query("SELECT pilot_version FROM ride_offers WHERE id=$1",[first.body.offer.id])).rows[0].pilot_version).toBe(1);
+        expect((await verificationPool.query<{n:number}>("SELECT count(*)::int AS n FROM pilot_offer_audit")).rows[0].n).toBe(beforeFailure.rows[0].n);
+      } finally {
+        await verificationPool.query("DROP TRIGGER reject_offer_notification_for_test ON pilot_notification_events");
+        await verificationPool.query("DROP FUNCTION reject_offer_notification_for_test()");
+      }
       const edit = await request(createApp()).patch(`/v1/corridor-offers/${first.body.offer.id}`)
         .set("Authorization",`Bearer ${driver.token}`).set("Idempotency-Key","offer-edit-1")
         .send({...input,capacity:1,version:1});

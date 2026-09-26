@@ -1,4 +1,5 @@
 import type { Pool, PoolClient } from "pg";
+import { currentPilotEligibilityWhere } from "../verification/pilot-eligibility.sql";
 
 export type Policy = { id: string; version: number; currency: string; expected_minutes: number;
   buffer_minutes: number; schedule_start: string; schedule_end: string; weekdays: number[];
@@ -27,6 +28,9 @@ export async function pairs(db: Pool | PoolClient, policyId: string) {
 }
 export async function byKey(db: Pool | PoolClient, actorId: string, key: string) {
   return (await db.query<Operation>("SELECT * FROM pilot_offer_operations WHERE actor_id=$1 AND idempotency_key=$2", [actorId,key])).rows[0] ?? null;
+}
+export async function operationForActor(db: Pool | PoolClient, id: string, actorId: string) {
+  return (await db.query<Operation>("SELECT * FROM pilot_offer_operations WHERE id=$1 AND actor_id=$2",[id,actorId])).rows[0] ?? null;
 }
 export async function byId(db: PoolClient, id: string) {
   return (await db.query<Operation>("SELECT * FROM pilot_offer_operations WHERE id=$1 FOR UPDATE", [id])).rows[0] ?? null;
@@ -142,17 +146,7 @@ export async function discover(db: Pool, origin: string, destination: string, da
         JOIN driver_eligibility d ON d.user_id=s.user_id
         JOIN driver_vehicle_approvals a ON a.driver_user_id=s.user_id AND a.vehicle_id=r.vehicle_id
         JOIN vehicles v ON v.id=a.vehicle_id
-        WHERE s.user_id=r.driver_id AND u.email_verified_at IS NOT NULL
-          AND s.status IN ('verified','revalidation_due')
-          AND s.adult_eligible=true AND s.eligibility_ends_at>now()
-          AND d.status='approved' AND d.license_expires_at>CURRENT_DATE
-          AND d.review_after>CURRENT_DATE AND a.status='approved' AND a.review_after>CURRENT_DATE
-          AND v.status='active' AND v.verification_status='approved'
-          AND v.vehicle_type IN ('car','suv') AND v.use_category='private'
-          AND v.applicable_document_required IS NOT NULL
-          AND v.insurance_expires_at>CURRENT_DATE
-          AND (v.registration_expires_at IS NULL OR v.registration_expires_at>CURRENT_DATE)
-          AND v.review_after>CURRENT_DATE)
+        WHERE s.user_id=r.driver_id AND ${currentPilotEligibilityWhere})
       AND EXISTS (SELECT 1 FROM pilot_corridor_contributions c WHERE c.policy_id=p.id
        AND c.origin_code=$1 AND c.destination_code=$2)
     ORDER BY r.date,r.time LIMIT 50`,[origin,destination,date ?? null])).rows;

@@ -3,7 +3,6 @@ import { z } from "zod";
 import { requireAuth } from "../../middleware/auth";
 import { asyncHandler } from "../../shared/http/async-handler";
 import { AppError } from "../../shared/errors/app-error";
-import { requirePilotActivity } from "../operator/pause.middleware";
 import { corridorOfferInput,corridorOfferUpdate,corridorOfferSearch } from "./corridor-offers.schema";
 import { corridorOffersService } from "./corridor-offers.service";
 
@@ -21,15 +20,22 @@ corridorOffersRouter.get("/",requireAuth,asyncHandler(async (req,res) => {
   const query = corridorOfferSearch.parse(req.query);
   res.json({offers:await corridorOffersService.discover(req.user.userId,query.origin_code,query.destination_code,query.date)});
 }));
-corridorOffersRouter.post("/",requireAuth,requirePilotActivity("offers"),asyncHandler(async (req,res) => {
+corridorOffersRouter.get("/operations/:id",requireAuth,asyncHandler(async (req,res) => {
   if (!req.user) throw new AppError(401,"Unauthorized","UNAUTHORIZED");
-  const offer = await corridorOffersService.publish(req.user.userId,key(req.get("Idempotency-Key")),corridorOfferInput.parse(req.body));
+  const {id} = z.strictObject({id:z.uuid()}).parse(req.params);
+  res.json({operation:await corridorOffersService.operation(req.user.userId,id)});
+}));
+corridorOffersRouter.post("/",requireAuth,asyncHandler(async (req,res) => {
+  if (!req.user) throw new AppError(401,"Unauthorized","UNAUTHORIZED");
+  const offer = await corridorOffersService.publish(req.user.userId,key(req.get("Idempotency-Key")),
+    {kind:"publish",input:corridorOfferInput.parse(req.body)});
   res.status(201).json({offer});
 }));
-corridorOffersRouter.patch("/:id",requireAuth,requirePilotActivity("offers"),asyncHandler(async (req,res) => {
+corridorOffersRouter.patch("/:id",requireAuth,asyncHandler(async (req,res) => {
   if (!req.user) throw new AppError(401,"Unauthorized","UNAUTHORIZED");
   const {id} = z.strictObject({id:z.uuid()}).parse(req.params);
   const {version,...input} = corridorOfferUpdate.parse(req.body);
-  const offer = await corridorOffersService.publish(req.user.userId,key(req.get("Idempotency-Key")),input,id,version);
+  const offer = await corridorOffersService.publish(req.user.userId,key(req.get("Idempotency-Key")),
+    {kind:"update",input,offerId:id,version});
   res.json({offer});
 }));
