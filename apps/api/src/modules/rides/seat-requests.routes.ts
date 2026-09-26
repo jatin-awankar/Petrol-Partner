@@ -7,6 +7,10 @@ import { seatRequestsService } from "./seat-requests.service";
 
 export const seatRequestsRouter = Router();
 seatRequestsRouter.use(requireAuth);
+seatRequestsRouter.use((_req,res,next) => {
+  res.set("Cache-Control","private, no-store");
+  next();
+});
 function actor(req:{user?:{userId:string}}) {
   if (!req.user) throw new AppError(401,"Unauthorized","UNAUTHORIZED");
   return req.user.userId;
@@ -20,6 +24,10 @@ seatRequestsRouter.get("/",asyncHandler(async(req,res) => {
 }));
 seatRequestsRouter.get("/confirmed",asyncHandler(async(req,res) => {
   res.json({bookings:await seatRequestsService.confirmed(actor(req))});
+}));
+seatRequestsRouter.get("/confirmed/:offerId",asyncHandler(async(req,res) => {
+  const {offerId} = z.strictObject({offerId:z.uuid()}).parse(req.params);
+  res.json({trip:await seatRequestsService.confirmedTrip(actor(req),offerId)});
 }));
 seatRequestsRouter.get("/operations/:id",asyncHandler(async(req,res) => {
   const {id} = z.strictObject({id:z.uuid()}).parse(req.params);

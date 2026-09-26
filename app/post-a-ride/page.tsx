@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ApiError, apiRequest } from "@/lib/api/client";
 import { useCurrentUser } from "@/hooks/auth/useCurrentUser";
+import { PilotCoordinationNotice } from "@/components/pilot/PilotCoordinationNotice";
 
 type Stop = { code: string; label: string };
 type Pair = { origin_code: string; destination_code: string; amount_paise: number };
@@ -79,7 +80,8 @@ export default function PostRide() {
     <Link href="/search-rides" className="text-sm underline">Discover offers</Link>
     <h1 className="text-3xl font-semibold">Publish a corridor offer</h1>
     <p>Choose an approved car and permitted stop pair. The contribution is set by the corridor policy.</p>
-    {policy && <p className="rounded border p-3 text-sm">{policy.provisional ? "Provisional development policy" : `Policy version ${policy.version}`} · Operating hours {policy.schedule_start.slice(0,5)}–{policy.schedule_end.slice(0,5)} IST</p>}
+    {policy && <p className="rounded border p-3 text-sm">{policy.provisional ? "Provisional development policy" : `Policy version ${policy.version}`} · Corridor departure hours {policy.schedule_start.slice(0,5)}–{policy.schedule_end.slice(0,5)} IST</p>}
+    <PilotCoordinationNotice contactNotice={policy?.contact_notice} />
     <form onSubmit={publish} className="space-y-4">
       <label className="block">Approved car<select className="mt-1 w-full rounded border p-2" value={vehicle} onChange={event => setVehicle(event.target.value)} required><option value="">Choose a car</option>{cars.map(car => <option key={car.id} value={car.id}>{[car.make,car.model].filter(Boolean).join(" ") || "Approved car"} · {car.seat_capacity} passenger seats</option>)}</select></label>
       <label className="block">Origin<select className="mt-1 w-full rounded border p-2" value={origin} onChange={event => {setOrigin(event.target.value);setDestination("");}} required><option value="">Choose origin</option>{policy?.stops.map(stop => <option key={stop.code} value={stop.code}>{stop.label}</option>)}</select></label>
@@ -87,7 +89,7 @@ export default function PostRide() {
       <label className="block">Departure (IST)<input className="mt-1 w-full rounded border p-2" type="datetime-local" value={departure} onChange={event => setDeparture(event.target.value)} required /></label>
       <label className="block">Whole ride passenger capacity<input className="mt-1 w-full rounded border p-2" type="number" min="1" max={selectedCar?.seat_capacity ?? 12} value={capacity} onChange={event => setCapacity(Number(event.target.value))} required /></label>
       {pair && <p className="rounded border p-3 font-medium">Contribution per passenger: ₹{(pair.amount_paise/100).toFixed(2)} {policy?.currency}</p>}
-      {policy && <div className="space-y-2 text-sm"><p>{policy.cancellation_notice}</p><p>{policy.contact_notice}</p></div>}
+      {policy && <p className="text-sm">{policy.cancellation_notice}</p>}
       <button className="rounded bg-primary px-4 py-2 text-primary-foreground disabled:opacity-50" disabled={busy || !pair || !policy}>Publish offer</button>
     </form>
     {message && <p role="status" className="rounded border p-3">{message}</p>}
