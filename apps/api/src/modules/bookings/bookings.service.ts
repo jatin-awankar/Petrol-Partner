@@ -147,6 +147,10 @@ export async function createBooking(userId: string, input: CreateBookingInput) {
 
     const ride = rideResult.rows[0];
 
+    if (isRideOfferFlow && ride.pilot_policy_id) {
+      throw new AppError(403, "Use the one-seat request flow for corridor offers", "PILOT_SEAT_REQUEST_REQUIRED");
+    }
+
     if (ride.status !== "active") {
       throw new AppError(409, "Ride is not available for booking", "RIDE_NOT_BOOKABLE");
     }

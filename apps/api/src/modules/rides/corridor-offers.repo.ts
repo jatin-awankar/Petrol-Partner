@@ -52,7 +52,9 @@ export async function offerForUpdate(db: PoolClient, id: string) {
     "SELECT id,driver_id,status,pilot_version FROM ride_offers WHERE id=$1 FOR UPDATE",[id])).rows[0] ?? null;
 }
 export async function requestCount(db: PoolClient, id: string) {
-  return (await db.query<{ count: number }>("SELECT count(*)::int AS count FROM bookings WHERE ride_offer_id=$1",[id])).rows[0].count;
+  return (await db.query<{ count: number }>(`SELECT
+    ((SELECT count(*) FROM bookings WHERE ride_offer_id=$1) +
+    (SELECT count(*) FROM pilot_seat_requests WHERE offer_id=$1))::int AS count`,[id])).rows[0].count;
 }
 export type OfferTerms = { actorId:string; vehicleId:string; origin:Stop; destination:Stop;
   departure:Date; contributionPaise:number; capacity:number; policyId:string;

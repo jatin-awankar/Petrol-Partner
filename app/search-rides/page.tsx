@@ -11,19 +11,40 @@ type Policy = {stops:Stop[];permitted_pairs:{origin_code:string;destination_code
 type Offer = {id:string;origin_code:string;destination_code:string;departure_at:string;
   contribution_paise:number;currency:string;capacity:number;available_seats:number;
   request_cutoff_at:string;cancellation_notice:string;contact_notice:string};
+type SeatRequest = {id:string;offer_id:string;passenger_id:string;driver_id:string;
+  status:"pending"|"rejected"|"expired";decision_deadline_at:string;
+  offer_terms:{origin_code:string;destination_code:string;departure_at:string;
+    contribution_paise:number;currency:string;cancellation_notice?:string;contact_notice?:string};
+  confirmed:false;seats_reserved:0};
 export default function SearchRidesPage() {
-  const {isAuthenticated,loading} = useCurrentUser();
+  const {isAuthenticated,loading,user} = useCurrentUser();
   const router = useRouter();
   const [policy,setPolicy] = useState<Policy | null>(null);
   const [origin,setOrigin] = useState("");
   const [destination,setDestination] = useState("");
   const [offers,setOffers] = useState<Offer[]>([]);
   const [message,setMessage] = useState("");
+  const [requests,setRequests] = useState<SeatRequest[]>([]);
+  const [busy,setBusy] = useState<string | null>(null);
   useEffect(() => {if (!loading && !isAuthenticated) router.replace("/login");},[loading,isAuthenticated,router]);
   useEffect(() => {if (!isAuthenticated) return;
     void apiRequest<{policy:Policy}>("/v1/corridor-offers/policy").then(result => setPolicy(result.policy))
       .catch(error => setMessage(error instanceof Error ? error.message : "Corridor policy is unavailable"));
   },[isAuthenticated]);
+  async function refreshRequests() {
+    const result = await apiRequest<{requests:SeatRequest[]}>("/v1/seat-requests");
+    setRequests(result.requests);
+  }
+  useEffect(() => {if (isAuthenticated) void refreshRequests().catch(() => undefined);},[isAuthenticated]);
+  async function changeRequest(path:string,body:Record<string,unknown>,key:string) {
+    setBusy(key);setMessage("");
+    try {
+      await apiRequest(path,{method:"POST",headers:{"Idempotency-Key":crypto.randomUUID()},body:JSON.stringify(body)});
+      await refreshRequests();
+      setMessage("Seat request updated. Pending requests are not confirmed and reserve no seat.");
+    } catch(error) {setMessage(error instanceof Error ? error.message : "Could not update seat request");}
+    finally {setBusy(null);}
+  }
   async function search(event:React.FormEvent) {
     event.preventDefault();setMessage("");
     try {
@@ -49,6 +70,25 @@ export default function SearchRidesPage() {
       <p>₹{(offer.contribution_paise/100).toFixed(2)} {offer.currency} per passenger · {offer.available_seats} of {offer.capacity} seats available</p>
       <p className="text-sm">Requests close {new Date(offer.request_cutoff_at).toLocaleString("en-IN",{timeZone:"Asia/Kolkata"})} IST</p>
       <p className="mt-2 text-sm">{offer.cancellation_notice} {offer.contact_notice}</p>
+      <button className="mt-3 rounded bg-primary px-4 py-2 text-primary-foreground disabled:opacity-50"
+        disabled={busy !== null || requests.some(item => item.offer_id === offer.id && item.status === "pending")}
+        onClick={() => void changeRequest("/v1/seat-requests",{offer_id:offer.id,seats:1},offer.id)}>
+        Request one seat
+      </button>
     </li>)}</ul>
+    <section className="space-y-3"><h2 className="text-xl font-semibold">Seat requests</h2>
+      <p className="text-sm">A pending request is unconfirmed and reserves no seat. The driver must decide by the listed deadline. Participant phone numbers are not shared.</p>
+      {requests.length === 0 && <p>No seat requests yet.</p>}
+      <ul className="space-y-3">{requests.map(item => <li key={item.id} className="rounded border p-4">
+        <p>{item.offer_terms.origin_code} → {item.offer_terms.destination_code} · {new Date(item.offer_terms.departure_at).toLocaleString("en-IN",{timeZone:"Asia/Kolkata"})} IST</p>
+        <p className="font-medium">{item.status === "pending" ? "Pending · no seat reserved" : item.status === "rejected" ? "Rejected" : "Expired"}</p>
+        <p className="text-sm">Decision deadline: {new Date(item.decision_deadline_at).toLocaleString("en-IN",{timeZone:"Asia/Kolkata"})} IST</p>
+        <p className="text-sm">{item.offer_terms.cancellation_notice} {item.offer_terms.contact_notice}</p>
+        {item.status === "pending" && item.driver_id === user?.id && <button className="mt-2 rounded border px-3 py-1 disabled:opacity-50"
+          disabled={busy !== null} onClick={() => void changeRequest(`/v1/seat-requests/${item.id}/reject`,{},item.id)}>
+          Reject request
+        </button>}
+      </li>)}</ul>
+    </section>
   </main>;
 }

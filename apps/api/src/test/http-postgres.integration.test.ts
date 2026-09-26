@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 import { signAccessToken } from "../shared/jwt/tokens";
 import { corridorOffersService } from "../modules/rides/corridor-offers.service";
+import { SeatRequestsService } from "../modules/rides/seat-requests.service";
+import { expirePilotSeatRequests } from "../../../worker/src/jobs/pilot-seat-expiry";
 import { spawn, type ChildProcess } from "node:child_process";
 import { chmod, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -18,7 +20,7 @@ import { setBackupObjectProbeForTests } from "../modules/operator/backup-status"
 import { setStudentReviewAfterCommitHookForTests } from "../modules/verification/student-review.service";
 
 const verificationPool = new Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
-const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql", "0006_operator_allowlist.sql", "0007_operator_pause.sql", "0008_operator_intent_handoff.sql", "0009_durable_notifications.sql", "0010_email_retry_operations.sql", "0011_backup_attempts.sql", "0012_student_adult_review.sql", "0013_student_review_cycles.sql", "0014_student_review_operations.sql", "0015_student_evidence_access.sql", "0016_student_evidence_deletion_outcomes.sql", "0017_student_evidence_retry_schedule.sql", "0018_driver_car_approval.sql", "0019_ride_departures.sql", "0020_corridor_offers.sql", "0021_corridor_offer_recovery.sql"];
+const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql", "0006_operator_allowlist.sql", "0007_operator_pause.sql", "0008_operator_intent_handoff.sql", "0009_durable_notifications.sql", "0010_email_retry_operations.sql", "0011_backup_attempts.sql", "0012_student_adult_review.sql", "0013_student_review_cycles.sql", "0014_student_review_operations.sql", "0015_student_evidence_access.sql", "0016_student_evidence_deletion_outcomes.sql", "0017_student_evidence_retry_schedule.sql", "0018_driver_car_approval.sql", "0019_ride_departures.sql", "0020_corridor_offers.sql", "0021_corridor_offer_recovery.sql", "0022_pilot_seat_requests.sql"];
 
 function fakeProvider(identity: ProviderIdentity): AuthProvider {
   const session = { accessToken: "provider-access", refreshToken: "provider-refresh", expiresIn: 900, identity };
@@ -39,6 +41,160 @@ beforeAll(async () => {
     const sql = await readFile(resolve(import.meta.dirname, "../db/migrations", migration), "utf8");
     await verificationPool.query(sql);
   }
+});
+
+describe("pilot seat requests through HTTP and PostgreSQL", () => {
+  it("keeps capacity available, freezes terms, rejects by owner, and expires at the decision deadline", async () => {
+    const directory = await mkdtemp(resolve(tmpdir(), "seat-request-"));
+    process.env.PILOT_RECEIPT_PATH = resolve(directory,"receipts");
+    process.env.PILOT_RECEIPT_SECRET = "seat-request-independent-receipt-secret";
+    process.env.PILOT_CONFLICT_POLICY_APPROVED = "true";
+    process.env.PILOT_EXPECTED_TRIP_MINUTES = "35";
+    process.env.PILOT_CONFLICT_BUFFER_MINUTES = "20";
+    process.env.PILOT_SUPPORT_WINDOW_APPROVED = "true";
+    process.env.PILOT_SUPPORT_WINDOW_START = new Date(Date.now()-60_000).toISOString();
+    process.env.PILOT_SUPPORT_WINDOW_END = new Date(Date.now()+30*24*60*60_000).toISOString();
+    try {
+      const identities = await Promise.all(["seat-driver","seat-passenger-a","seat-passenger-b"].map(async label => {
+        const email = `${label}@example.test`;
+        const id = (await verificationPool.query<{id:string}>(
+          "INSERT INTO users(email,email_verified_at) VALUES($1,now()) RETURNING id",[email])).rows[0].id;
+        await verificationPool.query(`INSERT INTO student_verifications
+          (user_id,provider,status,adult_eligible,institution_name,eligibility_ends_at)
+          VALUES($1,'manual_review','verified',true,'Synthetic College',now()+interval '1 year')`,[id]);
+        return {id,token:signAccessToken({userId:id,email,role:"user"})};
+      }));
+      const [driver,passenger,other] = identities;
+      await verificationPool.query(`INSERT INTO driver_eligibility(user_id,status,license_expires_at,review_after)
+        VALUES($1,'approved','2099-12-31','2099-12-30')`,[driver.id]);
+      const car = (await verificationPool.query<{id:string}>(`INSERT INTO vehicles
+        (owner_user_id,vehicle_type,registration_number_last4,seat_capacity,status,verification_status,
+         use_category,applicable_document_required,insurance_expires_at,review_after)
+        VALUES($1,'car','1234',3,'active','approved','private',true,'2099-12-31','2099-12-30') RETURNING id`,[driver.id])).rows[0].id;
+      await verificationPool.query(`INSERT INTO driver_vehicle_approvals
+        (driver_user_id,vehicle_id,permission_category,status,review_after)
+        VALUES($1,$2,'owner','approved','2099-12-30')`,[driver.id,car]);
+      const departure = new Date(Date.now()+2*24*60*60_000);
+      for (let n=0;n<7;n++) {
+        if (new Intl.DateTimeFormat("en-GB",{timeZone:"Asia/Kolkata",weekday:"short"}).format(departure) !== "Sun") break;
+        departure.setUTCDate(departure.getUTCDate()+1);
+      }
+      departure.setUTCHours(5,0,0,0);
+      const offerBody = {vehicle_id:car,origin_code:"university",destination_code:"prmitr",
+        departure_at:departure.toISOString(),capacity:2};
+      const published = await request(createApp()).post("/v1/corridor-offers")
+        .set("Authorization",`Bearer ${driver.token}`).set("Idempotency-Key","seat-offer").send(offerBody);
+      expect(published.status,JSON.stringify(published.body)).toBe(201);
+      const offerId = published.body.offer.id;
+      expect((await request(createApp()).post("/v1/bookings")
+        .set("Authorization",`Bearer ${passenger.token}`)
+        .send({ride_offer_id:offerId,seats_booked:1})).status).toBe(403);
+      const post = (token:string,key:string,body:Record<string,unknown>) => request(createApp())
+        .post("/v1/seat-requests").set("Authorization",`Bearer ${token}`)
+        .set("Idempotency-Key",key).send(body);
+      expect((await post(driver.token,"self",{offer_id:offerId,seats:1})).status).toBe(409);
+      expect((await post(passenger.token,"many",{offer_id:offerId,seats:2})).status).toBe(400);
+      const race = await Promise.all([post(passenger.token,"request-a",{offer_id:offerId,seats:1}),
+        post(other.token,"request-b",{offer_id:offerId,seats:1})]);
+      expect(race.map(item => item.status)).toEqual([201,201]);
+      const first = race[0].body.request;
+      expect(first).toMatchObject({status:"pending",confirmed:false,seats_reserved:0});
+      expect((await verificationPool.query("SELECT available_seats FROM ride_offers WHERE id=$1",[offerId])).rows[0].available_seats).toBe(2);
+      expect((await post(passenger.token,"request-a",{offer_id:offerId,seats:1})).body.operation_id)
+        .toBe(race[0].body.operation_id);
+      expect((await post(passenger.token,"request-again",{offer_id:offerId,seats:1})).status).toBe(409);
+      const edit = await request(createApp()).patch(`/v1/corridor-offers/${offerId}`)
+        .set("Authorization",`Bearer ${driver.token}`).set("Idempotency-Key","seat-edit")
+        .send({...offerBody,capacity:1,version:1});
+      expect(edit.status).toBe(409);
+      expect((await request(createApp()).post(`/v1/seat-requests/${first.id}/reject`)
+        .set("Authorization",`Bearer ${other.token}`).set("Idempotency-Key","wrong-owner").send({})).status).toBe(403);
+      const rejected = await request(createApp()).post(`/v1/seat-requests/${first.id}/reject`)
+        .set("Authorization",`Bearer ${driver.token}`).set("Idempotency-Key","reject-a").send({});
+      expect(rejected.status).toBe(200);
+      expect(rejected.body.request.status).toBe("rejected");
+      const secondId = race[1].body.request.id;
+      await verificationPool.query("UPDATE pilot_seat_requests SET decision_deadline_at=now() WHERE id=$1",[secondId]);
+      const list = await request(createApp()).get("/v1/seat-requests").set("Authorization",`Bearer ${other.token}`);
+      expect(list.body.requests[0].status).toBe("expired");
+      expect((await request(createApp()).post(`/v1/seat-requests/${secondId}/reject`)
+        .set("Authorization",`Bearer ${driver.token}`).set("Idempotency-Key","late-reject").send({})).status).toBe(409);
+      expect(await expirePilotSeatRequests(verificationPool)).toEqual({expired:1});
+      expect(await expirePilotSeatRequests(verificationPool)).toEqual({expired:0});
+      const expiry = await request(createApp()).get("/v1/notifications/durable")
+        .set("Authorization",`Bearer ${other.token}`);
+      expect(expiry.body.notifications.filter((item:{event_type:string}) => item.event_type === "expired")).toHaveLength(1);
+      expect((await verificationPool.query("SELECT available_seats FROM ride_offers WHERE id=$1",[offerId])).rows[0].available_seats).toBe(2);
+
+      const later = new Date(departure);
+      later.setUTCDate(later.getUTCDate()+2);
+      while (new Intl.DateTimeFormat("en-GB",{timeZone:"Asia/Kolkata",weekday:"short"}).format(later) === "Sun")
+        later.setUTCDate(later.getUTCDate()+1);
+      const secondBody = {...offerBody,departure_at:later.toISOString()};
+      const secondOffer = await request(createApp()).post("/v1/corridor-offers")
+        .set("Authorization",`Bearer ${driver.token}`).set("Idempotency-Key","race-offer").send(secondBody);
+      expect(secondOffer.status).toBe(201);
+      const secondOfferId = secondOffer.body.offer.id;
+      const [requestRace,editRace] = await Promise.all([
+        post(passenger.token,"race-request",{offer_id:secondOfferId,seats:1}),
+        request(createApp()).patch(`/v1/corridor-offers/${secondOfferId}`)
+          .set("Authorization",`Bearer ${driver.token}`).set("Idempotency-Key","race-edit")
+          .send({...secondBody,capacity:1,version:1}),
+      ]);
+      expect(requestRace.status).toBe(201);
+      expect([200,409]).toContain(editRace.status);
+      const liveVersion = (await verificationPool.query("SELECT pilot_version FROM ride_offers WHERE id=$1",[secondOfferId])).rows[0].pilot_version;
+      expect(requestRace.body.request.offer_version).toBe(liveVersion);
+      expect(requestRace.body.request.offer_terms.capacity).toBe(editRace.status === 200 ? 1 : 2);
+      await verificationPool.query(`CREATE OR REPLACE FUNCTION reject_seat_notification_for_test()
+        RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+          IF NEW.origin_type='seat_request' THEN RAISE EXCEPTION 'synthetic notification failure'; END IF;
+          RETURN NEW; END $$`);
+      await verificationPool.query(`CREATE TRIGGER reject_seat_notification_for_test
+        BEFORE INSERT ON pilot_notification_events FOR EACH ROW EXECUTE FUNCTION reject_seat_notification_for_test()`);
+      try {
+        expect((await post(other.token,"failed-notification",{offer_id:secondOfferId,seats:1})).status).toBeGreaterThanOrEqual(500);
+        expect((await verificationPool.query<{count:number}>(`SELECT count(*)::int AS count FROM pilot_seat_requests
+          WHERE offer_id=$1 AND passenger_id=$2`,[secondOfferId,other.id])).rows[0].count).toBe(0);
+      } finally {
+        await verificationPool.query("DROP TRIGGER reject_seat_notification_for_test ON pilot_notification_events");
+        await verificationPool.query("DROP FUNCTION reject_seat_notification_for_test()");
+      }
+      expect((await post(passenger.token,"request-a",{offer_id:secondOfferId,seats:1})).body.error.code)
+        .toBe("IDEMPOTENCY_PAYLOAD_MISMATCH");
+
+      const cutoffDeparture = new Date(later);
+      cutoffDeparture.setUTCDate(cutoffDeparture.getUTCDate()+2);
+      while (new Intl.DateTimeFormat("en-GB",{timeZone:"Asia/Kolkata",weekday:"short"}).format(cutoffDeparture) === "Sun")
+        cutoffDeparture.setUTCDate(cutoffDeparture.getUTCDate()+1);
+      const cutoffOffer = await request(createApp()).post("/v1/corridor-offers")
+        .set("Authorization",`Bearer ${driver.token}`).set("Idempotency-Key","cutoff-offer")
+        .send({...offerBody,departure_at:cutoffDeparture.toISOString()});
+      expect(cutoffOffer.status).toBe(201);
+      const cutoffId = cutoffOffer.body.offer.id;
+      await verificationPool.query("UPDATE student_verifications SET eligibility_ends_at=now()-interval '1 second' WHERE user_id=$1",[other.id]);
+      expect((await post(other.token,"stale-passenger",{offer_id:cutoffId,seats:1})).status).toBe(403);
+      await verificationPool.query("UPDATE student_verifications SET eligibility_ends_at=now()+interval '1 year' WHERE user_id=$1",[other.id]);
+      await verificationPool.query("UPDATE ride_offers SET pilot_request_cutoff_at=now() WHERE id=$1",[cutoffId]);
+      expect((await post(other.token,"cutoff-request",{offer_id:cutoffId,seats:1})).body.error.code)
+        .toBe("REQUEST_WINDOW_CLOSED");
+
+      const operatorId = (await verificationPool.query<{id:string}>(
+        "INSERT INTO users(email,role,email_verified_at) VALUES('seat-recovery-operator@example.test','admin',now()) RETURNING id"
+      )).rows[0].id;
+      await verificationPool.query(`INSERT INTO operator_allowlist(user_id,active,reason,reviewed_at)
+        VALUES($1,true,'synthetic seat recovery',now())`,[operatorId]);
+      await verificationPool.query("UPDATE pilot_recovery_state SET mode='restricted' WHERE singleton=true");
+      await verificationPool.query("DELETE FROM pilot_seat_request_audit");
+      await verificationPool.query("DELETE FROM pilot_seat_request_operations");
+      await verificationPool.query("DELETE FROM pilot_seat_requests");
+      expect(await new SeatRequestsService().reconcileReceipts(operatorId)).toBe(4);
+      expect((await verificationPool.query<{n:number}>(
+        "SELECT count(*)::int AS n FROM pilot_seat_requests WHERE offer_id=$1",[offerId])).rows[0].n).toBe(2);
+      expect((await verificationPool.query<{n:number}>(
+        "SELECT count(*)::int AS n FROM pilot_seat_request_operations WHERE state='recovered'")).rows[0].n).toBe(4);
+    } finally {await rm(directory,{recursive:true,force:true});}
+  });
 });
 
 beforeEach(async () => {
