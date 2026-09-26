@@ -21,6 +21,11 @@ export default function SearchRidesPage() {
   const [offers,setOffers] = useState<Offer[]>([]);
   const [message,setMessage] = useState("");
   const [requests,setRequests] = useState<SeatRequest[]>([]);
+  const [bookings,setBookings] = useState<Array<{id:string;offer_id:string;contribution_paise:number;currency:string;
+    departure_at:string;status:string;origin_code:string;destination_code:string;
+    driver_id:string;passenger_id:string;passenger_origin_code:string;passenger_destination_code:string;
+    pickup_location:string;car_registration_last4:string;car_make:string|null;car_model:string|null;
+    car_color:string|null;driver_verified_name:string|null;passenger_verified_name:string|null}>>([]);
   const [busy,setBusy] = useState<string | null>(null);
   useEffect(() => {if (!loading && !isAuthenticated) router.replace("/login");},[loading,isAuthenticated,router]);
   useEffect(() => {if (!isAuthenticated) return;
@@ -28,8 +33,11 @@ export default function SearchRidesPage() {
       .catch(error => setMessage(error instanceof Error ? error.message : "Corridor policy is unavailable"));
   },[isAuthenticated]);
   async function refreshRequests() {
-    const result = await apiRequest<{requests:SeatRequest[]}>("/v1/seat-requests");
+    const [result,confirmed] = await Promise.all([
+      apiRequest<{requests:SeatRequest[]}>("/v1/seat-requests"),
+      apiRequest<{bookings:typeof bookings}>("/v1/seat-requests/confirmed")]);
     setRequests(result.requests);
+    setBookings(confirmed.bookings);
   }
   useEffect(() => {if (isAuthenticated) void refreshRequests().catch(() => undefined);},[isAuthenticated]);
   async function changeRequest(path:string,body:Record<string,unknown>,key:string) {
@@ -46,8 +54,8 @@ export default function SearchRidesPage() {
       }
       window.sessionStorage.removeItem(storageKey);
       const refreshed = await refreshRequests().then(() => true,() => false);
-      setMessage(refreshed ? "Seat request updated. Pending requests are not confirmed and reserve no seat."
-        : "Seat request recorded. Reload this page to see its latest status.");
+      setMessage(refreshed ? "Seat decision updated. Check the request and confirmed bookings below."
+        : "Seat decision recorded. Reload this page to see its latest status.");
     } catch(error) {
       if (error instanceof ApiError && error.status < 500 && error.code !== "OPERATION_PENDING") {
         window.sessionStorage.removeItem(storageKey);
@@ -62,7 +70,7 @@ export default function SearchRidesPage() {
         if (status?.operation.state === "acknowledged" || status?.operation.state === "recovered") {
           window.sessionStorage.removeItem(storageKey);
           await refreshRequests().catch(() => undefined);
-          setMessage("Seat request updated. Pending requests are not confirmed and reserve no seat.");
+          setMessage("Seat decision updated. Check the request and confirmed bookings below.");
         } else setMessage("Request outcome is pending. Retry this action to check the same operation.");
       } else {
         setMessage(error instanceof Error ? `${error.message} Retry uses the same operation.`
@@ -103,6 +111,20 @@ export default function SearchRidesPage() {
       </button>
     </li>)}</ul>
     <SeatRequestList requests={requests} currentUserId={user?.id} busy={busy !== null}
-      onReject={id => void changeRequest(`/v1/seat-requests/${id}/reject`,{},id)} />
+      onReject={id => void changeRequest(`/v1/seat-requests/${id}/reject`,{},`reject:${id}`)}
+      onAccept={id => void changeRequest(`/v1/seat-requests/${id}/accept`,{},`accept:${id}`)} />
+    <section><h2 className="text-xl font-semibold">Confirmed bookings</h2>
+      <ul>{bookings.map(booking => <li key={booking.id} className="rounded border p-3">
+        {booking.origin_code} → {booking.destination_code} · One seat ·
+        {new Date(booking.departure_at).toLocaleString("en-IN",{timeZone:"Asia/Kolkata"})} IST ·
+        ₹{(booking.contribution_paise/100).toFixed(2)} {booking.currency} · {booking.status}
+        <span className="block text-sm">Pickup: {booking.pickup_location}. Car: {[booking.car_color,
+          booking.car_make,booking.car_model].filter(Boolean).join(" ") || "Details pending"}, registration ending {booking.car_registration_last4}.</span>
+        <span className="block text-sm">{booking.passenger_id === user?.id
+          ? `Driver: ${booking.driver_verified_name ?? "Name pending"}.`
+          : `Passenger: ${booking.passenger_verified_name ?? "Name pending"}; ${booking.passenger_origin_code} → ${booking.passenger_destination_code}.`}
+          {" "}Phone numbers remain private until ownership verification is available. No contribution is due before journey confirmation.</span>
+      </li>)}</ul>
+    </section>
   </main>;
 }
