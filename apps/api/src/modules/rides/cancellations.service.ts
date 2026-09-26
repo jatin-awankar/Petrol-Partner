@@ -142,6 +142,11 @@ export class CancellationsService {
         : requests.find(item => item.id === targetId)?.passenger_id !== actorId)
         throw new AppError(403,"Only the participant may cancel","FORBIDDEN");
       if (offer.status === "cancelled") throw new AppError(409,"Offer is already cancelled","OFFER_NOT_ACTIVE");
+      const affected=targetType === "offer"
+        ? requests.filter(item => item.status === "pending" || item.status === "accepted")
+        : requests.filter(item => item.id === targetId && (item.status === "pending" || item.status === "accepted"));
+      if (targetType === "request" && !affected.length)
+        throw new AppError(409,"Request is not active","REQUEST_NOT_ACTIVE");
       if (offer.status === "departed" || offer.departure_at <= now) {
         const row=await repo.requestReview(client,{actorId,key,digest:payloadDigest,targetType,targetId,
           offerId,reason,caseId:randomUUID(),at:now,
@@ -151,11 +156,6 @@ export class CancellationsService {
       }
       if (offer.status !== "active" && offer.status !== "held")
         throw new AppError(409,"Offer is not active","OFFER_NOT_ACTIVE");
-      const affected=targetType === "offer"
-        ? requests.filter(item => item.status === "pending" || item.status === "accepted")
-        : requests.filter(item => item.id === targetId && (item.status === "pending" || item.status === "accepted"));
-      if (targetType === "request" && !affected.length)
-        throw new AppError(409,"Request is not active","REQUEST_NOT_ACTIVE");
       const row=await repo.cancel(client,{actorId,key,digest:payloadDigest,targetType,targetId,
         offerId,reason,requests:affected,at:now});
       await notifications(client,row);

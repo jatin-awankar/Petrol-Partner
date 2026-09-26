@@ -156,7 +156,7 @@ export class SeatRequestsService {
   }
 
   async list(actorId:string) {
-    return (await repo.listForParticipant(this.db,actorId)).map(visibleRequest);
+    return (await repo.listForParticipant(this.db,actorId,clockOverride ? clock() : undefined)).map(visibleRequest);
   }
 
   async confirmed(actorId:string) {

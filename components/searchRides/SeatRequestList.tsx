@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 export type SeatRequest = {id:string;offer_id:string;passenger_id:string;driver_id:string;
   status:"pending"|"rejected"|"expired"|"accepted"|"withdrawn"|"cancelled";decision_deadline_at:string;
   cancelled_by?:string|null;cancelled_at?:string|null;cancellation_reason?:string|null;
+  confirmed_contribution_paise?:number|null;confirmed_currency?:string|null;
   offer_terms:{origin_code:string;destination_code:string;departure_at:string;
     contribution_paise:number;currency:string;cancellation_notice?:string;contact_notice?:string};
   confirmed:boolean;seats_reserved:number};
@@ -32,7 +33,8 @@ export function SeatRequestList({requests,currentUserId,busy,onReject,onAccept,o
       return <li key={item.id} className="rounded border p-4">
         <p>{item.offer_terms.origin_code} → {item.offer_terms.destination_code} · {new Date(item.offer_terms.departure_at).toLocaleString("en-IN",{timeZone:"Asia/Kolkata"})} IST</p>
         <p className="font-medium">{status === "pending" ? "Pending · no seat reserved" : status === "rejected" ? "Rejected" : status === "accepted" ? "Confirmed · one whole-ride seat" : status === "cancelled" ? "Cancelled" : status === "withdrawn" ? "Withdrawn · overlapping ride confirmed" : "Expired"}</p>
-        {status === "accepted" && <p className="text-sm">Confirmed contribution: ₹{(item.offer_terms.contribution_paise/100).toFixed(2)} {item.offer_terms.currency}. Nothing is due until the journey is confirmed.</p>}
+        {(status === "accepted" || status === "cancelled" && item.confirmed_contribution_paise != null)
+          && <p className="text-sm">Confirmed contribution: ₹{((item.confirmed_contribution_paise ?? item.offer_terms.contribution_paise)/100).toFixed(2)} {item.confirmed_currency ?? item.offer_terms.currency}. {status === "cancelled" ? "No contribution is due for a cancelled booking." : "Nothing is due until the journey is confirmed."}</p>}
         <p className="text-sm">Decision deadline: {new Date(item.decision_deadline_at).toLocaleString("en-IN",{timeZone:"Asia/Kolkata"})} IST</p>
         <p className="text-sm">{item.offer_terms.cancellation_notice} {item.offer_terms.contact_notice}</p>
         {status === "cancelled" && item.cancelled_at && <p className="text-sm">Cancelled by {item.cancelled_by === item.passenger_id ? "passenger" : "driver"} on {new Date(item.cancelled_at).toLocaleString("en-IN",{timeZone:"Asia/Kolkata"})} IST{item.cancellation_reason ? ` · ${item.cancellation_reason}` : ""}.</p>}

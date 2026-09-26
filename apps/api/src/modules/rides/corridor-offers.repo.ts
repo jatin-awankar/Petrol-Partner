@@ -169,6 +169,7 @@ export async function mine(db:Pool,driverId:string) {
     FROM ride_offers r LEFT JOIN LATERAL (
       SELECT actor_id,created_at,reason FROM pilot_cancellation_operations
       WHERE target_type='offer' AND target_id=r.id AND state IN ('acknowledged','recovered')
+        AND result->>'kind'='cancelled'
       ORDER BY created_at DESC LIMIT 1) c ON true
     WHERE r.driver_id=$1 AND r.pilot_policy_id IS NOT NULL
     ORDER BY r.created_at DESC LIMIT 50`,[driverId])).rows;

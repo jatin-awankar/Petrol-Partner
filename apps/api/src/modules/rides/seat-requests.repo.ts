@@ -6,6 +6,7 @@ export type SeatRequest = {
   status: "pending" | "rejected" | "expired" | "accepted" | "withdrawn" | "cancelled"; offer_version: number;
   offer_terms: Record<string, unknown>; decision_deadline_at: Date;
   created_at: Date; decided_at: Date | null;
+  confirmed_contribution_paise?:number|null; confirmed_currency?:string|null;
 };
 export type RequestOperation = {
   id: string; actor_id: string; idempotency_key: string; payload_digest: string;
@@ -88,16 +89,18 @@ export async function acknowledge(db:PoolClient,id:string) {
 export async function readyNotifications(db:PoolClient,id:string) {
   await db.query("UPDATE pilot_notification_events SET ready_at=now() WHERE origin_type='seat_request' AND operation_id=$1",[id]);
 }
-export async function listForParticipant(db:Database,userId:string) {
-  return (await db.query<SeatRequest>(`SELECT r.*,c.actor_id AS cancelled_by,
+export async function listForParticipant(db:Database,userId:string,asOf?:Date) {
+  return (await db.query<SeatRequest>(`SELECT r.*,a.contribution_paise AS confirmed_contribution_paise,
+    a.currency AS confirmed_currency,c.actor_id AS cancelled_by,
     c.cancelled_at,c.reason AS cancellation_reason FROM pilot_seat_requests r
     LEFT JOIN pilot_seat_allocations a ON a.request_id=r.id
     LEFT JOIN LATERAL (SELECT actor_id,cancelled_at,reason FROM pilot_cancellation_audit
       WHERE request_id=r.id ORDER BY cancelled_at DESC LIMIT 1) c ON true
     WHERE (r.passenger_id=$1 OR r.driver_id=$1)
-      AND (r.status<>'accepted' OR a.status IN ('confirmed','held')
-        OR a.ended_at > now()-interval '24 hours')
-    ORDER BY r.created_at DESC LIMIT 100`,[userId])).rows;
+      AND (r.status NOT IN ('accepted','cancelled')
+        OR a.status IN ('confirmed','held')
+        OR COALESCE(a.ended_at,c.cancelled_at) > COALESCE($2::timestamptz,now())-interval '24 hours')
+    ORDER BY r.created_at DESC LIMIT 100`,[userId,asOf ?? null])).rows;
 }
 export async function allOperations(db:Database) {
   return (await db.query<RequestOperation>("SELECT * FROM pilot_seat_request_operations")).rows;

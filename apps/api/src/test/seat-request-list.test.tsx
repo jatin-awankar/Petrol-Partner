@@ -43,4 +43,12 @@ describe("seat request browser states",() => {
     expect(screen.getByText("Confirmed · one whole-ride seat")).not.toBeNull();
     expect(screen.getByText(/Nothing is due until the journey is confirmed/)).not.toBeNull();
   });
+  it("shows the frozen confirmed contribution after an accepted seat is cancelled",() => {
+    render(<SeatRequestList requests={[{...request("cancelled","2026-09-26T10:01:00.000Z"),
+      confirmed_contribution_paise:2500,confirmed_currency:"INR"}]}
+      currentUserId="passenger" busy={false} onReject={vi.fn()} onAccept={vi.fn()} />);
+    expect(screen.getByText("Cancelled")).not.toBeNull();
+    expect(screen.getByText(/Confirmed contribution: ₹25.00 INR/)).not.toBeNull();
+    expect(screen.getByText(/No contribution is due for a cancelled booking/)).not.toBeNull();
+  });
 });

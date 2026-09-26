@@ -133,6 +133,11 @@ describe("pilot cancellation and replacement", () => {
       setSeatRequestClockForTests(() => new Date(Date.now()+25*60*60_000));
       expect((await request(createApp()).get(`/v1/seat-requests/confirmed/${offerId}`)
         .set("Authorization",`Bearer ${one.token}`)).status).toBe(404);
+      const expiredCancelledView=await request(createApp()).get("/v1/seat-requests")
+        .set("Authorization",`Bearer ${one.token}`);
+      expect(expiredCancelledView.status).toBe(200);
+      expect(expiredCancelledView.body.requests.map((item:{id:string}) => item.id))
+        .not.toContain(a.body.request.id);
       setSeatRequestClockForTests(null);
       expect((await cancelRequest(one,a.body.request.id,"cancel-confirmed","Changed plans")).body.operation_id)
         .toBe(passengerCancelled.body.operation_id);
@@ -145,7 +150,8 @@ describe("pilot cancellation and replacement", () => {
       const cancelledView=await request(createApp()).get("/v1/seat-requests")
         .set("Authorization",`Bearer ${one.token}`);
       expect(cancelledView.body.requests.find((item:{id:string}) => item.id===a.body.request.id))
-        .toMatchObject({status:"cancelled",cancelled_by:one.id,cancellation_reason:"Changed plans"});
+        .toMatchObject({status:"cancelled",cancelled_by:one.id,cancellation_reason:"Changed plans",
+          confirmed_contribution_paise:2500,confirmed_currency:"INR"});
       const cancelOffer=(key:string) => request(createApp()).post(`/v1/corridor-offers/${offerId}/cancel`)
         .set("Authorization",`Bearer ${driver.token}`).set("Idempotency-Key",key).send({reason:"Change of car"});
       expect((await request(createApp()).post(`/v1/corridor-offers/${offerId}/cancel`)
@@ -189,12 +195,20 @@ describe("pilot cancellation and replacement", () => {
         .set("Authorization",`Bearer ${two.token}`)).body.offers.map((item:{id:string}) => item.id))
         .toContain(replacementId);
       expect((await requestSeat(two,"replacement-request",replacementId)).status).toBe(201);
+      const inactiveRequest=await requestSeat(three,"replacement-rejected-request",replacementId);
+      expect(inactiveRequest.status).toBe(201);
+      expect((await request(createApp()).post(`/v1/seat-requests/${inactiveRequest.body.request.id}/reject`)
+        .set("Authorization",`Bearer ${driver.token}`).set("Idempotency-Key","replacement-reject")
+        .send({})).status).toBe(200);
       expect((await publish("duplicate-replacement",{...input,replaces_offer_id:offerId})).status).toBe(409);
       await verificationPool.query(`UPDATE ride_offers SET date=(now()-interval '1 day')::date,
         time=(now()-interval '1 day')::time,pilot_commitment_until=now()-interval '22 hours'
         WHERE id=$1`,[replacementId]);
       const replacementRequest=(await verificationPool.query<{id:string}>(`SELECT id FROM pilot_seat_requests
-        WHERE offer_id=$1`,[replacementId])).rows[0].id;
+        WHERE offer_id=$1 AND status='pending'`,[replacementId])).rows[0].id;
+      const lateInactive=await cancelRequest(three,inactiveRequest.body.request.id,"late-inactive-cancel");
+      expect(lateInactive.status).toBe(409);
+      expect(lateInactive.body.error.code).toBe("REQUEST_NOT_ACTIVE");
       const lateSeat=await cancelRequest(two,replacementRequest,"late-cancel");
       expect(lateSeat.status).toBe(202);
       expect(lateSeat.body).toMatchObject({kind:"review_required",state:"acknowledged"});
@@ -204,6 +218,10 @@ describe("pilot cancellation and replacement", () => {
         .send({});
       expect(lateRide.status).toBe(202);
       expect(lateRide.body).toMatchObject({kind:"review_required",state:"acknowledged"});
+      const replacementInMine=(await request(createApp()).get("/v1/corridor-offers/mine")
+        .set("Authorization",`Bearer ${driver.token}`)).body.offers
+        .find((item:{id:string}) => item.id===replacementId);
+      expect(replacementInMine).toMatchObject({status:"active",cancelled_at:null});
       expect((await verificationPool.query<{status:string}>("SELECT status FROM ride_offers WHERE id=$1",[replacementId])).rows[0].status)
         .toBe("active");
       expect((await verificationPool.query<{status:string}>("SELECT status FROM pilot_seat_requests WHERE id=$1",[replacementRequest])).rows[0].status)
