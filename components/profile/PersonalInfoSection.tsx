@@ -80,9 +80,8 @@ const PersonalInfoSection: React.FC<PersonalInfoSectionProps> = ({
 
   const validate = useCallback(() => {
     if (!formData.name?.trim()) return "Full name is required.";
-    if (!formData.phone?.trim()) return "Phone number is required.";
     return null;
-  }, [formData.name, formData.phone]);
+  }, [formData.name]);
 
   const handleSave = useCallback(async () => {
     if (!onSave) return;
@@ -171,7 +170,7 @@ const PersonalInfoSection: React.FC<PersonalInfoSectionProps> = ({
                   <p className="text-sm font-medium text-foreground">{formData.name || "Not provided"}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground">Phone</p>
+                  <p className="text-xs text-muted-foreground">Optional phone (unverified, private)</p>
                   <p className="text-sm font-medium text-foreground">{formData.phone || "Not provided"}</p>
                 </div>
                 <div>
@@ -225,7 +224,7 @@ const PersonalInfoSection: React.FC<PersonalInfoSectionProps> = ({
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="profile-phone">Phone</Label>
+                  <Label htmlFor="profile-phone">Optional phone (unverified, private)</Label>
                   <Input
                     id="profile-phone"
                     value={formData.phone ?? ""}

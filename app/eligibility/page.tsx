@@ -67,7 +67,7 @@ export default function EligibilityPage() {
       {review && <p>{review.enrolled_name} · {review.institution_name} · graduation {review.graduation_year}</p>}
       {review?.reviewed_at && <p>Reviewed {new Date(review.reviewed_at).toLocaleString()}. Adult eligibility: {review.adult_eligible ? "confirmed" : "not confirmed"}.</p>}
       {review?.metadata?.reviewReason && <p>Reason: {review.metadata.reviewReason}</p>}
-      {review?.status === "verified" && <p>Phone ownership and separate driver and car approvals are still required for applicable actions.</p>}
+      {review?.status === "verified" && <p>Separate driver and car approvals are still required before offering rides.</p>}
     </section>
     {review?.status === "rejected" && <p>A new submission can be made while the prior documents follow their deletion schedule.</p>}
     {review?.status === "pending_review" && <form onSubmit={replaceLostEvidence} className="space-y-3 rounded border p-4">
