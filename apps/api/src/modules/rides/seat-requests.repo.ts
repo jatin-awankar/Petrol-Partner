@@ -56,6 +56,15 @@ export async function byKey(db:Database,actorId:string,key:string) {
 export async function byId(db:Database,id:string,actorId:string) {
   return (await db.query<RequestOperation>("SELECT * FROM pilot_seat_request_operations WHERE id=$1 AND actor_id=$2",[id,actorId])).rows[0] ?? null;
 }
+export async function acceptedTripVisible(db:Database,requestId:string,actorId:string) {
+  return Boolean((await db.query(`SELECT 1 FROM pilot_seat_allocations a
+    JOIN pilot_seat_requests r ON r.id=a.request_id
+    WHERE a.request_id=$1 AND r.status='accepted'
+      AND (a.driver_id=$2 OR a.passenger_id=$2)
+      AND (a.status IN ('confirmed','held') OR
+        (a.status IN ('completed','cancelled') AND a.ended_at > now()-interval '24 hours'))
+    LIMIT 1`,[requestId,actorId])).rowCount);
+}
 export async function operationById(db:PoolClient,id:string) {
   return (await db.query<RequestOperation>("SELECT * FROM pilot_seat_request_operations WHERE id=$1 FOR UPDATE",[id])).rows[0] ?? null;
 }

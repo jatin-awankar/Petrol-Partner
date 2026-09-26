@@ -289,12 +289,27 @@ describe("pilot seat requests through HTTP and PostgreSQL", () => {
       expect(passengerTrip.body.trip.bookings[0]).toHaveProperty("driver_verified_name");
       expect(passengerTrip.body.trip.bookings[0].car_registration_last4).toBe("1234");
       expect(JSON.stringify(passengerTrip.body)).not.toMatch(/phone|emergency_contact|registration_number/i);
+      const passengerList = await request(createApp()).get("/v1/seat-requests/confirmed")
+        .set("Authorization",`Bearer ${winnerPassenger.token}`);
+      expect(passengerList.body.bookings.map((item:{offer_id:string}) => item.offer_id)).toEqual(
+        expect.arrayContaining([offer.body.offer.id,laterOffers[overlappingAcceptances[0].status === 200 ? 0 : 1].body.offer.id]));
+      const otherDriverList = await request(createApp()).get("/v1/seat-requests/confirmed")
+        .set("Authorization",`Bearer ${otherDriver.token}`);
+      expect(otherDriverList.body.bookings.some((item:{offer_id:string}) => item.offer_id === offer.body.offer.id)).toBe(false);
       expect((await request(createApp()).get(`/v1/seat-requests/confirmed/${offer.body.offer.id}`)
         .set("Authorization",`Bearer ${otherDriver.token}`)).status).toBe(404);
       expect((await request(createApp()).get(`/v1/seat-requests/confirmed/${offer.body.offer.id}`)).status).toBe(401);
       expect((await verificationPool.query<{count:number}>(`SELECT count(*)::int AS count
         FROM pilot_seat_allocations WHERE offer_id=$1`,[offer.body.offer.id])).rows[0].count).toBe(1);
       await verificationPool.query(`UPDATE pilot_seat_allocations SET status='cancelled',
+        ended_at=now()-interval '23 hours 59 minutes' WHERE offer_id=$1`,[offer.body.offer.id]);
+      expect((await request(createApp()).get(`/v1/seat-requests/confirmed/${offer.body.offer.id}`)
+        .set("Authorization",`Bearer ${winnerPassenger.token}`)).status).toBe(200);
+      await verificationPool.query(`UPDATE pilot_seat_allocations SET status='cancelled',
+        ended_at=now()-interval '24 hours' WHERE offer_id=$1`,[offer.body.offer.id]);
+      expect((await request(createApp()).get(`/v1/seat-requests/confirmed/${offer.body.offer.id}`)
+        .set("Authorization",`Bearer ${winnerPassenger.token}`)).status).toBe(404);
+      await verificationPool.query(`UPDATE pilot_seat_allocations SET status='completed',
         ended_at=now()-interval '23 hours 59 minutes' WHERE offer_id=$1`,[offer.body.offer.id]);
       expect((await request(createApp()).get(`/v1/seat-requests/confirmed/${offer.body.offer.id}`)
         .set("Authorization",`Bearer ${winnerPassenger.token}`)).status).toBe(200);
@@ -306,6 +321,13 @@ describe("pilot seat requests through HTTP and PostgreSQL", () => {
         item.offer_id === offer.body.offer.id)).toBe(false);
       expect((await request(createApp()).get(`/v1/seat-requests/confirmed/${offer.body.offer.id}`)
         .set("Authorization",`Bearer ${driver.token}`)).status).toBe(404);
+      const expiredOperation = await request(createApp()).get(
+        `/v1/seat-requests/operations/${winner.body.operation_id}`)
+        .set("Authorization",`Bearer ${driver.token}`);
+      expect(expiredOperation.status).toBe(200);
+      expect(expiredOperation.body.operation.state).toBe("acknowledged");
+      expect(expiredOperation.body.operation).not.toHaveProperty("booking");
+      expect(expiredOperation.body.operation).not.toHaveProperty("request");
       const expiredTripDetails = await request(createApp()).get("/v1/seat-requests")
         .set("Authorization",`Bearer ${driver.token}`);
       expect(expiredTripDetails.body.requests.some((item:{id:string}) =>

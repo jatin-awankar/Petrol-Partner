@@ -1,4 +1,5 @@
 import { defineConfig } from "vitest/config";
+import { fileURLToPath } from "node:url";
 
 process.env.NODE_ENV = "test";
 process.env.TEST_DATABASE_DISPOSABLE = "true";
@@ -11,6 +12,7 @@ process.env.ENABLE_TRACKING ??= "false";
 process.env.ENABLE_MATCH_REFRESH_PROCESSOR ??= "false";
 
 export default defineConfig({
+  resolve: { alias: { "@": fileURLToPath(new URL("../../",import.meta.url)) } },
   test: {
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
   },

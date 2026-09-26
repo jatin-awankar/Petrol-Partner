@@ -144,8 +144,11 @@ export class SeatRequestsService {
     const row = await repo.byId(this.db,id,actorId);
     if (!row) throw new AppError(404,"Operation not found","OPERATION_NOT_FOUND");
     const recovery = await operatorQuery<{mode:string}>(this.db,"recoveryMode");
-    return {operation_id:row.id,state:recovery.rows[0]?.mode === "restricted" && row.state === "acknowledged"
-      ? "pending_unknown" : row.state,...row.result};
+    const state = recovery.rows[0]?.mode === "restricted" && row.state === "acknowledged"
+      ? "pending_unknown" : row.state;
+    if (row.action === "accepted" && !await repo.acceptedTripVisible(this.db,row.request_id,actorId))
+      return {operation_id:row.id,state};
+    return {operation_id:row.id,state,...row.result};
   }
 
   async list(actorId:string) {

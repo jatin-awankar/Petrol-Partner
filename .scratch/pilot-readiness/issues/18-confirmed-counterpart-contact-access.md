@@ -33,3 +33,7 @@ Implemented a participant-scoped confirmed-trip endpoint and narrowed the confir
 Verification: PostgreSQL HTTP integration suite passed (28 tests), including participant, unrelated-user, unauthenticated, pending, and 24-hour cutoff checks. Full `npm test`, `npm run typecheck`, and `npm run lint` passed; lint reported 11 warnings and no errors.
 
 Remaining evidence before resolution: browser role walkthroughs and a pickup-exception rehearsal using the actual published operator support contact. That contact and its operating window are launch configuration decisions. Operator support/incident access to private contacts, if introduced, still requires purpose-limited audited handling. Keep the ticket claimed until these are demonstrated.
+
+## Comments
+
+2026-09-26 review follow-up: Added rendered-page tests for both confirmed roles and the pre-action coordination notice, plus HTTP checks for multiple offers, cancellation/completion cutoff boundaries, and accepted-operation snapshots after the cutoff. The latter exposed a leak; accepted operation responses now retain only operation ID and state once trip-detail access ends. One shared notice replaces duplicated page copy. The user chose to keep the support contact and operating hours unpublished, so the pages say this explicitly. Full tests, typecheck, and lint pass (11 existing lint warnings). Actual browser walkthroughs and a pickup-exception rehearsal with an approved published contact remain outstanding; status stays `claimed`.

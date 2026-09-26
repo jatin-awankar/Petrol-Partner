@@ -6,9 +6,10 @@ import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api/client";
 import { useCurrentUser } from "@/hooks/auth/useCurrentUser";
 import { SeatRequestList, type SeatRequest } from "@/components/searchRides/SeatRequestList";
+import { PilotCoordinationNotice } from "@/components/pilot/PilotCoordinationNotice";
 
 type Stop = {code:string;label:string};
-type Policy = {stops:Stop[];permitted_pairs:{origin_code:string;destination_code:string}[]};
+type Policy = {stops:Stop[];permitted_pairs:{origin_code:string;destination_code:string}[];contact_notice:string};
 type Offer = {id:string;origin_code:string;destination_code:string;departure_at:string;
   contribution_paise:number;currency:string;capacity:number;available_seats:number;
   request_cutoff_at:string;cancellation_notice:string;contact_notice:string};
@@ -91,6 +92,7 @@ export default function SearchRidesPage() {
   return <main className="mx-auto max-w-3xl space-y-6 p-6">
     <h1 className="text-3xl font-semibold">Discover corridor offers</h1>
     <p>See departure, contribution, and whole ride capacity before requesting a seat.</p>
+    <PilotCoordinationNotice contactNotice={policy?.contact_notice} />
     <Link href="/post-a-ride" className="underline">Publish an offer</Link>
     <form onSubmit={search} className="flex flex-wrap items-end gap-3">
       <label>Origin<select className="mt-1 block rounded border p-2" value={origin} onChange={event => {setOrigin(event.target.value);setDestination("");}} required><option value="">Choose origin</option>{policy?.stops.map(stop => <option key={stop.code} value={stop.code}>{stop.label}</option>)}</select></label>
@@ -103,7 +105,7 @@ export default function SearchRidesPage() {
       <p>Departs {new Date(offer.departure_at).toLocaleString("en-IN",{timeZone:"Asia/Kolkata"})} IST</p>
       <p>₹{(offer.contribution_paise/100).toFixed(2)} {offer.currency} per passenger · {offer.available_seats} of {offer.capacity} seats available</p>
       <p className="text-sm">Requests close {new Date(offer.request_cutoff_at).toLocaleString("en-IN",{timeZone:"Asia/Kolkata"})} IST</p>
-      <p className="mt-2 text-sm">{offer.cancellation_notice} {offer.contact_notice} Confirmed riders use trip details and durable in-app or email notices; exceptions go to the published operator support contact during operating windows.</p>
+      <p className="mt-2 text-sm">{offer.cancellation_notice}</p>
       <button className="mt-3 rounded bg-primary px-4 py-2 text-primary-foreground disabled:opacity-50"
         disabled={busy !== null || requests.some(item => item.offer_id === offer.id && item.status === "pending")}
         onClick={() => void changeRequest("/v1/seat-requests",{offer_id:offer.id,seats:1},offer.id)}>
@@ -123,7 +125,7 @@ export default function SearchRidesPage() {
         <span className="block text-sm">{booking.passenger_id === user?.id
           ? `Driver: ${booking.driver_verified_name ?? "Name pending"}.`
           : `Passenger: ${booking.passenger_verified_name ?? "Name pending"}; ${booking.passenger_origin_code} → ${booking.passenger_destination_code}.`}
-          {" "}Participant phone numbers are never shared. Use trip details and in-app or email notices to coordinate pickup. For exceptions during operating hours, use the published operator support contact. No contribution is due before journey confirmation.</span>
+          {" "}No contribution is due before journey confirmation.</span>
       </li>)}</ul>
     </section>
   </main>;
