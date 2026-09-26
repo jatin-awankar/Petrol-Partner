@@ -68,6 +68,7 @@ interface TransactionEligibilityRow {
   student_eligibility_ends_at: Date | string | null;
   student_adult_eligible: boolean | null;
   driver_eligibility_status: string | null;
+  driver_license_expires_at: string | null;
 }
 
 function toIso(value: Date | string | null) {
@@ -721,7 +722,8 @@ export async function findTransactionEligibilityByUserId(userId: string) {
        sv.status AS student_verification_status,
        sv.eligibility_ends_at AS student_eligibility_ends_at,
        sv.adult_eligible AS student_adult_eligible,
-       de.status AS driver_eligibility_status
+       de.status AS driver_eligibility_status,
+       to_char(de.license_expires_at, 'YYYY-MM-DD') AS driver_license_expires_at
      FROM users u
      LEFT JOIN student_verifications sv ON sv.user_id = u.id
      LEFT JOIN driver_eligibility de ON de.user_id = u.id
@@ -756,6 +758,7 @@ export async function findApprovedVehicleForOwner(userId: string, vehicleId: str
        AND id = $2
        AND status = 'active'
        AND verification_status = 'approved'
+       AND vehicle_type IN ('car', 'suv')
      LIMIT 1`,
     [userId, vehicleId],
   );

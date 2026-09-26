@@ -249,6 +249,7 @@ export function upsertDriverEligibility(userId: string, input: UpsertDriverEligi
   const status = deriveDriverEligibilityStatus(input);
 
   return withTransaction(async (client) => {
+    await assertVerifiedStudentCanTransact(userId);
     return verificationRepo.upsertDriverEligibility(
       {
         userId,
@@ -278,6 +279,7 @@ export function listVehicles(userId: string) {
 
 export function createVehicle(userId: string, input: CreateVehicleInput) {
   return withTransaction(async (client) => {
+    await assertVerifiedStudentCanTransact(userId);
     return verificationRepo.createVehicle(
       {
         ownerUserId: userId,
@@ -373,7 +375,9 @@ export async function assertApprovedDriverCanOfferRide(userId: string, vehicleId
 
   const eligibility = await verificationRepo.findTransactionEligibilityByUserId(userId);
 
-  if (eligibility?.driver_eligibility_status !== "approved") {
+  if (eligibility?.driver_eligibility_status !== "approved" ||
+      !eligibility.driver_license_expires_at ||
+      eligibility.driver_license_expires_at <= new Date().toISOString().slice(0, 10)) {
     throw new AppError(
       403,
       "Approved driver eligibility is required before creating ride offers",

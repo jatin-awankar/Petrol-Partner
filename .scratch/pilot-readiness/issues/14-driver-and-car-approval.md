@@ -4,7 +4,7 @@
 
 **Blocked by:** 12 (Student and adult eligibility review).
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 **Work type:** Feature slice
 

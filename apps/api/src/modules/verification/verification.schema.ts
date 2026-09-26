@@ -42,7 +42,7 @@ export const upsertDriverEligibilitySchema = z.object({
 });
 
 const vehicleBaseSchema = z.object({
-  vehicle_type: z.enum(["bike", "car", "suv", "scooter", "van", "other"]),
+  vehicle_type: z.enum(["car", "suv"]),
   make: z.string().trim().max(100).optional(),
   model: z.string().trim().max(100).optional(),
   color: z.string().trim().max(50).optional(),

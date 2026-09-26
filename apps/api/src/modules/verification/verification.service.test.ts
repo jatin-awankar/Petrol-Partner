@@ -10,6 +10,7 @@ vi.mock("../../shared/audit/logs", () => ({
 
 vi.mock("./verification.repo", () => ({
   findTransactionEligibilityByUserId: vi.fn(),
+  findApprovedVehicleForOwner: vi.fn(),
   findStudentVerificationForUpdate: vi.fn(async () => null),
   studentEvidenceForUpdate: vi.fn(async () => null),
   upsertStudentVerification: vi.fn(async () => ({
@@ -87,5 +88,19 @@ describe("verification.service", () => {
     await expect(
       verificationService.assertVerifiedStudentCanTransact("user-1"),
     ).resolves.toBeUndefined();
+  });
+
+  it("blocks an approved driver as soon as the licence expiry date arrives", async () => {
+    vi.mocked(verificationRepo.findTransactionEligibilityByUserId).mockResolvedValue({
+      student_verification_status: "verified",
+      student_adult_eligible: true,
+      student_eligibility_ends_at: new Date(Date.now() + 86400000).toISOString(),
+      driver_eligibility_status: "approved",
+      driver_license_expires_at: new Date().toISOString().slice(0, 10),
+    });
+
+    await expect(verificationService.assertApprovedDriverCanOfferRide("user-1", "vehicle-1"))
+      .rejects.toMatchObject({ code: "DRIVER_ELIGIBILITY_NOT_APPROVED" });
+    expect(verificationRepo.findApprovedVehicleForOwner).not.toHaveBeenCalled();
   });
 });
