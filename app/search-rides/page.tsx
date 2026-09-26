@@ -45,8 +45,9 @@ export default function SearchRidesPage() {
         return;
       }
       window.sessionStorage.removeItem(storageKey);
-      await refreshRequests();
-      setMessage("Seat request updated. Pending requests are not confirmed and reserve no seat.");
+      const refreshed = await refreshRequests().then(() => true,() => false);
+      setMessage(refreshed ? "Seat request updated. Pending requests are not confirmed and reserve no seat."
+        : "Seat request recorded. Reload this page to see its latest status.");
     } catch(error) {
       if (error instanceof ApiError && error.status < 500 && error.code !== "OPERATION_PENDING") {
         window.sessionStorage.removeItem(storageKey);

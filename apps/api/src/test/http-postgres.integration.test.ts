@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { signAccessToken } from "../shared/jwt/tokens";
 import { corridorOffersService } from "../modules/rides/corridor-offers.service";
-import { SeatRequestsService } from "../modules/rides/seat-requests.service";
+import { SeatRequestsService, setSeatRequestClockForTests } from "../modules/rides/seat-requests.service";
 import { expirePilotSeatRequests } from "../../../worker/src/jobs/pilot-seat-expiry";
 import { spawn, type ChildProcess } from "node:child_process";
 import { chmod, mkdtemp, readFile, rm } from "node:fs/promises";
@@ -55,7 +55,7 @@ describe("pilot seat requests through HTTP and PostgreSQL", () => {
     process.env.PILOT_SUPPORT_WINDOW_START = new Date(Date.now()-60_000).toISOString();
     process.env.PILOT_SUPPORT_WINDOW_END = new Date(Date.now()+30*24*60*60_000).toISOString();
     try {
-      const identities = await Promise.all(["seat-driver","seat-passenger-a","seat-passenger-b"].map(async label => {
+      const identities = await Promise.all(["seat-driver","seat-passenger-a","seat-passenger-b","seat-passenger-c"].map(async label => {
         const email = `${label}@example.test`;
         const id = (await verificationPool.query<{id:string}>(
           "INSERT INTO users(email,email_verified_at) VALUES($1,now()) RETURNING id",[email])).rows[0].id;
@@ -64,7 +64,7 @@ describe("pilot seat requests through HTTP and PostgreSQL", () => {
           VALUES($1,'manual_review','verified',true,'Synthetic College',now()+interval '1 year')`,[id]);
         return {id,token:signAccessToken({userId:id,email,role:"user"})};
       }));
-      const [driver,passenger,other] = identities;
+      const [driver,passenger,other,third] = identities;
       await verificationPool.query(`INSERT INTO driver_eligibility(user_id,status,license_expires_at,review_after)
         VALUES($1,'approved','2099-12-31','2099-12-30')`,[driver.id]);
       const car = (await verificationPool.query<{id:string}>(`INSERT INTO vehicles
@@ -184,9 +184,32 @@ describe("pilot seat requests through HTTP and PostgreSQL", () => {
       await verificationPool.query("UPDATE student_verifications SET eligibility_ends_at=now()-interval '1 second' WHERE user_id=$1",[other.id]);
       expect((await post(other.token,"stale-passenger",{offer_id:cutoffId,seats:1})).status).toBe(403);
       await verificationPool.query("UPDATE student_verifications SET eligibility_ends_at=now()+interval '1 year' WHERE user_id=$1",[other.id]);
-      await verificationPool.query("UPDATE ride_offers SET pilot_request_cutoff_at=now() WHERE id=$1",[cutoffId]);
-      expect((await post(other.token,"cutoff-request",{offer_id:cutoffId,seats:1})).body.error.code)
+      const requestCutoff = new Date(cutoffOffer.body.offer.request_cutoff_at).getTime();
+      const decisionCutoff = new Date(cutoffOffer.body.offer.acceptance_cutoff_at).getTime();
+      setSeatRequestClockForTests(() => new Date(requestCutoff-1));
+      const beforeRequestCutoff = await post(other.token,"before-request-cutoff",{offer_id:cutoffId,seats:1});
+      expect(beforeRequestCutoff.status).toBe(201);
+      expect((await post(passenger.token,"second-before-request-cutoff",{offer_id:cutoffId,seats:1})).status).toBe(201);
+      setSeatRequestClockForTests(() => new Date(requestCutoff));
+      expect((await post(third.token,"at-request-cutoff",{offer_id:cutoffId,seats:1})).body.error.code)
         .toBe("REQUEST_WINDOW_CLOSED");
+      setSeatRequestClockForTests(() => new Date(requestCutoff+1));
+      expect((await post(third.token,"after-request-cutoff",{offer_id:cutoffId,seats:1})).body.error.code)
+        .toBe("REQUEST_WINDOW_CLOSED");
+      setSeatRequestClockForTests(() => new Date(decisionCutoff-1));
+      expect((await request(createApp()).post(`/v1/seat-requests/${beforeRequestCutoff.body.request.id}/reject`)
+        .set("Authorization",`Bearer ${driver.token}`).set("Idempotency-Key","before-decision-cutoff").send({})).status).toBe(200);
+      const atDecisionId = (await verificationPool.query<{id:string}>(`SELECT id FROM pilot_seat_requests
+        WHERE offer_id=$1 AND passenger_id=$2`,[cutoffId,passenger.id])).rows[0].id;
+      setSeatRequestClockForTests(() => new Date(decisionCutoff));
+      expect((await request(createApp()).post(`/v1/seat-requests/${atDecisionId}/reject`)
+        .set("Authorization",`Bearer ${driver.token}`).set("Idempotency-Key","at-decision-cutoff").send({})).body.error.code)
+        .toBe("REQUEST_NOT_PENDING");
+      setSeatRequestClockForTests(() => new Date(decisionCutoff+1));
+      expect((await request(createApp()).post(`/v1/seat-requests/${atDecisionId}/reject`)
+        .set("Authorization",`Bearer ${driver.token}`).set("Idempotency-Key","after-decision-cutoff").send({})).body.error.code)
+        .toBe("REQUEST_NOT_PENDING");
+      setSeatRequestClockForTests(null);
 
       const operatorId = (await verificationPool.query<{id:string}>(
         "INSERT INTO users(email,role,email_verified_at) VALUES('seat-recovery-operator@example.test','admin',now()) RETURNING id"
@@ -199,18 +222,18 @@ describe("pilot seat requests through HTTP and PostgreSQL", () => {
       await verificationPool.query("DELETE FROM pilot_seat_request_audit");
       await verificationPool.query("DELETE FROM pilot_seat_request_operations");
       await verificationPool.query("DELETE FROM pilot_seat_requests");
-      expect(await new SeatRequestsService().reconcileReceipts(operatorId)).toBe(4);
+      expect(await new SeatRequestsService().reconcileReceipts(operatorId)).toBe(7);
       expect((await verificationPool.query<{n:number}>(
         "SELECT count(*)::int AS n FROM pilot_seat_requests WHERE offer_id=$1",[offerId])).rows[0].n).toBe(2);
       expect((await verificationPool.query<{n:number}>(
-        "SELECT count(*)::int AS n FROM pilot_seat_request_operations WHERE state='recovered'")).rows[0].n).toBe(4);
+        "SELECT count(*)::int AS n FROM pilot_seat_request_operations WHERE state='recovered'")).rows[0].n).toBe(7);
       expect((await verificationPool.query<{n:number}>(`SELECT count(*)::int AS n FROM pilot_email_jobs j
         JOIN pilot_notification_events e ON e.id=j.event_id
-        WHERE e.origin_type='seat_request' AND j.status='pending'`)).rows[0].n).toBe(4);
+        WHERE e.origin_type='seat_request' AND j.status='pending'`)).rows[0].n).toBe(7);
       expect((await verificationPool.query<{n:number}>(`SELECT count(*)::int AS n FROM pilot_notification_events e
         JOIN pilot_seat_request_operations o ON o.id=e.operation_id
-        WHERE e.origin_type='seat_request' AND e.id=o.id`)).rows[0].n).toBe(4);
-    } finally {await rm(directory,{recursive:true,force:true});}
+        WHERE e.origin_type='seat_request' AND e.id=o.id`)).rows[0].n).toBe(7);
+    } finally {setSeatRequestClockForTests(null);await rm(directory,{recursive:true,force:true});}
   });
 });
 

@@ -46,8 +46,13 @@ async function restrict(db:Pool,cause:string) {
 function digest(action:string,id:string) {
   return createHash("sha256").update(JSON.stringify({action,id})).digest("hex");
 }
+let clock = () => new Date();
+export function setSeatRequestClockForTests(next:(() => Date)|null) {
+  if (env.NODE_ENV !== "test") throw new Error("Seat request clock override is test-only");
+  clock = next ?? (() => new Date());
+}
 function visibleRequest(row:repo.SeatRequest) {
-  return {...row,status:row.status === "pending" && row.decision_deadline_at <= new Date() ? "expired" : row.status,
+  return {...row,status:row.status === "pending" && row.decision_deadline_at <= clock() ? "expired" : row.status,
     confirmed:false,seats_reserved:0};
 }
 function notification(row:repo.RequestOperation,snapshot:repo.SeatRequest) {
@@ -168,7 +173,7 @@ export class SeatRequestsService {
         const offer = await repo.offerForUpdate(client,id);
         if (!offer) throw new AppError(404,"Offer not found","RIDE_NOT_FOUND");
         if (offer.status !== "active" || !offer.pilot_request_cutoff_at ||
-            offer.pilot_request_cutoff_at <= new Date())
+            offer.pilot_request_cutoff_at <= clock())
           throw new AppError(409,"Requests are closed","REQUEST_WINDOW_CLOSED");
         if (offer.driver_id === actorId) throw new AppError(409,"You cannot request your own offer","SELF_BOOKING_FORBIDDEN");
         if (offer.pilot_capacity <= 0) throw new AppError(409,"Offer has no seats","INSUFFICIENT_SEATS");
@@ -187,7 +192,7 @@ export class SeatRequestsService {
         if (!offer) throw new AppError(404,"Offer not found","RIDE_NOT_FOUND");
         if (initial.driver_id !== actorId) throw new AppError(403,"Only the driver may reject","FORBIDDEN");
         await assertCurrentDriverCarEligibility(client,actorId,offer.vehicle_id);
-        if (initial.status !== "pending" || initial.decision_deadline_at <= new Date())
+        if (initial.status !== "pending" || initial.decision_deadline_at <= clock())
           throw new AppError(409,"Request is no longer pending","REQUEST_NOT_PENDING");
         await repo.rejectRequest(client,id);
         requestId = id;
