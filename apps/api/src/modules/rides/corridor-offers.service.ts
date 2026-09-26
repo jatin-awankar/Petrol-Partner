@@ -9,6 +9,7 @@ import { SignedReceiptStore } from "../operator/receipt-store";
 import { backupStatus } from "../operator/backup-status";
 import { operatorQuery } from "../operator/operator.repo";
 import { assertCurrentOperator } from "../operator/operator.authorization";
+import { pauseService } from "../operator/pause.service";
 import { recordDurableNotification } from "../notifications/contract.repo";
 import { assertCurrentDriverCarEligibility, assertCurrentStudentForSubmission } from "../verification/verification.service";
 import { assertCommitmentsEligible, assertWithinSupportWindow } from "./commitment.service";
@@ -89,14 +90,21 @@ export class CorridorOffersService {
       buffer_minutes:policy.buffer_minutes,schedule_start:policy.schedule_start,schedule_end:policy.schedule_end,
       weekdays:policy.weekdays,cancellation_notice:policy.cancellation_notice,contact_notice:policy.contact_notice,
       provisional:!policy.approved_for_real_trips,stops:await repo.stops(this.db,policy.id),
-      permitted_pairs:(await this.db.query("SELECT origin_code,destination_code,amount_paise FROM pilot_corridor_contributions WHERE policy_id=$1",[policy.id])).rows };
+      permitted_pairs:await repo.pairs(this.db,policy.id) };
   }
   async discover(userId: string,origin: string,destination: string,date?: string) {
+    await pauseService.assertAvailable("offers");
+    await pauseService.assertAvailable("booking");
+    assertWithinSupportWindow(new Date());
     await inProtectedTransaction(this.db, client => assertCurrentStudentForSubmission(client,userId));
     const policy = await repo.currentPolicy(this.db);
     if (!policy || !await repo.pair(this.db,policy.id,origin,destination))
       throw new AppError(400,"Stop pair is not permitted","STOP_PAIR_INVALID");
-    return repo.discover(this.db,origin,destination,date);
+    const offers = await repo.discover(this.db,origin,destination,date);
+    return offers.filter((offer: {departure_at: Date}) => {
+      try { assertWithinSupportWindow(new Date(offer.departure_at)); return true; }
+      catch { return false; }
+    });
   }
   async verifyEvidence(retry?: { actorId: string; key: string }) {
     try {
@@ -130,24 +138,18 @@ export class CorridorOffersService {
     for (const item of receipts) {
       await inProtectedTransaction(this.db,async client => {
         await assertCurrentOperator(client,operatorId);
-        await client.query(`INSERT INTO pilot_offer_operations
-          (id,actor_id,idempotency_key,payload_digest,offer_id,action,result,offer_snapshot,state,created_at,acknowledged_at)
-          VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,'recovered',$9,now())
-          ON CONFLICT (id) DO NOTHING`,[item.operationId,item.actorId,item.key,item.digest,item.offerId,
-          item.action,JSON.stringify(item.result),JSON.stringify(item.offerSnapshot),item.createdAt]);
+        await repo.restoreOperation(client,item);
         const row = await repo.byId(client,item.operationId);
         if (!row || JSON.stringify(receipt(row)) !== JSON.stringify(item))
           throw new AppError(409,"Offer recovery receipt conflicts with database","RECOVERY_CONFLICT");
         const snapshotVersion = Number(item.offerSnapshot.pilot_version);
         const current = await repo.offerForUpdate(client,item.offerId);
         if (!current && item.action === "published") {
-          await client.query(`INSERT INTO ride_offers SELECT (jsonb_populate_record(NULL::ride_offers,$1::jsonb)).*`,
-            [JSON.stringify(item.offerSnapshot)]);
+          await repo.insertOfferSnapshot(client,item.offerSnapshot);
         } else if (!current) {
           throw new AppError(409,"Offer update needs its publication receipt","RECOVERY_INCOMPLETE");
         } else if (current.pilot_version === snapshotVersion) {
-          const live = (await client.query<{snapshot:Record<string,unknown>}>(
-            "SELECT to_jsonb(r) AS snapshot FROM ride_offers r WHERE id=$1",[item.offerId])).rows[0].snapshot;
+          const live = await repo.offerSnapshot(client,item.offerId);
           for (const field of ["driver_id","vehicle_id","date","time","price_per_seat_paise",
             "pilot_policy_id","pilot_policy_snapshot","pilot_origin_code","pilot_destination_code",
             "pilot_capacity","pilot_currency","pilot_request_cutoff_at","pilot_acceptance_cutoff_at",
@@ -156,30 +158,15 @@ export class CorridorOffersService {
               throw new AppError(409,"Offer recovery state conflicts with receipt","RECOVERY_CONFLICT");
           }
         } else if (current.pilot_version < snapshotVersion && item.action === "updated") {
-          await client.query(`UPDATE ride_offers SET
-            vehicle_id=s.vehicle_id,pickup_location=s.pickup_location,pickup_lat=s.pickup_lat,pickup_lng=s.pickup_lng,
-            drop_location=s.drop_location,drop_lat=s.drop_lat,drop_lng=s.drop_lng,date=s.date,time=s.time,
-            available_seats=s.available_seats,price_per_seat_paise=s.price_per_seat_paise,
-            pilot_policy_id=s.pilot_policy_id,pilot_policy_snapshot=s.pilot_policy_snapshot,
-            pilot_origin_code=s.pilot_origin_code,pilot_destination_code=s.pilot_destination_code,
-            pilot_capacity=s.pilot_capacity,pilot_currency=s.pilot_currency,
-            pilot_request_cutoff_at=s.pilot_request_cutoff_at,pilot_acceptance_cutoff_at=s.pilot_acceptance_cutoff_at,
-            pilot_commitment_until=s.pilot_commitment_until,pilot_version=s.pilot_version,updated_at=s.updated_at
-            FROM jsonb_populate_record(NULL::ride_offers,$2::jsonb) s WHERE ride_offers.id=$1`,
-            [item.offerId,JSON.stringify(item.offerSnapshot)]);
+          await repo.updateOfferSnapshot(client,item.offerId,item.offerSnapshot);
         }
-        await client.query(`INSERT INTO pilot_offer_audit(operation_id,offer_id,actor_id,action)
-          VALUES($1,$2,$3,$4) ON CONFLICT (operation_id) DO NOTHING`,
-          [item.operationId,item.offerId,item.actorId,item.action]);
+        await repo.auditOperation(client,item.operationId,item.offerId,item.actorId,item.action);
         await recordDurableNotification(client,{originType:"corridor_offer",operationId:item.operationId,
           recipientId:item.actorId,eventType:item.action,relatedEntityType:"ride_offer",relatedEntityId:item.offerId,
           title:item.action === "published" ? "Offer published" : "Offer updated",
           body:"Your corridor offer terms are available in trip details."});
-        await client.query("UPDATE pilot_notification_events SET ready_at=now() WHERE origin_type='corridor_offer' AND operation_id=$1",[item.operationId]);
-        await client.query(`UPDATE pilot_email_jobs SET status='exhausted',lease_until=NULL,
-          last_error='Suppressed after snapshot restore; delivery outcome requires review',updated_at=now()
-          WHERE event_id IN (SELECT id FROM pilot_notification_events WHERE origin_type='corridor_offer' AND operation_id=$1)`,
-          [item.operationId]);
+        await repo.readyNotification(client,item.operationId);
+        await repo.suppressRestoredEmail(client,item.operationId);
       });
     }
     return receipts.length;
@@ -210,38 +197,21 @@ export class CorridorOffersService {
       await assertCommitmentsEligible(client,{ driverId:actorId,vehicleId:input.vehicle_id,
         passengerIds:[],rideId:offerId ?? null,departureAt:departure,
         durationMinutes:policy.expected_minutes+policy.buffer_minutes });
-      const args = [actorId,input.vehicle_id,origin.label,origin.latitude,origin.longitude,
-        destination.label,destination.latitude,destination.longitude,
-        departure,snapshot.contribution_paise,input.capacity,policy.id,JSON.stringify(snapshot),
-        origin.code,destination.code,new Date(departure.getTime()-60*60_000),
-        new Date(departure.getTime()-30*60_000),
-        new Date(departure.getTime()+(policy.expected_minutes+policy.buffer_minutes)*60_000)];
-      const sql = offerId ? `UPDATE ride_offers SET driver_id=$1,vehicle_id=$2,pickup_location=$3,pickup_lat=$4,pickup_lng=$5,
-        drop_location=$6,drop_lat=$7,drop_lng=$8,date=($9::timestamptz AT TIME ZONE 'Asia/Kolkata')::date,
-        time=($9::timestamptz AT TIME ZONE 'Asia/Kolkata')::time,price_per_seat_paise=$10,available_seats=$11,
-        pilot_policy_id=$12,pilot_policy_snapshot=$13::jsonb,pilot_origin_code=$14,pilot_destination_code=$15,
-        pilot_request_cutoff_at=$16,pilot_acceptance_cutoff_at=$17,pilot_commitment_until=$18,
-        pilot_capacity=$11,pilot_currency='INR',pilot_version=pilot_version+1,updated_at=now()
-        WHERE id=$19 RETURNING id,pilot_version` : `INSERT INTO ride_offers(driver_id,vehicle_id,pickup_location,pickup_lat,pickup_lng,
-        drop_location,drop_lat,drop_lng,date,time,price_per_seat_paise,available_seats,pilot_policy_id,
-        pilot_policy_snapshot,pilot_origin_code,pilot_destination_code,pilot_request_cutoff_at,
-        pilot_acceptance_cutoff_at,pilot_commitment_until,pilot_capacity,pilot_currency)
-        VALUES($1,$2,$3,$4,$5,$6,$7,$8,($9::timestamptz AT TIME ZONE 'Asia/Kolkata')::date,
-        ($9::timestamptz AT TIME ZONE 'Asia/Kolkata')::time,$10,$11,$12,$13::jsonb,$14,$15,$16,$17,$18,$11,'INR')
-        RETURNING id,pilot_version`;
-      const saved = (await client.query<{id:string;pilot_version:number}>(sql,offerId?[...args,offerId]:args)).rows[0];
-      const offerSnapshot = (await client.query<{snapshot:Record<string,unknown>}>(
-        "SELECT to_jsonb(r) AS snapshot FROM ride_offers r WHERE id=$1",[saved.id])).rows[0].snapshot;
+      const requestCutoff = new Date(departure.getTime()-60*60_000);
+      const acceptanceCutoff = new Date(departure.getTime()-30*60_000);
+      const commitmentUntil = new Date(departure.getTime()+(policy.expected_minutes+policy.buffer_minutes)*60_000);
+      const saved = await repo.saveOffer(client,{actorId,vehicleId:input.vehicle_id,origin,destination,
+        departure,contributionPaise:snapshot.contribution_paise,capacity:input.capacity,policyId:policy.id,
+        snapshot,requestCutoff,acceptanceCutoff,commitmentUntil},offerId);
+      const offerSnapshot = await repo.offerSnapshot(client,saved.id);
       const result = { id:saved.id,version:saved.pilot_version,policy_version:policy.version,
         origin_code:origin.code,destination_code:destination.code,departure_at:departure.toISOString(),
         capacity:input.capacity,contribution_paise:snapshot.contribution_paise,currency:"INR",
-        request_cutoff_at:args[15],acceptance_cutoff_at:args[16],commitment_until:args[17],
+        request_cutoff_at:requestCutoff,acceptance_cutoff_at:acceptanceCutoff,commitment_until:commitmentUntil,
         cancellation_notice:policy.cancellation_notice,contact_notice:policy.contact_notice };
-      const row = (await client.query<repo.Operation>(`INSERT INTO pilot_offer_operations
-        (actor_id,idempotency_key,payload_digest,offer_id,action,result,offer_snapshot,state)
-        VALUES($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,'committed') RETURNING *`,
-        [actorId,key,payloadDigest,saved.id,action,JSON.stringify(result),JSON.stringify(offerSnapshot)])).rows[0];
-      await client.query(`INSERT INTO pilot_offer_audit(operation_id,offer_id,actor_id,action) VALUES($1,$2,$3,$4)`,[row.id,saved.id,actorId,action]);
+      const row = await repo.createOperation(client,{actorId,key,digest:payloadDigest,offerId:saved.id,
+        action,result,snapshot:offerSnapshot});
+      await repo.auditOperation(client,row.id,saved.id,actorId,action);
       await recordDurableNotification(client,{originType:"corridor_offer",operationId:row.id,
         recipientId:actorId,eventType:action,relatedEntityType:"ride_offer",relatedEntityId:saved.id,
         title:action === "published" ? "Offer published" : "Offer updated",body:"Your corridor offer terms are available in trip details."});
@@ -256,8 +226,8 @@ export class CorridorOffersService {
         await store().append(receipt(row));
         const backup = await backupStatus(client);
         if (backup.required && !backup.healthy) throw new AppError(503,"Database backup is stale","BACKUP_STALE");
-        const acknowledged = (await client.query<repo.Operation>(`UPDATE pilot_offer_operations SET state='acknowledged',acknowledged_at=now() WHERE id=$1 RETURNING *`,[row.id])).rows[0];
-        await client.query("UPDATE pilot_notification_events SET ready_at=now() WHERE origin_type='corridor_offer' AND operation_id=$1",[row.id]);
+        const acknowledged = await repo.acknowledgeOperation(client,row.id);
+        await repo.readyNotification(client,row.id);
         return acknowledged;
       });
       return {operation_id:saved.id,state:saved.state,...saved.result};

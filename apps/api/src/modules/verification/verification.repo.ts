@@ -761,8 +761,9 @@ export async function findTransactionEligibilityByUserId(userId: string) {
 export async function findStudentEligibilityForUpdate(client: PoolClient, userId: string) {
   const result = await client.query<{
     status: string; adult_eligible: boolean | null; eligibility_ends_at: Date;
-  }>(`SELECT status, adult_eligible, eligibility_ends_at
-      FROM student_verifications WHERE user_id = $1 FOR UPDATE`, [userId]);
+  }>(`SELECT s.status, s.adult_eligible, s.eligibility_ends_at
+      FROM student_verifications s JOIN users u ON u.id=s.user_id
+      WHERE s.user_id = $1 AND u.email_verified_at IS NOT NULL FOR SHARE OF u, s`, [userId]);
   return result.rows[0] ?? null;
 }
 

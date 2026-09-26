@@ -1132,6 +1132,19 @@ describe("corridor offer publication and discovery", () => {
       expect((await publish(winnerKey)).body.offer.operation_id).toBe(first.body.offer.operation_id);
       expect((await publish(loserKey)).status).toBe(409);
       expect((await publish(winnerKey,{...input,capacity:1})).status).toBe(409);
+      const secondDriver = (await verificationPool.query<{id:string}>(
+        "INSERT INTO users(email,email_verified_at) VALUES('corridor-second-driver@example.test',now()) RETURNING id")).rows[0].id;
+      await verificationPool.query(`INSERT INTO student_verifications
+        (user_id,provider,status,adult_eligible,institution_name,eligibility_ends_at)
+        VALUES($1,'manual_review','verified',true,'Synthetic College',now()+interval '1 year')`,[secondDriver]);
+      await verificationPool.query(`INSERT INTO driver_eligibility(user_id,status,license_expires_at,review_after)
+        VALUES($1,'approved','2099-12-31','2099-12-30')`,[secondDriver]);
+      await verificationPool.query(`INSERT INTO driver_vehicle_approvals
+        (driver_user_id,vehicle_id,permission_category,status,review_after)
+        VALUES($1,$2,'written_permission','approved','2099-12-30')`,[secondDriver,car]);
+      expect((await request(createApp()).post("/v1/corridor-offers")
+        .set("Authorization",`Bearer ${signAccessToken({userId:secondDriver,email:"corridor-second-driver@example.test",role:"user"})}`)
+        .set("Idempotency-Key","shared-car-conflict").send(input)).status).toBe(409);
       await verificationPool.query("UPDATE driver_eligibility SET status='suspended' WHERE user_id=$1",[driver.id]);
       expect((await publish("stale-driver",input)).status).toBe(403);
       await verificationPool.query("UPDATE driver_eligibility SET status='approved' WHERE user_id=$1",[driver.id]);
@@ -1143,7 +1156,7 @@ describe("corridor offer publication and discovery", () => {
       expect((await request(createApp()).patch(`/v1/corridor-offers/${first.body.offer.id}`)
         .set("Authorization",`Bearer ${driver.token}`).set("Idempotency-Key","offer-edit-stale")
         .send({...input,capacity:2,version:1})).status).toBe(409);
-      const competing = await Promise.all([publish("offer-2"),publish("offer-3")]);
+      const competing = await Promise.all([publish("offer-3"),publish("offer-4")]);
       expect(competing.every(item => item.status === 409)).toBe(true);
       const discovery = await request(createApp()).get("/v1/corridor-offers?origin_code=university&destination_code=prmitr")
         .set("Authorization",`Bearer ${users[1].token}`);
@@ -1151,6 +1164,19 @@ describe("corridor offer publication and discovery", () => {
       expect(discovery.body.offers).toHaveLength(1);
       expect(discovery.body.offers[0]).toMatchObject({contribution_paise:2500,available_seats:1,version:2});
       expect(JSON.stringify(discovery.body)).not.toContain("9999999999");
+      await verificationPool.query("UPDATE users SET email_verified_at=NULL WHERE id=$1",[users[1].id]);
+      expect((await request(createApp()).get("/v1/corridor-offers?origin_code=university&destination_code=prmitr")
+        .set("Authorization",`Bearer ${users[1].token}`)).status).toBe(403);
+      await verificationPool.query("UPDATE users SET email_verified_at=now() WHERE id=$1",[users[1].id]);
+      await verificationPool.query("UPDATE users SET email_verified_at=NULL WHERE id=$1",[driver.id]);
+      expect((await publish("driver-email-revoked")).status).toBe(403);
+      expect((await request(createApp()).get("/v1/corridor-offers?origin_code=university&destination_code=prmitr")
+        .set("Authorization",`Bearer ${users[1].token}`)).body.offers).toHaveLength(0);
+      await verificationPool.query("UPDATE users SET email_verified_at=now() WHERE id=$1",[driver.id]);
+      await verificationPool.query("UPDATE pilot_pause_state SET paused=true WHERE capability='booking'");
+      expect((await request(createApp()).get("/v1/corridor-offers?origin_code=university&destination_code=prmitr")
+        .set("Authorization",`Bearer ${users[1].token}`)).status).toBe(503);
+      await verificationPool.query("UPDATE pilot_pause_state SET paused=false WHERE capability='booking'");
       await verificationPool.query("UPDATE driver_eligibility SET status='suspended' WHERE user_id=$1",[driver.id]);
       expect((await request(createApp()).get("/v1/corridor-offers?origin_code=university&destination_code=prmitr")
         .set("Authorization",`Bearer ${users[1].token}`)).body.offers).toHaveLength(0);

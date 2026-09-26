@@ -22,6 +22,9 @@ export async function pair(db: Pool | PoolClient, policyId: string, origin: stri
     WHERE c.policy_id=$1 AND c.origin_code=$2 AND c.destination_code=$3 AND a.sequence<>b.sequence`,
     [policyId,origin,destination])).rows[0] ?? null;
 }
+export async function pairs(db: Pool | PoolClient, policyId: string) {
+  return (await db.query<Pair>("SELECT origin_code,destination_code,amount_paise FROM pilot_corridor_contributions WHERE policy_id=$1",[policyId])).rows;
+}
 export async function byKey(db: Pool | PoolClient, actorId: string, key: string) {
   return (await db.query<Operation>("SELECT * FROM pilot_offer_operations WHERE actor_id=$1 AND idempotency_key=$2", [actorId,key])).rows[0] ?? null;
 }
@@ -47,6 +50,78 @@ export async function offerForUpdate(db: PoolClient, id: string) {
 export async function requestCount(db: PoolClient, id: string) {
   return (await db.query<{ count: number }>("SELECT count(*)::int AS count FROM bookings WHERE ride_offer_id=$1",[id])).rows[0].count;
 }
+export type OfferTerms = { actorId:string; vehicleId:string; origin:Stop; destination:Stop;
+  departure:Date; contributionPaise:number; capacity:number; policyId:string;
+  snapshot:Record<string,unknown>; requestCutoff:Date; acceptanceCutoff:Date;
+  commitmentUntil:Date };
+export async function saveOffer(db:PoolClient,terms:OfferTerms,offerId?:string) {
+  const args=[terms.actorId,terms.vehicleId,terms.origin.label,terms.origin.latitude,terms.origin.longitude,
+    terms.destination.label,terms.destination.latitude,terms.destination.longitude,terms.departure,
+    terms.contributionPaise,terms.capacity,terms.policyId,JSON.stringify(terms.snapshot),
+    terms.origin.code,terms.destination.code,terms.requestCutoff,terms.acceptanceCutoff,terms.commitmentUntil];
+  const sql=offerId?`UPDATE ride_offers SET driver_id=$1,vehicle_id=$2,pickup_location=$3,pickup_lat=$4,pickup_lng=$5,
+    drop_location=$6,drop_lat=$7,drop_lng=$8,date=($9::timestamptz AT TIME ZONE 'Asia/Kolkata')::date,
+    time=($9::timestamptz AT TIME ZONE 'Asia/Kolkata')::time,price_per_seat_paise=$10,available_seats=$11,
+    pilot_policy_id=$12,pilot_policy_snapshot=$13::jsonb,pilot_origin_code=$14,pilot_destination_code=$15,
+    pilot_request_cutoff_at=$16,pilot_acceptance_cutoff_at=$17,pilot_commitment_until=$18,
+    pilot_capacity=$11,pilot_currency='INR',pilot_version=pilot_version+1,updated_at=now()
+    WHERE id=$19 RETURNING id,pilot_version`:`INSERT INTO ride_offers(driver_id,vehicle_id,pickup_location,pickup_lat,pickup_lng,
+    drop_location,drop_lat,drop_lng,date,time,price_per_seat_paise,available_seats,pilot_policy_id,
+    pilot_policy_snapshot,pilot_origin_code,pilot_destination_code,pilot_request_cutoff_at,
+    pilot_acceptance_cutoff_at,pilot_commitment_until,pilot_capacity,pilot_currency)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,($9::timestamptz AT TIME ZONE 'Asia/Kolkata')::date,
+    ($9::timestamptz AT TIME ZONE 'Asia/Kolkata')::time,$10,$11,$12,$13::jsonb,$14,$15,$16,$17,$18,$11,'INR')
+    RETURNING id,pilot_version`;
+  return (await db.query<{id:string;pilot_version:number}>(sql,offerId?[...args,offerId]:args)).rows[0];
+}
+export async function offerSnapshot(db:PoolClient,id:string) {
+  return (await db.query<{snapshot:Record<string,unknown>}>("SELECT to_jsonb(r) AS snapshot FROM ride_offers r WHERE id=$1",[id])).rows[0].snapshot;
+}
+export async function createOperation(db:PoolClient, input:{actorId:string;key:string;digest:string;offerId:string;
+  action:string;result:Record<string,unknown>;snapshot:Record<string,unknown>}) {
+  return (await db.query<Operation>(`INSERT INTO pilot_offer_operations
+    (actor_id,idempotency_key,payload_digest,offer_id,action,result,offer_snapshot,state)
+    VALUES($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,'committed') RETURNING *`,
+    [input.actorId,input.key,input.digest,input.offerId,input.action,JSON.stringify(input.result),JSON.stringify(input.snapshot)])).rows[0];
+}
+export async function auditOperation(db:PoolClient,id:string,offerId:string,actorId:string,action:string) {
+  await db.query(`INSERT INTO pilot_offer_audit(operation_id,offer_id,actor_id,action)
+    VALUES($1,$2,$3,$4) ON CONFLICT (operation_id) DO NOTHING`,[id,offerId,actorId,action]);
+}
+export async function acknowledgeOperation(db:PoolClient,id:string) {
+  return (await db.query<Operation>("UPDATE pilot_offer_operations SET state='acknowledged',acknowledged_at=now() WHERE id=$1 RETURNING *",[id])).rows[0];
+}
+export async function readyNotification(db:PoolClient,id:string) {
+  await db.query("UPDATE pilot_notification_events SET ready_at=now() WHERE origin_type='corridor_offer' AND operation_id=$1",[id]);
+}
+export async function suppressRestoredEmail(db:PoolClient,id:string) {
+  await db.query(`UPDATE pilot_email_jobs SET status='exhausted',lease_until=NULL,
+    last_error='Suppressed after snapshot restore; delivery outcome requires review',updated_at=now()
+    WHERE event_id IN (SELECT id FROM pilot_notification_events WHERE origin_type='corridor_offer' AND operation_id=$1)`,[id]);
+}
+export async function restoreOperation(db:PoolClient,item:{operationId:string;actorId:string;key:string;digest:string;
+  offerId:string;action:string;result:Record<string,unknown>;offerSnapshot:Record<string,unknown>;createdAt:string}) {
+  await db.query(`INSERT INTO pilot_offer_operations
+    (id,actor_id,idempotency_key,payload_digest,offer_id,action,result,offer_snapshot,state,created_at,acknowledged_at)
+    VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,'recovered',$9,now()) ON CONFLICT (id) DO NOTHING`,
+    [item.operationId,item.actorId,item.key,item.digest,item.offerId,item.action,
+      JSON.stringify(item.result),JSON.stringify(item.offerSnapshot),item.createdAt]);
+}
+export async function insertOfferSnapshot(db:PoolClient,snapshot:Record<string,unknown>) {
+  await db.query("INSERT INTO ride_offers SELECT (jsonb_populate_record(NULL::ride_offers,$1::jsonb)).*",[JSON.stringify(snapshot)]);
+}
+export async function updateOfferSnapshot(db:PoolClient,id:string,snapshot:Record<string,unknown>) {
+  await db.query(`UPDATE ride_offers SET
+    vehicle_id=s.vehicle_id,pickup_location=s.pickup_location,pickup_lat=s.pickup_lat,pickup_lng=s.pickup_lng,
+    drop_location=s.drop_location,drop_lat=s.drop_lat,drop_lng=s.drop_lng,date=s.date,time=s.time,
+    available_seats=s.available_seats,price_per_seat_paise=s.price_per_seat_paise,
+    pilot_policy_id=s.pilot_policy_id,pilot_policy_snapshot=s.pilot_policy_snapshot,
+    pilot_origin_code=s.pilot_origin_code,pilot_destination_code=s.pilot_destination_code,
+    pilot_capacity=s.pilot_capacity,pilot_currency=s.pilot_currency,
+    pilot_request_cutoff_at=s.pilot_request_cutoff_at,pilot_acceptance_cutoff_at=s.pilot_acceptance_cutoff_at,
+    pilot_commitment_until=s.pilot_commitment_until,pilot_version=s.pilot_version,updated_at=s.updated_at
+    FROM jsonb_populate_record(NULL::ride_offers,$2::jsonb) s WHERE ride_offers.id=$1`,[id,JSON.stringify(snapshot)]);
+}
 export async function discover(db: Pool, origin: string, destination: string, date?: string) {
   return (await db.query(`SELECT r.id,r.pilot_origin_code AS origin_code,r.pilot_destination_code AS destination_code,
     (r.date+r.time) AT TIME ZONE 'Asia/Kolkata' AS departure_at,
@@ -63,10 +138,12 @@ export async function discover(db: Pool, origin: string, destination: string, da
       AND r.pilot_capacity > (SELECT count(*)::int FROM bookings b
         WHERE b.ride_offer_id=r.id AND b.status='confirmed')
       AND EXISTS (SELECT 1 FROM student_verifications s
+        JOIN users u ON u.id=s.user_id
         JOIN driver_eligibility d ON d.user_id=s.user_id
         JOIN driver_vehicle_approvals a ON a.driver_user_id=s.user_id AND a.vehicle_id=r.vehicle_id
         JOIN vehicles v ON v.id=a.vehicle_id
-        WHERE s.user_id=r.driver_id AND s.status IN ('verified','revalidation_due')
+        WHERE s.user_id=r.driver_id AND u.email_verified_at IS NOT NULL
+          AND s.status IN ('verified','revalidation_due')
           AND s.adult_eligible=true AND s.eligibility_ends_at>now()
           AND d.status='approved' AND d.license_expires_at>CURRENT_DATE
           AND d.review_after>CURRENT_DATE AND a.status='approved' AND a.review_after>CURRENT_DATE

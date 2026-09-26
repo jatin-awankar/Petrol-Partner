@@ -55,10 +55,12 @@ export async function currentPilotEligibility(client: PoolClient, driverId: stri
   return (await client.query<{ id: string; owner_user_id: string; vehicle_type: string }>(
     `SELECT v.id, v.owner_user_id, v.vehicle_type
        FROM student_verifications s
+       JOIN users u ON u.id=s.user_id
        JOIN driver_eligibility d ON d.user_id = s.user_id
        JOIN driver_vehicle_approvals a ON a.driver_user_id = d.user_id
        JOIN vehicles v ON v.id = a.vehicle_id
       WHERE s.user_id = $1 AND v.id = $2
+        AND u.email_verified_at IS NOT NULL
         AND s.status IN ('verified', 'revalidation_due')
         AND s.adult_eligible = true AND s.eligibility_ends_at > now()
         AND d.status = 'approved' AND d.license_expires_at > CURRENT_DATE
@@ -70,7 +72,7 @@ export async function currentPilotEligibility(client: PoolClient, driverId: stri
         AND v.insurance_expires_at > CURRENT_DATE
         AND (v.registration_expires_at IS NULL OR v.registration_expires_at > CURRENT_DATE)
         AND v.review_after > CURRENT_DATE
-      FOR SHARE OF s, d, a, v`, [driverId, vehicleId],
+      FOR SHARE OF u, s, d, a, v`, [driverId, vehicleId],
   )).rows[0] ?? null;
 }
 
