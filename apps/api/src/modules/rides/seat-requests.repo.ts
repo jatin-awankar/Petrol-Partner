@@ -59,14 +59,14 @@ export async function byKey(db:Database,actorId:string,key:string) {
 export async function byId(db:Database,id:string,actorId:string) {
   return (await db.query<RequestOperation>("SELECT * FROM pilot_seat_request_operations WHERE id=$1 AND actor_id=$2",[id,actorId])).rows[0] ?? null;
 }
-export async function acceptedTripVisible(db:Database,requestId:string,actorId:string,asOf=new Date()) {
+export async function acceptedTripVisible(db:Database,requestId:string,actorId:string,asOf?:Date) {
   return Boolean((await db.query(`SELECT 1 FROM pilot_seat_allocations a
     JOIN pilot_seat_requests r ON r.id=a.request_id
     WHERE a.request_id=$1 AND r.status IN ('accepted','cancelled')
       AND (a.driver_id=$2 OR a.passenger_id=$2)
       AND (a.status IN ('confirmed','held') OR
-        (a.status IN ('completed','cancelled') AND a.ended_at > $3::timestamptz-interval '24 hours'))
-    LIMIT 1`,[requestId,actorId,asOf])).rowCount);
+        (a.status IN ('completed','cancelled') AND a.ended_at > COALESCE($3::timestamptz,now())-interval '24 hours'))
+    LIMIT 1`,[requestId,actorId,asOf ?? null])).rowCount);
 }
 export async function operationById(db:PoolClient,id:string) {
   return (await db.query<RequestOperation>("SELECT * FROM pilot_seat_request_operations WHERE id=$1 FOR UPDATE",[id])).rows[0] ?? null;
@@ -149,7 +149,7 @@ export async function auditWithdrawals(db:PoolClient,operationId:string,requestI
     (operation_id,request_id,reason) VALUES($1,$2,'overlapping confirmed ride')
     ON CONFLICT (operation_id,request_id) DO NOTHING`,[operationId,requestId]);
 }
-export async function listConfirmedForParticipant(db:Database,userId:string,offerId?:string,asOf=new Date()) {
+export async function listConfirmedForParticipant(db:Database,userId:string,offerId?:string,asOf?:Date) {
   return (await db.query<{id:string;offer_id:string;driver_id:string;passenger_id:string;
     contribution_paise:number;currency:string;departure_at:Date;status:string;
     origin_code:string;destination_code:string;
@@ -176,8 +176,8 @@ export async function listConfirmedForParticipant(db:Database,userId:string,offe
       WHERE r.status IN ('accepted','cancelled') AND (a.driver_id=$1 OR a.passenger_id=$1)
         AND ($2::uuid IS NULL OR a.offer_id=$2)
         AND (a.status IN ('confirmed','held') OR (a.status IN ('completed','cancelled')
-          AND a.ended_at > $3::timestamptz-interval '24 hours'))
-      ORDER BY a.accepted_at DESC`,[userId,offerId ?? null,asOf])).rows;
+          AND a.ended_at > COALESCE($3::timestamptz,now())-interval '24 hours'))
+      ORDER BY a.accepted_at DESC`,[userId,offerId ?? null,asOf ?? null])).rows;
 }
 export async function reconcileAcceptedAllocation(db:PoolClient,expected:Allocation) {
   const existing = (await db.query<Allocation>(

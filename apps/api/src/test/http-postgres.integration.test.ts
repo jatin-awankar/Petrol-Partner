@@ -148,6 +148,9 @@ describe("pilot cancellation and replacement", () => {
         .toMatchObject({status:"cancelled",cancelled_by:one.id,cancellation_reason:"Changed plans"});
       const cancelOffer=(key:string) => request(createApp()).post(`/v1/corridor-offers/${offerId}/cancel`)
         .set("Authorization",`Bearer ${driver.token}`).set("Idempotency-Key",key).send({reason:"Change of car"});
+      expect((await request(createApp()).post(`/v1/corridor-offers/${offerId}/cancel`)
+        .set("Authorization",`Bearer ${two.token}`).set("Idempotency-Key","wrong-ride-owner")
+        .send({})).status).toBe(403);
       const again=await requestSeat(two,"cancel-request-two-again");
       expect(again.status).toBe(201);
       const blocker=await verificationPool.connect();
@@ -188,13 +191,42 @@ describe("pilot cancellation and replacement", () => {
       expect((await requestSeat(two,"replacement-request",replacementId)).status).toBe(201);
       expect((await publish("duplicate-replacement",{...input,replaces_offer_id:offerId})).status).toBe(409);
       await verificationPool.query(`UPDATE ride_offers SET date=(now()-interval '1 day')::date,
-        time=(now()-interval '1 day')::time WHERE id=$1`,[replacementId]);
+        time=(now()-interval '1 day')::time,pilot_commitment_until=now()-interval '22 hours'
+        WHERE id=$1`,[replacementId]);
       const replacementRequest=(await verificationPool.query<{id:string}>(`SELECT id FROM pilot_seat_requests
         WHERE offer_id=$1`,[replacementId])).rows[0].id;
-      expect((await cancelRequest(two,replacementRequest,"late-cancel")).body.error.code).toBe("REVIEW_REQUIRED");
-      expect((await request(createApp()).post(`/v1/corridor-offers/${replacementId}/cancel`)
+      const lateSeat=await cancelRequest(two,replacementRequest,"late-cancel");
+      expect(lateSeat.status).toBe(202);
+      expect(lateSeat.body).toMatchObject({kind:"review_required",state:"acknowledged"});
+      expect((await cancelRequest(two,replacementRequest,"late-cancel")).body.case_id).toBe(lateSeat.body.case_id);
+      const lateRide=await request(createApp()).post(`/v1/corridor-offers/${replacementId}/cancel`)
         .set("Authorization",`Bearer ${driver.token}`).set("Idempotency-Key","late-ride-cancel")
-        .send({})).body.error.code).toBe("REVIEW_REQUIRED");
+        .send({});
+      expect(lateRide.status).toBe(202);
+      expect(lateRide.body).toMatchObject({kind:"review_required",state:"acknowledged"});
+      expect((await verificationPool.query<{status:string}>("SELECT status FROM ride_offers WHERE id=$1",[replacementId])).rows[0].status)
+        .toBe("active");
+      expect((await verificationPool.query<{status:string}>("SELECT status FROM pilot_seat_requests WHERE id=$1",[replacementRequest])).rows[0].status)
+        .toBe("pending");
+      const held=await publish("held-offer");
+      expect(held.status,JSON.stringify(held.body)).toBe(201);
+      const heldId=held.body.offer.id as string;
+      const heldRequest=await requestSeat(three,"held-request",heldId);
+      expect(heldRequest.status).toBe(201);
+      expect((await accept(heldRequest.body.request.id,"held-accept")).status).toBe(200);
+      await verificationPool.query(`UPDATE pilot_seat_allocations SET status='held'
+        WHERE request_id=$1`,[heldRequest.body.request.id]);
+      await verificationPool.query("UPDATE ride_offers SET status='held' WHERE id=$1",[heldId]);
+      expect((await verificationPool.query<{status:string}>(`SELECT status FROM pilot_seat_allocations
+        WHERE request_id=$1`,[heldRequest.body.request.id])).rows[0].status).toBe("held");
+      expect((await cancelRequest(three,heldRequest.body.request.id,"held-seat-cancel")).status).toBe(200);
+      expect((await verificationPool.query<{status:string}>(`SELECT status FROM pilot_seat_allocations
+        WHERE request_id=$1`,[heldRequest.body.request.id])).rows[0].status).toBe("cancelled");
+      expect((await request(createApp()).post(`/v1/corridor-offers/${heldId}/cancel`)
+        .set("Authorization",`Bearer ${driver.token}`).set("Idempotency-Key","held-ride-cancel")
+        .send({})).status).toBe(200);
+      expect((await verificationPool.query<{status:string}>("SELECT status FROM ride_offers WHERE id=$1",[heldId])).rows[0].status)
+        .toBe("cancelled");
       expect((await verificationPool.query<{count:number}>(`SELECT count(*)::int AS count
         FROM bookings WHERE ride_offer_id=$1`,[offerId])).rows[0].count).toBe(0);
       const operatorId=(await verificationPool.query<{id:string}>(
@@ -202,6 +234,8 @@ describe("pilot cancellation and replacement", () => {
         [`cancel-operator-${randomUUID()}@example.test`])).rows[0].id;
       await verificationPool.query(`INSERT INTO operator_allowlist(user_id,active,reason,reviewed_at)
         VALUES($1,true,'synthetic cancellation recovery',now())`,[operatorId]);
+      expect((await new CancellationsService(pool).openReviews(operatorId)).map(item => item.id))
+        .toEqual(expect.arrayContaining([lateSeat.body.case_id,lateRide.body.case_id]));
       await verificationPool.query(`DELETE FROM pilot_cancellation_audit WHERE request_id IN
         (SELECT id FROM pilot_seat_requests WHERE offer_id=$1)`,[offerId]);
       await verificationPool.query("DELETE FROM pilot_cancellation_operations WHERE result->>'offer_id'=$1",[offerId]);
@@ -213,7 +247,7 @@ describe("pilot cancellation and replacement", () => {
           THEN 'accepted' ELSE 'pending' END,decided_at=NULL WHERE offer_id=$1`,[offerId,b.body.request.id]);
       await verificationPool.query("UPDATE ride_offers SET status='active' WHERE id=$1",[offerId]);
       await verificationPool.query("UPDATE pilot_recovery_state SET mode='restricted' WHERE singleton=true");
-      expect(await new CancellationsService(pool).reconcileReceipts(operatorId)).toBe(3);
+      expect(await new CancellationsService(pool).reconcileReceipts(operatorId)).toBe(7);
       expect((await verificationPool.query<{status:string}>("SELECT status FROM ride_offers WHERE id=$1",[offerId])).rows[0].status)
         .toBe("cancelled");
       expect((await verificationPool.query<{count:number}>(`SELECT count(*)::int AS count

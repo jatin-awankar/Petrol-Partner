@@ -37,11 +37,12 @@ export function SeatRequestList({requests,currentUserId,busy,onReject,onAccept,o
         <p className="text-sm">{item.offer_terms.cancellation_notice} {item.offer_terms.contact_notice}</p>
         {status === "cancelled" && item.cancelled_at && <p className="text-sm">Cancelled by {item.cancelled_by === item.passenger_id ? "passenger" : "driver"} on {new Date(item.cancelled_at).toLocaleString("en-IN",{timeZone:"Asia/Kolkata"})} IST{item.cancellation_reason ? ` · ${item.cancellation_reason}` : ""}.</p>}
         {onCancel && item.passenger_id === currentUserId && (status === "pending" || status === "accepted")
-          && new Date(item.offer_terms.departure_at).getTime() > now && <div className="mt-2 flex gap-2">
+          && <div className="mt-2 flex gap-2">
           <input className="rounded border p-1" aria-label="Cancellation reason (optional)" maxLength={500}
             value={reasons[item.id] ?? ""} onChange={event => setReasons({...reasons,[item.id]:event.target.value})} />
           <button className="rounded border px-3 py-1 disabled:opacity-50" disabled={busy}
-            onClick={() => onCancel(item.id,reasons[item.id]?.trim() || null)}>Cancel request or seat</button>
+            onClick={() => onCancel(item.id,reasons[item.id]?.trim() || null)}>{new Date(item.offer_terms.departure_at).getTime() > now
+              ? "Cancel request or seat" : "Request operator review"}</button>
         </div>}
         {status === "pending" && item.driver_id === currentUserId && <div className="mt-2 flex gap-2">
           <button className="rounded bg-primary px-3 py-1 text-primary-foreground disabled:opacity-50"

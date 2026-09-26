@@ -81,13 +81,15 @@ export default function PostRide() {
     window.sessionStorage.setItem(storageKey,key);
     setBusy(true);setMessage("");
     try {
-      const result=await apiRequest<{state:string}>(`/v1/corridor-offers/${id}/cancel`,{
+      const result=await apiRequest<{state:string;kind?:string}>(`/v1/corridor-offers/${id}/cancel`,{
         method:"POST",headers:{"Idempotency-Key":key},
         body:JSON.stringify({reason:cancelReasons[id]?.trim() || null})});
       if (result.state === "acknowledged" || result.state === "recovered") {
         window.sessionStorage.removeItem(storageKey);
         setOffers((await apiRequest<{offers:OwnOffer[]}>("/v1/corridor-offers/mine")).offers);
-        setMessage("Ride cancelled. A replacement needs a new offer and fresh passenger requests.");
+        setMessage(result.kind === "review_required"
+          ? "The ride remains active. Your case was sent for operator review."
+          : "Ride cancelled. A replacement needs a new offer and fresh passenger requests.");
       } else setMessage("Cancellation outcome is pending. Retry with the same reason.");
     } catch(error) {
       if (error instanceof ApiError && error.status < 500 && error.code !== "OPERATION_PENDING")
@@ -133,11 +135,12 @@ export default function PostRide() {
         <p>₹{(offer.contribution_paise/100).toFixed(2)} INR per passenger · {offer.capacity} seats</p>
         {offer.replaces_offer_id && <p>Replaces cancelled offer {offer.replaces_offer_id}.</p>}
         {offer.cancelled_at && <p>Cancelled by driver on {new Date(offer.cancelled_at).toLocaleString("en-IN",{timeZone:"Asia/Kolkata"})} IST{offer.cancellation_reason ? ` · ${offer.cancellation_reason}` : ""}.</p>}
-        {offer.status === "active" && new Date(offer.departure_at).getTime() > Date.now() && <div className="mt-2 flex gap-2">
+        {(offer.status === "active" || offer.status === "held" || offer.status === "departed") && <div className="mt-2 flex gap-2">
           <input className="rounded border p-1" aria-label="Ride cancellation reason (optional)" maxLength={500}
             value={cancelReasons[offer.id] ?? ""} onChange={event => setCancelReasons({...cancelReasons,[offer.id]:event.target.value})} />
           <button className="rounded border px-3 py-1 disabled:opacity-50" disabled={busy}
-            onClick={() => void cancelOffer(offer.id)}>Cancel whole ride</button>
+            onClick={() => void cancelOffer(offer.id)}>{offer.status === "departed" || new Date(offer.departure_at).getTime() <= Date.now()
+              ? "Request operator review" : "Cancel whole ride"}</button>
         </div>}
         {offer.status === "cancelled" && <Link className="underline" href={`/post-a-ride?replaces=${offer.id}`}>Create a replacement offer</Link>}
       </li>)}</ul>

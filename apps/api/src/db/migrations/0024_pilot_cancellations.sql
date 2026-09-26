@@ -18,6 +18,17 @@ CREATE TABLE IF NOT EXISTS pilot_cancellation_operations (
   acknowledged_at timestamptz,
   UNIQUE(actor_id,idempotency_key)
 );
+CREATE TABLE IF NOT EXISTS pilot_cancellation_review_cases (
+  id uuid PRIMARY KEY,
+  operation_id uuid NOT NULL UNIQUE REFERENCES pilot_cancellation_operations(id),
+  actor_id uuid NOT NULL REFERENCES users(id),
+  offer_id uuid NOT NULL REFERENCES ride_offers(id),
+  target_type text NOT NULL CHECK (target_type IN ('request','offer')),
+  target_id uuid NOT NULL,
+  reason text,
+  status text NOT NULL DEFAULT 'open' CHECK (status IN ('open','resolved')),
+  created_at timestamptz NOT NULL
+);
 CREATE TABLE IF NOT EXISTS pilot_cancellation_audit (
   operation_id uuid NOT NULL REFERENCES pilot_cancellation_operations(id),
   request_id uuid NOT NULL REFERENCES pilot_seat_requests(id),
@@ -32,8 +43,18 @@ CREATE INDEX IF NOT EXISTS pilot_cancellation_audit_request ON pilot_cancellatio
 CREATE OR REPLACE FUNCTION pilot_guard_offer_insert() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
 BEGIN
-  IF TG_OP = 'UPDATE' AND OLD.status = 'active'
-    AND (SELECT mode FROM pilot_recovery_state WHERE singleton = true) = 'restricted' THEN
+  IF (SELECT mode FROM pilot_recovery_state WHERE singleton = true) = 'restricted' THEN
+    IF TG_OP = 'INSERT' AND EXISTS (SELECT 1 FROM pilot_offer_operations o
+      WHERE o.offer_id = NEW.id AND o.state = 'recovered' AND o.action = 'published'
+        AND (o.offer_snapshot = to_jsonb(NEW)
+          OR o.offer_snapshot = to_jsonb(NEW) - 'pilot_replaces_offer_id'))
+    THEN RETURN NEW; END IF;
+    IF TG_OP = 'UPDATE' AND EXISTS (SELECT 1 FROM pilot_offer_operations o
+      WHERE o.offer_id = NEW.id AND o.state = 'recovered' AND o.action = 'updated'
+        AND (o.offer_snapshot = to_jsonb(NEW)
+          OR o.offer_snapshot = to_jsonb(NEW) - 'pilot_replaces_offer_id'))
+    THEN RETURN NEW; END IF;
+    IF TG_OP = 'UPDATE' AND OLD.status IN ('active','held') THEN
     IF NEW.status = 'cancelled' AND EXISTS (
       SELECT 1 FROM pilot_cancellation_operations c WHERE c.target_type = 'offer'
         AND c.target_id = NEW.id AND c.state IN ('recovered','acknowledged')
@@ -56,6 +77,7 @@ BEGIN
               AND a.driver_user_id = NEW.driver_id AND a.vehicle_id = NEW.vehicle_id
               AND a.status = 'revoked')))
     ) THEN RETURN NEW; END IF;
+    END IF;
   END IF;
   PERFORM pilot_assert_activity('offers');
   RETURN NEW;

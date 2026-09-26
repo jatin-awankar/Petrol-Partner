@@ -5,6 +5,7 @@ import { asyncHandler } from "../../shared/http/async-handler";
 import { AppError } from "../../shared/errors/app-error";
 import { pauseService } from "./pause.service";
 import { deliveryStatus, retryDelivery } from "../notifications/durable.service";
+import { cancellationsService } from "../rides/cancellations.service";
 
 export const operatorRouter = Router();
 const decision = z.object({ capability: z.enum(["offers", "requests", "acceptance", "booking"]), paused: z.boolean(), reason: z.string().trim().min(8).max(500) });
@@ -15,6 +16,9 @@ operatorRouter.get("/pilot-status", asyncHandler(async (_req, res) => { res.json
 operatorRouter.use(requireAdmin);
 operatorRouter.get("/status", asyncHandler(async (_req, res) => { res.json(await pauseService.status()); }));
 operatorRouter.get("/notifications/delivery", asyncHandler(async (_req, res) => { res.json(await deliveryStatus()); }));
+operatorRouter.get("/cancellation-reviews", asyncHandler(async (req,res) => {
+  res.json({cases:await cancellationsService.openReviews(req.user!.userId)});
+}));
 operatorRouter.post("/notifications/email/:id/retry", asyncHandler(async (req, res) => {
   const key = req.header("Idempotency-Key");
   if (!key || key.length > 128) throw new AppError(400, "A stable Idempotency-Key is required", "IDEMPOTENCY_KEY_REQUIRED");

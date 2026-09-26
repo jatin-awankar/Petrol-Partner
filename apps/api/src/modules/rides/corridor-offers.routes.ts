@@ -39,7 +39,8 @@ corridorOffersRouter.post("/:id/cancel",requireAuth,asyncHandler(async(req,res) 
   if (!req.user) throw new AppError(401,"Unauthorized","UNAUTHORIZED");
   const {id}=z.strictObject({id:z.uuid()}).parse(req.params);
   const {reason}=z.strictObject({reason:z.string().trim().max(500).nullable().optional()}).parse(req.body ?? {});
-  res.json(await cancellationsService.cancel(req.user.userId,key(req.get("Idempotency-Key")),"offer",id,reason ?? null));
+  const result=await cancellationsService.cancel(req.user.userId,key(req.get("Idempotency-Key")),"offer",id,reason ?? null);
+  res.status("kind" in result && result.kind === "review_required" ? 202 : 200).json(result);
 }));
 corridorOffersRouter.post("/",requireAuth,asyncHandler(async (req,res) => {
   if (!req.user) throw new AppError(401,"Unauthorized","UNAUTHORIZED");

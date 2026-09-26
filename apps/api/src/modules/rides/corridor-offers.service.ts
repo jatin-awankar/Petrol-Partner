@@ -145,6 +145,7 @@ export class CorridorOffersService {
             "pilot_policy_id","pilot_policy_snapshot","pilot_origin_code","pilot_destination_code",
             "pilot_capacity","pilot_currency","pilot_request_cutoff_at","pilot_acceptance_cutoff_at",
             "pilot_commitment_until","pilot_replaces_offer_id"]) {
+            if (field === "pilot_replaces_offer_id" && !(field in item.offerSnapshot)) continue;
             if (JSON.stringify(live[field]) !== JSON.stringify(item.offerSnapshot[field]))
               throw new AppError(409,"Offer recovery state conflicts with receipt","RECOVERY_CONFLICT");
           }

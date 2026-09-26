@@ -41,7 +41,8 @@ seatRequestsRouter.get("/cancellations/:id",asyncHandler(async(req,res) => {
 seatRequestsRouter.post("/:id/cancel",asyncHandler(async(req,res) => {
   const {id}=z.strictObject({id:z.uuid()}).parse(req.params);
   const {reason}=z.strictObject({reason:z.string().trim().max(500).nullable().optional()}).parse(req.body ?? {});
-  res.json(await cancellationsService.cancel(actor(req),key(req.get("Idempotency-Key")),"request",id,reason ?? null));
+  const result=await cancellationsService.cancel(actor(req),key(req.get("Idempotency-Key")),"request",id,reason ?? null);
+  res.status("kind" in result && result.kind === "review_required" ? 202 : 200).json(result);
 }));
 seatRequestsRouter.post("/",asyncHandler(async(req,res) => {
   const {offer_id,seats} = z.strictObject({offer_id:z.uuid(),seats:z.literal(1)}).parse(req.body);

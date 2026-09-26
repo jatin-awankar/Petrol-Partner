@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api/client";
@@ -33,14 +33,14 @@ export default function SearchRidesPage() {
     void apiRequest<{policy:Policy}>("/v1/corridor-offers/policy").then(result => setPolicy(result.policy))
       .catch(error => setMessage(error instanceof Error ? error.message : "Corridor policy is unavailable"));
   },[isAuthenticated]);
-  async function refreshRequests() {
+  const refreshRequests=useCallback(async () => {
     const [result,confirmed] = await Promise.all([
       apiRequest<{requests:SeatRequest[]}>("/v1/seat-requests"),
       apiRequest<{bookings:typeof bookings}>("/v1/seat-requests/confirmed")]);
     setRequests(result.requests);
     setBookings(confirmed.bookings);
-  }
-  useEffect(() => {if (isAuthenticated) void refreshRequests().catch(() => undefined);},[isAuthenticated]);
+  },[]);
+  useEffect(() => {if (isAuthenticated) void refreshRequests().catch(() => undefined);},[isAuthenticated,refreshRequests]);
   async function changeRequest(path:string,body:Record<string,unknown>,key:string) {
     setBusy(key);setMessage("");
     const storageKey = `seat-request:${user?.id ?? "unknown"}:${key}`;
@@ -86,12 +86,14 @@ export default function SearchRidesPage() {
     window.sessionStorage.setItem(storageKey,key);
     setBusy(id);setMessage("");
     try {
-      const result=await apiRequest<{state:string}>(`/v1/seat-requests/${id}/cancel`,{
+      const result=await apiRequest<{state:string;kind?:string}>(`/v1/seat-requests/${id}/cancel`,{
         method:"POST",headers:{"Idempotency-Key":key},body:JSON.stringify({reason})});
       if (result.state === "acknowledged" || result.state === "recovered") {
         window.sessionStorage.removeItem(storageKey);
         await refreshRequests();
-        setMessage("Cancellation recorded. Any confirmed seat has been released.");
+        setMessage(result.kind === "review_required"
+          ? "The trip remains active. Your case was sent for operator review."
+          : "Cancellation recorded. Any confirmed seat has been released.");
       } else setMessage("Cancellation outcome is pending. Retry with the same reason.");
     } catch(error) {
       if (error instanceof ApiError && error.status < 500 && error.code !== "OPERATION_PENDING")

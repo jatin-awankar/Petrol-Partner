@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash,randomUUID } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
 import { pool } from "../../db/pool";
 import { AppError } from "../../shared/errors/app-error";
@@ -28,23 +28,34 @@ function publicResult(row:repo.CancellationOperation) {
     actor_id:row.actor_id,reason:row.reason,...row.result};
 }
 async function notifications(client:PoolClient,row:repo.CancellationOperation) {
-  const recipients=new Set(row.result.requests.map(item => item.passenger_id));
-  if (row.target_type === "request") {
-    const driver=(await client.query<{driver_id:string}>(
-      "SELECT driver_id FROM ride_offers WHERE id=$1",[row.result.offer_id])).rows[0]?.driver_id;
+  const recipients=new Set(row.result.kind === "cancelled"
+    ? row.result.requests.map(item => item.passenger_id)
+    : [row.actor_id,...row.result.operator_recipient_ids]);
+  if (row.result.kind === "cancelled" && row.target_type === "request") {
+    const driver=await repo.driverForOffer(client,row.result.offer_id);
     if (driver) recipients.add(driver);
-  } else recipients.add(row.actor_id);
+  } else if (row.result.kind === "cancelled") recipients.add(row.actor_id);
   for (const recipientId of recipients) await recordDurableNotification(client,{
-    originType:"pilot_cancellation",operationId:row.id,recipientId,eventType:"cancelled",
-    relatedEntityType:row.target_type === "offer" ? "ride_offer" : "seat_request",
-    relatedEntityId:row.target_id,title:row.target_type === "offer" ? "Ride cancelled" : "Seat cancelled",
-    body:row.target_type === "offer"
+    originType:"pilot_cancellation",operationId:row.id,recipientId,
+    eventType:row.result.kind === "review_required" ? "review_requested" : "cancelled",
+    relatedEntityType:row.result.kind === "review_required" ? "cancellation_review_case"
+      : row.target_type === "offer" ? "ride_offer" : "seat_request",
+    relatedEntityId:row.result.kind === "review_required" ? row.result.case_id : row.target_id,
+    title:row.result.kind === "review_required" ? "Operator review requested"
+      : row.target_type === "offer" ? "Ride cancelled" : "Seat cancelled",
+    body:row.result.kind === "review_required"
+      ? "The trip was not cancelled. Your request is with the operator for review."
+      : row.target_type === "offer"
       ? "The driver cancelled this ride. Confirmed seats and pending requests have ended."
       : "This seat request or booking was cancelled. Any confirmed seat has been released."});
 }
 
 export class CancellationsService {
   constructor(private readonly db:Pool=pool) {}
+  async openReviews(operatorId:string) {
+    await inProtectedTransaction(this.db,client => assertCurrentOperator(client,operatorId));
+    return repo.openReviews(this.db);
+  }
   async receipts() {return store().list();}
   async pending() {return (await repo.all(this.db)).filter(row => row.state === "committed");}
   async verifyEvidence(retry?:{actorId:string;key:string}) {
@@ -85,10 +96,7 @@ export class CancellationsService {
         throw new AppError(409,"Cancellation state conflicts with recovery receipt","RECOVERY_CONFLICT");
       await notifications(client,row);
       await repo.readyNotifications(client,row.id);
-      await client.query(`UPDATE pilot_email_jobs SET status='exhausted',lease_until=NULL,
-        last_error='Suppressed after snapshot restore; delivery outcome requires review',updated_at=now()
-        WHERE event_id IN (SELECT id FROM pilot_notification_events
-          WHERE origin_type='pilot_cancellation' AND operation_id=$1)`,[row.id]);
+      await repo.suppressRestoredEmail(client,row.id);
     });
     return items.length;
   }
@@ -96,8 +104,9 @@ export class CancellationsService {
     const row=await repo.byId(this.db,id,actorId);
     if (!row) throw new AppError(404,"Operation not found","OPERATION_NOT_FOUND");
     const recovery=await operatorQuery<{mode:string}>(this.db,"recoveryMode");
-    return {...publicResult(row),state:recovery.rows[0]?.mode === "restricted" && row.state === "acknowledged"
-      ? "pending_unknown" : row.state};
+    if (row.state === "committed" || recovery.rows[0]?.mode === "restricted")
+      return {operation_id:row.id,state:"pending_unknown"};
+    return publicResult(row);
   }
   async cancel(actorId:string,key:string,targetType:Target,targetId:string,reason:string|null) {
     const payloadDigest=digest(targetType,targetId,reason);
@@ -121,8 +130,7 @@ export class CancellationsService {
       }
       if (recovery.rows[0]?.mode !== "open")
         throw new AppError(503,"Protected writes are restricted","RECOVERY_RESTRICTED");
-      const user=(await client.query<{status:string}>("SELECT status FROM users WHERE id=$1 FOR SHARE",[actorId])).rows[0];
-      if (!user || user.status !== "active") throw new AppError(403,"Account is not active","FORBIDDEN");
+      if (!await repo.activeAccount(client,actorId)) throw new AppError(403,"Account is not active","FORBIDDEN");
       const offerId=targetType === "offer" ? targetId : await repo.requestOfferId(client,targetId);
       if (!offerId) throw new AppError(404,"Request not found","REQUEST_NOT_FOUND");
       // Acceptance locks its request and then its offer; use the same order for cancellation.
@@ -133,9 +141,16 @@ export class CancellationsService {
       if (targetType === "offer" ? offer.driver_id !== actorId
         : requests.find(item => item.id === targetId)?.passenger_id !== actorId)
         throw new AppError(403,"Only the participant may cancel","FORBIDDEN");
-      if (offer.status === "departed" || offer.departure_at <= now)
-        throw new AppError(409,"Trip has started or reached departure; operator review required","REVIEW_REQUIRED");
-      if (offer.status !== "active") throw new AppError(409,"Offer is not active","OFFER_NOT_ACTIVE");
+      if (offer.status === "cancelled") throw new AppError(409,"Offer is already cancelled","OFFER_NOT_ACTIVE");
+      if (offer.status === "departed" || offer.departure_at <= now) {
+        const row=await repo.requestReview(client,{actorId,key,digest:payloadDigest,targetType,targetId,
+          offerId,reason,caseId:randomUUID(),at:now,
+          operatorRecipientIds:await repo.operatorRecipients(client)});
+        await notifications(client,row);
+        return row;
+      }
+      if (offer.status !== "active" && offer.status !== "held")
+        throw new AppError(409,"Offer is not active","OFFER_NOT_ACTIVE");
       const affected=targetType === "offer"
         ? requests.filter(item => item.status === "pending" || item.status === "accepted")
         : requests.filter(item => item.id === targetId && (item.status === "pending" || item.status === "accepted"));
