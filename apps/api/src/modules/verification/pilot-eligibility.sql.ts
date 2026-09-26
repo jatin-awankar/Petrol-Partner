@@ -1,7 +1,7 @@
 // Shared predicate for current driver, student, car and association eligibility.
 // Callers provide aliases s, u, d, a and v for the joined tables.
 export const currentPilotEligibilityWhere = `
-  u.email_verified_at IS NOT NULL
+  u.email_verified_at IS NOT NULL AND u.status = 'active'
   AND s.status IN ('verified', 'revalidation_due')
   AND s.adult_eligible = true AND s.eligibility_ends_at > now()
   AND d.status = 'approved' AND d.license_expires_at > CURRENT_DATE

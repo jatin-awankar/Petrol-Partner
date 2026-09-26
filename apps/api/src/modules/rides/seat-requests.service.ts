@@ -12,6 +12,8 @@ import { inProtectedTransaction } from "../protected-mutation/protocol";
 import { pilotReceiptStore, restrictProtectedWrites } from "../protected-mutation/receipt-evidence";
 import { assertCurrentDriverCarEligibility, assertCurrentStudentForSubmission } from "../verification/verification.service";
 import * as repo from "./seat-requests.repo";
+import { assertCommitmentsEligible } from "./commitment.service";
+import { lockCommitmentActors } from "./commitment.repo";
 
 type Receipt = { operationId:string; actorId:string; key:string; digest:string; requestId:string;
   action:string; result:Record<string,unknown>; snapshot:repo.SeatRequest; createdAt:string };
@@ -26,21 +28,27 @@ function store() {
 function digest(action:string,id:string) {
   return createHash("sha256").update(JSON.stringify({action,id})).digest("hex");
 }
+function relatedEventId(operationId:string,kind:string,requestId:string) {
+  const hash = createHash("sha256").update(`${operationId}:${kind}:${requestId}`).digest("hex");
+  return `${hash.slice(0,8)}-${hash.slice(8,12)}-4${hash.slice(13,16)}-8${hash.slice(17,20)}-${hash.slice(20,32)}`;
+}
 let clock = () => new Date();
 export function setSeatRequestClockForTests(next:(() => Date)|null) {
   if (env.NODE_ENV !== "test") throw new Error("Seat request clock override is test-only");
   clock = next ?? (() => new Date());
 }
 function visibleRequest(row:repo.SeatRequest) {
+  const confirmed = row.status === "accepted";
   return {...row,status:row.status === "pending" && row.decision_deadline_at <= clock() ? "expired" : row.status,
-    confirmed:false,seats_reserved:0};
+    confirmed,seats_reserved:confirmed ? 1 : 0};
 }
 function notification(row:repo.RequestOperation,snapshot:repo.SeatRequest) {
   return {eventId:row.id,originType:"seat_request",operationId:row.id,
     recipientId:row.action === "requested" ? snapshot.driver_id : snapshot.passenger_id,
     eventType:row.action,relatedEntityType:"seat_request",relatedEntityId:row.request_id,
-    title:row.action === "requested" ? "Seat request received" : "Seat request rejected",
+    title:row.action === "requested" ? "Seat request received" : row.action === "accepted" ? "Seat confirmed" : "Seat request rejected",
     body:row.action === "requested" ? "A passenger requested one seat. No seat is reserved yet."
+      : row.action === "accepted" ? "The driver accepted your seat request. One whole-ride seat is confirmed."
       : "The driver rejected your seat request."};
 }
 
@@ -87,13 +95,32 @@ export class SeatRequestsService {
           throw new AppError(409,"Seat request recovery conflicts with receipt","RECOVERY_CONFLICT");
         if (row.state === "committed") await repo.markRecovered(client,row.id);
         await repo.restoreAudit(client,row);
+        if (row.action === "accepted") await repo.auditWithdrawals(client,row.id,
+          ((row.result.withdrawn_requests as Array<{id:string}>|undefined) ?? []).map(value => value.id));
         await recordDurableNotification(client,notification(row,item.snapshot));
+        if (row.action === "accepted") await recordDurableNotification(client,{
+          originType:"seat_request",operationId:row.id,eventId:relatedEventId(row.id,"accepted_driver",row.request_id),
+          recipientId:item.snapshot.driver_id,eventType:"accepted_driver",relatedEntityType:"seat_request",
+          relatedEntityId:row.request_id,title:"Seat confirmed",body:"You accepted one whole-ride seat."});
+        if (row.action === "accepted") for (const withdrawn of
+          ((row.result.withdrawn_requests as Array<{id:string}>|undefined) ?? [])) {
+          await recordDurableNotification(client,{originType:"seat_request",operationId:row.id,
+            eventId:relatedEventId(row.id,"withdrawn",withdrawn.id),
+            recipientId:item.snapshot.passenger_id,eventType:`withdrawn:${withdrawn.id}`,
+            relatedEntityType:"seat_request",relatedEntityId:withdrawn.id,
+            title:"Seat request withdrawn",body:"This pending request ended because you accepted an overlapping ride."});
+        }
         await repo.readyNotifications(client,row.id);
       });
     }
     const latest = new Map<string,repo.SeatRequest>();
     for (const item of receipts) {
-      if (item.action === "rejected" || !latest.has(item.requestId)) latest.set(item.requestId,item.snapshot);
+      if (item.action !== "requested" || !latest.has(item.requestId)) latest.set(item.requestId,item.snapshot);
+      if (item.action === "accepted") for (const withdrawn of
+        ((item.result.withdrawn_requests as Array<{id:string}>|undefined) ?? [])) {
+        const prior = latest.get(withdrawn.id);
+        if (prior) latest.set(withdrawn.id,{...prior,status:"withdrawn"});
+      }
     }
     for (const [id,expected] of latest) {
       const actual = await repo.requestSnapshot(this.db,id);
@@ -117,7 +144,11 @@ export class SeatRequestsService {
     return (await repo.listForParticipant(this.db,actorId)).map(visibleRequest);
   }
 
-  async mutate(actorId:string,key:string,action:"requested"|"rejected",id:string) {
+  async confirmed(actorId:string) {
+    return repo.listConfirmedForParticipant(this.db,actorId);
+  }
+
+  async mutate(actorId:string,key:string,action:"requested"|"rejected"|"accepted",id:string) {
     const payloadDigest = digest(action,id);
     const existing = await repo.byKey(this.db,actorId,key);
     if (existing && existing.payload_digest !== payloadDigest)
@@ -146,8 +177,17 @@ export class SeatRequestsService {
         return prior;
       }
       if (currentRecovery.rows[0]?.mode !== "open") throw new AppError(503,"Protected writes are restricted","RECOVERY_RESTRICTED");
+      if (action === "accepted") {
+        const preview = await repo.requestSnapshot(client,id);
+        if (!preview) throw new AppError(404,"Request not found","REQUEST_NOT_FOUND");
+        const vehicleId = await repo.vehicleForOffer(client,preview.offer_id);
+        if (!vehicleId) throw new AppError(404,"Offer not found","RIDE_NOT_FOUND");
+        await lockCommitmentActors(client,preview.driver_id,vehicleId,[preview.passenger_id]);
+      }
       await assertCurrentStudentForSubmission(client,actorId);
       let requestId:string;
+      let allocation:repo.Allocation|undefined;
+      let withdrawn:repo.SeatRequest[]=[];
       if (action === "requested") {
         const offer = await repo.offerForUpdate(client,id);
         if (!offer) throw new AppError(404,"Offer not found","RIDE_NOT_FOUND");
@@ -156,6 +196,8 @@ export class SeatRequestsService {
           throw new AppError(409,"Requests are closed","REQUEST_WINDOW_CLOSED");
         if (offer.driver_id === actorId) throw new AppError(409,"You cannot request your own offer","SELF_BOOKING_FORBIDDEN");
         if (offer.pilot_capacity <= 0) throw new AppError(409,"Offer has no seats","INSUFFICIENT_SEATS");
+        if (await repo.hasConfirmedSeat(client,offer.id,actorId))
+          throw new AppError(409,"You already have a confirmed seat","DUPLICATE_ACTIVE_REQUEST");
         await assertCurrentDriverCarEligibility(client,offer.driver_id,offer.vehicle_id);
         try { requestId = await repo.insertRequest(client,offer,actorId); }
         catch (error) {
@@ -169,18 +211,47 @@ export class SeatRequestsService {
         // Match the offer edit lock order for every decision.
         const offer = await repo.offerForUpdate(client,initial.offer_id);
         if (!offer) throw new AppError(404,"Offer not found","RIDE_NOT_FOUND");
-        if (initial.driver_id !== actorId) throw new AppError(403,"Only the driver may reject","FORBIDDEN");
+        if (initial.driver_id !== actorId) throw new AppError(403,"Only the driver may decide","FORBIDDEN");
         await assertCurrentDriverCarEligibility(client,actorId,offer.vehicle_id);
         if (initial.status !== "pending" || initial.decision_deadline_at <= clock())
           throw new AppError(409,"Request is no longer pending","REQUEST_NOT_PENDING");
-        await repo.rejectRequest(client,id);
+        if (action === "accepted") {
+          await assertCurrentStudentForSubmission(client,initial.passenger_id);
+          if (offer.status !== "active" || offer.pilot_acceptance_cutoff_at <= clock())
+            throw new AppError(409,"Acceptance window is closed","ACCEPTANCE_WINDOW_CLOSED");
+          if (initial.offer_version !== offer.pilot_version ||
+              JSON.stringify(initial.offer_terms) !== JSON.stringify(offer.terms))
+            throw new AppError(409,"Offer terms changed","OFFER_TERMS_CHANGED");
+          if (offer.pilot_capacity > (await repo.currentVehicleSeatCapacity(client,offer.vehicle_id) ?? 0))
+            throw new AppError(409,"Offer exceeds the car's current seat limit","CAPACITY_INVALID");
+          if (await repo.allocatedSeatCount(client,offer.id) >= offer.pilot_capacity)
+            throw new AppError(409,"No seat remains","INSUFFICIENT_SEATS");
+          await assertCommitmentsEligible(client,{driverId:actorId,vehicleId:offer.vehicle_id,
+            passengerIds:[initial.passenger_id],rideId:offer.id,departureAt:offer.departure_at,
+            durationMinutes:Math.ceil((offer.pilot_commitment_until.getTime()-offer.departure_at.getTime())/60_000)});
+          allocation = await repo.allocate(client,initial,offer);
+          await repo.accept(client,id);
+          withdrawn = await repo.withdrawIncompatible(client,initial.passenger_id,offer.id,
+            offer.departure_at,offer.pilot_commitment_until);
+        } else await repo.rejectRequest(client,id);
         requestId = id;
       }
       const snapshot = await repo.requestSnapshot(client,requestId);
-      const result = {request:visibleRequest(snapshot)};
+      const result = {request:visibleRequest(snapshot),...(allocation ? {booking:allocation,
+        withdrawn_requests:withdrawn.map(item => ({id:item.id,reason:"overlapping confirmed ride"}))} : {})};
       const row = await repo.insertOperation(client,{actorId,key,digest:payloadDigest,requestId,action,result,snapshot});
       await repo.audit(client,row);
+      if (withdrawn.length) await repo.auditWithdrawals(client,row.id,withdrawn.map(item => item.id));
       await recordDurableNotification(client,notification(row,snapshot));
+      if (action === "accepted") await recordDurableNotification(client,{
+        originType:"seat_request",operationId:row.id,eventId:relatedEventId(row.id,"accepted_driver",row.request_id),
+        recipientId:snapshot.driver_id,eventType:"accepted_driver",relatedEntityType:"seat_request",
+        relatedEntityId:row.request_id,title:"Seat confirmed",body:"You accepted one whole-ride seat."});
+      for (const item of withdrawn) await recordDurableNotification(client,{
+        originType:"seat_request",operationId:row.id,eventId:relatedEventId(row.id,"withdrawn",item.id),
+        recipientId:item.passenger_id,
+        eventType:`withdrawn:${item.id}`,relatedEntityType:"seat_request",relatedEntityId:item.id,
+        title:"Seat request withdrawn",body:"This pending request ended because you accepted an overlapping ride."});
       return row;
     });
     if (operation.state !== "committed") return this.operation(actorId,operation.id);

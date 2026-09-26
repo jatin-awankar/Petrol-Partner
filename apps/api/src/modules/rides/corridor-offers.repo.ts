@@ -137,12 +137,12 @@ export async function discover(db: Pool, origin: string, destination: string, da
     r.pilot_policy_snapshot->>'contact_notice' AS contact_notice,
     r.pilot_policy_snapshot->>'version' AS policy_version,
     r.pilot_version AS version,
-    r.pilot_capacity - (SELECT count(*)::int FROM bookings b WHERE b.ride_offer_id=r.id AND b.status='confirmed') AS available_seats
+    r.pilot_capacity - (SELECT count(*)::int FROM pilot_seat_allocations a WHERE a.offer_id=r.id AND a.status IN ('confirmed','held')) AS available_seats
     FROM ride_offers r JOIN pilot_corridor_policies p ON p.id=r.pilot_policy_id
     WHERE r.status='active' AND r.pilot_origin_code=$1 AND r.pilot_destination_code=$2
       AND ($3::date IS NULL OR r.date=$3::date) AND r.pilot_request_cutoff_at > now()
-      AND r.pilot_capacity > (SELECT count(*)::int FROM bookings b
-        WHERE b.ride_offer_id=r.id AND b.status='confirmed')
+      AND r.pilot_capacity > (SELECT count(*)::int FROM pilot_seat_allocations a
+        WHERE a.offer_id=r.id AND a.status IN ('confirmed','held'))
       AND EXISTS (SELECT 1 FROM student_verifications s
         JOIN users u ON u.id=s.user_id
         JOIN driver_eligibility d ON d.user_id=s.user_id

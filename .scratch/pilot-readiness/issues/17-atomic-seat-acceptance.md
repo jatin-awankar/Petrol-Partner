@@ -4,7 +4,7 @@
 
 **Blocked by:** 16 (Request a seat without reserving it).
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 **Work type:** Feature slice
 

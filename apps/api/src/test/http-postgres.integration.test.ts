@@ -20,7 +20,7 @@ import { setBackupObjectProbeForTests } from "../modules/operator/backup-status"
 import { setStudentReviewAfterCommitHookForTests } from "../modules/verification/student-review.service";
 
 const verificationPool = new Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
-const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql", "0006_operator_allowlist.sql", "0007_operator_pause.sql", "0008_operator_intent_handoff.sql", "0009_durable_notifications.sql", "0010_email_retry_operations.sql", "0011_backup_attempts.sql", "0012_student_adult_review.sql", "0013_student_review_cycles.sql", "0014_student_review_operations.sql", "0015_student_evidence_access.sql", "0016_student_evidence_deletion_outcomes.sql", "0017_student_evidence_retry_schedule.sql", "0018_driver_car_approval.sql", "0019_ride_departures.sql", "0020_corridor_offers.sql", "0021_corridor_offer_recovery.sql", "0022_pilot_seat_requests.sql"];
+const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql", "0006_operator_allowlist.sql", "0007_operator_pause.sql", "0008_operator_intent_handoff.sql", "0009_durable_notifications.sql", "0010_email_retry_operations.sql", "0011_backup_attempts.sql", "0012_student_adult_review.sql", "0013_student_review_cycles.sql", "0014_student_review_operations.sql", "0015_student_evidence_access.sql", "0016_student_evidence_deletion_outcomes.sql", "0017_student_evidence_retry_schedule.sql", "0018_driver_car_approval.sql", "0019_ride_departures.sql", "0020_corridor_offers.sql", "0021_corridor_offer_recovery.sql", "0022_pilot_seat_requests.sql", "0023_pilot_seat_acceptance.sql"];
 
 function fakeProvider(identity: ProviderIdentity): AuthProvider {
   const session = { accessToken: "provider-access", refreshToken: "provider-refresh", expiresIn: 900, identity };
@@ -44,6 +44,239 @@ beforeAll(async () => {
 });
 
 describe("pilot seat requests through HTTP and PostgreSQL", () => {
+  it("accepts one final seat atomically and keeps retries and confirmed terms visible", async () => {
+    const directory = await mkdtemp(resolve(tmpdir(), "seat-accept-"));
+    process.env.PILOT_RECEIPT_PATH = resolve(directory,"receipts");
+    process.env.PILOT_RECEIPT_SECRET = "seat-accept-independent-receipt-secret";
+    process.env.PILOT_CONFLICT_POLICY_APPROVED = "true";
+    process.env.PILOT_EXPECTED_TRIP_MINUTES = "35";
+    process.env.PILOT_CONFLICT_BUFFER_MINUTES = "20";
+    process.env.PILOT_SUPPORT_WINDOW_APPROVED = "true";
+    process.env.PILOT_SUPPORT_WINDOW_START = new Date(Date.now()-60_000).toISOString();
+    process.env.PILOT_SUPPORT_WINDOW_END = new Date(Date.now()+30*24*60*60_000).toISOString();
+    try {
+      const actors = await Promise.all(["driver","passenger-one","passenger-two","other-driver"].map(async name => {
+        const email = `accept-${name}@example.test`;
+        const id = (await verificationPool.query<{id:string}>(
+          "INSERT INTO users(email,email_verified_at) VALUES($1,now()) RETURNING id",[email])).rows[0].id;
+        await verificationPool.query(`INSERT INTO student_verifications
+          (user_id,provider,status,adult_eligible,institution_name,eligibility_ends_at)
+          VALUES($1,'manual_review','verified',true,'Synthetic College',now()+interval '1 year')`,[id]);
+        return {id,token:signAccessToken({userId:id,email,role:"user"})};
+      }));
+      const [driver,first,second,otherDriver] = actors;
+      await verificationPool.query(`INSERT INTO driver_eligibility(user_id,status,license_expires_at,review_after)
+        VALUES($1,'approved','2099-12-31','2099-12-30')`,[driver.id]);
+      const car = (await verificationPool.query<{id:string}>(`INSERT INTO vehicles
+        (owner_user_id,vehicle_type,registration_number_last4,seat_capacity,status,verification_status,
+         use_category,applicable_document_required,insurance_expires_at,review_after)
+        VALUES($1,'car','1234',2,'active','approved','private',true,'2099-12-31','2099-12-30') RETURNING id`,[driver.id])).rows[0].id;
+      await verificationPool.query(`INSERT INTO driver_vehicle_approvals
+        (driver_user_id,vehicle_id,permission_category,status,review_after)
+        VALUES($1,$2,'owner','approved','2099-12-30')`,[driver.id,car]);
+      await verificationPool.query(`INSERT INTO driver_eligibility(user_id,status,license_expires_at,review_after)
+        VALUES($1,'approved','2099-12-31','2099-12-30')`,[otherDriver.id]);
+      const otherCar = (await verificationPool.query<{id:string}>(`INSERT INTO vehicles
+        (owner_user_id,vehicle_type,registration_number_last4,seat_capacity,status,verification_status,
+         use_category,applicable_document_required,insurance_expires_at,review_after)
+        VALUES($1,'car','5678',2,'active','approved','private',true,'2099-12-31','2099-12-30') RETURNING id`,[otherDriver.id])).rows[0].id;
+      await verificationPool.query(`INSERT INTO driver_vehicle_approvals
+        (driver_user_id,vehicle_id,permission_category,status,review_after)
+        VALUES($1,$2,'owner','approved','2099-12-30')`,[otherDriver.id,otherCar]);
+      const departure = new Date(Date.now()+2*24*60*60_000);
+      while (new Intl.DateTimeFormat("en-GB",{timeZone:"Asia/Kolkata",weekday:"short"}).format(departure) === "Sun")
+        departure.setUTCDate(departure.getUTCDate()+1);
+      departure.setUTCHours(5,0,0,0);
+      const offer = await request(createApp()).post("/v1/corridor-offers")
+        .set("Authorization",`Bearer ${driver.token}`).set("Idempotency-Key","accept-offer")
+        .send({vehicle_id:car,origin_code:"university",destination_code:"prmitr",
+          departure_at:departure.toISOString(),capacity:1});
+      expect(offer.status,JSON.stringify(offer.body)).toBe(201);
+      const otherOffer = await request(createApp()).post("/v1/corridor-offers")
+        .set("Authorization",`Bearer ${otherDriver.token}`).set("Idempotency-Key","other-accept-offer")
+        .send({vehicle_id:otherCar,origin_code:"university",destination_code:"prmitr",
+          departure_at:departure.toISOString(),capacity:2});
+      expect(otherOffer.status,JSON.stringify(otherOffer.body)).toBe(201);
+      const post = (actor:typeof first,key:string) => request(createApp()).post("/v1/seat-requests")
+        .set("Authorization",`Bearer ${actor.token}`).set("Idempotency-Key",key)
+        .send({offer_id:offer.body.offer.id,seats:1});
+      const [one,two] = await Promise.all([post(first,"request-one"),post(second,"request-two")]);
+      expect([one.status,two.status]).toEqual([201,201]);
+      const otherRequests = await Promise.all([first,second].map((actor,index) =>
+        request(createApp()).post("/v1/seat-requests")
+          .set("Authorization",`Bearer ${actor.token}`).set("Idempotency-Key",`other-request-${index}`)
+          .send({offer_id:otherOffer.body.offer.id,seats:1})));
+      expect(otherRequests.map(value => value.status)).toEqual([201,201]);
+      const accept = (id:string,key:string) => request(createApp()).post(`/v1/seat-requests/${id}/accept`)
+        .set("Authorization",`Bearer ${driver.token}`).set("Idempotency-Key",key).send({});
+      expect((await request(createApp()).post(`/v1/seat-requests/${one.body.request.id}/accept`)
+        .set("Authorization",`Bearer ${otherDriver.token}`).set("Idempotency-Key","wrong-driver").send({})).status).toBe(403);
+      await verificationPool.query("UPDATE driver_eligibility SET status='suspended' WHERE user_id=$1",[driver.id]);
+      expect((await accept(one.body.request.id,"suspended-driver")).status).toBe(403);
+      await verificationPool.query("UPDATE driver_eligibility SET status='approved' WHERE user_id=$1",[driver.id]);
+      await verificationPool.query("UPDATE student_verifications SET status='suspended' WHERE user_id=$1",[first.id]);
+      expect((await accept(one.body.request.id,"revoked-passenger")).status).toBe(403);
+      await verificationPool.query("UPDATE student_verifications SET status='verified' WHERE user_id=$1",[first.id]);
+      await verificationPool.query("UPDATE users SET status='suspended' WHERE id=$1",[first.id]);
+      expect((await accept(one.body.request.id,"disabled-account")).status).toBe(403);
+      await verificationPool.query("UPDATE users SET status='active' WHERE id=$1",[first.id]);
+      const eligibilityUpdate = await verificationPool.connect();
+      try {
+        await eligibilityUpdate.query("BEGIN");
+        await eligibilityUpdate.query("UPDATE student_verifications SET status='suspended' WHERE user_id=$1",[first.id]);
+        const pendingAcceptance = accept(one.body.request.id,"eligibility-race");
+        const outcome = Promise.resolve(pendingAcceptance);
+        await new Promise(resolve => setTimeout(resolve,25));
+        await eligibilityUpdate.query("COMMIT");
+        expect((await outcome).status).toBe(403);
+      } finally {
+        await eligibilityUpdate.query("ROLLBACK");
+        eligibilityUpdate.release();
+      }
+      await verificationPool.query("UPDATE student_verifications SET status='verified' WHERE user_id=$1",[first.id]);
+      await verificationPool.query("UPDATE ride_offers SET status='held' WHERE id=$1",[offer.body.offer.id]);
+      expect((await accept(one.body.request.id,"held-offer")).status).toBe(409);
+      await verificationPool.query("UPDATE ride_offers SET status='active' WHERE id=$1",[offer.body.offer.id]);
+      await verificationPool.query("UPDATE ride_offers SET price_per_seat_paise=2600 WHERE id=$1",[offer.body.offer.id]);
+      expect((await accept(one.body.request.id,"changed-terms")).body.error.code).toBe("OFFER_TERMS_CHANGED");
+      await verificationPool.query("UPDATE ride_offers SET price_per_seat_paise=2500 WHERE id=$1",[offer.body.offer.id]);
+      setSeatRequestClockForTests(() => new Date(offer.body.offer.acceptance_cutoff_at));
+      expect((await accept(one.body.request.id,"deadline")).status).toBe(409);
+      setSeatRequestClockForTests(null);
+      await verificationPool.query(`CREATE OR REPLACE FUNCTION reject_accept_notification_for_test()
+        RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+          IF NEW.origin_type='seat_request' AND NEW.event_type='accepted' THEN
+            RAISE EXCEPTION 'synthetic acceptance notification failure'; END IF;
+          RETURN NEW; END $$`);
+      await verificationPool.query(`CREATE TRIGGER reject_accept_notification_for_test
+        BEFORE INSERT ON pilot_notification_events FOR EACH ROW EXECUTE FUNCTION reject_accept_notification_for_test()`);
+      try {
+        expect((await accept(one.body.request.id,"failed-notification")).status).toBeGreaterThanOrEqual(500);
+        expect((await verificationPool.query<{count:number}>(`SELECT count(*)::int AS count
+          FROM pilot_seat_allocations WHERE offer_id=$1`,[offer.body.offer.id])).rows[0].count).toBe(0);
+      } finally {
+        await verificationPool.query("DROP TRIGGER reject_accept_notification_for_test ON pilot_notification_events");
+        await verificationPool.query("DROP FUNCTION reject_accept_notification_for_test()");
+      }
+      const blocker = await verificationPool.connect();
+      let results:Awaited<ReturnType<typeof Promise.all<[ReturnType<typeof accept>,ReturnType<typeof accept>]>>>;
+      try {
+        await blocker.query("BEGIN");
+        await blocker.query("SELECT id FROM ride_offers WHERE id=$1 FOR UPDATE",[offer.body.offer.id]);
+        const race = Promise.all([accept(one.body.request.id,"accept-one"),
+          accept(two.body.request.id,"accept-two")]);
+        await new Promise(resolve => setTimeout(resolve,40));
+        expect(pool.totalCount).toBeGreaterThanOrEqual(2);
+        await blocker.query("COMMIT");
+        results = await race;
+      } finally {
+        await blocker.query("ROLLBACK");
+        blocker.release();
+      }
+      const [a,b] = results;
+      expect([a.status,b.status].sort()).toEqual([200,409]);
+      const winner = a.status === 200 ? a : b;
+      expect(winner.body.request).toMatchObject({status:"accepted",confirmed:true,seats_reserved:1});
+      expect(winner.body.booking).toMatchObject({seats:1,contribution_paise:2500,currency:"INR",status:"confirmed"});
+      expect(winner.body.withdrawn_requests).toEqual([
+        {id:otherRequests[a.status === 200 ? 0 : 1].body.request.id,reason:"overlapping confirmed ride"}]);
+      const winnerPassenger = a.status === 200 ? first : second;
+      expect((await post(winnerPassenger,"duplicate-confirmed-request")).body.error.code)
+        .toBe("DUPLICATE_ACTIVE_REQUEST");
+      await verificationPool.query("UPDATE vehicles SET seat_capacity=1 WHERE id=$1",[otherCar]);
+      const remainingOtherRequest = otherRequests[a.status === 200 ? 1 : 0].body.request.id;
+      const overCarLimit = await request(createApp()).post(`/v1/seat-requests/${remainingOtherRequest}/accept`)
+        .set("Authorization",`Bearer ${otherDriver.token}`).set("Idempotency-Key","reduced-car-capacity").send({});
+      expect(overCarLimit.body.error.code).toBe("CAPACITY_INVALID");
+      await verificationPool.query("UPDATE vehicles SET seat_capacity=2 WHERE id=$1",[otherCar]);
+      await verificationPool.query(`INSERT INTO driver_eligibility(user_id,status,license_expires_at,review_after)
+        VALUES($1,'approved','2099-12-31','2099-12-30')`,[winnerPassenger.id]);
+      const winnerCar = (await verificationPool.query<{id:string}>(`INSERT INTO vehicles
+        (owner_user_id,vehicle_type,registration_number_last4,seat_capacity,status,verification_status,
+         use_category,applicable_document_required,insurance_expires_at,review_after)
+        VALUES($1,'car','9000',2,'active','approved','private',true,'2099-12-31','2099-12-30') RETURNING id`,[winnerPassenger.id])).rows[0].id;
+      await verificationPool.query(`INSERT INTO driver_vehicle_approvals
+        (driver_user_id,vehicle_id,permission_category,status,review_after)
+        VALUES($1,$2,'owner','approved','2099-12-30')`,[winnerPassenger.id,winnerCar]);
+      const overlappingDriverOffer = await request(createApp()).post("/v1/corridor-offers")
+        .set("Authorization",`Bearer ${winnerPassenger.token}`).set("Idempotency-Key","overlap-as-driver")
+        .send({vehicle_id:winnerCar,origin_code:"university",destination_code:"prmitr",
+          departure_at:departure.toISOString(),capacity:1});
+      expect(overlappingDriverOffer.body.error.code).toBe("COMMITMENT_CONFLICT");
+      const laterDeparture = new Date(departure);
+      laterDeparture.setUTCDate(laterDeparture.getUTCDate()+3);
+      while (new Intl.DateTimeFormat("en-GB",{timeZone:"Asia/Kolkata",weekday:"short"}).format(laterDeparture) === "Sun")
+        laterDeparture.setUTCDate(laterDeparture.getUTCDate()+1);
+      const laterOffers = await Promise.all([[driver,car,"later-first"],[otherDriver,otherCar,"later-second"]]
+        .map(([actor,vehicleId,key]) => request(createApp()).post("/v1/corridor-offers")
+          .set("Authorization",`Bearer ${(actor as typeof driver).token}`).set("Idempotency-Key",key as string)
+          .send({vehicle_id:vehicleId,origin_code:"university",destination_code:"prmitr",
+            departure_at:laterDeparture.toISOString(),capacity:1})));
+      expect(laterOffers.map(value => value.status)).toEqual([201,201]);
+      const laterRequests = await Promise.all(laterOffers.map((item,index) =>
+        request(createApp()).post("/v1/seat-requests")
+          .set("Authorization",`Bearer ${winnerPassenger.token}`).set("Idempotency-Key",`later-request-${index}`)
+          .send({offer_id:item.body.offer.id,seats:1})));
+      expect(laterRequests.map(value => value.status)).toEqual([201,201]);
+      const passengerGate = await verificationPool.connect();
+      let overlappingAcceptances:Awaited<ReturnType<typeof accept>>[];
+      try {
+        await passengerGate.query("BEGIN");
+        await passengerGate.query("UPDATE student_verifications SET status='verified' WHERE user_id=$1",[winnerPassenger.id]);
+        const racing = Promise.all(laterRequests.map((item,index) =>
+          request(createApp()).post(`/v1/seat-requests/${item.body.request.id}/accept`)
+            .set("Authorization",`Bearer ${index === 0 ? driver.token : otherDriver.token}`)
+            .set("Idempotency-Key",`later-accept-${index}`).send({})));
+        await new Promise(resolve => setTimeout(resolve,35));
+        expect(pool.totalCount).toBeGreaterThanOrEqual(2);
+        await passengerGate.query("COMMIT");
+        overlappingAcceptances = await racing;
+      } finally {
+        await passengerGate.query("ROLLBACK");
+        passengerGate.release();
+      }
+      expect(overlappingAcceptances.map(value => value.status).sort()).toEqual([200,409]);
+      expect((await verificationPool.query<{count:number}>(`SELECT count(*)::int AS count
+        FROM pilot_seat_allocations WHERE passenger_id=$1 AND status='confirmed'`,[winnerPassenger.id])).rows[0].count)
+        .toBe(2);
+      const withdrawnView = await request(createApp()).get("/v1/seat-requests")
+        .set("Authorization",`Bearer ${winnerPassenger.token}`);
+      expect(withdrawnView.body.requests).toEqual(expect.arrayContaining([
+        expect.objectContaining({id:winner.body.withdrawn_requests[0].id,status:"withdrawn"})]));
+      expect((await accept(a.status === 200 ? one.body.request.id : two.body.request.id,
+        a.status === 200 ? "accept-one" : "accept-two")).body.operation_id).toBe(winner.body.operation_id);
+      expect((await accept(a.status === 200 ? two.body.request.id : one.body.request.id,
+        a.status === 200 ? "accept-one" : "accept-two")).body.error.code).toBe("IDEMPOTENCY_PAYLOAD_MISMATCH");
+      const bookings = await request(createApp()).get("/v1/seat-requests/confirmed")
+        .set("Authorization",`Bearer ${driver.token}`);
+      expect(bookings.body.bookings).toEqual(expect.arrayContaining([
+        expect.objectContaining({offer_id:offer.body.offer.id,contribution_paise:2500})]));
+      expect((await verificationPool.query<{count:number}>(`SELECT count(*)::int AS count
+        FROM pilot_seat_allocations WHERE offer_id=$1`,[offer.body.offer.id])).rows[0].count).toBe(1);
+      expect((await verificationPool.query<{count:number}>(`SELECT count(*)::int AS count
+        FROM pilot_seat_withdrawal_audit WHERE operation_id=$1`,[winner.body.operation_id])).rows[0].count).toBe(1);
+      const acceptedEvents = await request(createApp()).get("/v1/notifications/durable")
+        .set("Authorization",`Bearer ${winnerPassenger.token}`);
+      expect(acceptedEvents.body.notifications.map((item:{event_type:string}) => item.event_type))
+        .toEqual(expect.arrayContaining(["accepted",`withdrawn:${winner.body.withdrawn_requests[0].id}`]));
+      const operatorId = (await verificationPool.query<{id:string}>(
+        "INSERT INTO users(email,role,email_verified_at) VALUES('accept-recovery-operator@example.test','admin',now()) RETURNING id"
+      )).rows[0].id;
+      await verificationPool.query(`INSERT INTO operator_allowlist(user_id,active,reason,reviewed_at)
+        VALUES($1,true,'synthetic acceptance recovery',now())`,[operatorId]);
+      await verificationPool.query("UPDATE pilot_recovery_state SET mode='restricted' WHERE singleton=true");
+      await verificationPool.query("DELETE FROM pilot_email_jobs WHERE event_id IN (SELECT id FROM pilot_notification_events WHERE origin_type='seat_request')");
+      await verificationPool.query("DELETE FROM pilot_notification_events WHERE origin_type='seat_request'");
+      await verificationPool.query("DELETE FROM pilot_seat_withdrawal_audit");
+      await verificationPool.query("DELETE FROM pilot_seat_request_audit");
+      await verificationPool.query("DELETE FROM pilot_seat_request_operations");
+      await verificationPool.query("DELETE FROM pilot_seat_allocations");
+      await verificationPool.query("DELETE FROM pilot_seat_requests");
+      expect(await new SeatRequestsService().reconcileReceipts(operatorId)).toBe(8);
+      expect((await verificationPool.query<{count:number}>(`SELECT count(*)::int AS count
+        FROM pilot_seat_allocations WHERE offer_id=$1`,[offer.body.offer.id])).rows[0].count).toBe(1);
+    } finally {setSeatRequestClockForTests(null);await rm(directory,{recursive:true,force:true});}
+  });
   it("keeps capacity available, freezes terms, rejects by owner, and expires at the decision deadline", async () => {
     const directory = await mkdtemp(resolve(tmpdir(), "seat-request-"));
     process.env.PILOT_RECEIPT_PATH = resolve(directory,"receipts");

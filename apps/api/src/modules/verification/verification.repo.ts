@@ -763,7 +763,8 @@ export async function findStudentEligibilityForUpdate(client: PoolClient, userId
     status: string; adult_eligible: boolean | null; eligibility_ends_at: Date;
   }>(`SELECT s.status, s.adult_eligible, s.eligibility_ends_at
       FROM student_verifications s JOIN users u ON u.id=s.user_id
-      WHERE s.user_id = $1 AND u.email_verified_at IS NOT NULL FOR SHARE OF u, s`, [userId]);
+      WHERE s.user_id = $1 AND u.email_verified_at IS NOT NULL AND u.status = 'active'
+      FOR SHARE OF u, s`, [userId]);
   return result.rows[0] ?? null;
 }
 

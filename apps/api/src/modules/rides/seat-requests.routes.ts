@@ -18,6 +18,9 @@ function key(value:string|undefined) {
 seatRequestsRouter.get("/",asyncHandler(async(req,res) => {
   res.json({requests:await seatRequestsService.list(actor(req))});
 }));
+seatRequestsRouter.get("/confirmed",asyncHandler(async(req,res) => {
+  res.json({bookings:await seatRequestsService.confirmed(actor(req))});
+}));
 seatRequestsRouter.get("/operations/:id",asyncHandler(async(req,res) => {
   const {id} = z.strictObject({id:z.uuid()}).parse(req.params);
   res.json({operation:await seatRequestsService.operation(actor(req),id)});
@@ -31,4 +34,9 @@ seatRequestsRouter.post("/:id/reject",asyncHandler(async(req,res) => {
   const {id} = z.strictObject({id:z.uuid()}).parse(req.params);
   z.strictObject({}).parse(req.body ?? {});
   res.json(await seatRequestsService.mutate(actor(req),key(req.get("Idempotency-Key")),"rejected",id));
+}));
+seatRequestsRouter.post("/:id/accept",asyncHandler(async(req,res) => {
+  const {id} = z.strictObject({id:z.uuid()}).parse(req.params);
+  z.strictObject({}).parse(req.body ?? {});
+  res.json(await seatRequestsService.mutate(actor(req),key(req.get("Idempotency-Key")),"accepted",id));
 }));
