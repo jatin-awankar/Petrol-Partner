@@ -6,6 +6,7 @@ import { AppError } from "../../shared/errors/app-error";
 import { pauseService } from "./pause.service";
 import { deliveryStatus, retryDelivery } from "../notifications/durable.service";
 import { cancellationsService } from "../rides/cancellations.service";
+import { pilotDepartureService } from "../rides/pilot-departure.service";
 
 export const operatorRouter = Router();
 const decision = z.object({ capability: z.enum(["offers", "requests", "acceptance", "booking"]), paused: z.boolean(), reason: z.string().trim().min(8).max(500) });
@@ -18,6 +19,18 @@ operatorRouter.get("/status", asyncHandler(async (_req, res) => { res.json(await
 operatorRouter.get("/notifications/delivery", asyncHandler(async (_req, res) => { res.json(await deliveryStatus()); }));
 operatorRouter.get("/cancellation-reviews", asyncHandler(async (req,res) => {
   res.json({cases:await cancellationsService.openReviews(req.user!.userId)});
+}));
+operatorRouter.get("/departure-reviews",asyncHandler(async(req,res)=>{
+  res.json({signals:await pilotDepartureService.openSignals(req.user!.userId)});
+}));
+operatorRouter.post("/rides/:id/late-departure",asyncHandler(async(req,res)=>{
+  const id=operationId.parse(req.params.id);
+  const key=req.header("Idempotency-Key");
+  if(!key||key.length>128) throw new AppError(400,"Idempotency-Key is required","IDEMPOTENCY_KEY_REQUIRED");
+  const {boarded_allocation_ids,reason}=z.strictObject({boarded_allocation_ids:z.array(z.uuid()).max(30),
+    reason:z.string().trim().min(8).max(500)}).parse(req.body);
+  res.json({departure:await pilotDepartureService.start(req.user!.userId,key,id,
+    boarded_allocation_ids,"late_departure",reason)});
 }));
 operatorRouter.post("/notifications/email/:id/retry", asyncHandler(async (req, res) => {
   const key = req.header("Idempotency-Key");

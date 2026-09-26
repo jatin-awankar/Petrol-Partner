@@ -6,6 +6,7 @@ import { AppError } from "../../shared/errors/app-error";
 import { corridorOfferInput,corridorOfferUpdate,corridorOfferSearch } from "./corridor-offers.schema";
 import { corridorOffersService } from "./corridor-offers.service";
 import { cancellationsService } from "./cancellations.service";
+import { pilotDepartureService } from "./pilot-departure.service";
 
 export const corridorOffersRouter = Router();
 function key(value: string | undefined) {
@@ -34,6 +35,26 @@ corridorOffersRouter.get("/cancellations/:id",requireAuth,asyncHandler(async(req
   if (!req.user) throw new AppError(401,"Unauthorized","UNAUTHORIZED");
   const {id}=z.strictObject({id:z.uuid()}).parse(req.params);
   res.json({operation:await cancellationsService.operation(req.user.userId,id)});
+}));
+corridorOffersRouter.get("/departures/:id",requireAuth,asyncHandler(async(req,res)=>{
+  if(!req.user) throw new AppError(401,"Unauthorized","UNAUTHORIZED");
+  const {id}=z.strictObject({id:z.uuid()}).parse(req.params);
+  res.json({operation:await pilotDepartureService.operation(req.user.userId,id)});
+}));
+corridorOffersRouter.post("/:id/depart",requireAuth,asyncHandler(async(req,res)=>{
+  if(!req.user) throw new AppError(401,"Unauthorized","UNAUTHORIZED");
+  const {id}=z.strictObject({id:z.uuid()}).parse(req.params);
+  const {boarded_allocation_ids}=z.strictObject({boarded_allocation_ids:z.array(z.uuid()).max(30)}).parse(req.body);
+  res.json({departure:await pilotDepartureService.start(req.user.userId,key(req.get("Idempotency-Key")),
+    id,boarded_allocation_ids)});
+}));
+corridorOffersRouter.post("/:id/interruption",requireAuth,asyncHandler(async(req,res)=>{
+  if(!req.user) throw new AppError(401,"Unauthorized","UNAUTHORIZED");
+  const {id}=z.strictObject({id:z.uuid()}).parse(req.params);
+  const {reason}=z.strictObject({reason:z.string().trim().min(8).max(500)}).parse(req.body);
+  const result=await cancellationsService.reportInterruption(req.user.userId,
+    key(req.get("Idempotency-Key")),id,reason);
+  res.status(202).json(result);
 }));
 corridorOffersRouter.post("/:id/cancel",requireAuth,asyncHandler(async(req,res) => {
   if (!req.user) throw new AppError(401,"Unauthorized","UNAUTHORIZED");

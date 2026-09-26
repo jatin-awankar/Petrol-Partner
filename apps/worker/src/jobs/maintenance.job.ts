@@ -4,6 +4,7 @@ import { env } from "../config/env";
 import { logger } from "../config/logger";
 import { pool } from "../db/pool";
 import { expirePilotSeatRequests } from "./pilot-seat-expiry";
+import { notifyDelayedPilotRides } from "./pilot-delayed-rides";
 import {
   bookingExpiryQueue,
   maintenanceQueueName,
@@ -189,6 +190,9 @@ export function createMaintenanceWorker() {
           break;
         case "expire-pilot-seat-requests":
           result = await expirePilotSeatRequests(pool);
+          break;
+        case "notify-delayed-pilot-rides":
+          result = await notifyDelayedPilotRides(pool);
           break;
         default:
           result = { skipped: true };

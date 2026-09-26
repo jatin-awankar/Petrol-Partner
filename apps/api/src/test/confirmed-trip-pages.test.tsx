@@ -27,7 +27,7 @@ const booking = {id:"booking",offer_id:"offer",contribution_paise:2500,currency:
   passenger_origin_code:"university",passenger_destination_code:"prmitr",
   pickup_location:"Amravati University",car_registration_last4:"1234",car_make:"Tata",
   car_model:"Tiago",car_color:"Blue",driver_verified_name:"Verified Driver",
-  passenger_verified_name:"Verified Passenger"};
+  passenger_verified_name:"Verified Passenger",trip_state:"scheduled",boarded:null,started_at:null};
 
 describe("pilot coordination notice on offer and request pages",() => {
   it("tells a driver before publication that operator support contact and hours are unpublished",async() => {
@@ -44,6 +44,7 @@ describe("pilot coordination notice on offer and request pages",() => {
     expect(await screen.findByText(/Driver: Verified Driver/)).not.toBeNull();
     expect(screen.getByText(/registration ending 1234/)).not.toBeNull();
     expect(screen.queryByText(/Passenger: Verified Passenger/)).toBeNull();
+    expect(screen.queryByRole("button",{name:/Start trip and record boarding/})).toBeNull();
   });
   it("shows the driver each confirmed passenger's verified name and stops",async() => {
     session.userId="driver";
@@ -53,5 +54,20 @@ describe("pilot coordination notice on offer and request pages",() => {
     expect(await screen.findByText(/Passenger: Verified Passenger; university → prmitr/)).not.toBeNull();
     expect(screen.getByText(/Passenger: Second Passenger; prmitr → prmitr/)).not.toBeNull();
     expect(screen.queryByText(/Driver: Verified Driver/)).toBeNull();
+    expect(screen.getByRole("button",{name:/Start trip and record boarding/})).not.toBeNull();
+  });
+  it("excludes a canceled historical seat from boarding choices",async()=>{
+    session.userId="driver";
+    session.bookings=[booking,{...booking,id:"canceled",status:"cancelled",
+      passenger_verified_name:"Former Passenger"}];
+    render(<SearchRidesPage />);
+    expect(await screen.findByText(/Passenger: Former Passenger/)).not.toBeNull();
+    expect(screen.queryByLabelText("Former Passenger")).toBeNull();
+  });
+  it("shows delayed and departed states without offering an automatic transition",async()=>{
+    session.bookings=[{...booking,trip_state:"delayed"}];
+    render(<SearchRidesPage />);
+    expect(await screen.findByText(/ride remains unstarted/i)).not.toBeNull();
+    expect(screen.queryByRole("button",{name:/Start trip and record boarding/})).toBeNull();
   });
 });

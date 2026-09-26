@@ -4,7 +4,9 @@ import { signAccessToken } from "../shared/jwt/tokens";
 import { corridorOffersService } from "../modules/rides/corridor-offers.service";
 import { SeatRequestsService, setSeatRequestClockForTests } from "../modules/rides/seat-requests.service";
 import { CancellationsService } from "../modules/rides/cancellations.service";
+import { PilotDepartureService } from "../modules/rides/pilot-departure.service";
 import { expirePilotSeatRequests } from "../../../worker/src/jobs/pilot-seat-expiry";
+import {notifyDelayedPilotRides} from "../../../worker/src/jobs/pilot-delayed-rides";
 import { spawn, type ChildProcess } from "node:child_process";
 import { chmod, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -22,7 +24,7 @@ import { setBackupObjectProbeForTests } from "../modules/operator/backup-status"
 import { setStudentReviewAfterCommitHookForTests } from "../modules/verification/student-review.service";
 
 const verificationPool = new Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
-const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql", "0006_operator_allowlist.sql", "0007_operator_pause.sql", "0008_operator_intent_handoff.sql", "0009_durable_notifications.sql", "0010_email_retry_operations.sql", "0011_backup_attempts.sql", "0012_student_adult_review.sql", "0013_student_review_cycles.sql", "0014_student_review_operations.sql", "0015_student_evidence_access.sql", "0016_student_evidence_deletion_outcomes.sql", "0017_student_evidence_retry_schedule.sql", "0018_driver_car_approval.sql", "0019_ride_departures.sql", "0020_corridor_offers.sql", "0021_corridor_offer_recovery.sql", "0022_pilot_seat_requests.sql", "0023_pilot_seat_acceptance.sql", "0024_pilot_cancellations.sql"];
+const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql", "0006_operator_allowlist.sql", "0007_operator_pause.sql", "0008_operator_intent_handoff.sql", "0009_durable_notifications.sql", "0010_email_retry_operations.sql", "0011_backup_attempts.sql", "0012_student_adult_review.sql", "0013_student_review_cycles.sql", "0014_student_review_operations.sql", "0015_student_evidence_access.sql", "0016_student_evidence_deletion_outcomes.sql", "0017_student_evidence_retry_schedule.sql", "0018_driver_car_approval.sql", "0019_ride_departures.sql", "0020_corridor_offers.sql", "0021_corridor_offer_recovery.sql", "0022_pilot_seat_requests.sql", "0023_pilot_seat_acceptance.sql", "0024_pilot_cancellations.sql", "0025_pilot_departure.sql"];
 
 function fakeProvider(identity: ProviderIdentity): AuthProvider {
   const session = { accessToken: "provider-access", refreshToken: "provider-refresh", expiresIn: 900, identity };
@@ -47,6 +49,202 @@ beforeAll(async () => {
     const sql = await readFile(resolve(import.meta.dirname, "../db/migrations", migration), "utf8");
     await verificationPool.query(sql);
   }
+});
+
+describe("pilot departure and boarding",()=>{
+  it("enforces exact window boundaries, confirmed boarding, idempotency and frozen contribution",async()=>{
+    const directory=await mkdtemp(resolve(tmpdir(),"pilot-departure-"));
+    Object.assign(process.env,{PILOT_RECEIPT_PATH:resolve(directory,"receipts"),
+      PILOT_RECEIPT_SECRET:"pilot-departure-independent-secret",PILOT_CONFLICT_POLICY_APPROVED:"true",
+      PILOT_EXPECTED_TRIP_MINUTES:"35",PILOT_CONFLICT_BUFFER_MINUTES:"20",
+      PILOT_SUPPORT_WINDOW_APPROVED:"true",PILOT_SUPPORT_WINDOW_START:new Date(Date.now()-60_000).toISOString(),
+      PILOT_SUPPORT_WINDOW_END:new Date(Date.now()+30*24*60*60_000).toISOString()});
+    try {
+      const actors=await Promise.all(["driver","passenger","outsider"].map(async label=>{
+        const email=`departure-${label}-${randomUUID()}@example.test`;
+        const id=(await verificationPool.query<{id:string}>(
+          "INSERT INTO users(email,email_verified_at) VALUES($1,now()) RETURNING id",[email])).rows[0].id;
+        await verificationPool.query(`INSERT INTO student_verifications
+          (user_id,provider,status,adult_eligible,institution_name,eligibility_ends_at)
+          VALUES($1,'manual_review','verified',true,'Synthetic College',now()+interval '1 year')`,[id]);
+        return {id,token:signAccessToken({userId:id,email,role:"user"})};
+      }));
+      const [driver,passenger,outsider]=actors;
+      await verificationPool.query(`INSERT INTO driver_eligibility(user_id,status,license_expires_at,review_after)
+        VALUES($1,'approved','2099-12-31','2099-12-30')`,[driver.id]);
+      const car=(await verificationPool.query<{id:string}>(`INSERT INTO vehicles
+        (owner_user_id,vehicle_type,registration_number_last4,seat_capacity,status,verification_status,
+         use_category,applicable_document_required,insurance_expires_at,review_after)
+        VALUES($1,'car','9876',2,'active','approved','private',true,'2099-12-31','2099-12-30') RETURNING id`,
+        [driver.id])).rows[0].id;
+      await verificationPool.query(`INSERT INTO driver_vehicle_approvals
+        (driver_user_id,vehicle_id,permission_category,status,review_after)
+        VALUES($1,$2,'owner','approved','2099-12-30')`,[driver.id,car]);
+      const departure=new Date(Date.now()+3*24*60*60_000);
+      while(new Intl.DateTimeFormat("en-GB",{timeZone:"Asia/Kolkata",weekday:"short"}).format(departure)==="Sun")
+        departure.setUTCDate(departure.getUTCDate()+1);
+      departure.setUTCHours(5,0,0,0);
+      const publish=await request(createApp()).post("/v1/corridor-offers")
+        .set("Authorization",`Bearer ${driver.token}`).set("Idempotency-Key",randomUUID())
+        .send({vehicle_id:car,origin_code:"university",destination_code:"prmitr",
+          departure_at:departure.toISOString(),capacity:2});
+      expect(publish.status,JSON.stringify(publish.body)).toBe(201);
+      const offerId=publish.body.offer.id as string;
+      const ask=await request(createApp()).post("/v1/seat-requests")
+        .set("Authorization",`Bearer ${passenger.token}`).set("Idempotency-Key",randomUUID())
+        .send({offer_id:offerId,seats:1});
+      expect(ask.status).toBe(201);
+      const accept=await request(createApp()).post(`/v1/seat-requests/${ask.body.request.id}/accept`)
+        .set("Authorization",`Bearer ${driver.token}`).set("Idempotency-Key",randomUUID()).send({});
+      expect(accept.status,JSON.stringify(accept.body)).toBe(200);
+      const allocation=(await verificationPool.query<{id:string;contribution_paise:number}>(`
+        SELECT id,contribution_paise FROM pilot_seat_allocations WHERE offer_id=$1`,[offerId])).rows[0];
+      const service=new PilotDepartureService(pool);
+      const at=departure.getTime();
+      await expect(service.start(driver.id,randomUUID(),offerId,[allocation.id],"departure",null,
+        new Date(at-15*60_000-1))).rejects.toMatchObject({code:"DEPARTURE_WINDOW_CLOSED"});
+      await expect(service.start(driver.id,randomUUID(),offerId,[randomUUID()],"departure",null,
+        new Date(at-15*60_000))).rejects.toMatchObject({code:"BOARDING_INVALID"});
+      await expect(service.start(outsider.id,randomUUID(),offerId,[allocation.id],"departure",null,
+        new Date(at-15*60_000))).rejects.toMatchObject({code:"FORBIDDEN"});
+      const key=randomUUID();
+      const started=await service.start(driver.id,key,offerId,[allocation.id],"departure",null,
+        new Date(at-15*60_000));
+      expect(started.state).toBe("acknowledged");
+      expect((await service.start(driver.id,key,offerId,[allocation.id])).operation_id).toBe(started.operation_id);
+      await expect(service.start(driver.id,randomUUID(),offerId,[allocation.id],"departure",null,
+        new Date(at))).rejects.toMatchObject({code:"DEPARTURE_INVALID"});
+      expect((await verificationPool.query<{count:string}>(
+        "SELECT count(*) FROM pilot_departure_boarding WHERE allocation_id=$1 AND boarded=true",
+        [allocation.id])).rows[0].count).toBe("1");
+      expect((await verificationPool.query<{contribution_paise:number}>(
+        "SELECT contribution_paise FROM pilot_seat_allocations WHERE id=$1",[allocation.id])).rows[0].contribution_paise)
+        .toBe(allocation.contribution_paise);
+      expect((await verificationPool.query<{count:string}>(`SELECT count(*) FROM pilot_notification_events
+        WHERE origin_type='pilot_departure' AND operation_id=$1 AND ready_at IS NOT NULL`,
+        [started.operation_id])).rows[0].count).toBe("2");
+      expect((await verificationPool.query<{count:string}>(`SELECT count(*) FROM pilot_email_jobs j
+        JOIN pilot_notification_events e ON e.id=j.event_id
+        WHERE e.operation_id=$1 AND e.origin_type='pilot_departure' AND j.status='pending'`,
+        [started.operation_id])).rows[0].count).toBe("2");
+      const trip=await request(createApp()).get(`/v1/seat-requests/confirmed/${offerId}`)
+        .set("Authorization",`Bearer ${passenger.token}`);
+      expect(trip.body.trip.bookings[0]).toMatchObject({trip_state:"departed",boarded:true});
+      const afterStartCancel=await request(createApp()).post(`/v1/seat-requests/${ask.body.request.id}/cancel`)
+        .set("Authorization",`Bearer ${passenger.token}`).set("Idempotency-Key",randomUUID())
+        .send({reason:"Could not finish the trip"});
+      expect(afterStartCancel.status).toBe(202);
+      expect(afterStartCancel.body.kind).toBe("review_required");
+      const interruption=await request(createApp()).post(`/v1/corridor-offers/${offerId}/interruption`)
+        .set("Authorization",`Bearer ${driver.token}`).set("Idempotency-Key",randomUUID())
+        .send({reason:"Vehicle stopped unexpectedly"});
+      expect(interruption.status).toBe(202);
+      expect(interruption.body.kind).toBe("review_required");
+      expect((await verificationPool.query<{status:string}>("SELECT status FROM ride_offers WHERE id=$1",
+        [offerId])).rows[0].status).toBe("departed");
+      const nextDay=(from:Date)=>{
+        const value=new Date(from.getTime()+24*60*60_000);
+        while(new Intl.DateTimeFormat("en-GB",{timeZone:"Asia/Kolkata",weekday:"short"}).format(value)==="Sun")
+          value.setUTCDate(value.getUTCDate()+1);
+        return value;
+      };
+      const publishAnother=async(date:Date)=>{
+        const response=await request(createApp()).post("/v1/corridor-offers")
+          .set("Authorization",`Bearer ${driver.token}`).set("Idempotency-Key",randomUUID())
+          .send({vehicle_id:car,origin_code:"university",destination_code:"prmitr",
+            departure_at:date.toISOString(),capacity:2});
+        expect(response.status,JSON.stringify(response.body)).toBe(201);
+        return response.body.offer.id as string;
+      };
+      const boundary=nextDay(departure);
+      const boundaryId=await publishAnother(boundary);
+      const boundaryRequest=await request(createApp()).post("/v1/seat-requests")
+        .set("Authorization",`Bearer ${passenger.token}`).set("Idempotency-Key",randomUUID())
+        .send({offer_id:boundaryId,seats:1});
+      expect(boundaryRequest.status).toBe(201);
+      const boundaryAccept=await request(createApp()).post(`/v1/seat-requests/${boundaryRequest.body.request.id}/accept`)
+        .set("Authorization",`Bearer ${driver.token}`).set("Idempotency-Key",randomUUID()).send({});
+      expect(boundaryAccept.status).toBe(200);
+      await expect(service.start(driver.id,randomUUID(),boundaryId,[],"departure",null,
+        new Date(boundary.getTime()+30*60_000+1))).rejects.toMatchObject({code:"DEPARTURE_WINDOW_CLOSED"});
+      await expect(service.start(driver.id,randomUUID(),boundaryId,[],"departure",null,
+        new Date(boundary.getTime()+30*60_000))).rejects.toMatchObject({code:"ACTIVE_TRIP_CONFLICT"});
+      await verificationPool.query("UPDATE ride_offers SET status='completed' WHERE id=$1",[offerId]);
+      const absent=await service.start(driver.id,randomUUID(),boundaryId,[],"departure",null,
+        new Date(boundary.getTime()+30*60_000));
+      expect(absent.state).toBe("acknowledged");
+      expect((await verificationPool.query<{count:string}>(`SELECT count(*) FROM pilot_departure_review_signals
+        WHERE operation_id=$1 AND signal_type='absence'`,[absent.operation_id])).rows[0].count).toBe("1");
+      await verificationPool.query("UPDATE ride_offers SET status='completed' WHERE id=$1",[boundaryId]);
+      const delayed=nextDay(boundary);
+      const delayedId=await publishAnother(delayed);
+      const afterWindow=new Date(delayed.getTime()+30*60_000+1);
+      expect((await notifyDelayedPilotRides(verificationPool,afterWindow)).delayed).toBeGreaterThan(0);
+      expect((await notifyDelayedPilotRides(verificationPool,afterWindow)).delayed).toBe(0);
+      expect((await verificationPool.query<{status:string}>("SELECT status FROM ride_offers WHERE id=$1",
+        [delayedId])).rows[0].status).toBe("active");
+      const laterDate=new Date(delayed.getTime()+2*60*60_000);
+      const laterId=await publishAnother(laterDate);
+      const operatorId=(await verificationPool.query<{id:string}>(
+        "INSERT INTO users(email,role,email_verified_at) VALUES($1,'admin',now()) RETURNING id",
+        [`departure-operator-${randomUUID()}@example.test`])).rows[0].id;
+      await verificationPool.query(`INSERT INTO operator_allowlist(user_id,active,reason,reviewed_at)
+        VALUES($1,true,'synthetic late departure',now())`,[operatorId]);
+      await verificationPool.query("UPDATE driver_eligibility SET status='suspended' WHERE user_id=$1",[driver.id]);
+      await expect(service.start(operatorId,randomUUID(),delayedId,[],"late_departure",
+        "Operator reviewed delay",afterWindow)).rejects.toMatchObject({code:"DRIVER_CAR_NOT_APPROVED"});
+      await verificationPool.query("UPDATE driver_eligibility SET status='approved' WHERE user_id=$1",[driver.id]);
+      await expect(service.start(operatorId,randomUUID(),delayedId,[],"late_departure",
+        "Operator reviewed delay",new Date(delayed.getTime()+90*60_000)))
+        .rejects.toMatchObject({code:"COMMITMENT_CONFLICT"});
+      expect((await new CancellationsService().cancel(driver.id,randomUUID(),"offer",laterId,
+        "Later ride no longer needed")).kind).toBe("cancelled");
+      const late=await service.start(operatorId,randomUUID(),delayedId,[],"late_departure",
+        "Operator reviewed delay",afterWindow);
+      expect(late.state).toBe("acknowledged");
+      expect((await verificationPool.query<{count:string}>(`SELECT count(*) FROM audit_logs
+        WHERE action='pilot_late_departure' AND entity_id=$1`,[delayedId])).rows[0].count).toBe("1");
+      await verificationPool.query("UPDATE ride_offers SET status='completed' WHERE id=$1",[delayedId]);
+      const raceDate=nextDay(delayed);
+      const raceId=await publishAnother(raceDate);
+      const startPool=new Pool({connectionString:process.env.DATABASE_URL,max:1});
+      const cancelPool=new Pool({connectionString:process.env.DATABASE_URL,max:1});
+      try {
+        const [departureAttempt,cancellationAttempt]=await Promise.allSettled([
+          new PilotDepartureService(startPool).start(driver.id,randomUUID(),raceId,[],"departure",null,
+            new Date(raceDate.getTime()-15*60_000)),
+          new CancellationsService(cancelPool).cancel(driver.id,randomUUID(),"offer",raceId,"Plans changed")]);
+        expect(cancellationAttempt.status).toBe("fulfilled");
+        const status=(await verificationPool.query<{status:string}>(
+          "SELECT status FROM ride_offers WHERE id=$1",[raceId])).rows[0].status;
+        expect(["cancelled","departed"]).toContain(status);
+        expect(status==="departed").toBe(departureAttempt.status==="fulfilled");
+        expect((await verificationPool.query<{count:string}>(`
+          SELECT count(*) FROM pilot_departure_operations WHERE offer_id=$1`,[raceId])).rows[0].count)
+          .toBe(status==="departed"?"1":"0");
+      } finally {await Promise.all([startPool.end(),cancelPool.end()]);}
+      // Simulate an older database snapshot for one acknowledged departure.
+      await verificationPool.query(`DELETE FROM pilot_email_jobs WHERE event_id IN
+        (SELECT id FROM pilot_notification_events WHERE origin_type='pilot_departure' AND operation_id=$1)`,
+        [late.operation_id]);
+      await verificationPool.query("DELETE FROM pilot_notification_events WHERE origin_type='pilot_departure' AND operation_id=$1",
+        [late.operation_id]);
+      await verificationPool.query("DELETE FROM pilot_departure_boarding WHERE operation_id=$1",[late.operation_id]);
+      await verificationPool.query("DELETE FROM pilot_departure_review_signals WHERE operation_id=$1",[late.operation_id]);
+      await verificationPool.query("DELETE FROM audit_logs WHERE metadata->>'operationId'=$1",[late.operation_id]);
+      await verificationPool.query("DELETE FROM pilot_departure_operations WHERE id=$1",[late.operation_id]);
+      await verificationPool.query("UPDATE ride_offers SET status='active' WHERE id=$1",[delayedId]);
+      await verificationPool.query("UPDATE pilot_recovery_state SET mode='restricted' WHERE singleton=true");
+      expect(await service.reconcileReceipts(operatorId)).toBeGreaterThanOrEqual(3);
+      expect((await verificationPool.query<{status:string}>("SELECT status FROM ride_offers WHERE id=$1",
+        [delayedId])).rows[0].status).toBe("departed");
+    } finally {
+      for(const name of ["PILOT_RECEIPT_PATH","PILOT_RECEIPT_SECRET","PILOT_CONFLICT_POLICY_APPROVED",
+        "PILOT_EXPECTED_TRIP_MINUTES","PILOT_CONFLICT_BUFFER_MINUTES","PILOT_SUPPORT_WINDOW_APPROVED",
+        "PILOT_SUPPORT_WINDOW_START","PILOT_SUPPORT_WINDOW_END"]) delete process.env[name];
+      await rm(directory,{recursive:true,force:true});
+    }
+  });
 });
 
 describe("pilot cancellation and replacement", () => {
