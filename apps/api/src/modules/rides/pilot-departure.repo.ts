@@ -5,6 +5,17 @@ export type Operation={id:string;offer_id:string;actor_id:string;driver_id:strin
   boarded_allocation_ids:string[];confirmed_allocation_ids:string[];started_at:Date;
   state:"committed"|"acknowledged"|"recovered"};
 type Database=Pool|PoolClient;
+export const preview=async(db:PoolClient,id:string)=>(await db.query<{driver_id:string;vehicle_id:string}>(
+  "SELECT driver_id,vehicle_id FROM ride_offers WHERE id=$1 AND pilot_policy_id IS NOT NULL",[id])).rows[0]??null;
+export const requestPassengers=async(db:PoolClient,id:string)=>(await db.query<{passenger_id:string}>(
+  `SELECT DISTINCT passenger_id FROM pilot_seat_requests WHERE offer_id=$1
+    AND status IN ('pending','accepted')`,[id])).rows.map(row=>row.passenger_id);
+export const currentPassengers=async(db:PoolClient,id:string)=>(await db.query<{passenger_id:string}>(
+  `SELECT passenger_id FROM pilot_seat_allocations WHERE offer_id=$1
+    AND status IN ('confirmed','held')`,[id])).rows.map(row=>row.passenger_id);
+export async function lockRequests(db:PoolClient,id:string) {
+  await db.query("SELECT id FROM pilot_seat_requests WHERE offer_id=$1 ORDER BY id FOR UPDATE",[id]);
+}
 export const byKey=async(db:Database,actor:string,key:string)=>(await db.query<Operation>(
   "SELECT * FROM pilot_departure_operations WHERE actor_id=$1 AND idempotency_key=$2",[actor,key])).rows[0]??null;
 export const byId=async(db:Database,id:string,lock=false)=>(await db.query<Operation>(

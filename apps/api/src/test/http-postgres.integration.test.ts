@@ -5,6 +5,9 @@ import { corridorOffersService } from "../modules/rides/corridor-offers.service"
 import { SeatRequestsService, setSeatRequestClockForTests } from "../modules/rides/seat-requests.service";
 import { CancellationsService } from "../modules/rides/cancellations.service";
 import { PilotDepartureService } from "../modules/rides/pilot-departure.service";
+import { StudentRevocationService } from "../modules/verification/student-revocation.service";
+import { DriverCarReviewService } from "../modules/verification/driver-car-review.service";
+import { RevocationCasesService } from "../modules/operator/revocation-cases.service";
 import { expirePilotSeatRequests } from "../../../worker/src/jobs/pilot-seat-expiry";
 import {notifyDelayedPilotRides} from "../../../worker/src/jobs/pilot-delayed-rides";
 import { spawn, type ChildProcess } from "node:child_process";
@@ -24,7 +27,7 @@ import { setBackupObjectProbeForTests } from "../modules/operator/backup-status"
 import { setStudentReviewAfterCommitHookForTests } from "../modules/verification/student-review.service";
 
 const verificationPool = new Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
-const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql", "0006_operator_allowlist.sql", "0007_operator_pause.sql", "0008_operator_intent_handoff.sql", "0009_durable_notifications.sql", "0010_email_retry_operations.sql", "0011_backup_attempts.sql", "0012_student_adult_review.sql", "0013_student_review_cycles.sql", "0014_student_review_operations.sql", "0015_student_evidence_access.sql", "0016_student_evidence_deletion_outcomes.sql", "0017_student_evidence_retry_schedule.sql", "0018_driver_car_approval.sql", "0019_ride_departures.sql", "0020_corridor_offers.sql", "0021_corridor_offer_recovery.sql", "0022_pilot_seat_requests.sql", "0023_pilot_seat_acceptance.sql", "0024_pilot_cancellations.sql", "0025_pilot_departure.sql"];
+const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql", "0006_operator_allowlist.sql", "0007_operator_pause.sql", "0008_operator_intent_handoff.sql", "0009_durable_notifications.sql", "0010_email_retry_operations.sql", "0011_backup_attempts.sql", "0012_student_adult_review.sql", "0013_student_review_cycles.sql", "0014_student_review_operations.sql", "0015_student_evidence_access.sql", "0016_student_evidence_deletion_outcomes.sql", "0017_student_evidence_retry_schedule.sql", "0018_driver_car_approval.sql", "0019_ride_departures.sql", "0020_corridor_offers.sql", "0021_corridor_offer_recovery.sql", "0022_pilot_seat_requests.sql", "0023_pilot_seat_acceptance.sql", "0024_pilot_cancellations.sql", "0025_pilot_departure.sql", "0026_revocation_holds_incidents.sql"];
 
 function fakeProvider(identity: ProviderIdentity): AuthProvider {
   const session = { accessToken: "provider-access", refreshToken: "provider-refresh", expiresIn: 900, identity };
@@ -49,6 +52,341 @@ beforeAll(async () => {
     const sql = await readFile(resolve(import.meta.dirname, "../db/migrations", migration), "utf8");
     await verificationPool.query(sql);
   }
+});
+
+describe("ticket 21 revocation holds and incidents",()=>{
+  let directory:string;
+  beforeEach(async()=>{
+    await verificationPool.query("TRUNCATE users CASCADE");
+    await verificationPool.query(`INSERT INTO pilot_recovery_state(singleton,mode) VALUES(true,'open')
+      ON CONFLICT(singleton) DO UPDATE SET mode='open',cause=NULL,started_at=NULL`);
+    await verificationPool.query("UPDATE pilot_pause_state SET paused=false,operation_id=NULL");
+    directory=await mkdtemp(resolve(tmpdir(),"pilot-revocation-"));
+    Object.assign(process.env,{PILOT_RECEIPT_PATH:resolve(directory,"receipts"),
+      PILOT_RECEIPT_SECRET:"pilot-revocation-independent-evidence-secret",
+      PILOT_CONFLICT_POLICY_APPROVED:"true",PILOT_EXPECTED_TRIP_MINUTES:"35",
+      PILOT_CONFLICT_BUFFER_MINUTES:"20",PILOT_SUPPORT_WINDOW_APPROVED:"true",
+      PILOT_SUPPORT_WINDOW_START:new Date(Date.now()-60*60_000).toISOString(),
+      PILOT_SUPPORT_WINDOW_END:new Date(Date.now()+24*60*60_000).toISOString()});
+  });
+  afterEach(async()=>{
+    setManagedAuthEnabledForTests(null);
+    setAuthProviderForTests(null);
+    await verificationPool.query(`UPDATE auth_cutover_state SET active_provider='legacy',
+      legacy_login_enabled=true,authorized_at=NULL,authorized_by=NULL WHERE singleton=true`);
+    for(const name of ["PILOT_RECEIPT_PATH","PILOT_RECEIPT_SECRET","PILOT_CONFLICT_POLICY_APPROVED",
+      "PILOT_EXPECTED_TRIP_MINUTES","PILOT_CONFLICT_BUFFER_MINUTES","PILOT_SUPPORT_WINDOW_APPROVED",
+      "PILOT_SUPPORT_WINDOW_START","PILOT_SUPPORT_WINDOW_END"]) delete process.env[name];
+    await rm(directory,{recursive:true,force:true});
+  });
+  async function actor(label:string,operator=false) {
+    const id=(await verificationPool.query<{id:string}>(`INSERT INTO users(email,role,email_verified_at)
+      VALUES($1,$2,now()) RETURNING id`,[`${label}-${randomUUID()}@example.test`,operator?"admin":"user"])).rows[0].id;
+    if(operator) await verificationPool.query(`INSERT INTO operator_allowlist(user_id,active,reason,reviewed_at)
+      VALUES($1,true,'synthetic operator',now())`,[id]);
+    else await verificationPool.query(`INSERT INTO student_verifications
+      (user_id,provider,status,adult_eligible,institution_name,eligibility_ends_at)
+      VALUES($1,'manual_review','verified',true,'Synthetic College',now()+interval '1 year')`,[id]);
+    return id;
+  }
+  async function fixture() {
+    const operator=await actor("revocation-operator",true);
+    const driver=await actor("revocation-driver");
+    const passenger=await actor("revocation-passenger");
+    const other=await actor("revocation-other");
+    await verificationPool.query(`INSERT INTO driver_eligibility
+      (user_id,status,license_expires_at,review_after)
+      VALUES($1,'approved',CURRENT_DATE+100,CURRENT_DATE+100)`,[driver]);
+    const car=(await verificationPool.query<{id:string}>(`INSERT INTO vehicles
+      (owner_user_id,vehicle_type,registration_number_last4,seat_capacity,use_category,
+       applicable_document_required,insurance_expires_at,review_after,verification_status)
+      VALUES($1,'car','1234',3,'private',false,CURRENT_DATE+100,CURRENT_DATE+100,'approved')
+      RETURNING id`,[driver])).rows[0].id;
+    await verificationPool.query(`INSERT INTO driver_vehicle_approvals
+      (driver_user_id,vehicle_id,permission_category,status,review_after)
+      VALUES($1,$2,'owner','approved',CURRENT_DATE+100)`,[driver,car]);
+    const ride=(await verificationPool.query<{id:string}>(`INSERT INTO ride_offers
+      (driver_id,vehicle_id,pickup_location,pickup_lat,pickup_lng,drop_location,
+       drop_lat,drop_lng,date,time,available_seats,price_per_seat_paise,status,
+       pilot_policy_id,pilot_policy_snapshot,pilot_origin_code,pilot_destination_code,
+       pilot_capacity,pilot_currency,pilot_request_cutoff_at,pilot_acceptance_cutoff_at,
+       pilot_commitment_until)
+      VALUES($1,$2,'University',20,77,'College',20.1,77.1,
+       ((now()+interval '2 hours') AT TIME ZONE 'Asia/Kolkata')::date,
+       ((now()+interval '2 hours') AT TIME ZONE 'Asia/Kolkata')::time,
+       2,2500,'active',(SELECT id FROM pilot_corridor_policies WHERE version=1),
+       '{"version":1}'::jsonb,'university','prmitr',2,'INR',
+       now()+interval '1 hour',now()+interval '90 minutes',now()+interval '3 hours')
+      RETURNING id`,[driver,car])).rows[0].id;
+    return {operator,driver,passenger,other,car,ride};
+  }
+  async function requestAndAccept(driver:string,passenger:string,ride:string) {
+    const requests=new SeatRequestsService(verificationPool);
+    const requested=await requests.mutate(passenger,randomUUID(),"requested",ride);
+    const requestId=(requested.request as {id:string}).id;
+    const accepted=await requests.mutate(driver,randomUUID(),"accepted",requestId);
+    return {requestId,allocationId:(accepted.booking as {id:string}).id};
+  }
+  it("holds a revoked passenger's future seat, preserves capacity, audits retries and limits operator access",async()=>{
+    const {operator,driver,passenger,other,ride}=await fixture();
+    await verificationPool.query(`INSERT INTO user_profiles(user_id,full_name,phone)
+      VALUES($1,'Synthetic Passenger','1111111111')`,[passenger]);
+    await verificationPool.query("UPDATE user_profiles SET phone='2222222222' WHERE user_id=$1",[passenger]);
+    const {allocationId,requestId}=await requestAndAccept(driver,passenger,ride);
+    const service=new StudentRevocationService(verificationPool);
+    const first=await service.revoke(operator,"revoke-passenger",passenger,"Enrollment approval withdrawn for safety review");
+    expect((await service.revoke(operator,"revoke-passenger",passenger,"Enrollment approval withdrawn for safety review")).operation_id)
+      .toBe(first.operation_id);
+    await expect(service.revoke(operator,"revoke-passenger",passenger,"Changed reason after decision"))
+      .rejects.toMatchObject({code:"IDEMPOTENCY_PAYLOAD_MISMATCH"});
+    expect((await verificationPool.query("SELECT status FROM pilot_seat_allocations WHERE id=$1",[allocationId])).rows[0].status)
+      .toBe("held");
+    expect((await verificationPool.query<{n:number}>(`SELECT count(*)::int AS n FROM pilot_seat_allocations
+      WHERE offer_id=$1 AND status IN ('confirmed','held')`,[ride])).rows[0].n).toBe(1);
+    expect((await new SeatRequestsService(verificationPool).confirmed(passenger)).some(row=>row.id===allocationId)).toBe(true);
+    expect((await verificationPool.query("SELECT status FROM ride_offers WHERE id=$1",[ride])).rows[0].status).toBe("active");
+    await expect(new StudentRevocationService(verificationPool).revoke(other,"other-revoke",driver,"Unauthorized safety action"))
+      .rejects.toMatchObject({code:"OPERATOR_ACCESS_REVOKED"});
+    const cases=await new RevocationCasesService(verificationPool).receipts();
+    expect(cases).toEqual([]);
+    const held=(await verificationPool.query<{id:string}>(`SELECT id FROM pilot_revocation_holds
+      WHERE allocation_id=$1`,[allocationId])).rows[0].id;
+    expect((await verificationPool.query<{n:number}>(`SELECT count(*)::int AS n FROM audit_logs
+      WHERE entity_id=$1 AND action='pilot_revocation_hold_created'`,[held])).rows[0].n).toBe(1);
+    const caseService=new RevocationCasesService(verificationPool);
+    await expect(caseService.decide(operator,"premature-resolution",{caseType:"hold",caseId:held,
+      action:"resolve",outcome:"cancelled",reason:"No recorded cancellation yet",recipientIds:[]}))
+      .rejects.toMatchObject({code:"OUTREACH_REQUIRED"});
+    await caseService.decide(operator,"passenger-only-outreach",{caseType:"hold",caseId:held,
+      action:"outreach",outcome:null,reason:"Contacted the passenger",recipientIds:[passenger]});
+    await expect(caseService.decide(operator,"partial-outreach-resolution",{caseType:"hold",caseId:held,
+      action:"resolve",outcome:"cancelled",reason:"Driver has not been contacted",recipientIds:[]}))
+      .rejects.toMatchObject({code:"OUTREACH_REQUIRED"});
+    await caseService.decide(operator,"outreach",{caseType:"hold",caseId:held,action:"outreach",
+      outcome:null,reason:"Contacted the driver and passenger about the held seat",
+      recipientIds:[driver,passenger]});
+    await expect(caseService.decide(operator,"still-held",{caseType:"hold",caseId:held,
+      action:"resolve",outcome:"cancelled",reason:"No recorded cancellation yet",recipientIds:[]}))
+      .rejects.toMatchObject({code:"CANCELLATION_REQUIRED"});
+    await new CancellationsService(verificationPool).cancel(passenger,"cancel-held", "request",requestId,
+      "Passenger cancelled after eligibility review");
+    const resolved=await caseService.decide(operator,"resolve-held",{caseType:"hold",caseId:held,
+      action:"resolve",outcome:"cancelled",reason:"Passenger cancellation was recorded",recipientIds:[]});
+    expect((await caseService.decide(operator,"resolve-held",{caseType:"hold",caseId:held,
+      action:"resolve",outcome:"cancelled",reason:"Passenger cancellation was recorded",recipientIds:[]})).operation_id)
+      .toBe(resolved.operation_id);
+    expect((await verificationPool.query("SELECT status FROM pilot_seat_allocations WHERE id=$1",[allocationId])).rows[0].status)
+      .toBe("cancelled");
+  });
+  it("serializes student revocation with acceptance and departure on separate connections",async()=>{
+    const {operator,driver,passenger,ride}=await fixture();
+    const requested=await new SeatRequestsService(verificationPool).mutate(passenger,"race-request","requested",ride);
+    const requestId=(requested.request as {id:string}).id;
+    const first=new Pool({connectionString:process.env.DATABASE_URL,max:1});
+    const second=new Pool({connectionString:process.env.DATABASE_URL,max:1});
+    try {
+      const outcomes=await Promise.allSettled([
+        new StudentRevocationService(first).revoke(operator,"race-revoke",passenger,
+          "Enrollment approval withdrawn during acceptance"),
+        new SeatRequestsService(second).mutate(driver,"race-accept","accepted",requestId),
+      ]);
+      expect(outcomes[0].status).toBe("fulfilled");
+      if(outcomes[1].status==="rejected") expect((outcomes[1].reason as {code:string}).code)
+        .toBe("STUDENT_VERIFICATION_INACTIVE");
+      expect((await verificationPool.query("SELECT status FROM student_verifications WHERE user_id=$1",[passenger])).rows[0].status)
+        .toBe("suspended");
+      const allocation=(await verificationPool.query<{status:string}>(`SELECT status FROM pilot_seat_allocations
+        WHERE request_id=$1`,[requestId])).rows[0];
+      expect(allocation?.status).not.toBe("confirmed");
+    } finally {await Promise.all([first.end(),second.end()]);}
+
+    const active=await fixture();
+    const accepted=await requestAndAccept(active.driver,active.passenger,active.ride);
+    await verificationPool.query(`UPDATE ride_offers SET
+      date=((now()+interval '5 minutes') AT TIME ZONE 'Asia/Kolkata')::date,
+      time=((now()+interval '5 minutes') AT TIME ZONE 'Asia/Kolkata')::time,
+      pilot_commitment_until=now()+interval '60 minutes' WHERE id=$1`,[active.ride]);
+    const revocationDb=new Pool({connectionString:process.env.DATABASE_URL,max:1});
+    const departureDb=new Pool({connectionString:process.env.DATABASE_URL,max:1});
+    try {
+      const outcomes=await Promise.allSettled([
+        new StudentRevocationService(revocationDb).revoke(active.operator,"depart-race-revoke",
+          active.passenger,"Enrollment approval withdrawn during departure"),
+        new PilotDepartureService(departureDb).start(active.driver,"depart-race-start",
+          active.ride,[accepted.allocationId]),
+      ]);
+      expect(outcomes[0].status).toBe("fulfilled");
+      if(outcomes[1].status==="rejected") expect([
+        "PASSENGER_VERIFICATION_INACTIVE","BOOKING_HELD","DEPARTURE_INVALID",
+      ]).toContain((outcomes[1].reason as {code:string}).code);
+      const rideState=(await verificationPool.query<{status:string}>(
+        "SELECT status FROM ride_offers WHERE id=$1",[active.ride])).rows[0].status;
+      const held=(await verificationPool.query<{n:number}>(`SELECT count(*)::int AS n FROM pilot_revocation_holds
+        WHERE offer_id=$1`,[active.ride])).rows[0].n;
+      const incidents=(await verificationPool.query<{n:number}>(`SELECT count(*)::int AS n FROM pilot_revocation_incidents
+        WHERE offer_id=$1 AND priority='high'`,[active.ride])).rows[0].n;
+      expect(rideState==="departed" ? incidents : held).toBe(1);
+      expect(rideState==="departed" ? held : incidents).toBe(0);
+    } finally {await Promise.all([revocationDb.end(),departureDb.end()]);}
+  });
+  it("holds a future driver ride and creates an operator-visible incident for an active car revocation",async()=>{
+    const {operator,driver,passenger,car,ride}=await fixture();
+    const accepted=await requestAndAccept(driver,passenger,ride);
+    const reviews=new DriverCarReviewService(verificationPool);
+    await reviews.decide(operator,"driver-revocation","driver",driver,{
+      outcome:"revoked",reason:"Driving approval suspended for safety",review_after:null});
+    expect((await verificationPool.query("SELECT status FROM ride_offers WHERE id=$1",[ride])).rows[0].status)
+      .toBe("held");
+    expect((await verificationPool.query("SELECT status FROM pilot_seat_allocations WHERE id=$1",[accepted.allocationId])).rows[0].status)
+      .toBe("confirmed");
+    await expect(new PilotDepartureService(verificationPool).start(driver,"held-departure",ride,
+      [accepted.allocationId])).rejects.toMatchObject({code:"DEPARTURE_INVALID"});
+    const active=await fixture();
+    await requestAndAccept(active.driver,active.passenger,active.ride);
+    await verificationPool.query("UPDATE ride_offers SET status='departed' WHERE id=$1",[active.ride]);
+    await reviews.decide(active.operator,"car-revocation","vehicle",active.car,{
+      outcome:"revoked",reason:"Insurance safety concern during active trip",review_after:null});
+    const incident=(await verificationPool.query<{id:string;priority:string}>(`SELECT id,priority
+      FROM pilot_revocation_incidents WHERE offer_id=$1`,[active.ride])).rows[0];
+    expect(incident.priority).toBe("high");
+    expect((await verificationPool.query<{n:number}>(`SELECT count(*)::int AS n FROM audit_logs
+      WHERE entity_id=$1 AND action='pilot_revocation_incident_created'`,[incident.id])).rows[0].n).toBe(1);
+    const notice=(await verificationPool.query<{n:number}>(`SELECT count(*)::int AS n FROM pilot_notification_events
+      WHERE related_entity_id=$1 AND origin_type='pilot_revocation' AND ready_at IS NOT NULL`,[incident.id])).rows[0].n;
+    expect(notice).toBeGreaterThanOrEqual(1);
+    expect((await new SeatRequestsService(verificationPool).confirmed(active.passenger)).some(row=>row.offer_id===active.ride))
+      .toBe(true);
+    const cases=await new RevocationCasesService(verificationPool).decide(active.operator,"incident-outreach",{
+      caseType:"incident",caseId:incident.id,action:"outreach",outcome:null,
+      reason:"Contacted the driver and confirmed passenger about safety",
+      recipientIds:[active.driver,active.passenger]});
+    expect(cases.state).toBe("acknowledged");
+    await expect(new RevocationCasesService(verificationPool).decide(active.operator,"incident-too-early",{
+      caseType:"incident",caseId:incident.id,action:"resolve",outcome:"interrupted",
+      reason:"Trip outcome has not been reported",recipientIds:[]}))
+      .rejects.toMatchObject({code:"TRIP_OUTCOME_REQUIRED"});
+    await new CancellationsService(verificationPool).reportInterruption(active.driver,
+      "incident-interruption",active.ride,"Passenger reported a safety interruption");
+    const closed=await new RevocationCasesService(verificationPool).decide(active.operator,"incident-close",{
+      caseType:"incident",caseId:incident.id,action:"resolve",outcome:"interrupted",
+      reason:"Operator documented interruption after outreach",recipientIds:[]});
+    expect(closed.state).toBe("acknowledged");
+    expect((await verificationPool.query("SELECT status FROM ride_offers WHERE id=$1",[active.ride])).rows[0].status)
+      .toBe("departed");
+    expect((await verificationPool.query("SELECT resolution FROM pilot_revocation_incidents WHERE id=$1",[incident.id])).rows[0].resolution)
+      .toBe("interrupted");
+  });
+  it("serializes driver revocation against acceptance on separate connections",async()=>{
+    const {operator,driver,passenger,ride}=await fixture();
+    const pending=await new SeatRequestsService(verificationPool).mutate(passenger,"driver-race-request","requested",ride);
+    const id=(pending.request as {id:string}).id;
+    const reviewDb=new Pool({connectionString:process.env.DATABASE_URL,max:1});
+    const acceptDb=new Pool({connectionString:process.env.DATABASE_URL,max:1});
+    try {
+      const outcomes=await Promise.allSettled([
+        new DriverCarReviewService(reviewDb).decide(operator,"driver-race-revoke","driver",driver,{
+          outcome:"revoked",reason:"Driving approval suspended during acceptance",review_after:null}),
+        new SeatRequestsService(acceptDb).mutate(driver,"driver-race-accept","accepted",id),
+      ]);
+      expect(outcomes[0].status).toBe("fulfilled");
+      if(outcomes[1].status==="rejected") expect([
+        "DRIVER_CAR_NOT_APPROVED","ACCEPTANCE_WINDOW_CLOSED",
+      ]).toContain((outcomes[1].reason as {code:string}).code);
+      expect((await verificationPool.query("SELECT status FROM ride_offers WHERE id=$1",[ride])).rows[0].status)
+        .toBe("held");
+      const seats=(await verificationPool.query<{n:number}>(`SELECT count(*)::int AS n FROM pilot_seat_allocations
+        WHERE offer_id=$1 AND status IN ('confirmed','held')`,[ride])).rows[0].n;
+      expect(seats).toBeLessThanOrEqual(1);
+    } finally {await Promise.all([reviewDb.end(),acceptDb.end()]);}
+  });
+  it("holds future offers when student driving approval or the car is revoked",async()=>{
+    const studentDriver=await fixture();
+    await requestAndAccept(studentDriver.driver,studentDriver.passenger,studentDriver.ride);
+    await new StudentRevocationService(verificationPool).revoke(studentDriver.operator,
+      "student-driver-revoked",studentDriver.driver,"Student driving eligibility withdrawn");
+    expect((await verificationPool.query("SELECT status FROM ride_offers WHERE id=$1",[studentDriver.ride])).rows[0].status)
+      .toBe("held");
+    const carDriver=await fixture();
+    await requestAndAccept(carDriver.driver,carDriver.passenger,carDriver.ride);
+    await new DriverCarReviewService(verificationPool).decide(carDriver.operator,"future-car-revoked",
+      "vehicle",carDriver.car,{outcome:"revoked",reason:"Car insurance approval withdrawn",review_after:null});
+    expect((await verificationPool.query("SELECT status FROM ride_offers WHERE id=$1",[carDriver.ride])).rows[0].status)
+      .toBe("held");
+    expect((await verificationPool.query<{n:number}>(`SELECT count(*)::int AS n FROM pilot_seat_allocations
+      WHERE offer_id=$1 AND status IN ('confirmed','held')`,[carDriver.ride])).rows[0].n).toBe(1);
+  });
+  it("shows holds only to a current MFA operator and keeps failed email work retryable",async()=>{
+    const {operator,driver,passenger,ride}=await fixture();
+    await requestAndAccept(driver,passenger,ride);
+    await new StudentRevocationService(verificationPool).revoke(operator,"visibility-revoke",passenger,
+      "Student eligibility suspended for operator visibility test");
+    const hold=(await verificationPool.query<{id:string}>(`SELECT id FROM pilot_revocation_holds
+      WHERE offer_id=$1`,[ride])).rows[0].id;
+    const email=(await verificationPool.query<{status:string}>(`SELECT j.status FROM pilot_email_jobs j
+      JOIN pilot_notification_events e ON e.id=j.event_id
+      WHERE e.related_entity_id=$1 LIMIT 1`,[hold])).rows[0];
+    expect(email.status).toBe("pending");
+    expect((await request(createApp()).get("/v1/operator/revocation-cases")).status).toBe(401);
+    const emailAddress=(await verificationPool.query<{email:string}>("SELECT email FROM users WHERE id=$1",[operator])).rows[0].email;
+    await verificationPool.query("INSERT INTO user_profiles(user_id,full_name) VALUES($1,'Pilot Operator')",[operator]);
+    const subject=`operator-${randomUUID()}`;
+    await verificationPool.query(`INSERT INTO auth_identities
+      (provider,provider_subject,user_id,provider_email)
+      VALUES('supabase',$1,$2,$3)`,[subject,operator,emailAddress]);
+    await verificationPool.query(`UPDATE auth_cutover_state SET active_provider='supabase',
+      legacy_login_enabled=false,authorized_at=now(),authorized_by='integration-test'
+      WHERE singleton=true`);
+    setManagedAuthEnabledForTests(true);
+    setAuthProviderForTests(fakeProvider({subject,email:emailAddress,emailVerified:true,
+      assuranceLevel:"aal2",userMetadata:{}}));
+    const agent=request.agent(createApp());
+    const login=await agent.post("/v1/auth/login").send({email:emailAddress,password:"synthetic-password"});
+    expect(login.status).toBe(200);
+    const visible=await agent.get("/v1/operator/revocation-cases");
+    expect(visible.status).toBe(200);
+    expect(visible.body.holds.some((item:{id:string})=>item.id===hold)).toBe(true);
+    setAuthProviderForTests(fakeProvider({subject,email:emailAddress,emailVerified:true,
+      assuranceLevel:"aal1",userMetadata:{}}));
+    const noMfa=await agent.get("/v1/operator/revocation-cases");
+    expect(noMfa.status).toBe(403);
+    expect(noMfa.body.error.code).toBe("MFA_REQUIRED");
+    setAuthProviderForTests(fakeProvider({subject,email:emailAddress,emailVerified:true,
+      assuranceLevel:"aal2",userMetadata:{}}));
+    await verificationPool.query("UPDATE operator_allowlist SET active=false WHERE user_id=$1",[operator]);
+    const denied=await agent.get("/v1/operator/revocation-cases");
+    expect(denied.status).toBe(403);
+    expect(denied.body.error.code).toBe("OPERATOR_ACCESS_REVOKED");
+  });
+  it("replays a revoked and later cancelled seat from independent receipts without releasing capacity early",async()=>{
+    const {operator,driver,passenger,ride}=await fixture();
+    const {allocationId,requestId}=await requestAndAccept(driver,passenger,ride);
+    const student=new StudentRevocationService(verificationPool);
+    const cases=new RevocationCasesService(verificationPool);
+    const revoked=await student.revoke(operator,"recovery-revoke",passenger,
+      "Enrollment evidence withdrawn pending safety review");
+    const hold=(await verificationPool.query<{id:string}>(`SELECT id FROM pilot_revocation_holds
+      WHERE allocation_id=$1`,[allocationId])).rows[0].id;
+    await cases.decide(operator,"recovery-outreach",{caseType:"hold",caseId:hold,
+      action:"outreach",outcome:null,reason:"Contacted driver and passenger about the held seat",
+      recipientIds:[driver,passenger]});
+    await new CancellationsService(verificationPool).cancel(passenger,"recovery-cancel","request",requestId,
+      "Passenger cancelled after safety review");
+    await cases.decide(operator,"recovery-resolve",{caseType:"hold",caseId:hold,
+      action:"resolve",outcome:"cancelled",reason:"Recorded passenger cancellation",recipientIds:[]});
+    await verificationPool.query("UPDATE pilot_recovery_state SET mode='restricted' WHERE singleton=true");
+    await verificationPool.query("DELETE FROM pilot_revocation_case_operations");
+    await verificationPool.query("DELETE FROM pilot_revocation_holds");
+    await verificationPool.query("DELETE FROM pilot_student_revocations WHERE id=$1",[revoked.operation_id]);
+    await verificationPool.query("UPDATE student_verifications SET status='verified' WHERE user_id=$1",[passenger]);
+    expect(await student.reconcileReceipts(operator)).toBe(1);
+    expect(await cases.reconcileReceipts(operator)).toBe(2);
+    expect((await verificationPool.query("SELECT status FROM student_verifications WHERE user_id=$1",[passenger])).rows[0].status)
+      .toBe("suspended");
+    expect((await verificationPool.query("SELECT status FROM pilot_seat_allocations WHERE id=$1",[allocationId])).rows[0].status)
+      .toBe("cancelled");
+    expect((await verificationPool.query("SELECT resolution FROM pilot_revocation_holds WHERE id=$1",[hold])).rows[0].resolution)
+      .toBe("cancelled");
+  });
 });
 
 describe("pilot departure and boarding",()=>{

@@ -180,20 +180,20 @@ export async function applyRevocationToRides(client: PoolClient, type: SubjectTy
   const affected = affectedRidePredicate(type);
   const held = await client.query<{ id: string; driver_id: string }>(
     `UPDATE ride_offers ro SET status = 'held', updated_at = now()
-      WHERE ${affected} AND ro.status = 'active'
+      WHERE ${affected} AND ro.status = 'active' AND ro.pilot_policy_id IS NULL
       RETURNING ro.id, ro.driver_id`, [subjectId]);
   const incidents = await client.query<{ ride_offer_id: string }>(
     `INSERT INTO pilot_ride_incidents
       (ride_offer_id, review_operation_id, priority, reason)
       SELECT ro.id, $2, 'high', $3 FROM ride_offers ro
-      WHERE ${affected} AND ro.status = 'departed'
+      WHERE ${affected} AND ro.status = 'departed' AND ro.pilot_policy_id IS NULL
       ON CONFLICT (ride_offer_id, review_operation_id) DO NOTHING
       RETURNING ride_offer_id`, [subjectId, operationId, reason]);
   const heldRides = await client.query<{ id: string; driver_id: string; passenger_ids: string[] }>(
     `SELECT ro.id, ro.driver_id,
       COALESCE(array_agg(DISTINCT b.passenger_id) FILTER (WHERE b.passenger_id IS NOT NULL), '{}') AS passenger_ids
       FROM ride_offers ro LEFT JOIN bookings b ON b.ride_offer_id = ro.id AND b.status = 'confirmed'
-      WHERE ${affected} AND ro.status = 'held'
+      WHERE ${affected} AND ro.status = 'held' AND ro.pilot_policy_id IS NULL
       GROUP BY ro.id, ro.driver_id`, [subjectId]);
   return { newlyHeld: held.rows, held: heldRides.rows, incidents: incidents.rows };
 }

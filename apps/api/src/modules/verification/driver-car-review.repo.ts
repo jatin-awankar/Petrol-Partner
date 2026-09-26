@@ -2,6 +2,18 @@ import type { Pool, PoolClient } from "pg";
 import { AppError } from "../../shared/errors/app-error";
 import type { Operation, Receipt, EvidenceSnapshot } from "./driver-car-review.service";
 import type { EvidencePurpose, SubjectType } from "./driver-car.repo";
+import type {Effect} from "./revocation-effects.repo";
+
+export async function saveEffectSnapshot(client:PoolClient,id:string,items:Effect[]) {
+  return (await client.query<{effect_snapshot:Effect[]}>(`UPDATE driver_car_review_operations
+    SET effect_snapshot=$2::jsonb WHERE id=$1 RETURNING effect_snapshot`,
+    [id,JSON.stringify(items)])).rows[0].effect_snapshot;
+}
+
+export async function operatorRecipients(client: PoolClient) {
+  return (await client.query<{user_id:string}>(`SELECT user_id FROM operator_allowlist
+    WHERE active=true ORDER BY user_id`)).rows.map(row=>row.user_id);
+}
 
 export async function studentForShare(client: PoolClient, userId: string) {
   return (await client.query<{ status: string; adult_eligible: boolean; eligibility_ends_at: Date }>(
@@ -86,18 +98,21 @@ export async function readyRideHoldNotifications(client: PoolClient, id: string)
   await client.query(`UPDATE pilot_notification_events SET ready_at = now()
     WHERE origin_type = 'driver_car_ride_hold' AND operation_id = $1 AND ready_at IS NULL`, [id]);
 }
+export async function readyPilotRevocationNotifications(client:PoolClient,id:string) {
+  await client.query("UPDATE pilot_notification_events SET ready_at=now() WHERE origin_type='pilot_revocation' AND operation_id=$1",[id]);
+}
 
 export async function insertRecoveredOperation(client: PoolClient, item: Receipt) {
   await client.query(`INSERT INTO driver_car_review_operations
     (id, operator_id, idempotency_key, payload_digest, subject_type, subject_id,
      applicant_user_id, outcome, reason, review_after, decision_snapshot, evidence_snapshot,
-     state, committed_at, acknowledged_at)
+     effect_snapshot,state, committed_at, acknowledged_at)
     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12::jsonb,
-      'recovered', $13, now())`,
+      $13::jsonb,'recovered', $14, now())`,
     [item.operationId, item.operatorId, item.idempotencyKey, item.payloadDigest,
       item.subjectType, item.subjectId, item.applicantId, item.outcome, item.reason,
       item.reviewAfter, JSON.stringify(item.decisionSnapshot),
-      JSON.stringify(item.evidenceSnapshot), item.committedAt]);
+      JSON.stringify(item.evidenceSnapshot),JSON.stringify(item.effectSnapshot??[]),item.committedAt]);
 }
 
 export async function priorEvidence(client: PoolClient, type: SubjectType, id: string, purpose: EvidencePurpose) {

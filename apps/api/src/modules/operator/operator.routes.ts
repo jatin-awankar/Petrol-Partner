@@ -7,6 +7,8 @@ import { pauseService } from "./pause.service";
 import { deliveryStatus, retryDelivery } from "../notifications/durable.service";
 import { cancellationsService } from "../rides/cancellations.service";
 import { pilotDepartureService } from "../rides/pilot-departure.service";
+import { studentRevocationService } from "../verification/student-revocation.service";
+import { revocationCasesService } from "./revocation-cases.service";
 
 export const operatorRouter = Router();
 const decision = z.object({ capability: z.enum(["offers", "requests", "acceptance", "booking"]), paused: z.boolean(), reason: z.string().trim().min(8).max(500) });
@@ -22,6 +24,42 @@ operatorRouter.get("/cancellation-reviews", asyncHandler(async (req,res) => {
 }));
 operatorRouter.get("/departure-reviews",asyncHandler(async(req,res)=>{
   res.json({signals:await pilotDepartureService.openSignals(req.user!.userId)});
+}));
+operatorRouter.get("/revocation-cases",asyncHandler(async(req,res)=>{
+  res.set("Cache-Control","private, no-store").json(await revocationCasesService.list(req.user!.userId));
+}));
+operatorRouter.post("/students/:id/revoke",asyncHandler(async(req,res)=>{
+  const id=operationId.parse(req.params.id);
+  const key=req.header("Idempotency-Key");
+  if(!key||key.length>128) throw new AppError(400,"Idempotency-Key is required","IDEMPOTENCY_KEY_REQUIRED");
+  const {reason}=z.strictObject({reason:z.string().trim().min(8).max(500)}).parse(req.body);
+  res.json({operation:await studentRevocationService.revoke(req.user!.userId,key,id,reason)});
+}));
+operatorRouter.get("/students/revocations/:id",asyncHandler(async(req,res)=>{
+  res.json({operation:await studentRevocationService.operation(req.user!.userId,
+    operationId.parse(req.params.id))});
+}));
+operatorRouter.post("/revocation-cases/:type/:id/outreach",asyncHandler(async(req,res)=>{
+  const {type,id}=z.strictObject({type:z.enum(["hold","incident"]),id:z.uuid()}).parse(req.params);
+  const key=req.header("Idempotency-Key");
+  if(!key||key.length>128) throw new AppError(400,"Idempotency-Key is required","IDEMPOTENCY_KEY_REQUIRED");
+  const {recipient_ids,reason}=z.strictObject({recipient_ids:z.array(z.uuid()).min(1).max(30),
+    reason:z.string().trim().min(8).max(500)}).parse(req.body);
+  res.json({operation:await revocationCasesService.decide(req.user!.userId,key,{
+    caseType:type,caseId:id,action:"outreach",outcome:null,reason,recipientIds:recipient_ids})});
+}));
+operatorRouter.post("/revocation-cases/:type/:id/resolve",asyncHandler(async(req,res)=>{
+  const {type,id}=z.strictObject({type:z.enum(["hold","incident"]),id:z.uuid()}).parse(req.params);
+  const key=req.header("Idempotency-Key");
+  if(!key||key.length>128) throw new AppError(400,"Idempotency-Key is required","IDEMPOTENCY_KEY_REQUIRED");
+  const {outcome,reason}=z.strictObject({outcome:z.enum(["cancelled","safe_completion","interrupted"]),
+    reason:z.string().trim().min(8).max(500)}).parse(req.body);
+  res.json({operation:await revocationCasesService.decide(req.user!.userId,key,{
+    caseType:type,caseId:id,action:"resolve",outcome,reason,recipientIds:[]})});
+}));
+operatorRouter.get("/revocation-cases/operations/:id",asyncHandler(async(req,res)=>{
+  res.json({operation:await revocationCasesService.operation(req.user!.userId,
+    operationId.parse(req.params.id))});
 }));
 operatorRouter.post("/rides/:id/late-departure",asyncHandler(async(req,res)=>{
   const id=operationId.parse(req.params.id);
