@@ -13,6 +13,7 @@ import { recordDurableNotification, markDurableNotificationReady } from "../noti
 import { readEvidence } from "./student-evidence.storage";
 import * as evidenceRepo from "./driver-car.repo";
 import * as reviewRepo from "./driver-car-review.repo";
+import * as revocationEffects from "./revocation-effects.repo";
 
 type Type = evidenceRepo.SubjectType;
 export type Decision = { outcome: "approved" | "rejected" | "revoked"; reason: string; review_after: string | null };
@@ -21,12 +22,13 @@ export type EvidenceSnapshot = { purpose: evidenceRepo.EvidencePurpose; objectKe
 export type Operation = { id: string; operator_id: string; idempotency_key: string; payload_digest: string;
   subject_type: Type; subject_id: string; applicant_user_id: string; outcome: Decision["outcome"];
   reason: string; review_after: string | null; decision_snapshot: Record<string, unknown>;
-  evidence_snapshot: EvidenceSnapshot[];
+  evidence_snapshot: EvidenceSnapshot[]; effect_snapshot: revocationEffects.Effect[];
   state: "committed" | "acknowledged" | "recovered"; committed_at: Date };
 export type Receipt = { operationId: string; operatorId: string; idempotencyKey: string;
   payloadDigest: string; subjectType: Type; subjectId: string; applicantId: string;
   outcome: Decision["outcome"]; reason: string; reviewAfter: string | null;
-  decisionSnapshot: Record<string, unknown>; evidenceSnapshot: EvidenceSnapshot[]; committedAt: string };
+  decisionSnapshot: Record<string, unknown>; evidenceSnapshot: EvidenceSnapshot[];
+  effectSnapshot?: revocationEffects.Effect[]; committedAt: string };
 
 let crashHook: ((point: "after_commit" | "after_receipt", operationId: string) => void) | null = null;
 export function setDriverCarReviewCrashHookForTests(hook: typeof crashHook) {
@@ -49,6 +51,7 @@ function receipt(row: Operation): Receipt {
     applicantId: row.applicant_user_id, outcome: row.outcome, reason: row.reason,
     reviewAfter: dateOnly(row.review_after), decisionSnapshot: row.decision_snapshot,
     evidenceSnapshot: row.evidence_snapshot,
+    ...(row.effect_snapshot?.length ? {effectSnapshot:row.effect_snapshot} : {}),
     committedAt: row.committed_at.toISOString() };
 }
 function store() {
@@ -178,6 +181,11 @@ export class DriverCarReviewService {
         if (JSON.stringify(receipts.get(row.id)) !== JSON.stringify(receipt(row))) {
           throw new AppError(503, "Driver-car recovery evidence is inconsistent", "RECOVERY_MISSING");
         }
+        if (row.effect_snapshot.length &&
+            !await revocationEffects.matches(this.database,row.id,row.subject_type,row.subject_id,
+              row.reason,row.effect_snapshot)) {
+          throw new AppError(503,"Driver-car revocation effects are missing","RECOVERY_MISSING");
+        }
       }
       const pending = await reviewRepo.pending(this.database);
       if (pending.length && (!retry || pending.some((row) => row.operator_id !== retry.operatorId ||
@@ -206,6 +214,8 @@ export class DriverCarReviewService {
       if (recovery.rows[0]?.mode !== "open") throw new AppError(503, "Protected writes are restricted", "RECOVERY_RESTRICTED");
       store();
       if (decision.outcome === "revoked") {
+        await revocationEffects.lockActors(client, type, id);
+        await revocationEffects.lockAffectedTrips(client, type, id);
         await evidenceRepo.lockAffectedRidesForRevocation(client, type, id);
       }
       const current = await subject(client, type, id, decision.outcome);
@@ -224,6 +234,18 @@ export class DriverCarReviewService {
       await reviewRepo.apply(client, row);
       if (row.outcome === "revoked") {
         const affected = await evidenceRepo.applyRevocationToRides(client, row.subject_type, row.subject_id, row.id, row.reason);
+        const pilotEffects = await revocationEffects.apply(client,row.subject_type,row.subject_id,row.id,row.reason);
+        row.effect_snapshot=await reviewRepo.saveEffectSnapshot(client,row.id,pilotEffects);
+        for (const effect of pilotEffects) for (const recipientId of new Set([
+          effect.driver_id,...effect.passenger_ids,...(effect.kind === "incident"
+            ? await reviewRepo.operatorRecipients(client) : [])])) {
+          await recordDurableNotification(client,{originType:"pilot_revocation",operationId:row.id,
+            recipientId,eventType:`${effect.kind}:${effect.id}`,relatedEntityType:effect.kind === "hold"
+              ? "pilot_revocation_hold" : "pilot_revocation_incident",relatedEntityId:effect.id,
+            title:effect.kind === "hold" ? "Trip on hold" : "Urgent trip incident",
+            body:effect.kind === "hold" ? "Eligibility changed. This trip or seat is on hold."
+              : "Eligibility changed during an active trip. Operator support is reviewing it."});
+        }
         for (const ride of affected.held) for (const recipientId of new Set([ride.driver_id, ...ride.passenger_ids])) {
           await recordDurableNotification(client, { originType: "driver_car_ride_hold", operationId: row.id,
             recipientId, eventType: `ride_held_${ride.id}`, relatedEntityType: "ride_offer",
@@ -249,6 +271,7 @@ export class DriverCarReviewService {
         const saved = await reviewRepo.acknowledge(client, row.id);
         await markDurableNotificationReady(client, row.id);
         await reviewRepo.readyRideHoldNotifications(client, row.id);
+        await reviewRepo.readyPilotRevocationNotifications(client,row.id);
         return saved;
       });
       return result(published);
@@ -259,6 +282,7 @@ export class DriverCarReviewService {
     }
   }
   async operation(operatorId: string, id: string) {
+    await inProtectedTransaction(this.database,client=>assertCurrentOperator(client,operatorId));
     const row = await reviewRepo.operationById(this.database, id);
     if (!row || row.operator_id !== operatorId) throw new AppError(404, "Decision not found", "OPERATION_NOT_FOUND");
     const recovery = await operatorQuery<{ mode: string }>(this.database, "recoveryMode");
@@ -298,8 +322,23 @@ export class DriverCarReviewService {
         }
         if (row.state === "committed") await reviewRepo.markRecovered(client, row.id);
         const applied = await reviewRepo.apply(client, row, true);
-        if (row.outcome === "revoked" && applied) {
-          const affected = await evidenceRepo.applyRevocationToRides(client, row.subject_type, row.subject_id, row.id, row.reason);
+        if (row.outcome === "revoked") {
+          const affected = applied
+            ? await evidenceRepo.applyRevocationToRides(client, row.subject_type, row.subject_id, row.id, row.reason)
+            : {held:[]};
+          const pilotEffects = row.effect_snapshot.length ? row.effect_snapshot
+            : await revocationEffects.apply(client,row.subject_type,row.subject_id,row.id,row.reason);
+          await revocationEffects.restore(client,row.subject_type,row.subject_id,row.id,row.reason,pilotEffects,applied);
+          for (const effect of pilotEffects) for (const recipientId of new Set([
+            effect.driver_id,...effect.passenger_ids,...(effect.kind === "incident"
+              ? await reviewRepo.operatorRecipients(client) : [])])) {
+            await recordDurableNotification(client,{originType:"pilot_revocation",operationId:row.id,
+              recipientId,eventType:`${effect.kind}:${effect.id}`,relatedEntityType:effect.kind === "hold"
+                ? "pilot_revocation_hold" : "pilot_revocation_incident",relatedEntityId:effect.id,
+              title:effect.kind === "hold" ? "Trip on hold" : "Urgent trip incident",
+              body:effect.kind === "hold" ? "Eligibility changed. This trip or seat is on hold."
+                : "Eligibility changed during an active trip. Operator support is reviewing it."});
+          }
           for (const ride of affected.held) for (const recipientId of new Set([ride.driver_id, ...ride.passenger_ids])) {
             await recordDurableNotification(client, { originType: "driver_car_ride_hold", operationId: row.id,
               recipientId, eventType: `ride_held_${ride.id}`, relatedEntityType: "ride_offer",
@@ -311,6 +350,7 @@ export class DriverCarReviewService {
         await auditAndNotify(client, row);
         await markDurableNotificationReady(client, row.id);
         await reviewRepo.readyRideHoldNotifications(client, row.id);
+        await reviewRepo.readyPilotRevocationNotifications(client,row.id);
         await reviewRepo.suppressRestoredEmail(client, row.id);
       });
     }

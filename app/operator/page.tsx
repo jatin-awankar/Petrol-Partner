@@ -12,6 +12,9 @@ type Delivery = { jobs: { id: string; operation_id: string; status: string; atte
 type StudentReview = { user_id: string; status: string; enrolled_name: string | null; institution_name: string; graduation_year: number | null; evidence_category: string | null; age_evidence_category: string | null };
 type CancellationReview = {id:string;actor_id:string;offer_id:string;target_type:string;
   target_id:string;reason:string|null;created_at:string;status:string};
+type RevocationCase = {id:string;offer_id:string;allocation_id:string|null;subject_type:string;
+  subject_id:string;reason:string;created_at:string;resolved_at:string|null;resolution:string|null;
+  driver_id:string;passenger_ids:string[];offer_status:string;allocation_status?:string|null};
 
 export default function OperatorPage() {
   const { user, loading } = useCurrentUser();
@@ -20,6 +23,8 @@ export default function OperatorPage() {
   const [delivery, setDelivery] = useState<Delivery | null>(null);
   const [studentReviews, setStudentReviews] = useState<StudentReview[]>([]);
   const [cancellationReviews,setCancellationReviews] = useState<CancellationReview[]>([]);
+  const [revocationCases,setRevocationCases] = useState<{holds:RevocationCase[];incidents:RevocationCase[]}>({holds:[],incidents:[]});
+  const [studentToRevoke,setStudentToRevoke] = useState("");
   const [adultFindings, setAdultFindings] = useState<Record<string, boolean>>({});
   const [evidenceMode, setEvidenceMode] = useState<"closed" | "synthetic" | "real">("closed");
   const [evidenceRetention, setEvidenceRetention] = useState<{ overdue_count: number; failed_count: number; oldest_due_at: string | null } | null>(null);
@@ -35,6 +40,7 @@ export default function OperatorPage() {
     setPending(operations.operations);
     setDelivery(await apiRequest<Delivery>("/v1/operator/notifications/delivery"));
     setCancellationReviews((await apiRequest<{cases:CancellationReview[]}>("/v1/operator/cancellation-reviews")).cases);
+    setRevocationCases(await apiRequest<{holds:RevocationCase[];incidents:RevocationCase[]}>("/v1/operator/revocation-cases"));
     const reviews = await apiRequest<{ student_verifications: StudentReview[] }>("/v1/verification/admin/pending");
     setStudentReviews(reviews.student_verifications);
     setEvidenceMode((await apiRequest<{ mode: "closed" | "synthetic" | "real" }>("/v1/verification/evidence-capability")).mode);
@@ -127,6 +133,46 @@ export default function OperatorPage() {
     }
     finally { setBusy(false); }
   }
+  async function revokeStudent() {
+    if(reason.trim().length<8 || !studentToRevoke.trim()) {
+      setMessage("Enter a student ID and a reason of at least eight characters."); return;
+    }
+    const storageKey=`student-revocation:${studentToRevoke.trim()}:${reason.trim()}`;
+    const key=sessionStorage.getItem(storageKey)??crypto.randomUUID();
+    sessionStorage.setItem(storageKey,key);
+    setBusy(true);
+    try {
+      const result=await apiRequest<{operation:{operation_id:string;state:string}}>(
+        `/v1/operator/students/${encodeURIComponent(studentToRevoke.trim())}/revoke`,{
+          method:"POST",headers:{"Idempotency-Key":key},body:JSON.stringify({reason:reason.trim()})});
+      sessionStorage.removeItem(storageKey);
+      setMessage(`Student revocation ${result.operation.operation_id}: ${result.operation.state}.`);
+      await refresh();
+    } catch(error) {
+      setMessage(`Revocation outcome uncertain. Retry with the same student ID and reason. Key ${key}. ${error instanceof Error?error.message:""}`);
+    } finally {setBusy(false);}
+  }
+  async function actOnCase(type:"hold"|"incident",item:RevocationCase,
+    action:"outreach"|"resolve",outcome?:"cancelled"|"safe_completion"|"interrupted") {
+    if(reason.trim().length<8) {setMessage("Enter a reason of at least eight characters.");return;}
+    const recipients=[item.driver_id,...item.passenger_ids].filter((id,index,all)=>all.indexOf(id)===index);
+    const body=action==="outreach"?{recipient_ids:recipients,reason:reason.trim()}
+      :{outcome,reason:reason.trim()};
+    const storageKey=`revocation-case:${type}:${item.id}:${action}:${JSON.stringify(body)}`;
+    const key=sessionStorage.getItem(storageKey)??crypto.randomUUID();
+    sessionStorage.setItem(storageKey,key);
+    setBusy(true);
+    try {
+      const result=await apiRequest<{operation:{operation_id:string;state:string}}>(
+        `/v1/operator/revocation-cases/${type}/${item.id}/${action}`,{
+          method:"POST",headers:{"Idempotency-Key":key},body:JSON.stringify(body)});
+      sessionStorage.removeItem(storageKey);
+      setMessage(`Case action ${result.operation.operation_id}: ${result.operation.state}.`);
+      await refresh();
+    } catch(error) {
+      setMessage(`Case action outcome uncertain. Retry the same action and reason. Key ${key}. ${error instanceof Error?error.message:""}`);
+    } finally {setBusy(false);}
+  }
   async function openEvidence(userId: string, purpose: "enrollment" | "age") {
     const preview = window.open("about:blank", "_blank");
     if (preview) preview.opener = null;
@@ -180,6 +226,37 @@ export default function OperatorPage() {
         {item.reason && <p>Reason: {item.reason}</p>}
         <p>Status: {item.status}. The ride and seat remain unchanged pending operator resolution.</p>
       </div>) : <p>No open cancellation review cases.</p>}
+    </section>
+    <section className="space-y-3 rounded border p-4"><h2 className="font-semibold">Eligibility revocation</h2>
+      <p>Suspending a student holds future confirmed seats and opens urgent cases for active trips.</p>
+      <label className="block">Student ID<input className="mt-1 block w-full rounded border p-2" value={studentToRevoke}
+        onChange={event=>setStudentToRevoke(event.target.value)} /></label>
+      <button disabled={busy||reason.trim().length<8||!studentToRevoke.trim()} onClick={revokeStudent}>
+        Suspend student eligibility</button>
+    </section>
+    <section className="space-y-3"><h2 className="font-semibold">Revocation holds</h2>
+      {revocationCases.holds.length?revocationCases.holds.map(item=><div key={item.id} className="rounded border p-3">
+        <p>Case {item.id} · offer {item.offer_id} · {item.allocation_id?`seat ${item.allocation_id}`:"whole ride"}</p>
+        <p>{item.subject_type} {item.subject_id} · ride {item.offer_status} · seat {item.allocation_status??"—"}</p>
+        <p>Original reason: {item.reason}</p><p>{item.resolved_at?`Resolved: ${item.resolution}`:"Open: seat remains reserved until recorded cancellation."}</p>
+        {!item.resolved_at&&<div className="flex gap-3"><button disabled={busy||reason.trim().length<8}
+          onClick={()=>actOnCase("hold",item,"outreach")}>Record participant outreach</button>
+          <button disabled={busy||reason.trim().length<8} onClick={()=>actOnCase("hold",item,"resolve","cancelled")}>
+            Resolve after cancellation</button></div>}
+      </div>):<p>No revocation holds recorded.</p>}
+    </section>
+    <section className="space-y-3"><h2 className="font-semibold">High priority active trip incidents</h2>
+      {revocationCases.incidents.length?revocationCases.incidents.map(item=><div key={item.id} className="rounded border p-3">
+        <p>Incident {item.id} · offer {item.offer_id} · {item.offer_status}</p>
+        <p>{item.subject_type} {item.subject_id} · original reason: {item.reason}</p>
+        <p>{item.resolved_at?`Resolved: ${item.resolution}`:"Open: coordinate support with confirmed participants."}</p>
+        {!item.resolved_at&&<div className="flex gap-3"><button disabled={busy||reason.trim().length<8}
+          onClick={()=>actOnCase("incident",item,"outreach")}>Record participant outreach</button>
+          <button disabled={busy||reason.trim().length<8} onClick={()=>actOnCase("incident",item,"resolve","safe_completion")}>
+            Close safety case</button>
+          <button disabled={busy||reason.trim().length<8} onClick={()=>actOnCase("incident",item,"resolve","interrupted")}>
+            Record interruption</button></div>}
+      </div>):<p>No revocation incidents recorded.</p>}
     </section>
     <section className="space-y-3"><h2 className="font-semibold">Student reviews</h2>
       <p>{evidenceMode === "real" ? "Inspect the private enrollment and age evidence before deciding." : "Inspect fabricated evidence only. Real evidence intake remains closed pending provider verification."}</p>

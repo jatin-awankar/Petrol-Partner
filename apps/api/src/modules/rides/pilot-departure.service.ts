@@ -11,6 +11,7 @@ import {inProtectedTransaction} from "../protected-mutation/protocol";
 import {pilotReceiptStore,restrictProtectedWrites} from "../protected-mutation/receipt-evidence";
 import {assertCurrentDriverCarEligibility} from "../verification/verification.service";
 import {assertCommitmentsEligible,assertWithinSupportWindow} from "./commitment.service";
+import {lockCommitmentActors} from "./commitment.repo";
 import * as repo from "./pilot-departure.repo";
 
 type Receipt={operationId:string;offerId:string;actorId:string;driverId:string;key:string;digest:string;
@@ -90,8 +91,16 @@ export class PilotDepartureService {
         return existing;
       }
       if(recovery.rows[0]?.mode!=="open") throw new AppError(503,"Protected writes are restricted","RECOVERY_RESTRICTED");
+      const preview=await repo.preview(client,offerId);
+      if(!preview) throw new AppError(404,"Pilot offer not found","RIDE_NOT_FOUND");
+      const passengers=await repo.requestPassengers(client,offerId);
+      await lockCommitmentActors(client,preview.driver_id,preview.vehicle_id,passengers);
+      const current=await repo.currentPassengers(client,offerId);
+      if(current.some(id=>!passengers.includes(id)))
+        throw new AppError(409,"Bookings changed while preparing departure; retry with a new key",
+          "DEPARTURE_CONCURRENT_CHANGE");
       // Cancellation locks request rows before its offer; departure follows that order.
-      await client.query("SELECT id FROM pilot_seat_requests WHERE offer_id=$1 ORDER BY id FOR UPDATE",[offerId]);
+      await repo.lockRequests(client,offerId);
       const ride=await repo.offer(client,offerId);
       if(!ride) throw new AppError(404,"Pilot offer not found","RIDE_NOT_FOUND");
       if(kind==='departure'&&ride.driver_id!==actorId) throw new AppError(403,"Only the driver may depart","FORBIDDEN");

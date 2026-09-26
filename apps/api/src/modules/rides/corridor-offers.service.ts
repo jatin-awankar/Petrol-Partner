@@ -12,6 +12,7 @@ import { pauseService } from "../operator/pause.service";
 import { recordDurableNotification } from "../notifications/contract.repo";
 import { assertCurrentDriverCarEligibility, assertCurrentStudentForSubmission } from "../verification/verification.service";
 import { assertCommitmentsEligible, assertWithinSupportWindow } from "./commitment.service";
+import {lockCommitmentActors} from "./commitment.repo";
 import type { CorridorOfferInput } from "./corridor-offers.schema";
 import * as repo from "./corridor-offers.repo";
 import { CancellationsService } from "./cancellations.service";
@@ -189,6 +190,7 @@ export class CorridorOffersService {
       }
       if (recovery.rows[0]?.mode !== "open") throw new AppError(503,"Protected writes are restricted","RECOVERY_RESTRICTED");
       store();
+      await lockCommitmentActors(client,actorId,input.vehicle_id,[]);
       const current = offerId ? await repo.offerForUpdate(client,offerId) : null;
       if (offerId && !current) throw new AppError(404,"Offer not found","RIDE_NOT_FOUND");
       if (current && current.driver_id !== actorId) throw new AppError(403,"Only the driver may edit this offer","FORBIDDEN");
