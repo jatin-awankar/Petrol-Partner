@@ -40,6 +40,7 @@ interface DriverEligibilityRow {
   approved_at: Date | string | null;
   reviewed_by_user_id: string | null;
   reviewed_at: Date | string | null;
+  review_after?: string | null;
   metadata: Record<string, unknown>;
   created_at: Date | string;
   updated_at: Date | string;
@@ -58,6 +59,10 @@ interface VehicleRow {
   verification_status: string;
   reviewed_by_user_id: string | null;
   reviewed_at: Date | string | null;
+  use_category?: string | null;
+  insurance_expires_at?: string | null;
+  registration_expires_at?: string | null;
+  review_after?: string | null;
   metadata: Record<string, unknown>;
   created_at: Date | string;
   updated_at: Date | string;
@@ -69,6 +74,7 @@ interface TransactionEligibilityRow {
   student_adult_eligible: boolean | null;
   driver_eligibility_status: string | null;
   driver_license_expires_at: string | null;
+  driver_review_after: string | null;
 }
 
 function toIso(value: Date | string | null) {
@@ -116,6 +122,7 @@ function mapDriverEligibility(row: DriverEligibilityRow) {
     approved_at: toIso(row.approved_at),
     reviewed_by_user_id: row.reviewed_by_user_id,
     reviewed_at: toIso(row.reviewed_at),
+    review_after: row.review_after ?? null,
     metadata: row.metadata ?? {},
     created_at: toIso(row.created_at),
     updated_at: toIso(row.updated_at),
@@ -136,6 +143,10 @@ function mapVehicle(row: VehicleRow) {
     verification_status: row.verification_status,
     reviewed_by_user_id: row.reviewed_by_user_id,
     reviewed_at: toIso(row.reviewed_at),
+    use_category: row.use_category ?? null,
+    insurance_expires_at: row.insurance_expires_at ?? null,
+    registration_expires_at: row.registration_expires_at ?? null,
+    review_after: row.review_after ?? null,
     metadata: row.metadata ?? {},
     created_at: toIso(row.created_at),
     updated_at: toIso(row.updated_at),
@@ -415,6 +426,7 @@ export async function findDriverEligibilityByUserId(userId: string) {
        approved_at,
        reviewed_by_user_id,
        reviewed_at,
+       to_char(review_after, 'YYYY-MM-DD') AS review_after,
        metadata,
        created_at,
        updated_at
@@ -463,8 +475,8 @@ export async function upsertDriverEligibility(
        status = EXCLUDED.status,
        license_number_last4 = EXCLUDED.license_number_last4,
        license_expires_at = EXCLUDED.license_expires_at,
-       insurance_expires_at = EXCLUDED.insurance_expires_at,
-       puc_expires_at = EXCLUDED.puc_expires_at,
+       insurance_expires_at = COALESCE(EXCLUDED.insurance_expires_at, driver_eligibility.insurance_expires_at),
+       puc_expires_at = COALESCE(EXCLUDED.puc_expires_at, driver_eligibility.puc_expires_at),
        last_verified_at = EXCLUDED.last_verified_at,
        approved_at = EXCLUDED.approved_at,
        reviewed_by_user_id = EXCLUDED.reviewed_by_user_id,
@@ -518,6 +530,10 @@ export async function listVehiclesByOwner(userId: string) {
        verification_status,
        reviewed_by_user_id,
        reviewed_at,
+       use_category,
+       to_char(insurance_expires_at, 'YYYY-MM-DD') AS insurance_expires_at,
+       to_char(registration_expires_at, 'YYYY-MM-DD') AS registration_expires_at,
+       to_char(review_after, 'YYYY-MM-DD') AS review_after,
        metadata,
        created_at,
        updated_at
@@ -615,6 +631,12 @@ export async function findVehicleByIdForOwner(userId: string, vehicleId: string)
     [userId, vehicleId],
   );
 
+  return result.rows[0] ? mapVehicle(result.rows[0]) : null;
+}
+
+export async function findVehicleByIdForOwnerForUpdate(client: PoolClient, userId: string, vehicleId: string) {
+  const result = await client.query<VehicleRow>(
+    "SELECT * FROM vehicles WHERE owner_user_id = $1 AND id = $2 FOR UPDATE", [userId, vehicleId]);
   return result.rows[0] ? mapVehicle(result.rows[0]) : null;
 }
 
@@ -724,6 +746,7 @@ export async function findTransactionEligibilityByUserId(userId: string) {
        sv.adult_eligible AS student_adult_eligible,
        de.status AS driver_eligibility_status,
        to_char(de.license_expires_at, 'YYYY-MM-DD') AS driver_license_expires_at
+       ,to_char(de.review_after, 'YYYY-MM-DD') AS driver_review_after
      FROM users u
      LEFT JOIN student_verifications sv ON sv.user_id = u.id
      LEFT JOIN driver_eligibility de ON de.user_id = u.id
@@ -762,11 +785,17 @@ export async function findApprovedVehicleForOwner(userId: string, vehicleId: str
        created_at,
        updated_at
      FROM vehicles
-     WHERE owner_user_id = $1
-       AND id = $2
+     WHERE id = $2
        AND status = 'active'
        AND verification_status = 'approved'
        AND vehicle_type IN ('car', 'suv')
+       AND use_category = 'private'
+       AND insurance_expires_at > CURRENT_DATE
+       AND (registration_expires_at IS NULL OR registration_expires_at > CURRENT_DATE)
+       AND review_after > CURRENT_DATE
+       AND EXISTS (SELECT 1 FROM driver_vehicle_approvals a
+         WHERE a.vehicle_id = vehicles.id AND a.driver_user_id = $1
+           AND a.status = 'approved' AND a.review_after > CURRENT_DATE)
      LIMIT 1`,
     [userId, vehicleId],
   );
@@ -824,6 +853,7 @@ export async function listPendingDriverEligibilityReviews(limit: number) {
        approved_at,
        reviewed_by_user_id,
        reviewed_at,
+       to_char(review_after, 'YYYY-MM-DD') AS review_after,
        metadata,
        created_at,
        updated_at
@@ -852,6 +882,10 @@ export async function listPendingVehicleReviews(limit: number) {
        verification_status,
        reviewed_by_user_id,
        reviewed_at,
+       use_category,
+       to_char(insurance_expires_at, 'YYYY-MM-DD') AS insurance_expires_at,
+       to_char(registration_expires_at, 'YYYY-MM-DD') AS registration_expires_at,
+       to_char(review_after, 'YYYY-MM-DD') AS review_after,
        metadata,
        created_at,
        updated_at

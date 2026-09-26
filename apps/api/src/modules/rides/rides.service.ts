@@ -1,4 +1,5 @@
 import { logger } from "../../config/logger";
+import { withTransaction } from "../../db/transaction";
 import { AppError } from "../../shared/errors/app-error";
 import type {
   CreateRideOfferInput,
@@ -121,15 +122,17 @@ async function buildUpdatedRidePricing(
 
 export async function createRideOffer(driverId: string, input: CreateRideOfferInput) {
   await settlementsService.assertUserCanTransact(driverId);
-  await verificationService.assertApprovedDriverCanOfferRide(driverId, input.vehicle_id);
 
   const pricingAwareInput = (await buildCreateRidePricing(input)) as CreateRideOfferInput & {
     rate_card_id?: string | null;
     pricing_snapshot?: Record<string, unknown>;
   };
-  const rideOffer = await ridesRepo.createRideOffer(driverId, {
-    ...pricingAwareInput,
-    vehicle_details: normalizeVehicleDetails(input.vehicle_details),
+  const rideOffer = await withTransaction(async (client) => {
+    await verificationService.assertCurrentDriverCarEligibility(client, driverId, input.vehicle_id);
+    return ridesRepo.createRideOffer(driverId, {
+      ...pricingAwareInput,
+      vehicle_details: normalizeVehicleDetails(input.vehicle_details),
+    }, client);
   });
 
   triggerMatchRefresh(driverId);

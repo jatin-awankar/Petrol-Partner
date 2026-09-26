@@ -6,15 +6,20 @@ import {
   createVehicleSchema,
   evidencePurposeSchema,
   pendingVerificationReviewsQuerySchema,
-  reviewDriverEligibilitySchema,
   reviewStudentVerificationSchema,
-  reviewVehicleSchema,
   upsertDriverEligibilitySchema,
   upsertStudentVerificationSchema,
   updateVehicleSchema,
   vehicleIdParamSchema,
+  classifyPilotVehicleSchema,
+  submitDriverVehicleAssociationSchema,
+  driverCarEvidenceParamsSchema,
+  driverCarReviewParamsSchema,
+  driverCarReviewSchema,
 } from "./verification.schema";
 import * as verificationService from "./verification.service";
+import * as driverCarService from "./driver-car.service";
+import { driverCarReviewService } from "./driver-car-review.service";
 import { studentReviewService } from "./student-review.service";
 
 function requireUserId(req: Request) {
@@ -165,30 +170,72 @@ export async function studentReviewOperationByKey(req: Request, res: Response) {
   res.status(200).json({ operation });
 }
 
-export async function reviewDriverEligibility(req: Request, res: Response) {
-  const adminUserId = requireUserId(req);
-  const { userId } = adminReviewUserParamSchema.parse(req.params);
-  const input = reviewDriverEligibilitySchema.parse(req.body);
-  const driverEligibility = await verificationService.reviewDriverEligibility(
-    adminUserId,
-    userId,
-    input,
-  );
-
-  res.status(200).json({
-    message: "Driver eligibility reviewed successfully",
-    driver_eligibility: driverEligibility,
-  });
+export async function classifyPilotVehicle(req: Request, res: Response) {
+  const { id } = vehicleIdParamSchema.parse(req.params);
+  const input = classifyPilotVehicleSchema.parse(req.body);
+  res.status(200).json({ vehicle: await driverCarService.classifyVehicle(requireUserId(req), id, input) });
 }
 
-export async function reviewVehicle(req: Request, res: Response) {
-  const adminUserId = requireUserId(req);
-  const { id } = vehicleIdParamSchema.parse(req.params);
-  const input = reviewVehicleSchema.parse(req.body);
-  const vehicle = await verificationService.reviewVehicle(adminUserId, id, input);
+export async function submitDriverVehicleAssociation(req: Request, res: Response) {
+  const input = submitDriverVehicleAssociationSchema.parse(req.body);
+  res.status(201).json({ association: await driverCarService.submitAssociation(
+    requireUserId(req), input.vehicle_id, input.permission_category) });
+}
 
-  res.status(200).json({
-    message: "Vehicle reviewed successfully",
-    vehicle,
-  });
+export async function uploadDriverCarEvidence(req: Request, res: Response) {
+  if (process.env.NODE_ENV === "production" &&
+      (process.env.PILOT_EVIDENCE_BACKEND !== "supabase" ||
+       process.env.PILOT_EVIDENCE_PROVIDER_VERIFIED !== "true" ||
+       process.env.PILOT_DRIVER_CAR_REVIEW_RECEIPT_RETENTION_VERIFIED !== "true")) {
+    throw new AppError(503, "Driver and car evidence intake is closed", "EVIDENCE_STORAGE_UNAVAILABLE");
+  }
+  if ((process.env.PILOT_EVIDENCE_BACKEND ?? "synthetic") === "synthetic" && req.get("X-Synthetic-Evidence") !== "true") {
+    throw new AppError(400, "Synthetic demonstration evidence only", "SYNTHETIC_EVIDENCE_REQUIRED");
+  }
+  if (process.env.PILOT_EVIDENCE_BACKEND === "supabase" && req.get("X-Synthetic-Evidence") === "true") {
+    throw new AppError(400, "Synthetic evidence is unavailable for real intake", "EVIDENCE_INVALID");
+  }
+  if (!Buffer.isBuffer(req.body)) throw new AppError(400, "Evidence body is required", "EVIDENCE_INVALID");
+  const { subjectType, subjectId, purpose } = driverCarEvidenceParamsSchema.parse(req.params);
+  res.status(201).json(await driverCarService.uploadEvidence(requireUserId(req), subjectType,
+    subjectId, purpose, req.body, req.get("content-type") ?? ""));
+}
+
+export async function grantDriverCarEvidenceAccess(req: Request, res: Response) {
+  const { subjectType, subjectId, purpose } = driverCarEvidenceParamsSchema.parse(req.params);
+  res.status(201).json(await driverCarService.grantEvidenceAccess(requireUserId(req), subjectType, subjectId, purpose));
+}
+
+export async function getDriverCarEvidence(req: Request, res: Response) {
+  const { subjectType, subjectId, purpose } = driverCarEvidenceParamsSchema.parse(req.params);
+  const token = req.get("X-Evidence-Token") ?? "";
+  if (!/^[0-9a-f-]{36}$/.test(token)) throw new AppError(403, "Evidence link is required", "EVIDENCE_ACCESS_EXPIRED");
+  const result = await driverCarService.readPrivateEvidence(requireUserId(req), subjectType, subjectId, purpose, token);
+  res.set("Cache-Control", "private, no-store");
+  res.set("X-Content-Type-Options", "nosniff");
+  res.set("Content-Disposition", "attachment");
+  res.type(result.contentType).status(200).send(result.bytes);
+}
+
+export async function reviewDriverCar(req: Request, res: Response) {
+  const { subjectType, subjectId } = driverCarReviewParamsSchema.parse(req.params);
+  const decision = driverCarReviewSchema.parse(req.body);
+  const key = req.get("Idempotency-Key");
+  if (!key || key.length > 128) throw new AppError(400, "Idempotency-Key is required", "IDEMPOTENCY_KEY_REQUIRED");
+  res.status(200).json({ operation: await driverCarReviewService.decide(
+    requireUserId(req), key, subjectType, subjectId, decision) });
+}
+
+export async function driverCarReviewOperation(req: Request, res: Response) {
+  res.status(200).json({ operation: await driverCarReviewService.operation(
+    requireUserId(req), String(req.params.operationId)) });
+}
+
+export async function driverCarReviewOperationByKey(req: Request, res: Response) {
+  res.status(200).json({ operation: await driverCarReviewService.operationByKey(
+    requireUserId(req), String(req.params.key)) });
+}
+
+export async function driverCarEvidenceRetentionHealth(req: Request, res: Response) {
+  res.status(200).json(await driverCarService.evidenceRetentionHealth(requireUserId(req)));
 }

@@ -5,18 +5,25 @@ import { randomUUID } from "node:crypto";
 import { Pool } from "pg";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { pool } from "../db/pool";
-import { deleteDueStudentEvidence } from "./student-evidence-retention.job";
+import { deleteDueStudentEvidence, deleteDueDriverCarEvidence,
+  deleteReplacedDriverCarEvidence } from "./student-evidence-retention.job";
+import { recordDueDriverCarExpiryNotice } from "./driver-car-expiry.job";
 
 const database = new Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
 let directory: string;
 
 beforeAll(async () => {
-  for (const migration of ["0001_init.sql", "0012_student_adult_review.sql", "0013_student_review_cycles.sql", "0016_student_evidence_deletion_outcomes.sql", "0017_student_evidence_retry_schedule.sql"]) {
+  for (const migration of ["0001_init.sql", "0006_operator_allowlist.sql", "0007_operator_pause.sql",
+    "0008_operator_intent_handoff.sql", "0009_durable_notifications.sql",
+    "0010_email_retry_operations.sql", "0012_student_adult_review.sql", "0013_student_review_cycles.sql",
+    "0016_student_evidence_deletion_outcomes.sql", "0017_student_evidence_retry_schedule.sql",
+    "0018_driver_car_approval.sql"]) {
     await database.query(await readFile(resolve(import.meta.dirname, "../../../api/src/db/migrations", migration), "utf8"));
   }
 });
 beforeEach(async () => {
   await database.query("TRUNCATE users CASCADE");
+  await database.query("TRUNCATE driver_car_evidence_replacements");
   directory = await mkdtemp(join(tmpdir(), "pilot-retention-"));
   process.env.PILOT_SYNTHETIC_EVIDENCE_DIR = directory;
 });
@@ -38,6 +45,49 @@ async function evidence(deleteAfter: string, holdUntil: string | null = null) {
 }
 
 describe("student evidence retention PostgreSQL worker", () => {
+  it("deletes replaced driver-car documents from the durable replacement queue", async () => {
+    const key = randomUUID();
+    await writeFile(join(directory, key), Buffer.from("%PDF-1.4\nreplaced sample\n"));
+    await database.query(`INSERT INTO driver_car_evidence_replacements (object_key, delete_after)
+      VALUES ($1, now() - interval '1 second')`, [key]);
+    expect(await deleteReplacedDriverCarEvidence()).toBe(true);
+    await expect(readFile(join(directory, key))).rejects.toMatchObject({ code: "ENOENT" });
+    expect((await database.query(`SELECT status, deletion_outcome
+      FROM driver_car_evidence_replacements WHERE object_key = $1`, [key])).rows)
+      .toEqual([{ status: "deleted", deletion_outcome: "deleted" }]);
+  });
+  it("records an expiry notice once while the approval remains expired", async () => {
+    const driver = await database.query<{ id: string }>(
+      "INSERT INTO users (email) VALUES ($1) RETURNING id", [`expiry-${randomUUID()}@example.test`]);
+    await database.query(`INSERT INTO driver_eligibility
+      (user_id, status, license_expires_at, review_after)
+      VALUES ($1, 'approved', CURRENT_DATE, CURRENT_DATE + 30)`, [driver.rows[0].id]);
+    expect(await recordDueDriverCarExpiryNotice()).toBe(true);
+    expect(await recordDueDriverCarExpiryNotice()).toBe(false);
+    expect((await database.query(`SELECT n.expiry_date, e.ready_at IS NOT NULL AS ready
+      FROM driver_car_expiry_notices n JOIN pilot_notification_events e ON e.id = n.id
+      WHERE n.recipient_id = $1`, [driver.rows[0].id])).rows)
+      .toEqual([{ expiry_date: expect.any(Date), ready: true }]);
+    expect((await database.query(`SELECT count(*)::int AS n FROM pilot_email_jobs
+      WHERE recipient_id = $1`, [driver.rows[0].id])).rows[0].n).toBe(1);
+  });
+  it("deletes driver-car evidence after its decision retention period", async () => {
+    const applicant = await database.query<{ id: string }>(
+      "INSERT INTO users (email) VALUES ($1) RETURNING id", [`driver-car-${randomUUID()}@example.test`]);
+    const key = randomUUID();
+    const document = Buffer.from("%PDF-1.4\nsynthetic driver-car sample\n");
+    await writeFile(join(directory, key), document);
+    const row = await database.query<{ id: string }>(`INSERT INTO driver_car_evidence
+      (applicant_user_id, subject_type, subject_id, purpose, object_key,
+       content_type, byte_count, sha256, status, decision_at, delete_after)
+      VALUES ($1, 'driver', $1, 'licence', $2, 'application/pdf', $3,
+        'synthetic-digest', 'retained', now() - interval '7 days', now() - interval '1 second') RETURNING id`,
+      [applicant.rows[0].id, key, document.length]);
+    expect(await deleteDueDriverCarEvidence()).toBe(true);
+    await expect(readFile(join(directory, key))).rejects.toMatchObject({ code: "ENOENT" });
+    expect((await database.query("SELECT status, deletion_outcome FROM driver_car_evidence WHERE id = $1",
+      [row.rows[0].id])).rows).toEqual([{ status: "deleted", deletion_outcome: "deleted" }]);
+  });
   it("keeps evidence before the seven-day deadline and deletes it after the deadline", async () => {
     const item = await evidence("2099-01-01T00:00:00Z");
     expect(await deleteDueStudentEvidence()).toBe(false);

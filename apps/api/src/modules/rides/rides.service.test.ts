@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("../../db/transaction", () => ({
+  withTransaction: vi.fn(async (callback: (client: unknown) => Promise<unknown>) => callback({})),
+}));
+
 vi.mock("../matching/matching.service", () => ({
   requestMatchRefresh: vi.fn(async () => undefined),
 }));
@@ -22,7 +26,7 @@ vi.mock("../settlements/settlements.service", () => ({
 }));
 
 vi.mock("../verification/verification.service", () => ({
-  assertApprovedDriverCanOfferRide: vi.fn(async () => ({
+  assertCurrentDriverCarEligibility: vi.fn(async () => ({
     id: "vehicle-1",
   })),
 }));
@@ -67,10 +71,8 @@ describe("rides.service", () => {
       vehicle_id: "vehicle-1",
     });
     expect(settlementsService.assertUserCanTransact).toHaveBeenCalledWith("user-1");
-    expect(verificationService.assertApprovedDriverCanOfferRide).toHaveBeenCalledWith(
-      "user-1",
-      "vehicle-1",
-    );
+    expect(verificationService.assertCurrentDriverCarEligibility).toHaveBeenCalledWith(
+      expect.anything(), "user-1", "vehicle-1");
     expect(ridesRepo.createRideOffer).toHaveBeenCalledOnce();
   });
 });

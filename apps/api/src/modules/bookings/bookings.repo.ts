@@ -2,6 +2,11 @@ import type { PoolClient } from "pg";
 
 import { dbQuery } from "../../db/pool";
 
+export async function findRideOfferVehicleId(client: PoolClient, offerId: string) {
+  return (await client.query<{ vehicle_id: string | null }>(
+    "SELECT vehicle_id FROM ride_offers WHERE id = $1 FOR SHARE", [offerId])).rows[0]?.vehicle_id ?? null;
+}
+
 interface LockedRideRow {
   id: string;
   owner_id: string;
