@@ -161,6 +161,10 @@ export async function updateRideOffer(
 ) {
   const current = await getRideOfferById(id);
 
+  if (current.status === "departed") {
+    throw new AppError(409, "Departed rides require operator review", "RIDE_ALREADY_DEPARTED");
+  }
+
   if (current.driver_id !== driverId) {
     throw new AppError(403, "Unauthorized", "FORBIDDEN");
   }

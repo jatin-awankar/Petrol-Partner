@@ -7,6 +7,16 @@ export async function findRideOfferVehicleId(client: PoolClient, offerId: string
     "SELECT vehicle_id FROM ride_offers WHERE id = $1 FOR SHARE", [offerId])).rows[0]?.vehicle_id ?? null;
 }
 
+export async function findBookingOfferId(client: PoolClient, bookingId: string) {
+  return (await client.query<{ ride_offer_id: string | null }>(
+    "SELECT ride_offer_id FROM bookings WHERE id = $1", [bookingId])).rows[0]?.ride_offer_id ?? null;
+}
+
+export async function findRideOfferStatusForShare(client: PoolClient, offerId: string) {
+  return (await client.query<{ status: string }>(
+    "SELECT status FROM ride_offers WHERE id = $1 FOR SHARE", [offerId])).rows[0]?.status ?? null;
+}
+
 interface LockedRideRow {
   id: string;
   owner_id: string;

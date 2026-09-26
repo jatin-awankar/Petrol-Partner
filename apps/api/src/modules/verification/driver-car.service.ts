@@ -17,20 +17,18 @@ const purposeFor: Record<Type, readonly Purpose[]> = {
 async function assertApplicantOwnsSubject(client: PoolClient, userId: string, type: Type, id: string) {
   if (type === "driver") {
     if (id !== userId) throw new AppError(404, "Submission not found", "SUBMISSION_NOT_FOUND");
-    const driver = await client.query<{ status: string }>(
-      "SELECT status FROM driver_eligibility WHERE user_id = $1 FOR UPDATE", [id]);
-    if (!driver.rows[0]) throw new AppError(404, "Submission not found", "SUBMISSION_NOT_FOUND");
-    return driver.rows[0].status;
+    const driver = await repo.driverForUpdate(client, id);
+    if (!driver) throw new AppError(404, "Submission not found", "SUBMISSION_NOT_FOUND");
+    return driver.status;
   }
   if (type === "vehicle") {
     const car = await repo.vehicleForUpdate(client, id);
     if (!car || car.owner_user_id !== userId) throw new AppError(404, "Submission not found", "SUBMISSION_NOT_FOUND");
     return car.verification_status;
   }
-  const association = await client.query<{ status: string }>(
-    "SELECT status FROM driver_vehicle_approvals WHERE id = $1 AND driver_user_id = $2 FOR UPDATE", [id, userId]);
-  if (!association.rows[0]) throw new AppError(404, "Submission not found", "SUBMISSION_NOT_FOUND");
-  return association.rows[0].status;
+  const association = await repo.associationSubmissionForUpdate(client, id, userId);
+  if (!association) throw new AppError(404, "Submission not found", "SUBMISSION_NOT_FOUND");
+  return association.status;
 }
 
 export async function classifyVehicle(userId: string, vehicleId: string, input: {
@@ -116,14 +114,7 @@ export async function grantEvidenceAccess(operatorId: string, type: Type, id: st
     await assertCurrentOperator(client, operatorId);
     const evidence = await repo.evidenceForUpdate(client, type, id, purpose);
     if (!evidence || evidence.status !== "pending_review") throw new AppError(404, "Evidence unavailable", "EVIDENCE_NOT_FOUND");
-    await client.query(`INSERT INTO driver_car_evidence_access_grants
-      (token_hash, operator_id, evidence_id, access_purpose, expires_at)
-      VALUES ($1, $2, $3, 'eligibility_review', now() + interval '5 minutes')`,
-      [createHash("sha256").update(token).digest("hex"), operatorId, evidence.id]);
-    await client.query(`INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, metadata)
-      VALUES ($1, 'driver_car_evidence_access_granted', 'driver_car_evidence', $2,
-        '{"purpose":"eligibility_review"}'::jsonb)`,
-      [operatorId, evidence.id]);
+    await repo.grantEvidenceAccess(client, createHash("sha256").update(token).digest("hex"), operatorId, evidence.id);
   });
   return { token, expires_in_seconds: 300 };
 }
@@ -133,19 +124,14 @@ export async function readPrivateEvidence(operatorId: string, type: Type, id: st
     await assertCurrentOperator(client, operatorId);
     const evidence = await repo.evidenceForUpdate(client, type, id, purpose);
     if (!evidence || evidence.status !== "pending_review") throw new AppError(404, "Evidence unavailable", "EVIDENCE_NOT_FOUND");
-    const consumed = await client.query(`UPDATE driver_car_evidence_access_grants SET consumed_at = now()
-      WHERE token_hash = $1 AND operator_id = $2 AND evidence_id = $3
-      AND consumed_at IS NULL AND expires_at > now() RETURNING token_hash`,
-      [createHash("sha256").update(token).digest("hex"), operatorId, evidence.id]);
-    if (!consumed.rowCount) throw new AppError(403, "Evidence link expired or used", "EVIDENCE_ACCESS_EXPIRED");
+    const consumed = await repo.consumeEvidenceAccess(client,
+      createHash("sha256").update(token).digest("hex"), operatorId, evidence.id);
+    if (!consumed) throw new AppError(403, "Evidence link expired or used", "EVIDENCE_ACCESS_EXPIRED");
     const bytes = await readEvidence(evidence.object_key);
     if (bytes.length !== evidence.byte_count || createHash("sha256").update(bytes).digest("hex") !== evidence.sha256) {
       throw new AppError(409, "Evidence integrity check failed", "EVIDENCE_LOST");
     }
-    await client.query(`INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, metadata)
-      VALUES ($1, 'driver_car_evidence_accessed', 'driver_car_evidence', $2,
-        '{"purpose":"eligibility_review"}'::jsonb)`,
-      [operatorId, evidence.id]);
+    await repo.recordEvidenceAccess(client, operatorId, evidence.id);
     return { bytes, contentType: evidence.content_type };
   });
 }
@@ -153,14 +139,6 @@ export async function readPrivateEvidence(operatorId: string, type: Type, id: st
 export async function evidenceRetentionHealth(operatorId: string) {
   return withTransaction(async (client) => {
     await assertCurrentOperator(client, operatorId);
-    return (await client.query(`SELECT
-      count(*) FILTER (WHERE status = 'retained' AND delete_after <= now()
-        AND (hold_until IS NULL OR hold_until <= now()))::int AS overdue_count,
-      count(*) FILTER (WHERE status = 'retained' AND deletion_outcome = 'failed')::int AS failed_count,
-      min(delete_after) FILTER (WHERE status = 'retained' AND delete_after <= now()
-        AND (hold_until IS NULL OR hold_until <= now())) AS oldest_due_at
-      FROM (SELECT status, delete_after, hold_until, deletion_outcome FROM driver_car_evidence
-        UNION ALL SELECT status, delete_after, hold_until, deletion_outcome
-          FROM driver_car_evidence_replacements) evidence`)).rows[0];
+    return repo.evidenceRetentionHealth(client);
   });
 }

@@ -7,6 +7,10 @@ const timeSchema = z
 const counterpartyGenderPreferenceSchema = z.enum(["any", "female_only", "male_only"]);
 const pricingAreaTypeSchema = z.enum(["metro", "urban", "rural"]);
 
+export const departRideSchema = z.strictObject({
+  boarded_booking_ids: z.array(z.uuid()).max(12),
+});
+
 const paginationSchema = z.object({
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(50).default(5),

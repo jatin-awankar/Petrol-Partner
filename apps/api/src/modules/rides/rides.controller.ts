@@ -9,8 +9,19 @@ import {
   rideIdParamSchema,
   updateRideOfferSchema,
   updateRideRequestSchema,
+  departRideSchema,
 } from "./rides.schema";
 import * as ridesService from "./rides.service";
+import { departureService } from "./departure.service";
+
+export async function departOffer(req: Request, res: Response) {
+  if (!req.user) throw new AppError(401, "Unauthorized", "UNAUTHORIZED");
+  const { id } = rideIdParamSchema.parse(req.params);
+  const { boarded_booking_ids } = departRideSchema.parse(req.body);
+  const key = req.get("Idempotency-Key");
+  if (!key || key.length > 128) throw new AppError(400, "Idempotency-Key is required", "IDEMPOTENCY_KEY_REQUIRED");
+  res.status(200).json({ departure: await departureService.start(req.user.userId, key, id, boarded_booking_ids) });
+}
 
 export async function createOffer(req: Request, res: Response) {
   if (!req.user) {

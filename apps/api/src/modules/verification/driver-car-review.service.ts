@@ -326,6 +326,15 @@ export class DriverCarReviewService {
           decision.reason, decision.review_after, JSON.stringify(current.snapshot),
           JSON.stringify(evidenceSnapshot)])).rows[0];
       await apply(client, row);
+      if (row.outcome === "revoked") {
+        const affected = await evidenceRepo.applyRevocationToRides(client, row.subject_type, row.subject_id, row.id, row.reason);
+        for (const ride of affected.held) for (const recipientId of new Set([ride.driver_id, ...ride.passenger_ids])) {
+          await recordDurableNotification(client, { originType: "driver_car_ride_hold", operationId: row.id,
+            recipientId, eventType: `ride_held_${ride.id}`, relatedEntityType: "ride_offer",
+            relatedEntityId: ride.id, title: "Ride on hold",
+            body: "This ride is on hold because driving eligibility changed." });
+        }
+      }
       await evidenceRepo.scheduleDeletion(client, type, id);
       await auditAndNotify(client, row);
       return row;
@@ -344,6 +353,8 @@ export class DriverCarReviewService {
         const saved = (await client.query<Operation>(`UPDATE driver_car_review_operations
           SET state = 'acknowledged', acknowledged_at = now() WHERE id = $1 RETURNING *`, [row.id])).rows[0];
         await markDurableNotificationReady(client, row.id);
+        await client.query(`UPDATE pilot_notification_events SET ready_at = now()
+          WHERE origin_type = 'driver_car_ride_hold' AND operation_id = $1 AND ready_at IS NULL`, [row.id]);
         return saved;
       });
       return result(published);
@@ -423,9 +434,20 @@ export class DriverCarReviewService {
         if (row.state === "committed") await client.query(`UPDATE driver_car_review_operations
           SET state = 'recovered', acknowledged_at = now() WHERE id = $1`, [row.id]);
         await apply(client, row, true);
+        if (row.outcome === "revoked") {
+          const affected = await evidenceRepo.applyRevocationToRides(client, row.subject_type, row.subject_id, row.id, row.reason);
+          for (const ride of affected.held) for (const recipientId of new Set([ride.driver_id, ...ride.passenger_ids])) {
+            await recordDurableNotification(client, { originType: "driver_car_ride_hold", operationId: row.id,
+              recipientId, eventType: `ride_held_${ride.id}`, relatedEntityType: "ride_offer",
+              relatedEntityId: ride.id, title: "Ride on hold",
+              body: "This ride is on hold because driving eligibility changed." });
+          }
+        }
         await evidenceRepo.scheduleDeletion(client, row.subject_type, row.subject_id);
         await auditAndNotify(client, row);
         await markDurableNotificationReady(client, row.id);
+        await client.query(`UPDATE pilot_notification_events SET ready_at = now()
+          WHERE origin_type = 'driver_car_ride_hold' AND operation_id = $1 AND ready_at IS NULL`, [row.id]);
         await client.query(`UPDATE pilot_email_jobs SET status = 'exhausted', lease_until = NULL,
           last_error = 'Suppressed after snapshot restore; delivery outcome requires review', updated_at = now()
           WHERE event_id = $1 AND status <> 'sent'`, [row.id]);

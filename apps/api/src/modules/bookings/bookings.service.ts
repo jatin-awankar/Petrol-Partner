@@ -295,6 +295,10 @@ export function getBookingById(userId: string, bookingId: string) {
 
 export async function confirmBooking(bookingId: string, actorUserId: string, reason?: string) {
   await withTransaction(async (client) => {
+    const offerId = await bookingsRepo.findBookingOfferId(client, bookingId);
+    if (!offerId) throw new AppError(403, "Passenger ride requests are outside this pilot", "PILOT_DISABLED");
+    const offerStatus = await bookingsRepo.findRideOfferStatusForShare(client, offerId);
+    if (offerStatus !== "active") throw new AppError(409, "Ride is not accepting confirmations", "RIDE_NOT_BOOKABLE");
     const booking = await bookingsRepo.findBookingForUpdate(bookingId, client);
 
     if (!booking) {

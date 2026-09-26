@@ -16,7 +16,7 @@ import { setBackupObjectProbeForTests } from "../modules/operator/backup-status"
 import { setStudentReviewAfterCommitHookForTests } from "../modules/verification/student-review.service";
 
 const verificationPool = new Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
-const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql", "0006_operator_allowlist.sql", "0007_operator_pause.sql", "0008_operator_intent_handoff.sql", "0009_durable_notifications.sql", "0010_email_retry_operations.sql", "0011_backup_attempts.sql", "0012_student_adult_review.sql", "0013_student_review_cycles.sql", "0014_student_review_operations.sql", "0015_student_evidence_access.sql", "0016_student_evidence_deletion_outcomes.sql", "0017_student_evidence_retry_schedule.sql", "0018_driver_car_approval.sql"];
+const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql", "0006_operator_allowlist.sql", "0007_operator_pause.sql", "0008_operator_intent_handoff.sql", "0009_durable_notifications.sql", "0010_email_retry_operations.sql", "0011_backup_attempts.sql", "0012_student_adult_review.sql", "0013_student_review_cycles.sql", "0014_student_review_operations.sql", "0015_student_evidence_access.sql", "0016_student_evidence_deletion_outcomes.sql", "0017_student_evidence_retry_schedule.sql", "0018_driver_car_approval.sql", "0019_ride_departures.sql"];
 
 function fakeProvider(identity: ProviderIdentity): AuthProvider {
   const session = { accessToken: "provider-access", refreshToken: "provider-refresh", expiresIn: 900, identity };
@@ -552,6 +552,107 @@ describe("synthetic student evidence HTTP/PostgreSQL", () => {
       delete process.env.PILOT_RECEIPT_SECRET;
       await rm(receiptDirectory, { recursive: true, force: true });
     }
+  });
+});
+
+describe("driver and car approval HTTP/PostgreSQL", () => {
+  let directory: string;
+  beforeEach(async () => {
+    directory = await mkdtemp(resolve(tmpdir(), "driver-car-http-"));
+    process.env.PILOT_SYNTHETIC_EVIDENCE_DIR = directory;
+    process.env.PILOT_RECEIPT_PATH = resolve(directory, "receipts");
+    process.env.PILOT_RECEIPT_SECRET = "driver-car-http-independent-receipt-secret";
+    await verificationPool.query(`UPDATE auth_cutover_state SET active_provider = 'supabase',
+      legacy_login_enabled = false, authorized_at = now(), authorized_by = 'integration-test'`);
+    setManagedAuthEnabledForTests(true);
+  });
+  afterEach(async () => {
+    delete process.env.PILOT_SYNTHETIC_EVIDENCE_DIR;
+    delete process.env.PILOT_RECEIPT_PATH;
+    delete process.env.PILOT_RECEIPT_SECRET;
+    await rm(directory, { recursive: true, force: true });
+  });
+
+  async function principal(label: string, admin = false, assuranceLevel = "aal1") {
+    const email = `${label}@example.test`;
+    const subject = `${label}-subject`;
+    const userId = (await verificationPool.query<{ id: string }>(
+      `INSERT INTO users (email, role, email_verified_at)
+      VALUES ($1, $2, now()) RETURNING id`, [email, admin ? "admin" : "user"])).rows[0].id;
+    await verificationPool.query("INSERT INTO user_profiles (user_id, full_name) VALUES ($1, $2)",
+      [userId, admin ? "Synthetic Operator" : "Synthetic Driver"]);
+    await verificationPool.query(`INSERT INTO auth_identities
+      (provider, provider_subject, user_id, provider_email)
+      VALUES ('supabase', $1, $2, $3)`, [subject, userId, email]);
+    if (admin) await verificationPool.query(`INSERT INTO operator_allowlist
+      (user_id, active, reason, reviewed_at) VALUES ($1, true, 'synthetic', now())`, [userId]);
+    const identity = { subject, email, emailVerified: true, assuranceLevel, userMetadata: {} };
+    setAuthProviderForTests(fakeProvider(identity));
+    const login = await request(createApp()).post("/v1/auth/login")
+      .send({ email, password: "synthetic-password" });
+    expect(login.status).toBe(200);
+    const cookie = login.headers["set-cookie"].map((item: string) => item.split(";", 1)[0]).join("; ");
+    const csrf = login.headers["set-cookie"].find((item: string) =>
+      item.startsWith("pp_csrf_token="))?.split(";", 1)[0]?.split("=", 2)[1];
+    return { userId, cookie, csrf, identity };
+  }
+
+  it("submits each document and separately reviews driver, car, and permission through HTTP", async () => {
+    const driver = await principal("driver-car-applicant");
+    await verificationPool.query(`INSERT INTO student_verifications
+      (user_id, provider, status, adult_eligible, institution_name, eligibility_ends_at)
+      VALUES ($1, 'manual_review', 'verified', true, 'Synthetic College', now() + interval '1 year')`,
+      [driver.userId]);
+    const mutation = (method: "post" | "put", path: string, actor = driver) =>
+      request(createApp())[method](path).set("Cookie", actor.cookie)
+        .set("Origin", "http://localhost:3000").set("X-CSRF-Token", actor.csrf!);
+    expect((await mutation("put", "/v1/verification/driver-eligibility")
+      .send({ license_number_last4: "1234", license_expires_at: "2099-12-31" })).status).toBe(200);
+    const carResponse = await mutation("post", "/v1/verification/vehicles")
+      .send({ vehicle_type: "car", registration_number_last4: "5678", seat_capacity: 4 });
+    expect(carResponse.status, JSON.stringify(carResponse.body)).toBe(201);
+    const car = carResponse.body.vehicle.id;
+    expect((await mutation("put", `/v1/verification/vehicles/${car}/pilot-documents`)
+      .send({ use_category: "private", applicable_document_required: true,
+        insurance_expires_at: "2099-12-31", registration_expires_at: null })).status).toBe(200);
+    const associationResponse = await mutation("post", "/v1/verification/driver-vehicle-associations")
+      .send({ vehicle_id: car, permission_category: "owner" });
+    expect(associationResponse.status, JSON.stringify(associationResponse.body)).toBe(201);
+    const association = associationResponse.body.association.id;
+    for (const [type, id, purpose] of [
+      ["driver", driver.userId, "licence"], ["vehicle", car, "registration"],
+      ["vehicle", car, "insurance"], ["vehicle", car, "applicable"],
+      ["association", association, "permission"],
+    ]) {
+      const upload = await mutation("post", `/v1/verification/driver-car-evidence/${type}/${id}/${purpose}`)
+        .set("X-Synthetic-Evidence", "true").set("Content-Type", "application/pdf")
+        .send(Buffer.from("%PDF-1.4\nsynthetic document\n"));
+      expect(upload.status, JSON.stringify(upload.body)).toBe(201);
+    }
+    const operator = await principal("driver-car-reviewer", true, "aal1");
+    const review = (type: string, id: string, key: string) =>
+      mutation("post", `/v1/verification/admin/driver-car/${type}/${id}/review`, operator)
+        .set("Idempotency-Key", key).send({ outcome: "approved",
+          reason: "Synthetic documents checked", review_after: "2099-12-30" });
+    expect((await review("driver", driver.userId, "http-driver")).status).toBe(403);
+    setAuthProviderForTests(fakeProvider({ ...operator.identity, assuranceLevel: "aal2" }));
+    const grant = await mutation("post", `/v1/verification/admin/driver-car-evidence/driver/${driver.userId}/licence/access`, operator)
+      .send({});
+    expect(grant.status, JSON.stringify(grant.body)).toBe(201);
+    const read = await request(createApp()).get(
+      `/v1/verification/admin/driver-car-evidence/driver/${driver.userId}/licence`)
+      .set("Cookie", operator.cookie).set("X-Evidence-Token", grant.body.token);
+    expect(read.status).toBe(200);
+    for (const [type, id, key] of [
+      ["driver", driver.userId, "http-driver"], ["vehicle", car, "http-car"],
+      ["association", association, "http-permission"],
+    ]) {
+      const response = await review(type, id, key);
+      expect(response.status, JSON.stringify(response.body)).toBe(200);
+      expect(response.body.operation.state).toBe("acknowledged");
+    }
+    expect((await verificationPool.query(`SELECT count(*)::int AS n FROM pilot_notification_events
+      WHERE origin_type = 'driver_car_review' AND ready_at IS NOT NULL`)).rows[0].n).toBe(3);
   });
 });
 

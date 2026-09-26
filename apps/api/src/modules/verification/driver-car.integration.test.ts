@@ -8,6 +8,8 @@ import { assertApprovedDriverCanOfferRide, upsertDriverEligibility } from "./ver
 import { classifyVehicle, submitAssociation, uploadEvidence, grantEvidenceAccess,
   readPrivateEvidence } from "./driver-car.service";
 import { DriverCarReviewService, setDriverCarReviewCrashHookForTests } from "./driver-car-review.service";
+import { DepartureService } from "../rides/departure.service";
+import { confirmBooking } from "../bookings/bookings.service";
 
 const db = new Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
 const migrations = ["0001_init.sql", "0006_operator_allowlist.sql", "0007_operator_pause.sql",
@@ -15,7 +17,7 @@ const migrations = ["0001_init.sql", "0006_operator_allowlist.sql", "0007_operat
   "0011_backup_attempts.sql", "0012_student_adult_review.sql", "0013_student_review_cycles.sql",
   "0014_student_review_operations.sql", "0015_student_evidence_access.sql",
   "0016_student_evidence_deletion_outcomes.sql", "0017_student_evidence_retry_schedule.sql",
-  "0018_driver_car_approval.sql"];
+  "0018_driver_car_approval.sql", "0019_ride_departures.sql"];
 let directory: string;
 
 beforeAll(async () => {
@@ -57,6 +59,119 @@ async function approvedStudent(id: string) {
 const pdf = Buffer.from("%PDF-1.4\nsynthetic driver-car evidence\n");
 
 describe("driver and car approval with PostgreSQL", () => {
+  it("checks current eligibility at departure and serializes a revocation on separate connections", async () => {
+    const driver = await user("departure-driver@example.test");
+    const passenger = await user("departure-passenger@example.test");
+    const other = await user("departure-other@example.test");
+    await approvedStudent(driver);
+    await db.query(`INSERT INTO driver_eligibility
+      (user_id, status, license_number_last4, license_expires_at, review_after)
+      VALUES ($1, 'approved', '1234', CURRENT_DATE + 100, CURRENT_DATE + 100)`, [driver]);
+    const car = (await db.query<{ id: string }>(`INSERT INTO vehicles
+      (owner_user_id, vehicle_type, registration_number_last4, seat_capacity,
+       use_category, applicable_document_required, insurance_expires_at,
+       review_after, verification_status)
+      VALUES ($1, 'car', '5678', 4, 'private', false, CURRENT_DATE + 100,
+        CURRENT_DATE + 100, 'approved') RETURNING id`, [driver])).rows[0].id;
+    const association = (await db.query<{ id: string }>(`INSERT INTO driver_vehicle_approvals
+      (driver_user_id, vehicle_id, permission_category, status, review_after)
+      VALUES ($1, $2, 'owner', 'approved', CURRENT_DATE + 100) RETURNING id`,
+      [driver, car])).rows[0].id;
+    const now = new Date();
+    const corridorTime = new Date(now.getTime() + 330 * 60_000);
+    const date = corridorTime.toISOString().slice(0, 10);
+    const time = corridorTime.toISOString().slice(11, 19);
+    const ride = (await db.query<{ id: string }>(`INSERT INTO ride_offers
+      (driver_id, vehicle_id, pickup_location, pickup_lat, pickup_lng,
+       drop_location, drop_lat, drop_lng, date, time, available_seats,
+       price_per_seat_paise, status)
+      VALUES ($1, $2, 'College', 20, 77, 'Home', 20.1, 77.1,
+        $3, $4, 3, 10000, 'active') RETURNING id`,
+      [driver, car, date, time])).rows[0].id;
+    const booking = (await db.query<{ id: string }>(`INSERT INTO bookings
+      (ride_offer_id, created_by_user_id, passenger_id, driver_id, seats_booked,
+       total_amount_paise, platform_fee_paise, status, payment_state, confirmed_at)
+      VALUES ($1, $2, $3, $2, 1, 10000, 0, 'confirmed', 'unpaid', now()) RETURNING id`,
+      [ride, driver, passenger])).rows[0].id;
+    const departures = new DepartureService(pool);
+    await expect(departures.start(other, "wrong-owner", ride, [booking], now))
+      .rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(departures.start(driver, "too-early", ride, [booking],
+      new Date(now.getTime() - 16 * 60_000)))
+      .rejects.toMatchObject({ code: "DEPARTURE_WINDOW_CLOSED" });
+    const revoker = await db.connect();
+    try {
+      await revoker.query("BEGIN");
+      await revoker.query("SELECT id FROM driver_vehicle_approvals WHERE id = $1 FOR UPDATE", [association]);
+      const waiting = departures.start(driver, "revoked-first", ride, [booking], now);
+      const rejection = expect(waiting).rejects.toMatchObject({ code: "DRIVER_CAR_NOT_APPROVED" });
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      await revoker.query("UPDATE driver_vehicle_approvals SET status = 'revoked' WHERE id = $1", [association]);
+      await revoker.query("COMMIT");
+      await rejection;
+    } finally {
+      await revoker.query("ROLLBACK");
+      revoker.release();
+    }
+    await db.query("UPDATE driver_vehicle_approvals SET status = 'approved' WHERE id = $1", [association]);
+    const secondBooking = (await db.query<{ id: string }>(`INSERT INTO bookings
+      (ride_offer_id, created_by_user_id, passenger_id, driver_id, seats_booked,
+       total_amount_paise, platform_fee_paise, status, payment_state)
+      VALUES ($1, $2, $3, $2, 1, 10000, 0, 'pending', 'unpaid') RETURNING id`,
+      [ride, driver, other])).rows[0].id;
+    const gate = await db.connect();
+    let started;
+    try {
+      await gate.query("BEGIN");
+      await gate.query("SELECT id FROM ride_offers WHERE id = $1 FOR UPDATE", [ride]);
+      const departureAttempt = departures.start(driver, "depart-once", ride, [booking], now);
+      const confirmationAttempt = confirmBooking(secondBooking, driver);
+      const settled = Promise.allSettled([departureAttempt, confirmationAttempt]);
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      await gate.query("COMMIT");
+      const [departureResult, confirmationResult] = await settled;
+      expect(departureResult.status).toBe("fulfilled");
+      if (departureResult.status !== "fulfilled") throw departureResult.reason;
+      started = departureResult.value;
+      const secondStatus = (await db.query("SELECT status FROM bookings WHERE id = $1", [secondBooking]))
+        .rows[0].status;
+      if (confirmationResult.status === "fulfilled") {
+        expect(secondStatus).toBe("confirmed");
+        expect((await db.query("SELECT confirmed_booking_ids FROM ride_departures WHERE id = $1",
+          [started.operation_id])).rows[0].confirmed_booking_ids).toContain(secondBooking);
+      } else {
+        expect(secondStatus).toBe("pending");
+        expect(confirmationResult.reason).toMatchObject({ code: "RIDE_NOT_BOOKABLE" });
+      }
+    } finally {
+      await gate.query("ROLLBACK");
+      gate.release();
+    }
+    expect(started).toMatchObject({ state: "acknowledged", boarded_booking_ids: [booking] });
+    expect((await departures.start(driver, "depart-once", ride, [booking], now)).operation_id)
+      .toBe(started.operation_id);
+    await expect(departures.start(driver, "depart-once", ride, [], now))
+      .rejects.toMatchObject({ code: "IDEMPOTENCY_PAYLOAD_MISMATCH" });
+    expect((await db.query("SELECT status FROM ride_offers WHERE id = $1", [ride])).rows[0].status)
+      .toBe("departed");
+    expect((await db.query("SELECT boarded FROM ride_departure_boarding WHERE booking_id = $1", [booking]))
+      .rows[0].boarded).toBe(true);
+    const future = (await db.query<{ id: string }>(`INSERT INTO ride_offers
+      (driver_id, vehicle_id, pickup_location, pickup_lat, pickup_lng,
+       drop_location, drop_lat, drop_lng, date, time, available_seats,
+       price_per_seat_paise, status)
+      VALUES ($1, $2, 'College', 20, 77, 'Home', 20.1, 77.1,
+        CURRENT_DATE + 1, '09:00', 3, 10000, 'active') RETURNING id`,
+      [driver, car])).rows[0].id;
+    const operator = await user("departure-reviewer@example.test", true);
+    await new DriverCarReviewService(pool).decide(operator, "revoke-after-departure",
+      "association", association, { outcome: "revoked", reason: "Permission withdrawn",
+        review_after: null });
+    expect((await db.query("SELECT status FROM ride_offers WHERE id = $1", [future]))
+      .rows[0].status).toBe("held");
+    expect((await db.query("SELECT priority FROM pilot_ride_incidents WHERE ride_offer_id = $1", [ride]))
+      .rows[0].priority).toBe("high");
+  });
   it("allows a rejected licence to be resubmitted without orphaning the prior document", async () => {
     const driver = await user("resubmit-driver@example.test");
     const operator = await user("resubmit-operator@example.test", true);
