@@ -1,21 +1,29 @@
 import { withTransaction } from "../../db/transaction";
+import type { PoolClient } from "pg";
 import { createHash, randomUUID } from "node:crypto";
-import { insertAuditLog } from "../../shared/audit/logs";
 import { AppError } from "../../shared/errors/app-error";
 import { assertCurrentOperator } from "../operator/operator.authorization";
 import { deleteEvidence, readEvidence, storeEvidence } from "./student-evidence.storage";
 import type {
   CreateVehicleInput,
   PendingVerificationReviewsQuery,
-  ReviewDriverEligibilityInput,
-  ReviewVehicleInput,
   UpdateVehicleInput,
   UpsertDriverEligibilityInput,
   UpsertStudentVerificationInput,
 } from "./verification.schema";
 import * as verificationRepo from "./verification.repo";
+import * as driverCarRepo from "./driver-car.repo";
+import { pool } from "../../db/pool";
 
 const ACTIVE_STUDENT_STATUSES = new Set(["verified", "revalidation_due"]);
+
+export async function assertCurrentStudentForSubmission(client: PoolClient, userId: string) {
+  const student = await verificationRepo.findStudentEligibilityForUpdate(client, userId);
+  if (!student || !ACTIVE_STUDENT_STATUSES.has(student.status) ||
+      student.adult_eligible !== true || new Date(student.eligibility_ends_at) <= new Date()) {
+    throw new AppError(403, "Current student approval is required", "STUDENT_VERIFICATION_INACTIVE");
+  }
+}
 
 function deriveEligibilityEndsAt(input: UpsertStudentVerificationInput) {
   return new Date(Date.UTC(input.graduation_year, 11, 31, 23, 59, 59));
@@ -33,39 +41,11 @@ function deriveStudentVerificationStatus(eligibilityEndsAt: Date) {
 function deriveDriverEligibilityStatus(input: UpsertDriverEligibilityInput) {
   const today = new Date();
   const licenseExpiry = new Date(`${input.license_expires_at}T00:00:00.000Z`);
-  const insuranceExpiry = input.insurance_expires_at
-    ? new Date(`${input.insurance_expires_at}T00:00:00.000Z`)
-    : null;
-  const pucExpiry = input.puc_expires_at
-    ? new Date(`${input.puc_expires_at}T00:00:00.000Z`)
-    : null;
-
-  if (
-    licenseExpiry <= today ||
-    (insuranceExpiry && insuranceExpiry <= today) ||
-    (pucExpiry && pucExpiry <= today)
-  ) {
+  if (licenseExpiry <= today) {
     return "expired";
   }
 
   return "pending_review";
-}
-
-function ensureDriverEligibilityFields(
-  current: Awaited<ReturnType<typeof verificationRepo.findDriverEligibilityByUserId>>,
-) {
-  if (!current?.license_number_last4 || !current.license_expires_at) {
-    throw new AppError(
-      409,
-      "Driver eligibility submission is incomplete and cannot be reviewed",
-      "DRIVER_ELIGIBILITY_INCOMPLETE",
-    );
-  }
-
-  return current as NonNullable<typeof current> & {
-    license_number_last4: string;
-    license_expires_at: string;
-  };
 }
 
 function ensureStudentVerificationFields(
@@ -88,16 +68,18 @@ function ensureStudentVerificationFields(
 }
 
 export async function getOverview(userId: string) {
-  const [studentVerification, driverEligibility, vehicles] = await Promise.all([
+  const [studentVerification, driverEligibility, vehicles, associations] = await Promise.all([
     verificationRepo.findStudentVerificationByUserId(userId),
     verificationRepo.findDriverEligibilityByUserId(userId),
     verificationRepo.listVehiclesByOwner(userId),
+    driverCarRepo.listAssociationsForDriver(pool, userId),
   ]);
 
   return {
     student_verification: studentVerification,
     driver_eligibility: driverEligibility,
     vehicles,
+    associations,
   };
 }
 
@@ -249,6 +231,12 @@ export function upsertDriverEligibility(userId: string, input: UpsertDriverEligi
   const status = deriveDriverEligibilityStatus(input);
 
   return withTransaction(async (client) => {
+    await assertCurrentStudentForSubmission(client, userId);
+    const current = await client.query<{ status: string }>(
+      "SELECT status FROM driver_eligibility WHERE user_id = $1 FOR UPDATE", [userId]);
+    if (current.rows[0] && !["pending_review", "rejected", "expired"].includes(current.rows[0].status)) {
+      throw new AppError(409, "Reviewed driver eligibility cannot be changed by the applicant", "DRIVER_REVIEW_CONFLICT");
+    }
     return verificationRepo.upsertDriverEligibility(
       {
         userId,
@@ -262,7 +250,6 @@ export function upsertDriverEligibility(userId: string, input: UpsertDriverEligi
         reviewedByUserId: null,
         reviewedAt: null,
         metadata: {
-          ...(input.metadata ?? {}),
           submissionSource: "self_service",
           submittedAt: new Date().toISOString(),
         },
@@ -278,6 +265,7 @@ export function listVehicles(userId: string) {
 
 export function createVehicle(userId: string, input: CreateVehicleInput) {
   return withTransaction(async (client) => {
+    await assertCurrentStudentForSubmission(client, userId);
     return verificationRepo.createVehicle(
       {
         ownerUserId: userId,
@@ -288,7 +276,6 @@ export function createVehicle(userId: string, input: CreateVehicleInput) {
         registrationNumberLast4: input.registration_number_last4,
         seatCapacity: input.seat_capacity,
         metadata: {
-          ...(input.metadata ?? {}),
           submissionSource: "self_service",
         },
       },
@@ -298,13 +285,13 @@ export function createVehicle(userId: string, input: CreateVehicleInput) {
 }
 
 export async function updateVehicle(userId: string, vehicleId: string, input: UpdateVehicleInput) {
-  const current = await verificationRepo.findVehicleByIdForOwner(userId, vehicleId);
-
-  if (!current) {
-    throw new AppError(404, "Vehicle not found", "VEHICLE_NOT_FOUND");
-  }
-
   return withTransaction(async (client) => {
+    await assertCurrentStudentForSubmission(client, userId);
+    const current = await verificationRepo.findVehicleByIdForOwnerForUpdate(client, userId, vehicleId);
+    if (!current) throw new AppError(404, "Vehicle not found", "VEHICLE_NOT_FOUND");
+    if (current.verification_status === "approved") {
+      throw new AppError(409, "Approved vehicle details require operator review", "VEHICLE_REVIEW_CONFLICT");
+    }
     const vehicle = await verificationRepo.updateVehicle(
       {
         ownerUserId: userId,
@@ -322,7 +309,6 @@ export async function updateVehicle(userId: string, vehicleId: string, input: Up
         reviewedAt: current.reviewed_at ? new Date(current.reviewed_at) : null,
         metadata: {
           ...(current.metadata ?? {}),
-          ...(input.metadata ?? {}),
         },
       },
       client,
@@ -369,21 +355,6 @@ export async function assertVerifiedStudentCanTransact(userId: string) {
 }
 
 export async function assertApprovedDriverCanOfferRide(userId: string, vehicleId?: string | null) {
-  await assertVerifiedStudentCanTransact(userId);
-
-  const eligibility = await verificationRepo.findTransactionEligibilityByUserId(userId);
-
-  if (eligibility?.driver_eligibility_status !== "approved") {
-    throw new AppError(
-      403,
-      "Approved driver eligibility is required before creating ride offers",
-      "DRIVER_ELIGIBILITY_NOT_APPROVED",
-      {
-        status: eligibility?.driver_eligibility_status ?? null,
-      },
-    );
-  }
-
   if (!vehicleId) {
     throw new AppError(
       400,
@@ -391,146 +362,28 @@ export async function assertApprovedDriverCanOfferRide(userId: string, vehicleId
       "VEHICLE_REQUIRED_FOR_RIDE_OFFER",
     );
   }
+  return withTransaction((client) => assertCurrentDriverCarEligibility(client, userId, vehicleId));
+}
 
-  const vehicle = await verificationRepo.findApprovedVehicleForOwner(userId, vehicleId);
-
-  if (!vehicle) {
-    throw new AppError(
-      403,
-      "Only approved active vehicles can be used for ride offers",
-      "VEHICLE_NOT_APPROVED",
-      {
-        vehicle_id: vehicleId,
-      },
-    );
-  }
-
-  return vehicle;
+export async function assertCurrentDriverCarEligibility(client: PoolClient, userId: string, vehicleId: string) {
+  const eligible = await driverCarRepo.currentPilotEligibility(client, userId, vehicleId);
+  if (!eligible) throw new AppError(403, "Current driver, car and permission approval is required",
+    "DRIVER_CAR_NOT_APPROVED", { vehicle_id: vehicleId });
+  return eligible;
 }
 
 export async function listPendingReviews(query: PendingVerificationReviewsQuery) {
-  const [studentVerifications, driverEligibility, vehicles] = await Promise.all([
+  const [studentVerifications, driverEligibility, vehicles, associations] = await Promise.all([
     verificationRepo.listPendingStudentVerifications(query.limit),
     verificationRepo.listPendingDriverEligibilityReviews(query.limit),
     verificationRepo.listPendingVehicleReviews(query.limit),
+    driverCarRepo.listPendingAssociations(pool, query.limit),
   ]);
 
   return {
     student_verifications: studentVerifications,
     driver_eligibility: driverEligibility,
     vehicles,
+    associations,
   };
-}
-
-export async function reviewDriverEligibility(
-  adminUserId: string,
-  userId: string,
-  input: ReviewDriverEligibilityInput,
-) {
-  const current = ensureDriverEligibilityFields(
-    await verificationRepo.findDriverEligibilityByUserId(userId),
-  );
-
-  const nextStatus =
-    input.outcome === "approved" ? "approved" : input.outcome === "suspended" ? "suspended" : "rejected";
-
-  return withTransaction(async (client) => {
-    const reviewedAt = new Date();
-    const reviewed = await verificationRepo.upsertDriverEligibility(
-      {
-        userId,
-        status: nextStatus,
-        licenseNumberLast4: current.license_number_last4,
-        licenseExpiresAt: current.license_expires_at,
-        insuranceExpiresAt: current.insurance_expires_at,
-        pucExpiresAt: current.puc_expires_at,
-        lastVerifiedAt: nextStatus === "approved" ? reviewedAt : null,
-        approvedAt: nextStatus === "approved" ? reviewedAt : null,
-        reviewedByUserId: adminUserId,
-        reviewedAt,
-        metadata: {
-          ...(current.metadata ?? {}),
-          reviewReason: input.reason ?? null,
-        },
-      },
-      client,
-    );
-
-    await insertAuditLog(
-      {
-        actorUserId: adminUserId,
-        action: "driver_eligibility_reviewed",
-        entityType: "driver_eligibility",
-        entityId: userId,
-        metadata: {
-          outcome: nextStatus,
-          reason: input.reason ?? null,
-        },
-      },
-      client,
-    );
-
-    return reviewed;
-  });
-}
-
-export async function reviewVehicle(
-  adminUserId: string,
-  vehicleId: string,
-  input: ReviewVehicleInput,
-) {
-  const current = await verificationRepo.findVehicleById(vehicleId);
-
-  if (!current) {
-    throw new AppError(404, "Vehicle not found", "VEHICLE_NOT_FOUND");
-  }
-
-  const verificationStatus = input.outcome === "approved" ? "approved" : "rejected";
-  const status =
-    input.outcome === "approved" ? "active" : input.outcome === "suspended" ? "suspended" : "inactive";
-
-  return withTransaction(async (client) => {
-    const reviewed = await verificationRepo.updateVehicle(
-      {
-        ownerUserId: current.owner_user_id,
-        vehicleId,
-        vehicleType: current.vehicle_type,
-        make: current.make,
-        model: current.model,
-        color: current.color,
-        registrationNumberLast4: current.registration_number_last4,
-        seatCapacity: current.seat_capacity,
-        status,
-        verificationStatus,
-        reviewedByUserId: adminUserId,
-        reviewedAt: new Date(),
-        metadata: {
-          ...(current.metadata ?? {}),
-          reviewReason: input.reason ?? null,
-        },
-      },
-      client,
-    );
-
-    if (!reviewed) {
-      throw new AppError(404, "Vehicle not found", "VEHICLE_NOT_FOUND");
-    }
-
-    await insertAuditLog(
-      {
-        actorUserId: adminUserId,
-        action: "vehicle_reviewed",
-        entityType: "vehicle",
-        entityId: vehicleId,
-        metadata: {
-          outcome: input.outcome,
-          ownerUserId: current.owner_user_id,
-          reason: input.reason ?? null,
-        },
-      },
-      client,
-    );
-
-    return reviewed;
-  });
 }

@@ -38,7 +38,7 @@ async function removeObject(key: string, directory: string | undefined) {
   catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return "already_missing"; throw error; }
 }
 
-export async function deleteDueStudentEvidence() {
+async function deleteDueEvidence(table: "student_evidence" | "driver_car_evidence" | "driver_car_evidence_replacements") {
   const directory = process.env.PILOT_SYNTHETIC_EVIDENCE_DIR;
   if ((process.env.PILOT_EVIDENCE_BACKEND ?? "synthetic") === "synthetic" &&
       (process.env.NODE_ENV === "production" || !directory || !isAbsolute(directory) ||
@@ -47,7 +47,7 @@ export async function deleteDueStudentEvidence() {
   try {
     await client.query("BEGIN");
     const result = await client.query<{ id: string; object_key: string }>(
-      `SELECT id, object_key FROM student_evidence
+      `SELECT id, object_key FROM ${table}
         WHERE status = 'retained' AND delete_after <= now()
           AND (next_delete_attempt_at IS NULL OR next_delete_attempt_at <= now())
           AND (hold_until IS NULL OR hold_until <= now())
@@ -58,14 +58,14 @@ export async function deleteDueStudentEvidence() {
     try {
       const outcome = await removeObject(evidence.object_key, directory);
       await client.query(
-        `UPDATE student_evidence SET status = 'deleted', deleted_at = now(),
+        `UPDATE ${table} SET status = 'deleted', deleted_at = now(),
            delete_attempts = delete_attempts + 1, last_delete_error = NULL,
            deletion_outcome = $2, next_delete_attempt_at = NULL
          WHERE id = $1`, [evidence.id, outcome],
       );
     } catch (error) {
       await client.query(
-          `UPDATE student_evidence SET delete_attempts = delete_attempts + 1,
+          `UPDATE ${table} SET delete_attempts = delete_attempts + 1,
              next_delete_attempt_at = now() + interval '5 minutes',
              deletion_outcome = 'failed', last_delete_error = 'private storage deletion failed' WHERE id = $1`,
           [evidence.id],
@@ -78,3 +78,7 @@ export async function deleteDueStudentEvidence() {
     throw error;
   } finally { client.release(); }
 }
+
+export function deleteDueStudentEvidence() { return deleteDueEvidence("student_evidence"); }
+export function deleteDueDriverCarEvidence() { return deleteDueEvidence("driver_car_evidence"); }
+export function deleteReplacedDriverCarEvidence() { return deleteDueEvidence("driver_car_evidence_replacements"); }

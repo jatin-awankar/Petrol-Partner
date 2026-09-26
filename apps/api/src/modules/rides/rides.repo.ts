@@ -1,4 +1,5 @@
 import { dbQuery } from "../../db/pool";
+import type { PoolClient } from "pg";
 import type {
   CreateRideOfferInput,
   CreateRideRequestInput,
@@ -272,8 +273,10 @@ export async function createRideOffer(
     rate_card_id?: string | null;
     pricing_snapshot?: Record<string, unknown>;
   },
+  client?: PoolClient,
 ) {
-  const result = await dbQuery<{ id: string }>(
+  const query = client ? client.query.bind(client) : dbQuery;
+  const result = await query<{ id: string }>(
     `
       INSERT INTO ride_offers (
         driver_id,
@@ -326,11 +329,12 @@ export async function createRideOffer(
     ],
   );
 
-  return findRideOfferById(result.rows[0].id);
+  return findRideOfferById(result.rows[0].id, client);
 }
 
-export async function findRideOfferById(id: string) {
-  const result = await dbQuery<RideOfferRow>(
+export async function findRideOfferById(id: string, client?: PoolClient) {
+  const query = client ? client.query.bind(client) : dbQuery;
+  const result = await query<RideOfferRow>(
     `
       SELECT
         ${rideOfferSelectColumns()},

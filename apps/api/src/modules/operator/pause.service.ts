@@ -12,6 +12,8 @@ import { inProtectedTransaction as transaction, type ProtectedOperationState } f
 import { markPauseNotificationReady, recordPauseNotification, restorePauseNotificationWithoutDelivery } from "../notifications/durable.repo";
 import { backupStatus } from "./backup-status";
 import { StudentReviewService } from "../verification/student-review.service";
+import { DriverCarReviewService } from "../verification/driver-car-review.service";
+import { DepartureService } from "../rides/departure.service";
 
 export const capabilities = ["offers", "requests", "acceptance", "booking"] as const;
 export type Capability = typeof capabilities[number];
@@ -67,6 +69,8 @@ export function setPauseCrashHookForTests(hook: typeof crashHook) {
 export class PauseService {
   constructor(private readonly database: Pool = pool) {}
   private studentReviews() { return new StudentReviewService(this.database); }
+  private driverCarReviews() { return new DriverCarReviewService(this.database); }
+  private departures() { return new DepartureService(this.database); }
 
   private async verifyEvidence() {
     try {
@@ -96,6 +100,8 @@ export class PauseService {
           receipt.payloadDigest !== digest({ capability: receipt.capability, paused: receipt.paused, reason: receipt.reason });
       })) throw new AppError(503, "Acknowledged recovery evidence is missing or inconsistent", "RECOVERY_MISSING");
       await this.studentReviews().verifyEvidence();
+      await this.driverCarReviews().verifyEvidence();
+      await this.departures().verifyEvidence();
     } catch (error) {
       await restrict(this.database, `evidence_unavailable:${error instanceof Error ? error.message : "unknown"}`);
       throw error;
@@ -254,6 +260,8 @@ export class PauseService {
     try { receipts = await listReceipts(); }
     catch (error) { await restrict(this.database, "evidence_unavailable"); throw error; }
     await this.studentReviews().reconcileReceipts(operatorId);
+    await this.departures().reconcileReceipts(operatorId);
+    await this.driverCarReviews().reconcileReceipts(operatorId);
     for (const receipt of receipts) {
       if (receipt.payloadDigest !== digest({ capability: receipt.capability, paused: receipt.paused, reason: receipt.reason })) throw new AppError(409, "Recovery payload is inconsistent", "RECOVERY_CONFLICT");
       await transaction(this.database, async (client) => {
@@ -297,7 +305,7 @@ export class PauseService {
     await this.verifyEvidence();
     await pauseReceipts().probe();
     await reopenReceipts().probe();
-    const reconciliationDigest = createHash("sha256").update(JSON.stringify({ pauses: await listReceipts(), reopens: await reopenReceipts().list(), studentReviews: await this.studentReviews().receipts() })).digest("hex");
+    const reconciliationDigest = createHash("sha256").update(JSON.stringify({ pauses: await listReceipts(), reopens: await reopenReceipts().list(), studentReviews: await this.studentReviews().receipts(), driverCarReviews: await this.driverCarReviews().receipts(), departures: await this.departures().receipts() })).digest("hex");
     if ((await this.studentReviews().pending()).length) throw new AppError(409, "Student review recovery is incomplete", "RECONCILIATION_REQUIRED");
     const operation = await transaction(this.database, async (client) => {
       const status = await operatorQuery(client, "recoveryStateForUpdate");

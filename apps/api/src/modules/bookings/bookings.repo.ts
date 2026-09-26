@@ -2,6 +2,27 @@ import type { PoolClient } from "pg";
 
 import { dbQuery } from "../../db/pool";
 
+export async function findRideOfferVehicleId(client: PoolClient, offerId: string) {
+  return (await client.query<{ vehicle_id: string | null }>(
+    "SELECT vehicle_id FROM ride_offers WHERE id = $1 FOR SHARE", [offerId])).rows[0]?.vehicle_id ?? null;
+}
+
+export async function findBookingOfferId(client: PoolClient, bookingId: string) {
+  return (await client.query<{ ride_offer_id: string | null }>(
+    "SELECT ride_offer_id FROM bookings WHERE id = $1", [bookingId])).rows[0]?.ride_offer_id ?? null;
+}
+
+export async function findRideOfferStatusForShare(client: PoolClient, offerId: string) {
+  return (await client.query<{ status: string }>(
+    "SELECT status FROM ride_offers WHERE id = $1 FOR SHARE", [offerId])).rows[0]?.status ?? null;
+}
+
+export async function findRideOfferCommitmentForShare(client: PoolClient, offerId: string) {
+  return (await client.query<{ vehicle_id: string | null; date: string; time: string }>(
+    `SELECT vehicle_id, to_char(date, 'YYYY-MM-DD') AS date, time
+      FROM ride_offers WHERE id = $1 FOR SHARE`, [offerId])).rows[0] ?? null;
+}
+
 interface LockedRideRow {
   id: string;
   owner_id: string;

@@ -1,4 +1,5 @@
 import { logger } from "../../config/logger";
+import { withTransaction } from "../../db/transaction";
 import { AppError } from "../../shared/errors/app-error";
 import type {
   CreateRideOfferInput,
@@ -13,6 +14,7 @@ import * as pricingService from "../pricing/pricing.service";
 import * as settlementsService from "../settlements/settlements.service";
 import * as verificationService from "../verification/verification.service";
 import * as ridesRepo from "./rides.repo";
+import { assertCommitmentsEligible, corridorDeparture } from "./commitment.service";
 
 function normalizeVehicleDetails(value: unknown) {
   if (value === undefined) {
@@ -121,15 +123,19 @@ async function buildUpdatedRidePricing(
 
 export async function createRideOffer(driverId: string, input: CreateRideOfferInput) {
   await settlementsService.assertUserCanTransact(driverId);
-  await verificationService.assertApprovedDriverCanOfferRide(driverId, input.vehicle_id);
 
   const pricingAwareInput = (await buildCreateRidePricing(input)) as CreateRideOfferInput & {
     rate_card_id?: string | null;
     pricing_snapshot?: Record<string, unknown>;
   };
-  const rideOffer = await ridesRepo.createRideOffer(driverId, {
-    ...pricingAwareInput,
-    vehicle_details: normalizeVehicleDetails(input.vehicle_details),
+  const rideOffer = await withTransaction(async (client) => {
+    await verificationService.assertCurrentDriverCarEligibility(client, driverId, input.vehicle_id);
+    await assertCommitmentsEligible(client, { driverId, vehicleId: input.vehicle_id,
+      passengerIds: [], rideId: null, departureAt: corridorDeparture(input.date, input.time) });
+    return ridesRepo.createRideOffer(driverId, {
+      ...pricingAwareInput,
+      vehicle_details: normalizeVehicleDetails(input.vehicle_details),
+    }, client);
   });
 
   triggerMatchRefresh(driverId);
@@ -157,6 +163,10 @@ export async function updateRideOffer(
   input: UpdateRideOfferInput,
 ) {
   const current = await getRideOfferById(id);
+
+  if (current.status === "departed") {
+    throw new AppError(409, "Departed rides require operator review", "RIDE_ALREADY_DEPARTED");
+  }
 
   if (current.driver_id !== driverId) {
     throw new AppError(403, "Unauthorized", "FORBIDDEN");

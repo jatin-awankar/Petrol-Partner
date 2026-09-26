@@ -10,6 +10,8 @@ vi.mock("../../shared/audit/logs", () => ({
 
 vi.mock("./verification.repo", () => ({
   findTransactionEligibilityByUserId: vi.fn(),
+  findStudentEligibilityForUpdate: vi.fn(),
+  findApprovedVehicleForOwner: vi.fn(),
   findStudentVerificationForUpdate: vi.fn(async () => null),
   studentEvidenceForUpdate: vi.fn(async () => null),
   upsertStudentVerification: vi.fn(async () => ({
@@ -20,8 +22,13 @@ vi.mock("./verification.repo", () => ({
   syncUserVerificationProfile: vi.fn(async () => undefined),
 }));
 
+vi.mock("./driver-car.repo", () => ({
+  currentPilotEligibility: vi.fn(),
+}));
+
 import { AppError } from "../../shared/errors/app-error";
 import * as verificationRepo from "./verification.repo";
+import * as driverCarRepo from "./driver-car.repo";
 import * as verificationService from "./verification.service";
 
 describe("verification.service", () => {
@@ -87,5 +94,12 @@ describe("verification.service", () => {
     await expect(
       verificationService.assertVerifiedStudentCanTransact("user-1"),
     ).resolves.toBeUndefined();
+  });
+
+  it("requires the shared current driver-car eligibility check", async () => {
+    vi.mocked(driverCarRepo.currentPilotEligibility).mockResolvedValue(null);
+    await expect(verificationService.assertApprovedDriverCanOfferRide("user-1", "vehicle-1"))
+      .rejects.toMatchObject({ code: "DRIVER_CAR_NOT_APPROVED" });
+    expect(driverCarRepo.currentPilotEligibility).toHaveBeenCalledWith(expect.anything(), "user-1", "vehicle-1");
   });
 });

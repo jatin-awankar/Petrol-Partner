@@ -5,13 +5,15 @@ import { AppError } from "../../shared/errors/app-error";
 import { emitChatRoomLocked } from "../chat/chat.socket";
 import * as chatService from "../chat/chat.service";
 import * as settlementsService from "../settlements/settlements.service";
-import * as verificationRepo from "../verification/verification.repo";
+import * as verificationService from "../verification/verification.service";
+import type { PoolClient } from "pg";
 import type {
   CreateBookingInput,
   ListBookingsQuery,
   UpdateBookingStatusLegacyInput,
 } from "./bookings.schema";
 import * as bookingsRepo from "./bookings.repo";
+import { assertCommitmentsEligible, corridorDeparture } from "../rides/commitment.service";
 
 const BOOKING_EXPIRY_MINUTES = 10;
 const ACTIVE_BOOKING_STATUSES = new Set(["pending", "confirmed"]);
@@ -100,6 +102,15 @@ function ensureNotTerminal(status: string) {
   }
 }
 
+async function assertDriverCurrentForOfferBooking(client: PoolClient,
+  booking: { ride_offer_id: string | null; driver_id: string }) {
+  if (!booking.ride_offer_id) throw new AppError(403,
+    "Passenger ride requests are outside this pilot", "PILOT_DISABLED");
+  const vehicleId = await bookingsRepo.findRideOfferVehicleId(client, booking.ride_offer_id);
+  if (!vehicleId) throw new AppError(403, "Approved car is required", "DRIVER_CAR_NOT_APPROVED");
+  await verificationService.assertCurrentDriverCarEligibility(client, booking.driver_id, vehicleId);
+}
+
 function parseRideDeparture(ride: {
   date: Date | string;
   time: Date | string;
@@ -117,40 +128,12 @@ function parseRideDeparture(ride: {
   return departure;
 }
 
-async function assertApprovedDriverWithVehicle(userId: string) {
-  const eligibility = await verificationRepo.findTransactionEligibilityByUserId(userId);
-
-  if (eligibility?.driver_eligibility_status !== "approved") {
-    throw new AppError(
-      403,
-      "Approved driver eligibility is required before booking ride requests",
-      "DRIVER_ELIGIBILITY_NOT_APPROVED",
-      {
-        status: eligibility?.driver_eligibility_status ?? null,
-      },
-    );
-  }
-
-  const vehicles = await verificationRepo.listVehiclesByOwner(userId);
-  const hasApprovedVehicle = vehicles.some(
-    (vehicle) => vehicle.status === "active" && vehicle.verification_status === "approved",
-  );
-
-  if (!hasApprovedVehicle) {
-    throw new AppError(
-      403,
-      "At least one approved active vehicle is required before booking ride requests",
-      "VEHICLE_NOT_APPROVED",
-    );
-  }
-}
-
 export async function createBooking(userId: string, input: CreateBookingInput) {
   await settlementsService.assertUserCanTransact(userId);
   const isRideOfferFlow = Boolean(input.ride_offer_id);
 
   if (!isRideOfferFlow) {
-    await assertApprovedDriverWithVehicle(userId);
+    throw new AppError(403, "Passenger ride requests are outside this pilot", "PILOT_DISABLED");
   }
 
   const created = await withTransaction(async (client) => {
@@ -313,6 +296,10 @@ export function getBookingById(userId: string, bookingId: string) {
 
 export async function confirmBooking(bookingId: string, actorUserId: string, reason?: string) {
   await withTransaction(async (client) => {
+    const offerId = await bookingsRepo.findBookingOfferId(client, bookingId);
+    if (!offerId) throw new AppError(403, "Passenger ride requests are outside this pilot", "PILOT_DISABLED");
+    const offerStatus = await bookingsRepo.findRideOfferStatusForShare(client, offerId);
+    if (offerStatus !== "active") throw new AppError(409, "Ride is not accepting confirmations", "RIDE_NOT_BOOKABLE");
     const booking = await bookingsRepo.findBookingForUpdate(bookingId, client);
 
     if (!booking) {
@@ -332,6 +319,13 @@ export async function confirmBooking(bookingId: string, actorUserId: string, rea
     if (getRideOwnerId(booking) !== actorUserId) {
       throw new AppError(403, "Only the ride owner can confirm this booking", "FORBIDDEN");
     }
+
+    await assertDriverCurrentForOfferBooking(client, booking);
+    const offer = await bookingsRepo.findRideOfferCommitmentForShare(client, offerId);
+    if (!offer?.vehicle_id) throw new AppError(403, "Approved car is required", "DRIVER_CAR_NOT_APPROVED");
+    await assertCommitmentsEligible(client, { driverId: booking.driver_id,
+      vehicleId: offer.vehicle_id, passengerIds: [booking.passenger_id],
+      rideId: offerId, departureAt: corridorDeparture(offer.date, offer.time) });
 
     const now = new Date();
 
@@ -477,6 +471,8 @@ export async function completeBooking(bookingId: string, actorUserId: string, re
         "BOOKING_COMPLETE_INVALID_STATUS",
       );
     }
+
+    await assertDriverCurrentForOfferBooking(client, booking);
 
     await bookingsRepo.updateBookingLifecycle(
       {

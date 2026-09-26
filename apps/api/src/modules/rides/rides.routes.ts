@@ -19,6 +19,7 @@ ridesRouter.get("/offers", asyncHandler(ridesController.listOffers));
 ridesRouter.post("/offers", requireAuth, requirePilotActivity("offers"), asyncHandler(ridesController.createOffer));
 ridesRouter.get("/offers/:id", asyncHandler(ridesController.getOfferById));
 ridesRouter.patch("/offers/:id", requireAuth, requirePilotActivity("offers"), asyncHandler(ridesController.updateOffer));
+ridesRouter.post("/offers/:id/depart", requireAuth, requirePilotActivity("booking"), asyncHandler(ridesController.departOffer));
 
 ridesRouter.get("/requests", asyncHandler(ridesController.listRequests));
 ridesRouter.post("/requests", requireAuth, requirePilotActivity("requests"), asyncHandler(ridesController.createRequest));
