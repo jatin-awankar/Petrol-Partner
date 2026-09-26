@@ -92,24 +92,32 @@ describe("driver and car approval with PostgreSQL", () => {
       (owner_user_id, vehicle_type, registration_number_last4, seat_capacity)
       VALUES ($1, 'car', '6789', 4) RETURNING id`, [driver])).rows[0].id;
     await expect(classifyVehicle(other, car, { use_category: "private",
-      insurance_expires_at: "2099-12-31", registration_expires_at: null }))
+      applicable_document_required: true, insurance_expires_at: "2099-12-31", registration_expires_at: null }))
       .rejects.toMatchObject({ code: "VEHICLE_NOT_FOUND" });
     await classifyVehicle(driver, car, { use_category: "private",
-      insurance_expires_at: "2099-12-31", registration_expires_at: null });
+      applicable_document_required: true, insurance_expires_at: "2099-12-31", registration_expires_at: null });
     const association = await submitAssociation(driver, car, "owner");
     await expect(submitAssociation(other, car, "owner"))
       .rejects.toMatchObject({ code: "PERMISSION_INVALID" });
+    const reviews = new DriverCarReviewService(pool);
+    await expect(reviews.decide(operator, "car-without-applicable", "vehicle", car,
+      { outcome: "approved", reason: "Synthetic review before document upload", review_after: "2099-12-30" }))
+      .rejects.toMatchObject({ code: "EVIDENCE_REQUIRED" });
     for (const [type, id, purpose] of [
       ["driver", driver, "licence"], ["vehicle", car, "registration"],
-      ["vehicle", car, "insurance"], ["association", association.id, "permission"],
+      ["vehicle", car, "insurance"],
+      ["association", association.id, "permission"],
     ] as const) await uploadEvidence(driver, type, id, purpose, pdf, "application/pdf");
+    await expect(reviews.decide(operator, "car-without-applicable", "vehicle", car,
+      { outcome: "approved", reason: "Synthetic review before applicable document", review_after: "2099-12-30" }))
+      .rejects.toMatchObject({ code: "EVIDENCE_REQUIRED" });
+    await uploadEvidence(driver, "vehicle", car, "applicable", pdf, "application/pdf");
     await expect(uploadEvidence(other, "vehicle", car, "applicable", pdf, "application/pdf"))
       .rejects.toMatchObject({ code: "SUBMISSION_NOT_FOUND" });
     const access = await grantEvidenceAccess(operator, "driver", driver, "licence");
     expect((await readPrivateEvidence(operator, "driver", driver, "licence", access.token)).bytes).toEqual(pdf);
     await expect(readPrivateEvidence(operator, "driver", driver, "licence", access.token))
       .rejects.toMatchObject({ code: "EVIDENCE_ACCESS_EXPIRED" });
-    const reviews = new DriverCarReviewService(pool);
     const tomorrow = "2099-12-30";
     const decide = (key: string, type: "driver" | "vehicle" | "association", id: string) =>
       reviews.decide(operator, key, type, id, { outcome: "approved", reason: "Synthetic documents inspected",
@@ -155,6 +163,8 @@ describe("driver and car approval with PostgreSQL", () => {
     await db.query("UPDATE student_verifications SET eligibility_ends_at = now() - interval '1 second' WHERE user_id = $1", [driver]);
     await expect(assertApprovedDriverCanOfferRide(driver, car))
       .rejects.toMatchObject({ code: "DRIVER_CAR_NOT_APPROVED" });
+    await expect(uploadEvidence(driver, "vehicle", car, "applicable", pdf, "application/pdf"))
+      .rejects.toMatchObject({ code: "STUDENT_VERIFICATION_INACTIVE" });
     await db.query("UPDATE student_verifications SET eligibility_ends_at = now() + interval '1 year' WHERE user_id = $1", [driver]);
     const revoked = await reviews.decide(operator, "permission-revoke", "association", association.id,
       { outcome: "revoked", reason: "Synthetic permission was withdrawn", review_after: null });
@@ -168,7 +178,7 @@ describe("driver and car approval with PostgreSQL", () => {
     expect((await db.query(`SELECT count(*)::int AS n FROM pilot_notification_events
       WHERE origin_type = 'driver_car_review' AND ready_at IS NOT NULL`)).rows[0].n).toBe(4);
     expect((await db.query(`SELECT count(*)::int AS n FROM driver_car_evidence
-      WHERE status = 'retained' AND delete_after <= decision_at + interval '7 days'`)).rows[0].n).toBe(4);
+      WHERE status = 'retained' AND delete_after <= decision_at + interval '7 days'`)).rows[0].n).toBe(5);
     await db.query("UPDATE operator_allowlist SET active = true WHERE user_id = $1", [operator]);
     await db.query("DELETE FROM driver_vehicle_approvals WHERE id = $1", [association.id]);
     await db.query("DELETE FROM vehicles WHERE id = $1", [car]);
@@ -186,6 +196,6 @@ describe("driver and car approval with PostgreSQL", () => {
     expect((await db.query("SELECT state FROM driver_car_review_operations WHERE id = $1", [revoked.id]))
       .rows[0].state).toBe("recovered");
     expect((await db.query("SELECT count(*)::int AS n FROM driver_car_evidence WHERE status = 'retained'"))
-      .rows[0].n).toBe(4);
+      .rows[0].n).toBe(5);
   });
 });

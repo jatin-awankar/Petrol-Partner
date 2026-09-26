@@ -131,12 +131,14 @@ async function subject(client: PoolClient, type: Type, id: string, outcome: Deci
     }
     if (outcome === "approved") {
       if (!["car", "suv"].includes(row.vehicle_type) || row.use_category !== "private" ||
+          row.applicable_document_required === null ||
           !row.insurance_expires_at || row.insurance_expires_at <= new Date().toISOString().slice(0, 10) ||
           (row.registration_expires_at && row.registration_expires_at <= new Date().toISOString().slice(0, 10))) {
         throw new AppError(409, "Car is outside pilot eligibility", "VEHICLE_INELIGIBLE");
       }
       await evidence(client, type, id, "registration");
       await evidence(client, type, id, "insurance");
+      if (row.applicable_document_required) await evidence(client, type, id, "applicable");
     }
     return { applicantId: row.owner_user_id, snapshot: row };
   }
@@ -215,13 +217,14 @@ async function restoreMissingSubject(client: PoolClient, row: Operation) {
     await client.query(`INSERT INTO vehicles
       (id, owner_user_id, vehicle_type, make, model, color, registration_number_last4,
        seat_capacity, status, verification_status, use_category, insurance_expires_at,
-       registration_expires_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'active', 'pending_review', $9, $10, $11)
+       registration_expires_at, applicable_document_required)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'active', 'pending_review', $9, $10, $11, $12)
       ON CONFLICT (id) DO NOTHING`,
       [row.subject_id, snapshot.owner_user_id, snapshot.vehicle_type, snapshot.make ?? null,
         snapshot.model ?? null, snapshot.color ?? null, snapshot.registration_number_last4,
         snapshot.seat_capacity, snapshot.use_category ?? null,
-        snapshot.insurance_expires_at ?? null, snapshot.registration_expires_at ?? null]);
+        snapshot.insurance_expires_at ?? null, snapshot.registration_expires_at ?? null,
+        snapshot.applicable_document_required ?? null]);
   } else {
     if (snapshot.id !== row.subject_id || typeof snapshot.driver_user_id !== "string" ||
         typeof snapshot.vehicle_id !== "string" ||

@@ -67,6 +67,7 @@ export const reviewStudentVerificationSchema = z.object({
 
 export const classifyPilotVehicleSchema = z.strictObject({
   use_category: z.literal("private"),
+  applicable_document_required: z.boolean(),
   insurance_expires_at: dateSchema,
   registration_expires_at: dateSchema.nullable(),
 });

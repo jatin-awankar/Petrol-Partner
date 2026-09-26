@@ -19,6 +19,7 @@ export async function currentPilotEligibility(client: PoolClient, driverId: stri
         AND a.status = 'approved' AND a.review_after > CURRENT_DATE
         AND v.status = 'active' AND v.verification_status = 'approved'
         AND v.vehicle_type IN ('car', 'suv') AND v.use_category = 'private'
+        AND v.applicable_document_required IS NOT NULL
         AND v.insurance_expires_at > CURRENT_DATE
         AND (v.registration_expires_at IS NULL OR v.registration_expires_at > CURRENT_DATE)
         AND v.review_after > CURRENT_DATE
@@ -60,10 +61,10 @@ export async function submitAssociation(client: PoolClient, driverId: string, ve
 export async function vehicleForUpdate(client: PoolClient, id: string) {
   return (await client.query<{ id: string; owner_user_id: string; vehicle_type: string; status: string; verification_status: string;
     registration_number_last4: string; seat_capacity: number; make: string | null; model: string | null;
-    color: string | null; use_category: string | null; insurance_expires_at: string | null;
+    color: string | null; use_category: string | null; applicable_document_required: boolean | null; insurance_expires_at: string | null;
     registration_expires_at: string | null; review_after: string | null }>(
     `SELECT id, owner_user_id, vehicle_type, status, verification_status,
-      registration_number_last4, seat_capacity, make, model, color, use_category,
+      registration_number_last4, seat_capacity, make, model, color, use_category, applicable_document_required,
       to_char(insurance_expires_at, 'YYYY-MM-DD') AS insurance_expires_at,
       to_char(registration_expires_at, 'YYYY-MM-DD') AS registration_expires_at,
       to_char(review_after, 'YYYY-MM-DD') AS review_after
@@ -72,16 +73,16 @@ export async function vehicleForUpdate(client: PoolClient, id: string) {
 }
 
 export async function classifyVehicle(client: PoolClient, ownerId: string, id: string, input: {
-  useCategory: string; insuranceExpiresAt: string; registrationExpiresAt: string | null;
+  useCategory: string; applicableDocumentRequired: boolean; insuranceExpiresAt: string; registrationExpiresAt: string | null;
 }) {
   return (await client.query(
     `UPDATE vehicles SET use_category = $3, insurance_expires_at = $4,
-      registration_expires_at = $5, verification_status = 'pending_review',
+      registration_expires_at = $5, applicable_document_required = $6, verification_status = 'pending_review',
       review_after = NULL, reviewed_by_user_id = NULL, reviewed_at = NULL,
       metadata = metadata - 'reviewReason', updated_at = now()
       WHERE id = $2 AND owner_user_id = $1 AND verification_status <> 'approved'
-      RETURNING id, use_category, insurance_expires_at, registration_expires_at, verification_status`,
-    [ownerId, id, input.useCategory, input.insuranceExpiresAt, input.registrationExpiresAt],
+      RETURNING id, use_category, insurance_expires_at, registration_expires_at, applicable_document_required, verification_status`,
+    [ownerId, id, input.useCategory, input.insuranceExpiresAt, input.registrationExpiresAt, input.applicableDocumentRequired],
   )).rows[0] ?? null;
 }
 

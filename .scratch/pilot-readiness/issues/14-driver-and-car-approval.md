@@ -20,6 +20,19 @@
 - [ ] Expose a single current eligibility check consumed by offer/acceptance/departure; expired or revoked approval fails synchronously regardless of worker progress.
 - [ ] Demonstrate applicant and operator flows plus independent status, expiry-boundary, wrong-owner and evidence-deletion tests. Later booking holds extend revocation handling, not the basic eligibility rule.
 
+## Answer
+
+Implementation is in progress on `codex/14-driver-car-approval`. The API now supports separate driver, private-car, and permission-to-use submissions and protected operator decisions. Private evidence uses one-use operator access and deletion work. A shared PostgreSQL eligibility query checks current student, driver, car, and association approval and expiry before an offer or booking acceptance. Synthetic PostgreSQL tests cover independent decisions, expiry boundaries, wrong-owner access, decision retries and recovery, and evidence deletion.
+
+Review found two acceptance gaps, so this ticket remains claimed:
+
+- There is no departure/start-trip mutation in the current API. The shared eligibility check therefore cannot yet be demonstrated at departure.
+- The suite does not yet demonstrate the applicant and operator HTTP flows end to end or a separate-connection acceptance/departure race. Existing focused tests exercise the services and worker, including refusal to approve when a required applicable document is absent.
+
+Production evidence intake remains gated by provider and independent receipt retention verification. No real trips or deployed data migration were enabled. Reviewer also identified SQL in the new review service that should move to repository functions before resolution.
+
+Checks: `npm run typecheck` passed; `npm test` passed against a disposable local PostgreSQL database; the focused driver-car PostgreSQL test passed after the final migration and evidence changes; `npm run lint` passed with 10 pre-existing warnings. API and worker builds passed. `npm run build:all` failed because the Next.js build could not fetch Poppins from Google Fonts in this network-restricted environment.
+
 ## Completion evidence
 
 Record the demonstrated behavior, checks run and their results, remaining limitations, and any required operator decision. A technical ticket is not resolved while a required criterion fails or depends on missing evidence. Human-led tickets require the actual human findings or decision; agent-generated assumptions cannot close them.

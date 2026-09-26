@@ -34,7 +34,7 @@ async function assertApplicantOwnsSubject(client: PoolClient, userId: string, ty
 }
 
 export async function classifyVehicle(userId: string, vehicleId: string, input: {
-  use_category: string; insurance_expires_at: string; registration_expires_at: string | null;
+  use_category: string; applicable_document_required: boolean; insurance_expires_at: string; registration_expires_at: string | null;
 }) {
   if (input.use_category !== "private") throw new AppError(400,
     "Only private cars are eligible for this pilot", "VEHICLE_INELIGIBLE");
@@ -50,7 +50,8 @@ export async function classifyVehicle(userId: string, vehicleId: string, input: 
       throw new AppError(409, "Vehicle category is outside this pilot", "VEHICLE_INELIGIBLE");
     }
     const updated = await repo.classifyVehicle(client, userId, vehicleId, {
-      useCategory: input.use_category, insuranceExpiresAt: input.insurance_expires_at,
+      useCategory: input.use_category, applicableDocumentRequired: input.applicable_document_required,
+      insuranceExpiresAt: input.insurance_expires_at,
       registrationExpiresAt: input.registration_expires_at,
     });
     if (!updated) throw new AppError(409, "Approved vehicle details require operator review", "VEHICLE_REVIEW_CONFLICT");
@@ -84,6 +85,11 @@ export async function uploadEvidence(userId: string, type: Type, id: string, pur
   let key: string | null = null;
   try {
     return await withTransaction(async (client) => {
+      const student = await verificationRepo.findStudentEligibilityForUpdate(client, userId);
+      if (!student || !["verified", "revalidation_due"].includes(student.status) || !student.adult_eligible ||
+          new Date(student.eligibility_ends_at) <= new Date()) {
+        throw new AppError(403, "Current student approval is required", "STUDENT_VERIFICATION_INACTIVE");
+      }
       const status = await assertApplicantOwnsSubject(client, userId, type, id);
       if (status !== "pending_review" && status !== "rejected") {
         throw new AppError(409, "Evidence cannot be changed after approval", "EVIDENCE_REVIEWED");
@@ -111,10 +117,12 @@ export async function grantEvidenceAccess(operatorId: string, type: Type, id: st
     const evidence = await repo.evidenceForUpdate(client, type, id, purpose);
     if (!evidence || evidence.status !== "pending_review") throw new AppError(404, "Evidence unavailable", "EVIDENCE_NOT_FOUND");
     await client.query(`INSERT INTO driver_car_evidence_access_grants
-      (token_hash, operator_id, evidence_id, expires_at) VALUES ($1, $2, $3, now() + interval '5 minutes')`,
+      (token_hash, operator_id, evidence_id, access_purpose, expires_at)
+      VALUES ($1, $2, $3, 'eligibility_review', now() + interval '5 minutes')`,
       [createHash("sha256").update(token).digest("hex"), operatorId, evidence.id]);
     await client.query(`INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, metadata)
-      VALUES ($1, 'driver_car_evidence_access_granted', 'driver_car_evidence', $2, '{}'::jsonb)`,
+      VALUES ($1, 'driver_car_evidence_access_granted', 'driver_car_evidence', $2,
+        '{"purpose":"eligibility_review"}'::jsonb)`,
       [operatorId, evidence.id]);
   });
   return { token, expires_in_seconds: 300 };
@@ -135,7 +143,8 @@ export async function readPrivateEvidence(operatorId: string, type: Type, id: st
       throw new AppError(409, "Evidence integrity check failed", "EVIDENCE_LOST");
     }
     await client.query(`INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, metadata)
-      VALUES ($1, 'driver_car_evidence_accessed', 'driver_car_evidence', $2, '{}'::jsonb)`,
+      VALUES ($1, 'driver_car_evidence_accessed', 'driver_car_evidence', $2,
+        '{"purpose":"eligibility_review"}'::jsonb)`,
       [operatorId, evidence.id]);
     return { bytes, contentType: evidence.content_type };
   });

@@ -4,6 +4,7 @@ ALTER TABLE vehicles
   ADD COLUMN IF NOT EXISTS use_category text CHECK (use_category IN ('private', 'taxi', 'rental', 'commercial')),
   ADD COLUMN IF NOT EXISTS registration_expires_at date,
   ADD COLUMN IF NOT EXISTS insurance_expires_at date,
+  ADD COLUMN IF NOT EXISTS applicable_document_required boolean,
   ADD COLUMN IF NOT EXISTS review_after date;
 
 ALTER TABLE driver_eligibility ADD COLUMN IF NOT EXISTS review_after date;
@@ -70,9 +71,13 @@ CREATE TABLE IF NOT EXISTS driver_car_evidence_access_grants (
   token_hash text PRIMARY KEY,
   operator_id uuid NOT NULL REFERENCES users(id),
   evidence_id uuid NOT NULL REFERENCES driver_car_evidence(id),
+  access_purpose text NOT NULL DEFAULT 'eligibility_review' CHECK (access_purpose = 'eligibility_review'),
   expires_at timestamptz NOT NULL,
   consumed_at timestamptz
 );
+ALTER TABLE driver_car_evidence_access_grants
+  ADD COLUMN IF NOT EXISTS access_purpose text NOT NULL DEFAULT 'eligibility_review'
+    CHECK (access_purpose = 'eligibility_review');
 
 CREATE TABLE IF NOT EXISTS driver_car_review_operations (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
