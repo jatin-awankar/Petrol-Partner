@@ -31,6 +31,11 @@ vi.mock("../verification/verification.service", () => ({
   })),
 }));
 
+vi.mock("./commitment.service", () => ({
+  corridorDeparture: vi.fn(() => new Date("2026-03-20T04:30:00.000Z")),
+  assertCommitmentsEligible: vi.fn(async () => undefined),
+}));
+
 vi.mock("./rides.repo", () => ({
   createRideOffer: vi.fn(async () => ({
     id: "offer-1",

@@ -8,8 +8,9 @@ import { assertApprovedDriverCanOfferRide, upsertDriverEligibility } from "./ver
 import { classifyVehicle, submitAssociation, uploadEvidence, grantEvidenceAccess,
   readPrivateEvidence } from "./driver-car.service";
 import { DriverCarReviewService, setDriverCarReviewCrashHookForTests } from "./driver-car-review.service";
-import { DepartureService } from "../rides/departure.service";
+import { DepartureService, setDepartureCrashHookForTests } from "../rides/departure.service";
 import { confirmBooking } from "../bookings/bookings.service";
+import { PauseService } from "../operator/pause.service";
 
 const db = new Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
 const migrations = ["0001_init.sql", "0006_operator_allowlist.sql", "0007_operator_pause.sql",
@@ -33,12 +34,25 @@ beforeEach(async () => {
   process.env.PILOT_SYNTHETIC_EVIDENCE_DIR = directory;
   process.env.PILOT_RECEIPT_PATH = resolve(directory, "receipts");
   process.env.PILOT_RECEIPT_SECRET = "driver-car-integration-receipt-secret";
+  process.env.PILOT_EXPECTED_TRIP_MINUTES = "60";
+  process.env.PILOT_CONFLICT_BUFFER_MINUTES = "30";
+  process.env.PILOT_CONFLICT_POLICY_APPROVED = "true";
+  process.env.PILOT_SUPPORT_WINDOW_START = new Date(Date.now() - 60 * 60_000).toISOString();
+  process.env.PILOT_SUPPORT_WINDOW_END = new Date(Date.now() + 60 * 60_000).toISOString();
+  process.env.PILOT_SUPPORT_WINDOW_APPROVED = "true";
 });
 afterEach(async () => {
   setDriverCarReviewCrashHookForTests(null);
+  setDepartureCrashHookForTests(null);
   delete process.env.PILOT_SYNTHETIC_EVIDENCE_DIR;
   delete process.env.PILOT_RECEIPT_PATH;
   delete process.env.PILOT_RECEIPT_SECRET;
+  delete process.env.PILOT_EXPECTED_TRIP_MINUTES;
+  delete process.env.PILOT_CONFLICT_BUFFER_MINUTES;
+  delete process.env.PILOT_CONFLICT_POLICY_APPROVED;
+  delete process.env.PILOT_SUPPORT_WINDOW_START;
+  delete process.env.PILOT_SUPPORT_WINDOW_END;
+  delete process.env.PILOT_SUPPORT_WINDOW_APPROVED;
   await rm(directory, { recursive: true, force: true });
 });
 afterAll(async () => { await Promise.all([db.end(), pool.end()]); });
@@ -64,6 +78,8 @@ describe("driver and car approval with PostgreSQL", () => {
     const passenger = await user("departure-passenger@example.test");
     const other = await user("departure-other@example.test");
     await approvedStudent(driver);
+    await approvedStudent(passenger);
+    await approvedStudent(other);
     await db.query(`INSERT INTO driver_eligibility
       (user_id, status, license_number_last4, license_expires_at, review_after)
       VALUES ($1, 'approved', '1234', CURRENT_DATE + 100, CURRENT_DATE + 100)`, [driver]);
@@ -99,6 +115,24 @@ describe("driver and car approval with PostgreSQL", () => {
     await expect(departures.start(driver, "too-early", ride, [booking],
       new Date(now.getTime() - 16 * 60_000)))
       .rejects.toMatchObject({ code: "DEPARTURE_WINDOW_CLOSED" });
+    process.env.PILOT_SUPPORT_WINDOW_END = new Date(now.getTime() - 1000).toISOString();
+    await expect(departures.start(driver, "outside-support", ride, [booking], now))
+      .rejects.toMatchObject({ code: "SUPPORT_WINDOW_CLOSED" });
+    process.env.PILOT_SUPPORT_WINDOW_END = new Date(now.getTime() + 60 * 60_000).toISOString();
+    await db.query("UPDATE student_verifications SET eligibility_ends_at = now() - interval '1 second' WHERE user_id = $1", [passenger]);
+    await expect(departures.start(driver, "passenger-expired", ride, [booking], now))
+      .rejects.toMatchObject({ code: "PASSENGER_VERIFICATION_INACTIVE" });
+    await db.query("UPDATE student_verifications SET eligibility_ends_at = now() + interval '1 year' WHERE user_id = $1", [passenger]);
+    const conflict = (await db.query<{ id: string }>(`INSERT INTO ride_offers
+      (driver_id, vehicle_id, pickup_location, pickup_lat, pickup_lng,
+       drop_location, drop_lat, drop_lng, date, time, available_seats,
+       price_per_seat_paise, status)
+      VALUES ($1, $2, 'College', 20, 77, 'Home', 20.1, 77.1,
+        $3, $4, 3, 10000, 'active') RETURNING id`,
+      [driver, car, date, time])).rows[0].id;
+    await expect(departures.start(driver, "overlapping-ride", ride, [booking], now))
+      .rejects.toMatchObject({ code: "COMMITMENT_CONFLICT" });
+    await db.query("DELETE FROM ride_offers WHERE id = $1", [conflict]);
     const revoker = await db.connect();
     try {
       await revoker.query("BEGIN");
@@ -124,15 +158,28 @@ describe("driver and car approval with PostgreSQL", () => {
     try {
       await gate.query("BEGIN");
       await gate.query("SELECT id FROM ride_offers WHERE id = $1 FOR UPDATE", [ride]);
+      setDepartureCrashHookForTests((point) => {
+        if (point === "after_commit") throw new Error("synthetic departure crash after commit");
+      });
       const departureAttempt = departures.start(driver, "depart-once", ride, [booking], now);
       const confirmationAttempt = confirmBooking(secondBooking, driver);
       const settled = Promise.allSettled([departureAttempt, confirmationAttempt]);
       await new Promise((resolve) => setTimeout(resolve, 30));
       await gate.query("COMMIT");
       const [departureResult, confirmationResult] = await settled;
-      expect(departureResult.status).toBe("fulfilled");
-      if (departureResult.status !== "fulfilled") throw departureResult.reason;
-      started = departureResult.value;
+      expect(departureResult.status).toBe("rejected");
+      if (departureResult.status !== "rejected") throw new Error("Expected synthetic departure crash");
+      expect(departureResult.reason).toMatchObject({ message: "synthetic departure crash after commit" });
+      expect((await db.query("SELECT state FROM ride_departures WHERE ride_offer_id = $1", [ride]))
+        .rows[0].state).toBe("committed");
+      setDepartureCrashHookForTests((point) => {
+        if (point === "after_receipt") throw new Error("synthetic departure crash after receipt");
+      });
+      await expect(departures.start(driver, "depart-once", ride, [booking], now))
+        .rejects.toMatchObject({ code: "OPERATION_PENDING" });
+      setDepartureCrashHookForTests(null);
+      started = await departures.start(driver, "depart-once", ride, [booking], now);
+      await db.query("UPDATE pilot_recovery_state SET mode = 'open', cause = NULL, started_at = NULL");
       const secondStatus = (await db.query("SELECT status FROM bookings WHERE id = $1", [secondBooking]))
         .rows[0].status;
       if (confirmationResult.status === "fulfilled") {
@@ -156,6 +203,15 @@ describe("driver and car approval with PostgreSQL", () => {
       .toBe("departed");
     expect((await db.query("SELECT boarded FROM ride_departure_boarding WHERE booking_id = $1", [booking]))
       .rows[0].boarded).toBe(true);
+    const operator = await user("departure-reviewer@example.test", true);
+    await db.query("DELETE FROM ride_departure_boarding WHERE ride_offer_id = $1", [ride]);
+    await db.query("DELETE FROM ride_departures WHERE ride_offer_id = $1", [ride]);
+    await db.query("UPDATE ride_offers SET status = 'active' WHERE id = $1", [ride]);
+    await departures.reconcileReceipts(operator);
+    expect((await db.query("SELECT status FROM ride_offers WHERE id = $1", [ride])).rows[0].status)
+      .toBe("departed");
+    expect((await db.query("SELECT state FROM ride_departures WHERE ride_offer_id = $1", [ride]))
+      .rows[0].state).toBe("recovered");
     const future = (await db.query<{ id: string }>(`INSERT INTO ride_offers
       (driver_id, vehicle_id, pickup_location, pickup_lat, pickup_lng,
        drop_location, drop_lat, drop_lng, date, time, available_seats,
@@ -163,12 +219,23 @@ describe("driver and car approval with PostgreSQL", () => {
       VALUES ($1, $2, 'College', 20, 77, 'Home', 20.1, 77.1,
         CURRENT_DATE + 1, '09:00', 3, 10000, 'active') RETURNING id`,
       [driver, car])).rows[0].id;
-    const operator = await user("departure-reviewer@example.test", true);
-    await new DriverCarReviewService(pool).decide(operator, "revoke-after-departure",
+    const revocation = await new DriverCarReviewService(pool).decide(operator, "revoke-after-departure",
       "association", association, { outcome: "revoked", reason: "Permission withdrawn",
         review_after: null });
     expect((await db.query("SELECT status FROM ride_offers WHERE id = $1", [future]))
       .rows[0].status).toBe("held");
+    expect((await db.query("SELECT priority FROM pilot_ride_incidents WHERE ride_offer_id = $1", [ride]))
+      .rows[0].priority).toBe("high");
+    await db.query("DELETE FROM pilot_ride_incidents WHERE review_operation_id = $1", [revocation.id]);
+    await db.query("DELETE FROM ride_departure_boarding WHERE ride_offer_id = $1", [ride]);
+    await db.query("DELETE FROM ride_departures WHERE ride_offer_id = $1", [ride]);
+    await db.query("DELETE FROM driver_car_review_operations WHERE id = $1", [revocation.id]);
+    await db.query("UPDATE ride_offers SET status = 'active' WHERE id IN ($1, $2)", [ride, future]);
+    await new PauseService(pool).reconcile(operator);
+    expect((await db.query("SELECT status FROM ride_offers WHERE id = $1", [ride])).rows[0].status)
+      .toBe("departed");
+    expect((await db.query("SELECT status FROM ride_offers WHERE id = $1", [future])).rows[0].status)
+      .toBe("held");
     expect((await db.query("SELECT priority FROM pilot_ride_incidents WHERE ride_offer_id = $1", [ride]))
       .rows[0].priority).toBe("high");
   });

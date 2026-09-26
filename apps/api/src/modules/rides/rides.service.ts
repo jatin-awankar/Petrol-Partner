@@ -14,6 +14,7 @@ import * as pricingService from "../pricing/pricing.service";
 import * as settlementsService from "../settlements/settlements.service";
 import * as verificationService from "../verification/verification.service";
 import * as ridesRepo from "./rides.repo";
+import { assertCommitmentsEligible, corridorDeparture } from "./commitment.service";
 
 function normalizeVehicleDetails(value: unknown) {
   if (value === undefined) {
@@ -129,6 +130,8 @@ export async function createRideOffer(driverId: string, input: CreateRideOfferIn
   };
   const rideOffer = await withTransaction(async (client) => {
     await verificationService.assertCurrentDriverCarEligibility(client, driverId, input.vehicle_id);
+    await assertCommitmentsEligible(client, { driverId, vehicleId: input.vehicle_id,
+      passengerIds: [], rideId: null, departureAt: corridorDeparture(input.date, input.time) });
     return ridesRepo.createRideOffer(driverId, {
       ...pricingAwareInput,
       vehicle_details: normalizeVehicleDetails(input.vehicle_details),

@@ -12,17 +12,18 @@ import { inProtectedTransaction } from "../protected-mutation/protocol";
 import { recordDurableNotification, markDurableNotificationReady } from "../notifications/contract.repo";
 import { readEvidence } from "./student-evidence.storage";
 import * as evidenceRepo from "./driver-car.repo";
+import * as reviewRepo from "./driver-car-review.repo";
 
 type Type = evidenceRepo.SubjectType;
 export type Decision = { outcome: "approved" | "rejected" | "revoked"; reason: string; review_after: string | null };
-type EvidenceSnapshot = { purpose: evidenceRepo.EvidencePurpose; objectKey: string;
+export type EvidenceSnapshot = { purpose: evidenceRepo.EvidencePurpose; objectKey: string;
   contentType: string; byteCount: number; sha256: string; uploadedAt: string };
-type Operation = { id: string; operator_id: string; idempotency_key: string; payload_digest: string;
+export type Operation = { id: string; operator_id: string; idempotency_key: string; payload_digest: string;
   subject_type: Type; subject_id: string; applicant_user_id: string; outcome: Decision["outcome"];
   reason: string; review_after: string | null; decision_snapshot: Record<string, unknown>;
   evidence_snapshot: EvidenceSnapshot[];
   state: "committed" | "acknowledged" | "recovered"; committed_at: Date };
-type Receipt = { operationId: string; operatorId: string; idempotencyKey: string;
+export type Receipt = { operationId: string; operatorId: string; idempotencyKey: string;
   payloadDigest: string; subjectType: Type; subjectId: string; applicantId: string;
   outcome: Decision["outcome"]; reason: string; reviewAfter: string | null;
   decisionSnapshot: Record<string, unknown>; evidenceSnapshot: EvidenceSnapshot[]; committedAt: string };
@@ -78,11 +79,6 @@ async function restrict(database: Pool, cause: string) {
     await operatorQuery(client, "recordRestriction", [cause]);
   });
 }
-async function byKey(client: Pool | PoolClient, operatorId: string, key: string) {
-  return (await client.query<Operation>(
-    `SELECT * FROM driver_car_review_operations WHERE operator_id = $1 AND idempotency_key = $2`,
-    [operatorId, key])).rows[0] ?? null;
-}
 async function evidence(client: PoolClient, type: Type, id: string, purpose: evidenceRepo.EvidencePurpose) {
   const row = await evidenceRepo.evidenceForUpdate(client, type, id, purpose);
   if (!row || row.status !== "pending_review") throw new AppError(409, `${purpose} evidence is required`, "EVIDENCE_REQUIRED");
@@ -99,15 +95,8 @@ async function evidence(client: PoolClient, type: Type, id: string, purpose: evi
 }
 async function subject(client: PoolClient, type: Type, id: string, outcome: Decision["outcome"]) {
   if (type === "driver") {
-    const student = outcome === "approved" ? (await client.query<{
-      status: string; adult_eligible: boolean; eligibility_ends_at: Date }>(
-      `SELECT status, adult_eligible, eligibility_ends_at FROM student_verifications
-       WHERE user_id = $1 FOR SHARE`, [id])).rows[0] : null;
-    const row = (await client.query<{ user_id: string; status: string; license_expires_at: string | null }>(
-      `SELECT user_id, status, license_number_last4, to_char(license_expires_at, 'YYYY-MM-DD') AS license_expires_at,
-       to_char(insurance_expires_at, 'YYYY-MM-DD') AS insurance_expires_at,
-       to_char(puc_expires_at, 'YYYY-MM-DD') AS puc_expires_at
-       FROM driver_eligibility WHERE user_id = $1 FOR UPDATE`, [id])).rows[0];
+    const student = outcome === "approved" ? await reviewRepo.studentForShare(client, id) : null;
+    const row = await reviewRepo.driverReviewForUpdate(client, id);
     if (!row) throw new AppError(404, "Driver submission not found", "SUBMISSION_NOT_FOUND");
     if (outcome === "revoked" ? row.status !== "approved" : row.status !== "pending_review") {
       throw new AppError(409, "Driver review transition is invalid", "DRIVER_REVIEW_CONFLICT");
@@ -142,12 +131,10 @@ async function subject(client: PoolClient, type: Type, id: string, outcome: Deci
     }
     return { applicantId: row.owner_user_id, snapshot: row };
   }
-  const candidate = (await client.query<{ vehicle_id: string }>(
-    `SELECT vehicle_id FROM driver_vehicle_approvals WHERE id = $1`, [id])).rows[0];
-  if (!candidate) throw new AppError(404, "Association submission not found", "SUBMISSION_NOT_FOUND");
-  const car = await evidenceRepo.vehicleForUpdate(client, candidate.vehicle_id);
-  const row = (await client.query<{ id: string; driver_user_id: string; vehicle_id: string; status: string;
-    permission_category: string }>(`SELECT * FROM driver_vehicle_approvals WHERE id = $1 FOR UPDATE`, [id])).rows[0];
+  const vehicleId = await reviewRepo.associationVehicleId(client, id);
+  if (!vehicleId) throw new AppError(404, "Association submission not found", "SUBMISSION_NOT_FOUND");
+  const car = await evidenceRepo.vehicleForUpdate(client, vehicleId);
+  const row = await reviewRepo.associationReviewForUpdate(client, id);
   if (!row) throw new AppError(404, "Association submission not found", "SUBMISSION_NOT_FOUND");
   if (outcome === "revoked" ? row.status !== "approved" : row.status !== "pending_review") {
     throw new AppError(409, "Association review transition is invalid", "ASSOCIATION_REVIEW_CONFLICT");
@@ -160,91 +147,8 @@ async function subject(client: PoolClient, type: Type, id: string, outcome: Deci
   }
   return { applicantId: row.driver_user_id, snapshot: row };
 }
-async function apply(client: PoolClient, row: Operation, replaying = false) {
-  if (replaying) {
-    const table = row.subject_type === "driver" ? "driver_eligibility"
-      : row.subject_type === "vehicle" ? "vehicles" : "driver_vehicle_approvals";
-    const column = row.subject_type === "driver" ? "user_id" : "id";
-    const current = (await client.query<{ reviewed_at: Date | null }>(
-      `SELECT reviewed_at FROM ${table} WHERE ${column} = $1 FOR UPDATE`, [row.subject_id])).rows[0];
-    if (current?.reviewed_at && current.reviewed_at > row.committed_at) return;
-  }
-  let updated;
-  if (row.subject_type === "driver") {
-    updated = await client.query(`UPDATE driver_eligibility SET status = $2, reviewed_by_user_id = $3,
-      reviewed_at = $4::timestamptz, review_after = $6, approved_at = CASE WHEN $2 = 'approved' THEN $4::timestamptz ELSE NULL END,
-      metadata = jsonb_set(metadata, '{reviewReason}', to_jsonb($5::text)), updated_at = now()
-      WHERE user_id = $1 AND (reviewed_at IS NULL OR reviewed_at <= $4::timestamptz)`,
-      [row.subject_id, row.outcome === "revoked" ? "suspended" : row.outcome,
-      row.operator_id, row.committed_at, row.reason, row.review_after]);
-  } else if (row.subject_type === "vehicle") {
-    updated = await client.query(`UPDATE vehicles SET verification_status = $2,
-      status = CASE WHEN $2 = 'approved' THEN 'active' ELSE 'suspended' END,
-      review_after = $3, reviewed_by_user_id = $4, reviewed_at = $5,
-      metadata = jsonb_set(metadata, '{reviewReason}', to_jsonb($6::text)), updated_at = now()
-      WHERE id = $1 AND (reviewed_at IS NULL OR reviewed_at <= $5::timestamptz)`,
-      [row.subject_id, row.outcome === "approved" ? "approved" : "rejected",
-      row.review_after, row.operator_id, row.committed_at, row.reason]);
-  } else {
-    updated = await client.query(`UPDATE driver_vehicle_approvals SET status = $2, review_after = $3,
-      reason = $4, reviewed_by_user_id = $5, reviewed_at = $6, updated_at = now()
-      WHERE id = $1 AND (reviewed_at IS NULL OR reviewed_at <= $6::timestamptz)`,
-      [row.subject_id, row.outcome, row.review_after, row.reason,
-      row.operator_id, row.committed_at]);
-  }
-  if (!updated.rowCount) throw new AppError(409, "Decision subject requires recovery review", "RECOVERY_INCOMPLETE");
-}
-
-async function restoreMissingSubject(client: PoolClient, row: Operation) {
-  const snapshot = row.decision_snapshot;
-  if (row.subject_type === "driver") {
-    if (snapshot.user_id !== row.subject_id || typeof snapshot.license_number_last4 !== "string" ||
-        typeof snapshot.license_expires_at !== "string") {
-      throw new AppError(409, "Driver recovery snapshot is incomplete", "RECOVERY_INCOMPLETE");
-    }
-    await client.query(`INSERT INTO driver_eligibility
-      (user_id, status, license_number_last4, license_expires_at, insurance_expires_at, puc_expires_at)
-      VALUES ($1, 'pending_review', $2, $3, $4, $5) ON CONFLICT (user_id) DO NOTHING`,
-      [row.subject_id, snapshot.license_number_last4, snapshot.license_expires_at,
-        snapshot.insurance_expires_at ?? null, snapshot.puc_expires_at ?? null]);
-  } else if (row.subject_type === "vehicle") {
-    if (snapshot.id !== row.subject_id || typeof snapshot.owner_user_id !== "string" ||
-        typeof snapshot.vehicle_type !== "string" ||
-        typeof snapshot.registration_number_last4 !== "string" ||
-        typeof snapshot.seat_capacity !== "number") {
-      throw new AppError(409, "Car recovery snapshot is incomplete", "RECOVERY_INCOMPLETE");
-    }
-    await client.query(`INSERT INTO vehicles
-      (id, owner_user_id, vehicle_type, make, model, color, registration_number_last4,
-       seat_capacity, status, verification_status, use_category, insurance_expires_at,
-       registration_expires_at, applicable_document_required)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'active', 'pending_review', $9, $10, $11, $12)
-      ON CONFLICT (id) DO NOTHING`,
-      [row.subject_id, snapshot.owner_user_id, snapshot.vehicle_type, snapshot.make ?? null,
-        snapshot.model ?? null, snapshot.color ?? null, snapshot.registration_number_last4,
-        snapshot.seat_capacity, snapshot.use_category ?? null,
-        snapshot.insurance_expires_at ?? null, snapshot.registration_expires_at ?? null,
-        snapshot.applicable_document_required ?? null]);
-  } else {
-    if (snapshot.id !== row.subject_id || typeof snapshot.driver_user_id !== "string" ||
-        typeof snapshot.vehicle_id !== "string" ||
-        typeof snapshot.permission_category !== "string") {
-      throw new AppError(409, "Association recovery snapshot is incomplete", "RECOVERY_INCOMPLETE");
-    }
-    await client.query(`INSERT INTO driver_vehicle_approvals
-      (id, driver_user_id, vehicle_id, permission_category, status)
-      VALUES ($1, $2, $3, $4, 'pending_review') ON CONFLICT (id) DO NOTHING`,
-      [row.subject_id, snapshot.driver_user_id, snapshot.vehicle_id,
-        snapshot.permission_category]);
-  }
-}
 async function auditAndNotify(client: PoolClient, row: Operation) {
-  await client.query(`INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, metadata, created_at)
-    SELECT $1, 'driver_car_reviewed', $2, $3, jsonb_build_object('operationId', $4::text,
-      'outcome', $5::text, 'reason', $6::text, 'reviewAfter', $7::text), $8
-    WHERE NOT EXISTS (SELECT 1 FROM audit_logs WHERE action = 'driver_car_reviewed' AND metadata->>'operationId' = $4)`,
-    [row.operator_id, row.subject_type, row.subject_id, row.id, row.outcome,
-      row.reason, row.review_after, row.committed_at]);
+  await reviewRepo.recordAudit(client, row);
   await recordDurableNotification(client, {
     eventId: row.id, originType: "driver_car_review", operationId: row.id,
     recipientId: row.applicant_user_id, eventType: "driver_car_eligibility_reviewed",
@@ -269,15 +173,13 @@ export class DriverCarReviewService {
           throw new AppError(503, "Driver-car recovery receipt is inconsistent", "RECOVERY_CONFLICT");
         }
       }
-      const rows = (await this.database.query<Operation>(
-        `SELECT * FROM driver_car_review_operations WHERE state IN ('acknowledged', 'recovered')`)).rows;
+      const rows = await reviewRepo.acknowledged(this.database);
       for (const row of rows) {
         if (JSON.stringify(receipts.get(row.id)) !== JSON.stringify(receipt(row))) {
           throw new AppError(503, "Driver-car recovery evidence is inconsistent", "RECOVERY_MISSING");
         }
       }
-      const pending = (await this.database.query<Operation>(
-        `SELECT * FROM driver_car_review_operations WHERE state = 'committed'`)).rows;
+      const pending = await reviewRepo.pending(this.database);
       if (pending.length && (!retry || pending.some((row) => row.operator_id !== retry.operatorId ||
           row.idempotency_key !== retry.key))) {
         throw new AppError(503, "A driver-car decision awaits recovery evidence", "OPERATION_PENDING",
@@ -295,7 +197,7 @@ export class DriverCarReviewService {
       const recovery = await operatorQuery<{ mode: string }>(client, "recoveryModeForUpdate");
       await assertCurrentOperator(client, operatorId);
       await operatorQuery(client, "lockIdempotencyKey", [`driver-car-review:${operatorId}:${key}`]);
-      const existing = await byKey(client, operatorId, key);
+      const existing = await reviewRepo.byKey(client, operatorId, key);
       if (existing) {
         if (existing.payload_digest !== payloadDigest) throw new AppError(409,
           "Idempotency key used with another decision", "IDEMPOTENCY_PAYLOAD_MISMATCH");
@@ -303,29 +205,23 @@ export class DriverCarReviewService {
       }
       if (recovery.rows[0]?.mode !== "open") throw new AppError(503, "Protected writes are restricted", "RECOVERY_RESTRICTED");
       store();
+      if (decision.outcome === "revoked") {
+        await evidenceRepo.lockAffectedRidesForRevocation(client, type, id);
+      }
       const current = await subject(client, type, id, decision.outcome);
-      const evidenceSnapshot = (await client.query<{
-        purpose: evidenceRepo.EvidencePurpose; object_key: string; content_type: string;
-        byte_count: number; sha256: string; uploaded_at: Date;
-      }>(`SELECT purpose, object_key, content_type, byte_count, sha256, uploaded_at
-          FROM driver_car_evidence WHERE subject_type = $1 AND subject_id = $2
-            AND status IN ('pending_review', 'retained') ORDER BY purpose FOR SHARE`, [type, id]))
-        .rows.map((item): EvidenceSnapshot => ({ purpose: item.purpose, objectKey: item.object_key,
+      const evidenceSnapshot = (await reviewRepo.evidenceSnapshot(client, type, id))
+        .map((item): EvidenceSnapshot => ({ purpose: item.purpose, objectKey: item.object_key,
           contentType: item.content_type, byteCount: item.byte_count, sha256: item.sha256,
           uploadedAt: item.uploaded_at.toISOString() }));
       if (decision.outcome === "approved" && (!decision.review_after ||
           decision.review_after <= new Date().toISOString().slice(0, 10))) {
         throw new AppError(409, "Review date must be in the future", "REVIEW_DATE_INVALID");
       }
-      const row = (await client.query<Operation>(`INSERT INTO driver_car_review_operations
-        (operator_id, idempotency_key, payload_digest, subject_type, subject_id,
-         applicant_user_id, outcome, reason, review_after, decision_snapshot,
-         evidence_snapshot, state)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb, 'committed') RETURNING *`,
-        [operatorId, key, payloadDigest, type, id, current.applicantId, decision.outcome,
-          decision.reason, decision.review_after, JSON.stringify(current.snapshot),
-          JSON.stringify(evidenceSnapshot)])).rows[0];
-      await apply(client, row);
+      const row = await reviewRepo.createOperation(client, { operatorId, key, digest: payloadDigest,
+        type, id, applicantId: current.applicantId, outcome: decision.outcome,
+        reason: decision.reason, reviewAfter: decision.review_after,
+        decisionSnapshot: current.snapshot, evidenceSnapshot });
+      await reviewRepo.apply(client, row);
       if (row.outcome === "revoked") {
         const affected = await evidenceRepo.applyRevocationToRides(client, row.subject_type, row.subject_id, row.id, row.reason);
         for (const ride of affected.held) for (const recipientId of new Set([ride.driver_id, ...ride.passenger_ids])) {
@@ -343,18 +239,16 @@ export class DriverCarReviewService {
     crashHook?.("after_commit", operation.id);
     try {
       const published = await inProtectedTransaction(this.database, async (client) => {
-        const row = (await client.query<Operation>(
-          `SELECT * FROM driver_car_review_operations WHERE id = $1 FOR UPDATE`, [operation.id])).rows[0];
+        const row = await reviewRepo.operationById(client, operation.id, true);
+        if (!row) throw new AppError(503, "Decision operation is missing", "RECOVERY_MISSING");
         if (row.state !== "committed") return row;
         await store().append(receipt(row));
         crashHook?.("after_receipt", row.id);
         const backup = await backupStatus(client);
         if (backup.required && !backup.healthy) throw new AppError(503, "Database backup is stale", "BACKUP_STALE");
-        const saved = (await client.query<Operation>(`UPDATE driver_car_review_operations
-          SET state = 'acknowledged', acknowledged_at = now() WHERE id = $1 RETURNING *`, [row.id])).rows[0];
+        const saved = await reviewRepo.acknowledge(client, row.id);
         await markDurableNotificationReady(client, row.id);
-        await client.query(`UPDATE pilot_notification_events SET ready_at = now()
-          WHERE origin_type = 'driver_car_ride_hold' AND operation_id = $1 AND ready_at IS NULL`, [row.id]);
+        await reviewRepo.readyRideHoldNotifications(client, row.id);
         return saved;
       });
       return result(published);
@@ -365,14 +259,14 @@ export class DriverCarReviewService {
     }
   }
   async operation(operatorId: string, id: string) {
-    const row = (await this.database.query<Operation>(`SELECT * FROM driver_car_review_operations WHERE id = $1`, [id])).rows[0];
+    const row = await reviewRepo.operationById(this.database, id);
     if (!row || row.operator_id !== operatorId) throw new AppError(404, "Decision not found", "OPERATION_NOT_FOUND");
     const recovery = await operatorQuery<{ mode: string }>(this.database, "recoveryMode");
     return recovery.rows[0]?.mode !== "open" && row.state === "acknowledged"
       ? { ...result(row), state: "pending_unknown" } : result(row);
   }
   async operationByKey(operatorId: string, key: string) {
-    const row = await byKey(this.database, operatorId, key);
+    const row = await reviewRepo.byKey(this.database, operatorId, key);
     if (!row) throw new AppError(404, "Decision not found", "OPERATION_NOT_FOUND");
     return this.operation(operatorId, row.id);
   }
@@ -386,55 +280,25 @@ export class DriverCarReviewService {
       }
       await inProtectedTransaction(this.database, async (client) => {
         await assertCurrentOperator(client, operatorId);
-        const existing = (await client.query<Operation>(
-          `SELECT * FROM driver_car_review_operations WHERE id = $1 FOR UPDATE`, [item.operationId])).rows[0];
+        const existing = await reviewRepo.operationById(client, item.operationId, true);
         if (existing && JSON.stringify(receipt(existing)) !== JSON.stringify(item)) {
           throw new AppError(409, "Driver-car recovery conflict", "RECOVERY_CONFLICT");
         }
-        if (!existing) await client.query(`INSERT INTO driver_car_review_operations
-          (id, operator_id, idempotency_key, payload_digest, subject_type, subject_id,
-           applicant_user_id, outcome, reason, review_after, decision_snapshot, evidence_snapshot,
-           state, committed_at, acknowledged_at)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12::jsonb,
-            'recovered', $13, now())`,
-          [item.operationId, item.operatorId, item.idempotencyKey, item.payloadDigest,
-            item.subjectType, item.subjectId, item.applicantId, item.outcome, item.reason,
-            item.reviewAfter, JSON.stringify(item.decisionSnapshot),
-            JSON.stringify(item.evidenceSnapshot), item.committedAt]);
-        const row = existing ?? (await client.query<Operation>(
-          `SELECT * FROM driver_car_review_operations WHERE id = $1 FOR UPDATE`, [item.operationId])).rows[0];
-        await restoreMissingSubject(client, row);
+        if (!existing) await reviewRepo.insertRecoveredOperation(client, item);
+        const row = existing ?? await reviewRepo.operationById(client, item.operationId, true);
+        if (!row) throw new AppError(409, "Decision operation requires recovery review", "RECOVERY_INCOMPLETE");
+        await reviewRepo.restoreMissingSubject(client, row);
         for (const evidence of row.evidence_snapshot) {
-          const prior = (await client.query<{ object_key: string; status: string; decision_at: Date | null }>(
-            `SELECT object_key, status, decision_at FROM driver_car_evidence
-              WHERE subject_type = $1 AND subject_id = $2 AND purpose = $3 FOR UPDATE`,
-            [row.subject_type, row.subject_id, evidence.purpose])).rows[0];
+          const prior = await reviewRepo.priorEvidence(client, row.subject_type, row.subject_id, evidence.purpose);
           if (prior && prior.object_key !== evidence.objectKey && prior.status !== "deleted" &&
               (!prior.decision_at || prior.decision_at <= row.committed_at)) {
             await evidenceRepo.scheduleReplacedEvidenceDeletion(client, prior.object_key);
           }
-          await client.query(`INSERT INTO driver_car_evidence
-            (applicant_user_id, subject_type, subject_id, purpose, object_key, content_type,
-             byte_count, sha256, status, uploaded_at, decision_at, delete_after)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'retained', $9,
-              $10::timestamptz, $10::timestamptz + interval '6 days')
-            ON CONFLICT (subject_type, subject_id, purpose) DO UPDATE SET
-              object_key = EXCLUDED.object_key, content_type = EXCLUDED.content_type,
-              byte_count = EXCLUDED.byte_count, sha256 = EXCLUDED.sha256,
-              status = CASE WHEN driver_car_evidence.object_key = EXCLUDED.object_key
-                AND driver_car_evidence.status = 'deleted' THEN 'deleted' ELSE 'retained' END,
-              uploaded_at = EXCLUDED.uploaded_at, decision_at = EXCLUDED.decision_at,
-              delete_after = EXCLUDED.delete_after
-            WHERE driver_car_evidence.decision_at IS NULL OR
-              driver_car_evidence.decision_at <= EXCLUDED.decision_at`,
-            [row.applicant_user_id, row.subject_type, row.subject_id, evidence.purpose,
-              evidence.objectKey, evidence.contentType, evidence.byteCount, evidence.sha256,
-              evidence.uploadedAt, row.committed_at]);
+          await reviewRepo.restoreEvidence(client, row, evidence);
         }
-        if (row.state === "committed") await client.query(`UPDATE driver_car_review_operations
-          SET state = 'recovered', acknowledged_at = now() WHERE id = $1`, [row.id]);
-        await apply(client, row, true);
-        if (row.outcome === "revoked") {
+        if (row.state === "committed") await reviewRepo.markRecovered(client, row.id);
+        const applied = await reviewRepo.apply(client, row, true);
+        if (row.outcome === "revoked" && applied) {
           const affected = await evidenceRepo.applyRevocationToRides(client, row.subject_type, row.subject_id, row.id, row.reason);
           for (const ride of affected.held) for (const recipientId of new Set([ride.driver_id, ...ride.passenger_ids])) {
             await recordDurableNotification(client, { originType: "driver_car_ride_hold", operationId: row.id,
@@ -446,11 +310,8 @@ export class DriverCarReviewService {
         await evidenceRepo.scheduleDeletion(client, row.subject_type, row.subject_id);
         await auditAndNotify(client, row);
         await markDurableNotificationReady(client, row.id);
-        await client.query(`UPDATE pilot_notification_events SET ready_at = now()
-          WHERE origin_type = 'driver_car_ride_hold' AND operation_id = $1 AND ready_at IS NULL`, [row.id]);
-        await client.query(`UPDATE pilot_email_jobs SET status = 'exhausted', lease_until = NULL,
-          last_error = 'Suppressed after snapshot restore; delivery outcome requires review', updated_at = now()
-          WHERE event_id = $1 AND status <> 'sent'`, [row.id]);
+        await reviewRepo.readyRideHoldNotifications(client, row.id);
+        await reviewRepo.suppressRestoredEmail(client, row.id);
       });
     }
     return items.length;

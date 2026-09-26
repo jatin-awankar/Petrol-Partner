@@ -166,14 +166,26 @@ export async function scheduleDeletion(client: PoolClient, type: SubjectType, id
     delete_after = now() + interval '6 days' WHERE subject_type = $1 AND subject_id = $2 AND status = 'pending_review'`, [type, id]);
 }
 
-export async function applyRevocationToRides(client: PoolClient, type: SubjectType,
-  subjectId: string, operationId: string, reason: string) {
-  const affected = type === "driver"
+function affectedRidePredicate(type: SubjectType) {
+  return type === "driver"
     ? `ro.driver_id = $1`
     : type === "vehicle"
       ? `ro.vehicle_id = $1`
       : `EXISTS (SELECT 1 FROM driver_vehicle_approvals a
           WHERE a.id = $1 AND a.driver_user_id = ro.driver_id AND a.vehicle_id = ro.vehicle_id)`;
+}
+
+export async function lockAffectedRidesForRevocation(client: PoolClient, type: SubjectType,
+  subjectId: string) {
+  const affected = affectedRidePredicate(type);
+  await client.query(`SELECT ro.id FROM ride_offers ro
+    WHERE ${affected} AND ro.status IN ('active', 'held', 'departed')
+    ORDER BY ro.id FOR UPDATE OF ro`, [subjectId]);
+}
+
+export async function applyRevocationToRides(client: PoolClient, type: SubjectType,
+  subjectId: string, operationId: string, reason: string) {
+  const affected = affectedRidePredicate(type);
   const held = await client.query<{ id: string; driver_id: string }>(
     `UPDATE ride_offers ro SET status = 'held', updated_at = now()
       WHERE ${affected} AND ro.status = 'active'

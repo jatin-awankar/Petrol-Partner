@@ -17,7 +17,7 @@ import { pool } from "../../db/pool";
 
 const ACTIVE_STUDENT_STATUSES = new Set(["verified", "revalidation_due"]);
 
-async function assertCurrentStudentForSubmission(client: PoolClient, userId: string) {
+export async function assertCurrentStudentForSubmission(client: PoolClient, userId: string) {
   const student = await verificationRepo.findStudentEligibilityForUpdate(client, userId);
   if (!student || !ACTIVE_STUDENT_STATUSES.has(student.status) ||
       student.adult_eligible !== true || new Date(student.eligibility_ends_at) <= new Date()) {

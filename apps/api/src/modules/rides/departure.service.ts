@@ -12,9 +12,17 @@ import { inProtectedTransaction } from "../protected-mutation/protocol";
 import { recordDurableNotification } from "../notifications/contract.repo";
 import { assertCurrentDriverCarEligibility } from "../verification/verification.service";
 import * as repo from "./departure.repo";
+import { assertCommitmentsEligible, assertWithinSupportWindow,
+  corridorDeparture } from "./commitment.service";
 
 type Receipt = { operationId: string; rideId: string; driverId: string; key: string;
   digest: string; boardedIds: string[]; confirmedIds: string[]; startedAt: string };
+
+let crashHook: ((point: "after_commit" | "after_receipt", operationId: string) => void) | null = null;
+export function setDepartureCrashHookForTests(hook: typeof crashHook) {
+  if (process.env.NODE_ENV !== "test") throw new Error("Departure crash hooks are test-only");
+  crashHook = hook;
+}
 
 function receipt(row: repo.DepartureOperation): Receipt {
   return { operationId: row.id, rideId: row.ride_offer_id, driverId: row.driver_user_id,
@@ -110,12 +118,8 @@ export class DepartureService {
             relatedEntityId: item.rideId, title: "Ride departed",
             body: "The ride has started. Boarding is recorded in the trip details." });
         }
-        await client.query("UPDATE pilot_notification_events SET ready_at = now() WHERE origin_type = 'ride_departure' AND operation_id = $1", [item.operationId]);
-        await client.query(`UPDATE pilot_email_jobs SET status = 'exhausted', lease_until = NULL,
-          last_error = 'Suppressed after snapshot restore; delivery outcome requires review', updated_at = now()
-          WHERE event_id IN (SELECT id FROM pilot_notification_events
-            WHERE origin_type = 'ride_departure' AND operation_id = $1) AND status <> 'sent'`,
-          [item.operationId]);
+        await repo.readyNotifications(client, item.operationId);
+        await repo.suppressRestoredEmail(client, item.operationId);
       });
     }
     return items.length;
@@ -142,13 +146,16 @@ export class DepartureService {
       if (offer.driver_id !== driverId) throw new AppError(403, "Only the driver can depart", "FORBIDDEN");
       if (offer.status !== "active" || !offer.vehicle_id) throw new AppError(409,
         "Ride is not eligible to depart", "DEPARTURE_INVALID");
-      const departure = new Date(`${offer.date}T${String(offer.time).slice(0, 8)}+05:30`);
+      const departure = corridorDeparture(offer.date, String(offer.time));
       if (now.getTime() < departure.getTime() - 15 * 60_000 ||
           now.getTime() > departure.getTime() + 30 * 60_000) {
         throw new AppError(409, "Departure is outside the allowed window", "DEPARTURE_WINDOW_CLOSED");
       }
+      assertWithinSupportWindow(now);
       await assertCurrentDriverCarEligibility(client, driverId, offer.vehicle_id);
       const bookings = await repo.confirmedBookingsForUpdate(client, rideId);
+      await assertCommitmentsEligible(client, { driverId, vehicleId: offer.vehicle_id,
+        passengerIds: bookings.map((item) => item.passenger_id), rideId, departureAt: departure });
       const confirmed = new Set(bookings.map((item) => item.id));
       if (sorted.some((id) => !confirmed.has(id))) throw new AppError(409,
         "Boarding must identify confirmed passengers", "BOARDING_INVALID");
@@ -163,17 +170,19 @@ export class DepartureService {
       return row;
     });
     if (operation.state !== "committed") return publicResult(operation);
+    crashHook?.("after_commit", operation.id);
     try {
       const result = await inProtectedTransaction(this.database, async (client) => {
         const row = await repo.byId(client, operation.id, true);
         if (!row) throw new AppError(503, "Departure operation is missing", "RECOVERY_MISSING");
         if (row.state !== "committed") return row;
         await store().append(receipt(row));
+        crashHook?.("after_receipt", row.id);
         const backup = await backupStatus(client);
         if (backup.required && !backup.healthy) throw new AppError(503, "Database backup is stale", "BACKUP_STALE");
         const saved = await repo.acknowledge(client, row.id);
         if (!saved) throw new AppError(503, "Departure acknowledgement failed", "RECOVERY_INCOMPLETE");
-        await client.query("UPDATE pilot_notification_events SET ready_at = now() WHERE origin_type = 'ride_departure' AND operation_id = $1", [row.id]);
+        await repo.readyNotifications(client, row.id);
         return saved;
       });
       return publicResult(result);

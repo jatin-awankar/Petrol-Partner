@@ -17,6 +17,12 @@ export async function findRideOfferStatusForShare(client: PoolClient, offerId: s
     "SELECT status FROM ride_offers WHERE id = $1 FOR SHARE", [offerId])).rows[0]?.status ?? null;
 }
 
+export async function findRideOfferCommitmentForShare(client: PoolClient, offerId: string) {
+  return (await client.query<{ vehicle_id: string | null; date: string; time: string }>(
+    `SELECT vehicle_id, to_char(date, 'YYYY-MM-DD') AS date, time
+      FROM ride_offers WHERE id = $1 FOR SHARE`, [offerId])).rows[0] ?? null;
+}
+
 interface LockedRideRow {
   id: string;
   owner_id: string;

@@ -260,8 +260,8 @@ export class PauseService {
     try { receipts = await listReceipts(); }
     catch (error) { await restrict(this.database, "evidence_unavailable"); throw error; }
     await this.studentReviews().reconcileReceipts(operatorId);
-    await this.driverCarReviews().reconcileReceipts(operatorId);
     await this.departures().reconcileReceipts(operatorId);
+    await this.driverCarReviews().reconcileReceipts(operatorId);
     for (const receipt of receipts) {
       if (receipt.payloadDigest !== digest({ capability: receipt.capability, paused: receipt.paused, reason: receipt.reason })) throw new AppError(409, "Recovery payload is inconsistent", "RECOVERY_CONFLICT");
       await transaction(this.database, async (client) => {

@@ -3,7 +3,7 @@ import type { PoolClient } from "pg";
 import { withTransaction } from "../../db/transaction";
 import { AppError } from "../../shared/errors/app-error";
 import { assertCurrentOperator } from "../operator/operator.authorization";
-import * as verificationRepo from "./verification.repo";
+import { assertCurrentStudentForSubmission } from "./verification.service";
 import * as repo from "./driver-car.repo";
 import { deleteEvidence, readEvidence, storeEvidence } from "./student-evidence.storage";
 
@@ -37,11 +37,7 @@ export async function classifyVehicle(userId: string, vehicleId: string, input: 
   if (input.use_category !== "private") throw new AppError(400,
     "Only private cars are eligible for this pilot", "VEHICLE_INELIGIBLE");
   return withTransaction(async (client) => {
-    const student = await verificationRepo.findStudentEligibilityForUpdate(client, userId);
-    if (!student || !["verified", "revalidation_due"].includes(student.status) || !student.adult_eligible ||
-        new Date(student.eligibility_ends_at) <= new Date()) {
-      throw new AppError(403, "Current student approval is required", "STUDENT_VERIFICATION_INACTIVE");
-    }
+    await assertCurrentStudentForSubmission(client, userId);
     const car = await repo.vehicleForUpdate(client, vehicleId);
     if (!car || car.owner_user_id !== userId) throw new AppError(404, "Vehicle not found", "VEHICLE_NOT_FOUND");
     if (car.vehicle_type !== "car" && car.vehicle_type !== "suv") {
@@ -59,11 +55,7 @@ export async function classifyVehicle(userId: string, vehicleId: string, input: 
 
 export async function submitAssociation(driverId: string, vehicleId: string, permissionCategory: string) {
   return withTransaction(async (client) => {
-    const student = await verificationRepo.findStudentEligibilityForUpdate(client, driverId);
-    if (!student || !["verified", "revalidation_due"].includes(student.status) || !student.adult_eligible ||
-        new Date(student.eligibility_ends_at) <= new Date()) {
-      throw new AppError(403, "Current student approval is required", "STUDENT_VERIFICATION_INACTIVE");
-    }
+    await assertCurrentStudentForSubmission(client, driverId);
     const car = await repo.vehicleForUpdate(client, vehicleId);
     if (!car || !["car", "suv"].includes(car.vehicle_type) || car.use_category !== "private") {
       throw new AppError(404, "Eligible private car not found", "VEHICLE_NOT_FOUND");
@@ -83,11 +75,7 @@ export async function uploadEvidence(userId: string, type: Type, id: string, pur
   let key: string | null = null;
   try {
     return await withTransaction(async (client) => {
-      const student = await verificationRepo.findStudentEligibilityForUpdate(client, userId);
-      if (!student || !["verified", "revalidation_due"].includes(student.status) || !student.adult_eligible ||
-          new Date(student.eligibility_ends_at) <= new Date()) {
-        throw new AppError(403, "Current student approval is required", "STUDENT_VERIFICATION_INACTIVE");
-      }
+      await assertCurrentStudentForSubmission(client, userId);
       const status = await assertApplicantOwnsSubject(client, userId, type, id);
       if (status !== "pending_review" && status !== "rejected") {
         throw new AppError(409, "Evidence cannot be changed after approval", "EVIDENCE_REVIEWED");

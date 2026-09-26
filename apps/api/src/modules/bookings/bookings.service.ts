@@ -13,6 +13,7 @@ import type {
   UpdateBookingStatusLegacyInput,
 } from "./bookings.schema";
 import * as bookingsRepo from "./bookings.repo";
+import { assertCommitmentsEligible, corridorDeparture } from "../rides/commitment.service";
 
 const BOOKING_EXPIRY_MINUTES = 10;
 const ACTIVE_BOOKING_STATUSES = new Set(["pending", "confirmed"]);
@@ -320,6 +321,11 @@ export async function confirmBooking(bookingId: string, actorUserId: string, rea
     }
 
     await assertDriverCurrentForOfferBooking(client, booking);
+    const offer = await bookingsRepo.findRideOfferCommitmentForShare(client, offerId);
+    if (!offer?.vehicle_id) throw new AppError(403, "Approved car is required", "DRIVER_CAR_NOT_APPROVED");
+    await assertCommitmentsEligible(client, { driverId: booking.driver_id,
+      vehicleId: offer.vehicle_id, passengerIds: [booking.passenger_id],
+      rideId: offerId, departureAt: corridorDeparture(offer.date, offer.time) });
 
     const now = new Date();
 

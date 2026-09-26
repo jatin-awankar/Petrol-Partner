@@ -69,6 +69,19 @@ export async function acknowledge(client: PoolClient, id: string) {
     WHERE id = $1 AND state = 'committed' RETURNING *`, [id])).rows[0] ?? null;
 }
 
+export async function readyNotifications(client: PoolClient, operationId: string) {
+  await client.query(`UPDATE pilot_notification_events SET ready_at = now()
+    WHERE origin_type = 'ride_departure' AND operation_id = $1 AND ready_at IS NULL`, [operationId]);
+}
+
+export async function suppressRestoredEmail(client: PoolClient, operationId: string) {
+  await client.query(`UPDATE pilot_email_jobs SET status = 'exhausted', lease_until = NULL,
+    last_error = 'Suppressed after snapshot restore; delivery outcome requires review', updated_at = now()
+    WHERE event_id IN (SELECT id FROM pilot_notification_events
+      WHERE origin_type = 'ride_departure' AND operation_id = $1) AND status <> 'sent'`,
+    [operationId]);
+}
+
 export async function restore(client: PoolClient, item: {
   operationId: string; rideId: string; driverId: string; key: string; digest: string;
   boardedIds: string[]; confirmedIds: string[]; startedAt: string;
