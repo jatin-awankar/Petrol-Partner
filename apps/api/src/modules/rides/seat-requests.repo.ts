@@ -36,7 +36,7 @@ export async function offerForUpdate(db: PoolClient, id: string) {
 export async function requestForUpdate(db: PoolClient,id:string) {
   return (await db.query<SeatRequest>("SELECT * FROM pilot_seat_requests WHERE id=$1 FOR UPDATE",[id])).rows[0] ?? null;
 }
-export async function requestSnapshot(db:PoolClient,id:string) {
+export async function requestSnapshot(db:Database,id:string) {
   return (await db.query<SeatRequest>("SELECT * FROM pilot_seat_requests WHERE id=$1",[id])).rows[0];
 }
 export async function insertRequest(db:PoolClient,offer:OfferForRequest,passengerId:string) {
@@ -74,4 +74,44 @@ export async function readyNotifications(db:PoolClient,id:string) {
 export async function listForParticipant(db:Database,userId:string) {
   return (await db.query<SeatRequest>(`SELECT * FROM pilot_seat_requests
     WHERE passenger_id=$1 OR driver_id=$1 ORDER BY created_at DESC LIMIT 100`,[userId])).rows;
+}
+export async function allOperations(db:Database) {
+  return (await db.query<RequestOperation>("SELECT * FROM pilot_seat_request_operations")).rows;
+}
+export async function pendingOperations(db:Database) {
+  return (await db.query<RequestOperation>("SELECT * FROM pilot_seat_request_operations WHERE state='committed'")).rows;
+}
+export async function rejectRequest(db:PoolClient,id:string) {
+  await db.query("UPDATE pilot_seat_requests SET status='rejected',decided_at=now() WHERE id=$1",[id]);
+}
+export async function restoreOperation(db:PoolClient,item:{operationId:string;actorId:string;key:string;
+  digest:string;requestId:string;action:string;result:Record<string,unknown>;
+  snapshot:SeatRequest;createdAt:string}) {
+  const prior = await db.query<RequestOperation>("SELECT * FROM pilot_seat_request_operations WHERE id=$1",[item.operationId]);
+  if (!prior.rowCount) {
+    if (item.action === "requested") {
+      await db.query(`INSERT INTO pilot_seat_requests
+        (id,offer_id,passenger_id,driver_id,status,offer_version,offer_terms,decision_deadline_at,created_at,decided_at)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT (id) DO NOTHING`,
+        [item.snapshot.id,item.snapshot.offer_id,item.snapshot.passenger_id,item.snapshot.driver_id,
+          item.snapshot.status,item.snapshot.offer_version,JSON.stringify(item.snapshot.offer_terms),
+          item.snapshot.decision_deadline_at,item.snapshot.created_at,item.snapshot.decided_at]);
+    } else {
+      await db.query(`UPDATE pilot_seat_requests SET status='rejected',decided_at=$2
+        WHERE id=$1 AND status IN ('pending','rejected')`,[item.requestId,item.snapshot.decided_at]);
+    }
+    await db.query(`INSERT INTO pilot_seat_request_operations
+      (id,actor_id,idempotency_key,payload_digest,request_id,action,result,request_snapshot,state,created_at,acknowledged_at)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,'recovered',$9,now())`,
+      [item.operationId,item.actorId,item.key,item.digest,item.requestId,item.action,
+        JSON.stringify(item.result),JSON.stringify(item.snapshot),item.createdAt]);
+  }
+  return (await db.query<RequestOperation>("SELECT * FROM pilot_seat_request_operations WHERE id=$1",[item.operationId])).rows[0];
+}
+export async function markRecovered(db:PoolClient,id:string) {
+  await db.query("UPDATE pilot_seat_request_operations SET state='recovered',acknowledged_at=now() WHERE id=$1",[id]);
+}
+export async function restoreAudit(db:PoolClient,row:RequestOperation) {
+  await db.query(`INSERT INTO pilot_seat_request_audit(operation_id,request_id,actor_id,action)
+    VALUES($1,$2,$3,$4) ON CONFLICT (operation_id) DO NOTHING`,[row.id,row.request_id,row.actor_id,row.action]);
 }

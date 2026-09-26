@@ -3,19 +3,15 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { apiRequest } from "@/lib/api/client";
+import { apiRequest, ApiError } from "@/lib/api/client";
 import { useCurrentUser } from "@/hooks/auth/useCurrentUser";
+import { SeatRequestList, type SeatRequest } from "@/components/searchRides/SeatRequestList";
 
 type Stop = {code:string;label:string};
 type Policy = {stops:Stop[];permitted_pairs:{origin_code:string;destination_code:string}[]};
 type Offer = {id:string;origin_code:string;destination_code:string;departure_at:string;
   contribution_paise:number;currency:string;capacity:number;available_seats:number;
   request_cutoff_at:string;cancellation_notice:string;contact_notice:string};
-type SeatRequest = {id:string;offer_id:string;passenger_id:string;driver_id:string;
-  status:"pending"|"rejected"|"expired";decision_deadline_at:string;
-  offer_terms:{origin_code:string;destination_code:string;departure_at:string;
-    contribution_paise:number;currency:string;cancellation_notice?:string;contact_notice?:string};
-  confirmed:false;seats_reserved:0};
 export default function SearchRidesPage() {
   const {isAuthenticated,loading,user} = useCurrentUser();
   const router = useRouter();
@@ -38,11 +34,40 @@ export default function SearchRidesPage() {
   useEffect(() => {if (isAuthenticated) void refreshRequests().catch(() => undefined);},[isAuthenticated]);
   async function changeRequest(path:string,body:Record<string,unknown>,key:string) {
     setBusy(key);setMessage("");
+    const storageKey = `seat-request:${user?.id ?? "unknown"}:${key}`;
+    const operationKey = window.sessionStorage.getItem(storageKey) ?? crypto.randomUUID();
+    window.sessionStorage.setItem(storageKey,operationKey);
     try {
-      await apiRequest(path,{method:"POST",headers:{"Idempotency-Key":crypto.randomUUID()},body:JSON.stringify(body)});
+      const result = await apiRequest<{operation_id:string;state:string}>(path,
+        {method:"POST",headers:{"Idempotency-Key":operationKey},body:JSON.stringify(body)});
+      if (result.state !== "acknowledged" && result.state !== "recovered") {
+        setMessage("Request outcome is pending. Retry this action to check the same operation.");
+        return;
+      }
+      window.sessionStorage.removeItem(storageKey);
       await refreshRequests();
       setMessage("Seat request updated. Pending requests are not confirmed and reserve no seat.");
-    } catch(error) {setMessage(error instanceof Error ? error.message : "Could not update seat request");}
+    } catch(error) {
+      if (error instanceof ApiError && error.status < 500 && error.code !== "OPERATION_PENDING") {
+        window.sessionStorage.removeItem(storageKey);
+        setMessage(error.message);
+        return;
+      }
+      const operationId = error instanceof ApiError && typeof error.details === "object" && error.details !== null
+        && "operationId" in error.details ? error.details.operationId : null;
+      if (typeof operationId === "string") {
+        const status = await apiRequest<{operation:{state:string}}>(`/v1/seat-requests/operations/${operationId}`)
+          .catch(() => null);
+        if (status?.operation.state === "acknowledged" || status?.operation.state === "recovered") {
+          window.sessionStorage.removeItem(storageKey);
+          await refreshRequests().catch(() => undefined);
+          setMessage("Seat request updated. Pending requests are not confirmed and reserve no seat.");
+        } else setMessage("Request outcome is pending. Retry this action to check the same operation.");
+      } else {
+        setMessage(error instanceof Error ? `${error.message} Retry uses the same operation.`
+          : "Outcome unknown. Retry uses the same operation.");
+      }
+    }
     finally {setBusy(null);}
   }
   async function search(event:React.FormEvent) {
@@ -76,19 +101,7 @@ export default function SearchRidesPage() {
         Request one seat
       </button>
     </li>)}</ul>
-    <section className="space-y-3"><h2 className="text-xl font-semibold">Seat requests</h2>
-      <p className="text-sm">A pending request is unconfirmed and reserves no seat. The driver must decide by the listed deadline. Participant phone numbers are not shared.</p>
-      {requests.length === 0 && <p>No seat requests yet.</p>}
-      <ul className="space-y-3">{requests.map(item => <li key={item.id} className="rounded border p-4">
-        <p>{item.offer_terms.origin_code} → {item.offer_terms.destination_code} · {new Date(item.offer_terms.departure_at).toLocaleString("en-IN",{timeZone:"Asia/Kolkata"})} IST</p>
-        <p className="font-medium">{item.status === "pending" ? "Pending · no seat reserved" : item.status === "rejected" ? "Rejected" : "Expired"}</p>
-        <p className="text-sm">Decision deadline: {new Date(item.decision_deadline_at).toLocaleString("en-IN",{timeZone:"Asia/Kolkata"})} IST</p>
-        <p className="text-sm">{item.offer_terms.cancellation_notice} {item.offer_terms.contact_notice}</p>
-        {item.status === "pending" && item.driver_id === user?.id && <button className="mt-2 rounded border px-3 py-1 disabled:opacity-50"
-          disabled={busy !== null} onClick={() => void changeRequest(`/v1/seat-requests/${item.id}/reject`,{},item.id)}>
-          Reject request
-        </button>}
-      </li>)}</ul>
-    </section>
+    <SeatRequestList requests={requests} currentUserId={user?.id} busy={busy !== null}
+      onReject={id => void changeRequest(`/v1/seat-requests/${id}/reject`,{},id)} />
   </main>;
 }

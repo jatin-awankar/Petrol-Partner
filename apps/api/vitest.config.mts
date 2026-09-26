@@ -12,6 +12,6 @@ process.env.ENABLE_MATCH_REFRESH_PROCESSOR ??= "false";
 
 export default defineConfig({
   test: {
-    include: ["src/**/*.test.ts"],
+    include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
   },
 });

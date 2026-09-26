@@ -50,20 +50,26 @@ function visibleRequest(row:repo.SeatRequest) {
   return {...row,status:row.status === "pending" && row.decision_deadline_at <= new Date() ? "expired" : row.status,
     confirmed:false,seats_reserved:0};
 }
+function notification(row:repo.RequestOperation,snapshot:repo.SeatRequest) {
+  return {eventId:row.id,originType:"seat_request",operationId:row.id,
+    recipientId:row.action === "requested" ? snapshot.driver_id : snapshot.passenger_id,
+    eventType:row.action,relatedEntityType:"seat_request",relatedEntityId:row.request_id,
+    title:row.action === "requested" ? "Seat request received" : "Seat request rejected",
+    body:row.action === "requested" ? "A passenger requested one seat. No seat is reserved yet."
+      : "The driver rejected your seat request."};
+}
 
 export class SeatRequestsService {
   constructor(private readonly db:Pool = pool) {}
 
   async receipts() {return store().list();}
-  async pending() {
-    return (await this.db.query<repo.RequestOperation>("SELECT * FROM pilot_seat_request_operations WHERE state='committed'")).rows;
-  }
+  async pending() {return repo.pendingOperations(this.db);}
   async verifyEvidence(retry?:{actorId:string;key:string}) {
     try {
       const backup = await backupStatus(this.db);
       if (backup.required && !backup.healthy) throw new AppError(503,"Database backup is stale","BACKUP_STALE");
       const receipts = new Map((await store().list()).map(item => [item.operationId,item]));
-      const rows = (await this.db.query<repo.RequestOperation>("SELECT * FROM pilot_seat_request_operations")).rows;
+      const rows = await repo.allOperations(this.db);
       const operations = new Map(rows.map(row => [row.id,row]));
       for (const item of receipts.values()) {
         const row = operations.get(item.operationId);
@@ -91,43 +97,13 @@ export class SeatRequestsService {
     for (const item of receipts) {
       await inProtectedTransaction(this.db,async client => {
         await assertCurrentOperator(client,operatorId);
-        const prior = await client.query<repo.RequestOperation>("SELECT * FROM pilot_seat_request_operations WHERE id=$1",[item.operationId]);
-        if (!prior.rowCount) {
-          if (item.action === "requested") {
-            await client.query(`INSERT INTO pilot_seat_requests
-              (id,offer_id,passenger_id,driver_id,status,offer_version,offer_terms,decision_deadline_at,created_at,decided_at)
-              VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT (id) DO NOTHING`,
-              [item.snapshot.id,item.snapshot.offer_id,item.snapshot.passenger_id,item.snapshot.driver_id,
-                item.snapshot.status,item.snapshot.offer_version,JSON.stringify(item.snapshot.offer_terms),
-                item.snapshot.decision_deadline_at,item.snapshot.created_at,item.snapshot.decided_at]);
-          } else {
-            await client.query(`UPDATE pilot_seat_requests SET status='rejected',decided_at=$2
-              WHERE id=$1 AND status IN ('pending','rejected')`,[item.requestId,item.snapshot.decided_at]);
-          }
-          await client.query(`INSERT INTO pilot_seat_request_operations
-            (id,actor_id,idempotency_key,payload_digest,request_id,action,result,request_snapshot,state,created_at,acknowledged_at)
-            VALUES($1,$2,$3,$4,$5,$6,$7,$8,'recovered',$9,now())`,
-            [item.operationId,item.actorId,item.key,item.digest,item.requestId,item.action,
-              JSON.stringify(item.result),JSON.stringify(item.snapshot),item.createdAt]);
-        }
-        const row = (await client.query<repo.RequestOperation>("SELECT * FROM pilot_seat_request_operations WHERE id=$1",[item.operationId])).rows[0];
+        const row = await repo.restoreOperation(client,item);
         if (JSON.stringify(receipt(row)) !== JSON.stringify(item))
           throw new AppError(409,"Seat request recovery conflicts with receipt","RECOVERY_CONFLICT");
-        if (row.state === "committed")
-          await client.query("UPDATE pilot_seat_request_operations SET state='recovered',acknowledged_at=now() WHERE id=$1",[row.id]);
-        await client.query(`INSERT INTO pilot_seat_request_audit(operation_id,request_id,actor_id,action)
-          VALUES($1,$2,$3,$4) ON CONFLICT (operation_id) DO NOTHING`,[row.id,row.request_id,row.actor_id,row.action]);
-        await recordDurableNotification(client,{originType:"seat_request",operationId:row.id,
-          recipientId:item.action === "requested" ? item.snapshot.driver_id : item.snapshot.passenger_id,
-          eventType:item.action,relatedEntityType:"seat_request",relatedEntityId:item.requestId,
-          title:item.action === "requested" ? "Seat request received" : "Seat request rejected",
-          body:item.action === "requested" ? "A passenger requested one seat. No seat is reserved yet."
-            : "The driver rejected your seat request."});
+        if (row.state === "committed") await repo.markRecovered(client,row.id);
+        await repo.restoreAudit(client,row);
+        await recordDurableNotification(client,notification(row,item.snapshot));
         await repo.readyNotifications(client,row.id);
-        await client.query(`UPDATE pilot_email_jobs SET status='exhausted',attempts=5,
-          last_error='Restored from recovery receipt; delivery suppressed'
-          WHERE event_id IN (SELECT id FROM pilot_notification_events
-            WHERE origin_type='seat_request' AND operation_id=$1) AND status='pending'`,[row.id]);
       });
     }
     const latest = new Map<string,repo.SeatRequest>();
@@ -135,7 +111,7 @@ export class SeatRequestsService {
       if (item.action === "rejected" || !latest.has(item.requestId)) latest.set(item.requestId,item.snapshot);
     }
     for (const [id,expected] of latest) {
-      const actual = (await this.db.query<repo.SeatRequest>("SELECT * FROM pilot_seat_requests WHERE id=$1",[id])).rows[0];
+      const actual = await repo.requestSnapshot(this.db,id);
       for (const field of ["offer_id","passenger_id","driver_id","status","offer_version","offer_terms","decision_deadline_at"] as const) {
         if (!actual || JSON.stringify(actual[field]) !== JSON.stringify(expected[field]))
           throw new AppError(409,"Seat request recovery state conflicts with receipt","RECOVERY_CONFLICT");
@@ -188,7 +164,6 @@ export class SeatRequestsService {
       if (currentRecovery.rows[0]?.mode !== "open") throw new AppError(503,"Protected writes are restricted","RECOVERY_RESTRICTED");
       await assertCurrentStudentForSubmission(client,actorId);
       let requestId:string;
-      let recipientId:string;
       if (action === "requested") {
         const offer = await repo.offerForUpdate(client,id);
         if (!offer) throw new AppError(404,"Offer not found","RIDE_NOT_FOUND");
@@ -204,7 +179,6 @@ export class SeatRequestsService {
             throw new AppError(409,"An active request already exists","DUPLICATE_ACTIVE_REQUEST");
           throw error;
         }
-        recipientId = offer.driver_id;
       } else {
         const initial = await repo.requestForUpdate(client,id);
         if (!initial) throw new AppError(404,"Request not found","REQUEST_NOT_FOUND");
@@ -212,21 +186,17 @@ export class SeatRequestsService {
         const offer = await repo.offerForUpdate(client,initial.offer_id);
         if (!offer) throw new AppError(404,"Offer not found","RIDE_NOT_FOUND");
         if (initial.driver_id !== actorId) throw new AppError(403,"Only the driver may reject","FORBIDDEN");
+        await assertCurrentDriverCarEligibility(client,actorId,offer.vehicle_id);
         if (initial.status !== "pending" || initial.decision_deadline_at <= new Date())
           throw new AppError(409,"Request is no longer pending","REQUEST_NOT_PENDING");
-        await client.query("UPDATE pilot_seat_requests SET status='rejected',decided_at=now() WHERE id=$1",[id]);
+        await repo.rejectRequest(client,id);
         requestId = id;
-        recipientId = initial.passenger_id;
       }
       const snapshot = await repo.requestSnapshot(client,requestId);
       const result = {request:visibleRequest(snapshot)};
       const row = await repo.insertOperation(client,{actorId,key,digest:payloadDigest,requestId,action,result,snapshot});
       await repo.audit(client,row);
-      await recordDurableNotification(client,{originType:"seat_request",operationId:row.id,
-        recipientId,eventType:action,relatedEntityType:"seat_request",relatedEntityId:requestId,
-        title:action === "requested" ? "Seat request received" : "Seat request rejected",
-        body:action === "requested" ? "A passenger requested one seat. No seat is reserved yet."
-          : "The driver rejected your seat request."});
+      await recordDurableNotification(client,notification(row,snapshot));
       return row;
     });
     if (operation.state !== "committed") return this.operation(actorId,operation.id);

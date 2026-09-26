@@ -86,6 +86,8 @@ describe("pilot seat requests through HTTP and PostgreSQL", () => {
         .set("Authorization",`Bearer ${driver.token}`).set("Idempotency-Key","seat-offer").send(offerBody);
       expect(published.status,JSON.stringify(published.body)).toBe(201);
       const offerId = published.body.offer.id;
+      expect((await request(createApp()).post("/v1/seat-requests")
+        .set("Idempotency-Key","guest-request").send({offer_id:offerId,seats:1})).status).toBe(401);
       expect((await request(createApp()).post("/v1/bookings")
         .set("Authorization",`Bearer ${passenger.token}`)
         .send({ride_offer_id:offerId,seats_booked:1})).status).toBe(403);
@@ -109,6 +111,10 @@ describe("pilot seat requests through HTTP and PostgreSQL", () => {
       expect(edit.status).toBe(409);
       expect((await request(createApp()).post(`/v1/seat-requests/${first.id}/reject`)
         .set("Authorization",`Bearer ${other.token}`).set("Idempotency-Key","wrong-owner").send({})).status).toBe(403);
+      await verificationPool.query("UPDATE driver_eligibility SET status='suspended' WHERE user_id=$1",[driver.id]);
+      expect((await request(createApp()).post(`/v1/seat-requests/${first.id}/reject`)
+        .set("Authorization",`Bearer ${driver.token}`).set("Idempotency-Key","suspended-reject").send({})).status).toBe(403);
+      await verificationPool.query("UPDATE driver_eligibility SET status='approved' WHERE user_id=$1",[driver.id]);
       const rejected = await request(createApp()).post(`/v1/seat-requests/${first.id}/reject`)
         .set("Authorization",`Bearer ${driver.token}`).set("Idempotency-Key","reject-a").send({});
       expect(rejected.status).toBe(200);
@@ -124,6 +130,9 @@ describe("pilot seat requests through HTTP and PostgreSQL", () => {
       const expiry = await request(createApp()).get("/v1/notifications/durable")
         .set("Authorization",`Bearer ${other.token}`);
       expect(expiry.body.notifications.filter((item:{event_type:string}) => item.event_type === "expired")).toHaveLength(1);
+      const driverNotices = await request(createApp()).get("/v1/notifications/durable")
+        .set("Authorization",`Bearer ${driver.token}`);
+      expect(driverNotices.body.notifications.filter((item:{event_type:string}) => item.event_type === "expired")).toHaveLength(1);
       expect((await verificationPool.query("SELECT available_seats FROM ride_offers WHERE id=$1",[offerId])).rows[0].available_seats).toBe(2);
 
       const later = new Date(departure);
@@ -185,6 +194,8 @@ describe("pilot seat requests through HTTP and PostgreSQL", () => {
       await verificationPool.query(`INSERT INTO operator_allowlist(user_id,active,reason,reviewed_at)
         VALUES($1,true,'synthetic seat recovery',now())`,[operatorId]);
       await verificationPool.query("UPDATE pilot_recovery_state SET mode='restricted' WHERE singleton=true");
+      await verificationPool.query("DELETE FROM pilot_email_jobs WHERE event_id IN (SELECT id FROM pilot_notification_events WHERE origin_type='seat_request')");
+      await verificationPool.query("DELETE FROM pilot_notification_events WHERE origin_type='seat_request'");
       await verificationPool.query("DELETE FROM pilot_seat_request_audit");
       await verificationPool.query("DELETE FROM pilot_seat_request_operations");
       await verificationPool.query("DELETE FROM pilot_seat_requests");
@@ -193,6 +204,12 @@ describe("pilot seat requests through HTTP and PostgreSQL", () => {
         "SELECT count(*)::int AS n FROM pilot_seat_requests WHERE offer_id=$1",[offerId])).rows[0].n).toBe(2);
       expect((await verificationPool.query<{n:number}>(
         "SELECT count(*)::int AS n FROM pilot_seat_request_operations WHERE state='recovered'")).rows[0].n).toBe(4);
+      expect((await verificationPool.query<{n:number}>(`SELECT count(*)::int AS n FROM pilot_email_jobs j
+        JOIN pilot_notification_events e ON e.id=j.event_id
+        WHERE e.origin_type='seat_request' AND j.status='pending'`)).rows[0].n).toBe(4);
+      expect((await verificationPool.query<{n:number}>(`SELECT count(*)::int AS n FROM pilot_notification_events e
+        JOIN pilot_seat_request_operations o ON o.id=e.operation_id
+        WHERE e.origin_type='seat_request' AND e.id=o.id`)).rows[0].n).toBe(4);
     } finally {await rm(directory,{recursive:true,force:true});}
   });
 });
