@@ -10,6 +10,7 @@ verificationRouter.get("/_status", (_req, res) => {
   res.json({
     module: "verification",
     status: "active",
+    smsVerification: "suspended",
     capabilities: [
       "student verification submission and admin review",
       "driver eligibility submission and admin review",
