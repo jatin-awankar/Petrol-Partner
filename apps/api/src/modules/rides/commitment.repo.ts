@@ -27,8 +27,9 @@ export async function conflictingOffers(client: PoolClient, input: {
     WHERE ro.id IS DISTINCT FROM $4::uuid AND ro.status IN ('active', 'held', 'departed')
       AND ((ro.driver_id = $1) OR (ro.driver_id = ANY($3::uuid[])) OR (ro.vehicle_id = $2)
         OR (b.passenger_id = ANY($3::uuid[])))
-      AND ABS(EXTRACT(EPOCH FROM (((ro.date + ro.time) AT TIME ZONE 'Asia/Kolkata') - $5::timestamptz)))
-        < $6 * 60
+      AND (ro.date + ro.time) AT TIME ZONE 'Asia/Kolkata' < $5::timestamptz + $6 * interval '1 minute'
+      AND COALESCE(ro.pilot_commitment_until,
+        ((ro.date + ro.time) AT TIME ZONE 'Asia/Kolkata') + $6 * interval '1 minute') > $5::timestamptz
     LIMIT 1`, [input.driverId, input.vehicleId, input.passengerIds, input.rideId,
       input.departureAt, input.durationMinutes]);
   return Boolean(result.rowCount);

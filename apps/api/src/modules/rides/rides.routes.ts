@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { AppError } from "../../shared/errors/app-error";
 
 import { requirePilotActivity } from "../operator/pause.middleware";
 import { requireAuth } from "../../middleware/auth";
@@ -15,13 +16,15 @@ ridesRouter.get("/_status", (_req, res) => {
   });
 });
 
-ridesRouter.get("/offers", asyncHandler(ridesController.listOffers));
-ridesRouter.post("/offers", requireAuth, requirePilotActivity("offers"), asyncHandler(ridesController.createOffer));
-ridesRouter.get("/offers/:id", asyncHandler(ridesController.getOfferById));
-ridesRouter.patch("/offers/:id", requireAuth, requirePilotActivity("offers"), asyncHandler(ridesController.updateOffer));
+const legacyRideUnavailable = () => { throw new AppError(410,
+  "This ride flow is unavailable in the corridor pilot", "PILOT_SCOPE_DISABLED"); };
+ridesRouter.get("/offers", legacyRideUnavailable);
+ridesRouter.post("/offers", legacyRideUnavailable);
+ridesRouter.get("/offers/:id", legacyRideUnavailable);
+ridesRouter.patch("/offers/:id", legacyRideUnavailable);
 ridesRouter.post("/offers/:id/depart", requireAuth, requirePilotActivity("booking"), asyncHandler(ridesController.departOffer));
 
-ridesRouter.get("/requests", asyncHandler(ridesController.listRequests));
-ridesRouter.post("/requests", requireAuth, requirePilotActivity("requests"), asyncHandler(ridesController.createRequest));
-ridesRouter.get("/requests/:id", asyncHandler(ridesController.getRequestById));
-ridesRouter.patch("/requests/:id", requireAuth, requirePilotActivity("requests"), asyncHandler(ridesController.updateRequest));
+ridesRouter.get("/requests", legacyRideUnavailable);
+ridesRouter.post("/requests", legacyRideUnavailable);
+ridesRouter.get("/requests/:id", legacyRideUnavailable);
+ridesRouter.patch("/requests/:id", legacyRideUnavailable);

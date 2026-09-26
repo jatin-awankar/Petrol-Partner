@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { signAccessToken } from "../shared/jwt/tokens";
+import { corridorOffersService } from "../modules/rides/corridor-offers.service";
 import { spawn, type ChildProcess } from "node:child_process";
 import { chmod, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -16,7 +18,7 @@ import { setBackupObjectProbeForTests } from "../modules/operator/backup-status"
 import { setStudentReviewAfterCommitHookForTests } from "../modules/verification/student-review.service";
 
 const verificationPool = new Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
-const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql", "0006_operator_allowlist.sql", "0007_operator_pause.sql", "0008_operator_intent_handoff.sql", "0009_durable_notifications.sql", "0010_email_retry_operations.sql", "0011_backup_attempts.sql", "0012_student_adult_review.sql", "0013_student_review_cycles.sql", "0014_student_review_operations.sql", "0015_student_evidence_access.sql", "0016_student_evidence_deletion_outcomes.sql", "0017_student_evidence_retry_schedule.sql", "0018_driver_car_approval.sql", "0019_ride_departures.sql"];
+const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql", "0006_operator_allowlist.sql", "0007_operator_pause.sql", "0008_operator_intent_handoff.sql", "0009_durable_notifications.sql", "0010_email_retry_operations.sql", "0011_backup_attempts.sql", "0012_student_adult_review.sql", "0013_student_review_cycles.sql", "0014_student_review_operations.sql", "0015_student_evidence_access.sql", "0016_student_evidence_deletion_outcomes.sql", "0017_student_evidence_retry_schedule.sql", "0018_driver_car_approval.sql", "0019_ride_departures.sql", "0020_corridor_offers.sql", "0021_corridor_offer_recovery.sql"];
 
 function fakeProvider(identity: ProviderIdentity): AuthProvider {
   const session = { accessToken: "provider-access", refreshToken: "provider-refresh", expiresIn: 900, identity };
@@ -1068,5 +1070,175 @@ describe("protected operator pause HTTP/PostgreSQL", () => {
     expect(publicStatus.body.capabilities.every((item: { paused: boolean }) => item.paused)).toBe(true);
     await chmod(receiptDirectory, 0o700);
     await rm(receiptDirectory, { recursive: true, force: true });
+  });
+});
+
+describe("corridor offer publication and discovery", () => {
+  it("publishes one private, priced offer and rejects a concurrent overlapping commitment", async () => {
+    const directory = await mkdtemp(resolve(tmpdir(), "corridor-offer-"));
+    process.env.PILOT_RECEIPT_PATH = resolve(directory,"receipts");
+    process.env.PILOT_RECEIPT_SECRET = "corridor-offer-independent-receipt-secret";
+    process.env.PILOT_CONFLICT_POLICY_APPROVED = "true";
+    process.env.PILOT_EXPECTED_TRIP_MINUTES = "35";
+    process.env.PILOT_CONFLICT_BUFFER_MINUTES = "20";
+    process.env.PILOT_SUPPORT_WINDOW_APPROVED = "true";
+    process.env.PILOT_SUPPORT_WINDOW_START = new Date(Date.now()-60_000).toISOString();
+    process.env.PILOT_SUPPORT_WINDOW_END = new Date(Date.now()+30*24*60*60_000).toISOString();
+    try {
+      const users = await Promise.all(["corridor-driver", "corridor-passenger"].map(async label => {
+        const email = `${label}@example.test`;
+        const id = (await verificationPool.query<{id:string}>(
+          "INSERT INTO users(email,email_verified_at) VALUES($1,now()) RETURNING id",[email])).rows[0].id;
+        await verificationPool.query("INSERT INTO user_profiles(user_id,full_name,phone) VALUES($1,$2,'9999999999')",[id,label]);
+        await verificationPool.query(`INSERT INTO student_verifications
+          (user_id,provider,status,adult_eligible,institution_name,eligibility_ends_at)
+          VALUES($1,'manual_review','verified',true,'Synthetic College',now()+interval '1 year')`,[id]);
+        return {id,email,token:signAccessToken({userId:id,email,role:"user"})};
+      }));
+      const driver = users[0];
+      await verificationPool.query(`INSERT INTO driver_eligibility(user_id,status,license_expires_at,review_after)
+        VALUES($1,'approved','2099-12-31','2099-12-30')`,[driver.id]);
+      const car = (await verificationPool.query<{id:string}>(`INSERT INTO vehicles
+        (owner_user_id,vehicle_type,registration_number_last4,seat_capacity,status,verification_status,
+         use_category,applicable_document_required,insurance_expires_at,review_after)
+        VALUES($1,'car','1234',3,'active','approved','private',true,'2099-12-31','2099-12-30') RETURNING id`,[driver.id])).rows[0].id;
+      await verificationPool.query(`INSERT INTO driver_vehicle_approvals
+        (driver_user_id,vehicle_id,permission_category,status,review_after)
+        VALUES($1,$2,'owner','approved','2099-12-30')`,[driver.id,car]);
+      const departure = new Date();
+      departure.setUTCDate(departure.getUTCDate()+2);
+      for (let n=0;n<7;n++) {
+        const day = new Intl.DateTimeFormat("en-GB",{timeZone:"Asia/Kolkata",weekday:"short"}).format(departure);
+        if (day !== "Sun") break;
+        departure.setUTCDate(departure.getUTCDate()+1);
+      }
+      departure.setUTCHours(5,0,0,0); // 10:30 in the corridor timezone
+      const input = {vehicle_id:car,origin_code:"university",destination_code:"prmitr",
+        departure_at:departure.toISOString(),capacity:2};
+      const publish = (key:string,body=input) => request(createApp()).post("/v1/corridor-offers")
+        .set("Authorization",`Bearer ${driver.token}`).set("Idempotency-Key",key).send(body);
+      await verificationPool.query("UPDATE pilot_pause_state SET paused=true WHERE capability='offers'");
+      expect((await publish("paused-offer")).status).toBe(503);
+      await verificationPool.query("UPDATE pilot_pause_state SET paused=false WHERE capability='offers'");
+      const outside = new Date(departure);
+      outside.setUTCHours(0,0,0,0); // 05:30 IST, before the configured corridor schedule
+      expect((await publish("outside-schedule",{...input,departure_at:outside.toISOString()})).status).toBe(409);
+      const race = await Promise.all([publish("offer-1"),publish("offer-2")]);
+      expect(race.filter(response => response.status === 201)).toHaveLength(1);
+      const first = race.find(response => response.status === 201)!;
+      const winnerKey = race[0].status === 201 ? "offer-1" : "offer-2";
+      const loserKey = race[0].status === 201 ? "offer-2" : "offer-1";
+      expect(first.body.offer).toMatchObject({state:"acknowledged",contribution_paise:2500,currency:"INR",capacity:2});
+      const operationStatus = await request(createApp()).get(`/v1/corridor-offers/operations/${first.body.offer.operation_id}`)
+        .set("Authorization",`Bearer ${driver.token}`);
+      expect(operationStatus.status).toBe(200);
+      expect(operationStatus.body.operation).toMatchObject({state:"acknowledged",id:first.body.offer.id});
+      expect((await request(createApp()).get(`/v1/corridor-offers/operations/${first.body.offer.operation_id}`)
+        .set("Authorization",`Bearer ${users[1].token}`)).status).toBe(404);
+      expect((await publish(winnerKey)).body.offer.operation_id).toBe(first.body.offer.operation_id);
+      await verificationPool.query("UPDATE pilot_recovery_state SET mode='restricted' WHERE singleton=true");
+      await verificationPool.query("UPDATE pilot_pause_state SET paused=true WHERE capability='offers'");
+      expect((await publish(winnerKey)).body.offer.operation_id).toBe(first.body.offer.operation_id);
+      const uncertainStatus = await request(createApp()).get(`/v1/corridor-offers/operations/${first.body.offer.operation_id}`)
+        .set("Authorization",`Bearer ${driver.token}`);
+      expect(uncertainStatus.body.operation.state).toBe("pending_unknown");
+      expect((await publish("new-while-restricted")).status).toBe(503);
+      await verificationPool.query("UPDATE pilot_pause_state SET paused=false WHERE capability='offers'");
+      await verificationPool.query("UPDATE pilot_recovery_state SET mode='open' WHERE singleton=true");
+      expect((await publish(loserKey)).status).toBe(409);
+      expect((await publish(winnerKey,{...input,capacity:1})).status).toBe(409);
+      const secondDriver = (await verificationPool.query<{id:string}>(
+        "INSERT INTO users(email,email_verified_at) VALUES('corridor-second-driver@example.test',now()) RETURNING id")).rows[0].id;
+      await verificationPool.query(`INSERT INTO student_verifications
+        (user_id,provider,status,adult_eligible,institution_name,eligibility_ends_at)
+        VALUES($1,'manual_review','verified',true,'Synthetic College',now()+interval '1 year')`,[secondDriver]);
+      await verificationPool.query(`INSERT INTO driver_eligibility(user_id,status,license_expires_at,review_after)
+        VALUES($1,'approved','2099-12-31','2099-12-30')`,[secondDriver]);
+      await verificationPool.query(`INSERT INTO driver_vehicle_approvals
+        (driver_user_id,vehicle_id,permission_category,status,review_after)
+        VALUES($1,$2,'written_permission','approved','2099-12-30')`,[secondDriver,car]);
+      expect((await request(createApp()).post("/v1/corridor-offers")
+        .set("Authorization",`Bearer ${signAccessToken({userId:secondDriver,email:"corridor-second-driver@example.test",role:"user"})}`)
+        .set("Idempotency-Key","shared-car-conflict").send(input)).status).toBe(409);
+      await verificationPool.query("UPDATE driver_eligibility SET status='suspended' WHERE user_id=$1",[driver.id]);
+      expect((await publish("stale-driver",input)).status).toBe(403);
+      await verificationPool.query("UPDATE driver_eligibility SET status='approved' WHERE user_id=$1",[driver.id]);
+      const beforeFailure = await verificationPool.query<{n:number}>("SELECT count(*)::int AS n FROM pilot_offer_audit");
+      await verificationPool.query(`CREATE OR REPLACE FUNCTION reject_offer_notification_for_test() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN IF NEW.origin_type='corridor_offer' THEN RAISE EXCEPTION 'synthetic notification failure'; END IF; RETURN NEW; END $$`);
+      await verificationPool.query("CREATE TRIGGER reject_offer_notification_for_test BEFORE INSERT ON pilot_notification_events FOR EACH ROW EXECUTE FUNCTION reject_offer_notification_for_test()");
+      try {
+        const failedEdit = await request(createApp()).patch(`/v1/corridor-offers/${first.body.offer.id}`)
+          .set("Authorization",`Bearer ${driver.token}`).set("Idempotency-Key","offer-edit-notification-failure")
+          .send({...input,capacity:1,version:1});
+        expect(failedEdit.status).toBeGreaterThanOrEqual(500);
+        expect((await verificationPool.query("SELECT pilot_version FROM ride_offers WHERE id=$1",[first.body.offer.id])).rows[0].pilot_version).toBe(1);
+        expect((await verificationPool.query<{n:number}>("SELECT count(*)::int AS n FROM pilot_offer_audit")).rows[0].n).toBe(beforeFailure.rows[0].n);
+      } finally {
+        await verificationPool.query("DROP TRIGGER reject_offer_notification_for_test ON pilot_notification_events");
+        await verificationPool.query("DROP FUNCTION reject_offer_notification_for_test()");
+      }
+      const edit = await request(createApp()).patch(`/v1/corridor-offers/${first.body.offer.id}`)
+        .set("Authorization",`Bearer ${driver.token}`).set("Idempotency-Key","offer-edit-1")
+        .send({...input,capacity:1,version:1});
+      expect(edit.status,JSON.stringify(edit.body)).toBe(200);
+      expect(edit.body.offer.version).toBe(2);
+      expect((await request(createApp()).patch(`/v1/corridor-offers/${first.body.offer.id}`)
+        .set("Authorization",`Bearer ${driver.token}`).set("Idempotency-Key","offer-edit-stale")
+        .send({...input,capacity:2,version:1})).status).toBe(409);
+      const competing = await Promise.all([publish("offer-3"),publish("offer-4")]);
+      expect(competing.every(item => item.status === 409)).toBe(true);
+      const discovery = await request(createApp()).get("/v1/corridor-offers?origin_code=university&destination_code=prmitr")
+        .set("Authorization",`Bearer ${users[1].token}`);
+      expect(discovery.status,JSON.stringify(discovery.body)).toBe(200);
+      expect(discovery.body.offers).toHaveLength(1);
+      expect(discovery.body.offers[0]).toMatchObject({contribution_paise:2500,available_seats:1,version:2});
+      expect(JSON.stringify(discovery.body)).not.toContain("9999999999");
+      await verificationPool.query("UPDATE users SET email_verified_at=NULL WHERE id=$1",[users[1].id]);
+      expect((await request(createApp()).get("/v1/corridor-offers?origin_code=university&destination_code=prmitr")
+        .set("Authorization",`Bearer ${users[1].token}`)).status).toBe(403);
+      await verificationPool.query("UPDATE users SET email_verified_at=now() WHERE id=$1",[users[1].id]);
+      await verificationPool.query("UPDATE users SET email_verified_at=NULL WHERE id=$1",[driver.id]);
+      expect((await publish("driver-email-revoked")).status).toBe(403);
+      expect((await request(createApp()).get("/v1/corridor-offers?origin_code=university&destination_code=prmitr")
+        .set("Authorization",`Bearer ${users[1].token}`)).body.offers).toHaveLength(0);
+      await verificationPool.query("UPDATE users SET email_verified_at=now() WHERE id=$1",[driver.id]);
+      await verificationPool.query("UPDATE pilot_pause_state SET paused=true WHERE capability='booking'");
+      expect((await request(createApp()).get("/v1/corridor-offers?origin_code=university&destination_code=prmitr")
+        .set("Authorization",`Bearer ${users[1].token}`)).status).toBe(503);
+      await verificationPool.query("UPDATE pilot_pause_state SET paused=false WHERE capability='booking'");
+      await verificationPool.query("UPDATE driver_eligibility SET status='suspended' WHERE user_id=$1",[driver.id]);
+      expect((await request(createApp()).get("/v1/corridor-offers?origin_code=university&destination_code=prmitr")
+        .set("Authorization",`Bearer ${users[1].token}`)).body.offers).toHaveLength(0);
+      await verificationPool.query("UPDATE driver_eligibility SET status='approved' WHERE user_id=$1",[driver.id]);
+      await verificationPool.query(`INSERT INTO bookings
+        (ride_offer_id,created_by_user_id,passenger_id,driver_id,seats_booked,total_amount_paise,status,payment_state)
+        VALUES($1,$2,$2,$3,1,2500,'pending','unpaid')`,[first.body.offer.id,users[1].id,driver.id]);
+      expect((await request(createApp()).patch(`/v1/corridor-offers/${first.body.offer.id}`)
+        .set("Authorization",`Bearer ${driver.token}`).set("Idempotency-Key","offer-edit-after-request")
+        .send({...input,capacity:2,version:2})).status).toBe(409);
+      expect((await request(createApp()).get("/v1/corridor-offers?origin_code=prmitr&destination_code=university")
+        .set("Authorization",`Bearer ${users[1].token}`)).body.offers).toHaveLength(0);
+      await verificationPool.query("UPDATE student_verifications SET eligibility_ends_at=now()-interval '1 second' WHERE user_id=$1",[users[1].id]);
+      expect((await request(createApp()).get("/v1/corridor-offers?origin_code=university&destination_code=prmitr")
+        .set("Authorization",`Bearer ${users[1].token}`)).status).toBe(403);
+      const operatorId = (await verificationPool.query<{id:string}>(
+        "INSERT INTO users(email,role,email_verified_at) VALUES('corridor-operator@example.test','admin',now()) RETURNING id")).rows[0].id;
+      await verificationPool.query(`INSERT INTO operator_allowlist(user_id,active,reason,reviewed_at)
+        VALUES($1,true,'synthetic recovery',now())`,[operatorId]);
+      await verificationPool.query("UPDATE pilot_recovery_state SET mode='restricted' WHERE singleton=true");
+      await verificationPool.query("DELETE FROM pilot_offer_audit");
+      await verificationPool.query("DELETE FROM pilot_offer_operations");
+      await verificationPool.query("DELETE FROM ride_offers WHERE id=$1",[first.body.offer.id]);
+      expect(await corridorOffersService.reconcileReceipts(operatorId)).toBe(2);
+      expect((await verificationPool.query("SELECT pilot_version,pilot_capacity FROM ride_offers WHERE id=$1",
+        [first.body.offer.id])).rows).toEqual([{pilot_version:2,pilot_capacity:1}]);
+      expect((await verificationPool.query("SELECT count(*)::int AS n FROM pilot_offer_audit")).rows[0].n).toBe(2);
+    } finally {
+      for (const name of ["PILOT_RECEIPT_PATH","PILOT_RECEIPT_SECRET","PILOT_CONFLICT_POLICY_APPROVED",
+        "PILOT_EXPECTED_TRIP_MINUTES","PILOT_CONFLICT_BUFFER_MINUTES","PILOT_SUPPORT_WINDOW_APPROVED",
+        "PILOT_SUPPORT_WINDOW_START","PILOT_SUPPORT_WINDOW_END"]) delete process.env[name];
+      await rm(directory,{recursive:true,force:true});
+    }
   });
 });
