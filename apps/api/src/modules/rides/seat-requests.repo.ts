@@ -158,6 +158,7 @@ export async function listConfirmedForParticipant(db:Database,userId:string,offe
     origin_code:string;destination_code:string;
     passenger_origin_code:string;passenger_destination_code:string;pickup_location:string;
     car_registration_last4:string;car_make:string|null;car_model:string|null;car_color:string|null;
+    trip_state:string;boarded:boolean|null;started_at:Date|null;
     driver_verified_name:string|null;passenger_verified_name:string|null}>(
     `SELECT a.id,a.offer_id,a.driver_id,a.passenger_id,a.contribution_paise,a.currency,
       a.departure_at,a.status,r.offer_terms->>'origin_code' AS origin_code,
@@ -168,7 +169,13 @@ export async function listConfirmedForParticipant(db:Database,userId:string,offe
       v.registration_number_last4 AS car_registration_last4,
       v.make AS car_make,v.model AS car_model,v.color AS car_color,
       ds.enrolled_name AS driver_verified_name,ps.enrolled_name AS passenger_verified_name,
-      c.actor_id AS cancelled_by,c.cancelled_at,c.reason AS cancellation_reason
+      c.actor_id AS cancelled_by,c.cancelled_at,c.reason AS cancellation_reason,
+      CASE WHEN o.status='departed' THEN 'departed'
+        WHEN o.status='cancelled' THEN 'cancelled'
+        WHEN o.status='held' THEN 'held'
+        WHEN (o.date+o.time) AT TIME ZONE 'Asia/Kolkata' < COALESCE($3::timestamptz,now())-interval '30 minutes'
+          THEN 'delayed' ELSE 'scheduled' END AS trip_state,
+      pb.boarded,d.started_at
       FROM pilot_seat_allocations a JOIN pilot_seat_requests r ON r.id=a.request_id
       JOIN ride_offers o ON o.id=a.offer_id
       JOIN vehicles v ON v.id=a.vehicle_id
@@ -176,6 +183,8 @@ export async function listConfirmedForParticipant(db:Database,userId:string,offe
       LEFT JOIN student_verifications ps ON ps.user_id=a.passenger_id
       LEFT JOIN LATERAL (SELECT actor_id,cancelled_at,reason FROM pilot_cancellation_audit
         WHERE request_id=r.id ORDER BY cancelled_at DESC LIMIT 1) c ON true
+      LEFT JOIN pilot_departure_operations d ON d.offer_id=a.offer_id
+      LEFT JOIN pilot_departure_boarding pb ON pb.operation_id=d.id AND pb.allocation_id=a.id
       WHERE r.status IN ('accepted','cancelled') AND (a.driver_id=$1 OR a.passenger_id=$1)
         AND ($2::uuid IS NULL OR a.offer_id=$2)
         AND (a.status IN ('confirmed','held') OR (a.status IN ('completed','cancelled')

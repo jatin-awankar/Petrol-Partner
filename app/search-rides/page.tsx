@@ -7,6 +7,7 @@ import { apiRequest, ApiError } from "@/lib/api/client";
 import { useCurrentUser } from "@/hooks/auth/useCurrentUser";
 import { SeatRequestList, type SeatRequest } from "@/components/searchRides/SeatRequestList";
 import { PilotCoordinationNotice } from "@/components/pilot/PilotCoordinationNotice";
+import {PilotBoarding,type BoardingBooking} from "@/components/pilot/PilotBoarding";
 
 type Stop = {code:string;label:string};
 type Policy = {stops:Stop[];permitted_pairs:{origin_code:string;destination_code:string}[];contact_notice:string};
@@ -26,7 +27,8 @@ export default function SearchRidesPage() {
     departure_at:string;status:string;origin_code:string;destination_code:string;
     driver_id:string;passenger_id:string;passenger_origin_code:string;passenger_destination_code:string;
     pickup_location:string;car_registration_last4:string;car_make:string|null;car_model:string|null;
-    car_color:string|null;driver_verified_name:string|null;passenger_verified_name:string|null}>>([]);
+    car_color:string|null;driver_verified_name:string|null;passenger_verified_name:string|null;
+    trip_state:string;boarded:boolean|null;started_at:string|null}>>([]);
   const [busy,setBusy] = useState<string | null>(null);
   useEffect(() => {if (!loading && !isAuthenticated) router.replace("/login");},[loading,isAuthenticated,router]);
   useEffect(() => {if (!isAuthenticated) return;
@@ -137,6 +139,7 @@ export default function SearchRidesPage() {
       onReject={id => void changeRequest(`/v1/seat-requests/${id}/reject`,{},`reject:${id}`)}
       onAccept={id => void changeRequest(`/v1/seat-requests/${id}/accept`,{},`accept:${id}`)}
       onCancel={(id,reason) => void cancelRequest(id,reason)} />
+    <PilotBoarding bookings={bookings as BoardingBooking[]} userId={user?.id} onRefresh={refreshRequests} />
     <section><h2 className="text-xl font-semibold">Confirmed bookings</h2>
       <ul>{bookings.map(booking => <li key={booking.id} className="rounded border p-3">
         {booking.origin_code} → {booking.destination_code} · One seat ·

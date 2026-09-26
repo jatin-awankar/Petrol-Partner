@@ -29,8 +29,8 @@ export async function pending(client: Pool | PoolClient) {
 
 export async function offerForUpdate(client: PoolClient, rideId: string) {
   return (await client.query<{ id: string; driver_id: string; vehicle_id: string | null;
-    status: string; date: string; time: string }>(
-    `SELECT id, driver_id, vehicle_id, status, to_char(date, 'YYYY-MM-DD') AS date, time
+    status: string; date: string; time: string; pilot_policy_id:string|null }>(
+    `SELECT id, driver_id, vehicle_id, status, pilot_policy_id, to_char(date, 'YYYY-MM-DD') AS date, time
        FROM ride_offers WHERE id = $1 FOR UPDATE`, [rideId])).rows[0] ?? null;
 }
 

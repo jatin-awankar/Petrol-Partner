@@ -143,6 +143,8 @@ export class DepartureService {
       store();
       const offer = await repo.offerForUpdate(client, rideId);
       if (!offer) throw new AppError(404, "Ride offer not found", "RIDE_NOT_FOUND");
+      if (offer.pilot_policy_id) throw new AppError(410,
+        "Use the pilot departure flow for this offer", "PILOT_SCOPE_DISABLED");
       if (offer.driver_id !== driverId) throw new AppError(403, "Only the driver can depart", "FORBIDDEN");
       if (offer.status !== "active" || !offer.vehicle_id) throw new AppError(409,
         "Ride is not eligible to depart", "DEPARTURE_INVALID");
