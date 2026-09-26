@@ -4,7 +4,7 @@
 
 **Blocked by:** 12 (Student and adult eligibility review).
 
-**Status:** claimed
+**Status:** resolved
 
 **Work type:** Feature slice
 
@@ -12,26 +12,23 @@
 
 ## Acceptance criteria
 
-- [ ] Deliver licence review and car registration/insurance/applicable-document submission, with a distinct driver-car association and permission-to-use evidence.
-- [ ] Reuse private evidence access/deletion from student review. Preserve minimal decision records, status, expiry/review date, reviewer and reason.
-- [ ] Restrict pilot vehicle categories to eligible private cars; reject motorcycles, taxis, rentals and cars not approved for that driver at server entry points.
-- [ ] Require current approved student status and keep driver approval independent of car/association approval. An optional phone number does not grant or block eligibility.
-- [ ] Apply protected idempotent decision recording, audit and applicant notifications for approval, rejection and eligibility changes.
-- [ ] Expose a single current eligibility check consumed by offer/acceptance/departure; expired or revoked approval fails synchronously regardless of worker progress.
-- [ ] Demonstrate applicant and operator flows plus independent status, expiry-boundary, wrong-owner and evidence-deletion tests. Later booking holds extend revocation handling, not the basic eligibility rule.
+- [x] Deliver licence review and car registration/insurance/applicable-document submission, with a distinct driver-car association and permission-to-use evidence.
+- [x] Reuse private evidence access/deletion from student review. Preserve minimal decision records, status, expiry/review date, reviewer and reason.
+- [x] Restrict pilot vehicle categories to eligible private cars; reject motorcycles, taxis, rentals and cars not approved for that driver at server entry points.
+- [x] Require current approved student status and keep driver approval independent of car/association approval. An optional phone number does not grant or block eligibility.
+- [x] Apply protected idempotent decision recording, audit and applicant notifications for approval, rejection and eligibility changes.
+- [x] Expose a single current eligibility check consumed by offer/acceptance/departure; expired or revoked approval fails synchronously regardless of worker progress.
+- [x] Demonstrate applicant and operator flows plus independent status, expiry-boundary, wrong-owner and evidence-deletion tests. Later booking holds extend revocation handling, not the basic eligibility rule.
 
 ## Answer
 
-Implementation is in progress on `codex/14-driver-car-approval`. The API now supports separate driver, private-car, and permission-to-use submissions and protected operator decisions. Private evidence uses one-use operator access and deletion work. A shared PostgreSQL eligibility query checks current student, driver, car, and association approval and expiry before an offer or booking acceptance. Synthetic PostgreSQL tests cover independent decisions, expiry boundaries, wrong-owner access, decision retries and recovery, and evidence deletion.
+Completed on `codex/14-driver-car-approval`. Applicants can submit separate driver, private-car, and driver-car permission evidence. Operators can privately access evidence and make independent protected decisions; the API records minimal decisions, audit history, durable notifications, and recovery receipts. Evidence deletion reuses the student review machinery. The shared PostgreSQL eligibility check is used at offer publication, booking acceptance, and protected departure. Departure also checks the approved support window, passenger eligibility, and overlapping commitments. Revocation holds future rides and raises an incident for a departed ride.
 
-Review found two acceptance gaps, so this ticket remains claimed:
+PostgreSQL tests exercise independent status and expiry boundaries, wrong-owner access, deletion, HTTP applicant/operator flows, decision retries and receipt recovery, notification failure, and separate-connection acceptance/departure and revocation/departure races. Final spec and standards reviews found no remaining ticket 14 acceptance gap.
 
-- There is no departure/start-trip mutation in the current API. The shared eligibility check therefore cannot yet be demonstrated at departure.
-- The suite does not yet demonstrate the applicant and operator HTTP flows end to end or a separate-connection acceptance/departure race. Existing focused tests exercise the services and worker, including refusal to approve when a required applicable document is absent.
+Checks: `npm run typecheck` passed; `npm test` passed against a disposable local PostgreSQL database (root script checks, 76 API tests passed with one skipped, 16 worker tests passed); `npm run lint` passed with 10 existing warnings; `npm run build:all` passed. `git diff --check` passed.
 
-Production evidence intake remains gated by provider and independent receipt retention verification. No real trips or deployed data migration were enabled. Reviewer also identified SQL in the new review service that should move to repository functions before resolution.
-
-Checks: `npm run typecheck` passed; `npm test` passed against a disposable local PostgreSQL database; the focused driver-car PostgreSQL test passed after the final migration and evidence changes; `npm run lint` passed with 10 pre-existing warnings. API and worker builds passed. `npm run build:all` failed because the Next.js build could not fetch Poppins from Google Fonts in this network-restricted environment.
+Production evidence intake still requires provider and independent receipt retention verification. The configured conflict policy and support window require operator approval, and other pilot launch gates remain open. No real trips, deployed data migration, or external contact occurred. Later booking hold states remain outside this ticket as specified.
 
 ## Completion evidence
 
