@@ -77,8 +77,12 @@ export async function readyNotifications(db:PoolClient,id:string) {
   await db.query("UPDATE pilot_notification_events SET ready_at=now() WHERE origin_type='seat_request' AND operation_id=$1",[id]);
 }
 export async function listForParticipant(db:Database,userId:string) {
-  return (await db.query<SeatRequest>(`SELECT * FROM pilot_seat_requests
-    WHERE passenger_id=$1 OR driver_id=$1 ORDER BY created_at DESC LIMIT 100`,[userId])).rows;
+  return (await db.query<SeatRequest>(`SELECT r.* FROM pilot_seat_requests r
+    LEFT JOIN pilot_seat_allocations a ON a.request_id=r.id
+    WHERE (r.passenger_id=$1 OR r.driver_id=$1)
+      AND (r.status<>'accepted' OR a.status IN ('confirmed','held')
+        OR a.ended_at > now()-interval '24 hours')
+    ORDER BY r.created_at DESC LIMIT 100`,[userId])).rows;
 }
 export async function allOperations(db:Database) {
   return (await db.query<RequestOperation>("SELECT * FROM pilot_seat_request_operations")).rows;
@@ -91,7 +95,8 @@ export async function rejectRequest(db:PoolClient,id:string) {
 }
 export type Allocation = {id:string;request_id:string;offer_id:string;driver_id:string;passenger_id:string;
   vehicle_id:string;seats:number;contribution_paise:number;currency:string;offer_version:number;
-  policy_version:number;departure_at:Date;commitment_until:Date;status:string;accepted_at:Date};
+  policy_version:number;departure_at:Date;commitment_until:Date;status:string;accepted_at:Date;
+  ended_at:Date|null};
 export async function allocatedSeatCount(db:PoolClient,offerId:string) {
   return (await db.query<{count:number}>(`SELECT count(*)::int AS count FROM pilot_seat_allocations
     WHERE offer_id=$1 AND status IN ('confirmed','held')`,[offerId])).rows[0].count;
@@ -117,12 +122,12 @@ export async function allocate(db:PoolClient,request:SeatRequest,offer:OfferForR
 export async function accept(db:PoolClient,id:string) {
   await db.query("UPDATE pilot_seat_requests SET status='accepted',decided_at=now() WHERE id=$1",[id]);
 }
-export async function withdrawIncompatible(db:PoolClient,passengerId:string,acceptedOfferId:string,
+export async function withdrawIncompatible(db:PoolClient,participantIds:string[],acceptedOfferId:string,
   departure:Date,until:Date) {
   return (await db.query<SeatRequest>(`UPDATE pilot_seat_requests r SET status='withdrawn',decided_at=now()
-    FROM ride_offers o WHERE r.offer_id=o.id AND r.passenger_id=$1 AND r.status='pending'
+    FROM ride_offers o WHERE r.offer_id=o.id AND r.passenger_id=ANY($1::uuid[]) AND r.status='pending'
       AND r.offer_id<>$2 AND (o.date+o.time) AT TIME ZONE 'Asia/Kolkata' < $4
-      AND o.pilot_commitment_until > $3 RETURNING r.*`,[passengerId,acceptedOfferId,departure,until])).rows;
+      AND o.pilot_commitment_until > $3 RETURNING r.*`,[participantIds,acceptedOfferId,departure,until])).rows;
 }
 export async function auditWithdrawals(db:PoolClient,operationId:string,requestIds:string[]) {
   for (const requestId of requestIds) await db.query(`INSERT INTO pilot_seat_withdrawal_audit
@@ -140,7 +145,9 @@ export async function listConfirmedForParticipant(db:Database,userId:string) {
       JOIN vehicles v ON v.id=a.vehicle_id
       LEFT JOIN student_verifications ds ON ds.user_id=a.driver_id
       LEFT JOIN student_verifications ps ON ps.user_id=a.passenger_id
-      WHERE a.driver_id=$1 OR a.passenger_id=$1 ORDER BY a.accepted_at DESC LIMIT 100`,[userId])).rows;
+      WHERE (a.driver_id=$1 OR a.passenger_id=$1)
+        AND (a.status IN ('confirmed','held') OR a.ended_at > now()-interval '24 hours')
+      ORDER BY a.accepted_at DESC LIMIT 100`,[userId])).rows;
 }
 export async function restoreOperation(db:PoolClient,item:{operationId:string;actorId:string;key:string;
   digest:string;requestId:string;action:string;result:Record<string,unknown>;
@@ -162,13 +169,13 @@ export async function restoreOperation(db:PoolClient,item:{operationId:string;ac
         const allocation = item.result.booking as Allocation;
         await db.query(`INSERT INTO pilot_seat_allocations
           (id,request_id,offer_id,driver_id,passenger_id,vehicle_id,seats,contribution_paise,
-            currency,offer_version,policy_version,departure_at,commitment_until,status,accepted_at)
-          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+            currency,offer_version,policy_version,departure_at,commitment_until,status,accepted_at,ended_at)
+          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
           ON CONFLICT (id) DO NOTHING`,[allocation.id,allocation.request_id,allocation.offer_id,
             allocation.driver_id,allocation.passenger_id,allocation.vehicle_id,allocation.seats,
             allocation.contribution_paise,allocation.currency,allocation.offer_version,
             allocation.policy_version,allocation.departure_at,allocation.commitment_until,
-            allocation.status,allocation.accepted_at]);
+            allocation.status,allocation.accepted_at,allocation.ended_at]);
         for (const withdrawn of (item.result.withdrawn_requests as Array<{id:string}> ?? [])) {
           await db.query("UPDATE pilot_seat_requests SET status='withdrawn' WHERE id=$1 AND status IN ('pending','withdrawn')",[withdrawn.id]);
         }

@@ -107,6 +107,10 @@ describe("pilot seat requests through HTTP and PostgreSQL", () => {
           .set("Authorization",`Bearer ${actor.token}`).set("Idempotency-Key",`other-request-${index}`)
           .send({offer_id:otherOffer.body.offer.id,seats:1})));
       expect(otherRequests.map(value => value.status)).toEqual([201,201]);
+      const driverPending = await request(createApp()).post("/v1/seat-requests")
+        .set("Authorization",`Bearer ${driver.token}`).set("Idempotency-Key","driver-pending-other-offer")
+        .send({offer_id:otherOffer.body.offer.id,seats:1});
+      expect(driverPending.status).toBe(201);
       const accept = (id:string,key:string) => request(createApp()).post(`/v1/seat-requests/${id}/accept`)
         .set("Authorization",`Bearer ${driver.token}`).set("Idempotency-Key",key).send({});
       expect((await request(createApp()).post(`/v1/seat-requests/${one.body.request.id}/accept`)
@@ -114,6 +118,11 @@ describe("pilot seat requests through HTTP and PostgreSQL", () => {
       await verificationPool.query("UPDATE driver_eligibility SET status='suspended' WHERE user_id=$1",[driver.id]);
       expect((await accept(one.body.request.id,"suspended-driver")).status).toBe(403);
       await verificationPool.query("UPDATE driver_eligibility SET status='approved' WHERE user_id=$1",[driver.id]);
+      await verificationPool.query(`UPDATE driver_vehicle_approvals SET status='revoked'
+        WHERE driver_user_id=$1 AND vehicle_id=$2`,[driver.id,car]);
+      expect((await accept(one.body.request.id,"revoked-association")).status).toBe(403);
+      await verificationPool.query(`UPDATE driver_vehicle_approvals SET status='approved'
+        WHERE driver_user_id=$1 AND vehicle_id=$2`,[driver.id,car]);
       await verificationPool.query("UPDATE student_verifications SET status='suspended' WHERE user_id=$1",[first.id]);
       expect((await accept(one.body.request.id,"revoked-passenger")).status).toBe(403);
       await verificationPool.query("UPDATE student_verifications SET status='verified' WHERE user_id=$1",[first.id]);
@@ -178,9 +187,11 @@ describe("pilot seat requests through HTTP and PostgreSQL", () => {
       const winner = a.status === 200 ? a : b;
       expect(winner.body.request).toMatchObject({status:"accepted",confirmed:true,seats_reserved:1});
       expect(winner.body.booking).toMatchObject({seats:1,contribution_paise:2500,currency:"INR",status:"confirmed"});
-      expect(winner.body.withdrawn_requests).toEqual([
-        {id:otherRequests[a.status === 200 ? 0 : 1].body.request.id,reason:"overlapping confirmed ride"}]);
+      expect(winner.body.withdrawn_requests).toEqual(expect.arrayContaining([
+        expect.objectContaining({id:otherRequests[a.status === 200 ? 0 : 1].body.request.id}),
+        expect.objectContaining({id:driverPending.body.request.id,passenger_id:driver.id})]));
       const winnerPassenger = a.status === 200 ? first : second;
+      const winnerPassengerOtherRequestId = otherRequests[a.status === 200 ? 0 : 1].body.request.id;
       expect((await post(winnerPassenger,"duplicate-confirmed-request")).body.error.code)
         .toBe("DUPLICATE_ACTIVE_REQUEST");
       await verificationPool.query("UPDATE vehicles SET seat_capacity=1 WHERE id=$1",[otherCar]);
@@ -242,7 +253,7 @@ describe("pilot seat requests through HTTP and PostgreSQL", () => {
       const withdrawnView = await request(createApp()).get("/v1/seat-requests")
         .set("Authorization",`Bearer ${winnerPassenger.token}`);
       expect(withdrawnView.body.requests).toEqual(expect.arrayContaining([
-        expect.objectContaining({id:winner.body.withdrawn_requests[0].id,status:"withdrawn"})]));
+        expect.objectContaining({id:winnerPassengerOtherRequestId,status:"withdrawn"})]));
       expect((await accept(a.status === 200 ? one.body.request.id : two.body.request.id,
         a.status === 200 ? "accept-one" : "accept-two")).body.operation_id).toBe(winner.body.operation_id);
       expect((await accept(a.status === 200 ? two.body.request.id : one.body.request.id,
@@ -253,12 +264,26 @@ describe("pilot seat requests through HTTP and PostgreSQL", () => {
         expect.objectContaining({offer_id:offer.body.offer.id,contribution_paise:2500})]));
       expect((await verificationPool.query<{count:number}>(`SELECT count(*)::int AS count
         FROM pilot_seat_allocations WHERE offer_id=$1`,[offer.body.offer.id])).rows[0].count).toBe(1);
+      await verificationPool.query(`UPDATE pilot_seat_allocations SET status='completed',
+        ended_at=now()-interval '25 hours' WHERE offer_id=$1`,[offer.body.offer.id]);
+      const afterAccessWindow = await request(createApp()).get("/v1/seat-requests/confirmed")
+        .set("Authorization",`Bearer ${driver.token}`);
+      expect(afterAccessWindow.body.bookings.some((item:{offer_id:string}) =>
+        item.offer_id === offer.body.offer.id)).toBe(false);
+      const expiredTripDetails = await request(createApp()).get("/v1/seat-requests")
+        .set("Authorization",`Bearer ${driver.token}`);
+      expect(expiredTripDetails.body.requests.some((item:{id:string}) =>
+        item.id === winner.body.request.id)).toBe(false);
       expect((await verificationPool.query<{count:number}>(`SELECT count(*)::int AS count
-        FROM pilot_seat_withdrawal_audit WHERE operation_id=$1`,[winner.body.operation_id])).rows[0].count).toBe(1);
+        FROM pilot_seat_withdrawal_audit WHERE operation_id=$1`,[winner.body.operation_id])).rows[0].count).toBe(2);
       const acceptedEvents = await request(createApp()).get("/v1/notifications/durable")
         .set("Authorization",`Bearer ${winnerPassenger.token}`);
       expect(acceptedEvents.body.notifications.map((item:{event_type:string}) => item.event_type))
-        .toEqual(expect.arrayContaining(["accepted",`withdrawn:${winner.body.withdrawn_requests[0].id}`]));
+        .toEqual(expect.arrayContaining(["accepted",`withdrawn:${winnerPassengerOtherRequestId}`]));
+      const driverEvents = await request(createApp()).get("/v1/notifications/durable")
+        .set("Authorization",`Bearer ${driver.token}`);
+      expect(driverEvents.body.notifications.map((item:{event_type:string}) => item.event_type))
+        .toContain(`withdrawn:${driverPending.body.request.id}`);
       const operatorId = (await verificationPool.query<{id:string}>(
         "INSERT INTO users(email,role,email_verified_at) VALUES('accept-recovery-operator@example.test','admin',now()) RETURNING id"
       )).rows[0].id;
@@ -272,9 +297,43 @@ describe("pilot seat requests through HTTP and PostgreSQL", () => {
       await verificationPool.query("DELETE FROM pilot_seat_request_operations");
       await verificationPool.query("DELETE FROM pilot_seat_allocations");
       await verificationPool.query("DELETE FROM pilot_seat_requests");
-      expect(await new SeatRequestsService().reconcileReceipts(operatorId)).toBe(8);
+      expect(await new SeatRequestsService().reconcileReceipts(operatorId)).toBe(9);
       expect((await verificationPool.query<{count:number}>(`SELECT count(*)::int AS count
         FROM pilot_seat_allocations WHERE offer_id=$1`,[offer.body.offer.id])).rows[0].count).toBe(1);
+      await verificationPool.query("UPDATE pilot_recovery_state SET mode='open' WHERE singleton=true");
+      await verificationPool.query(`CREATE OR REPLACE FUNCTION delay_acceptance_receipt_for_test()
+        RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+          IF NEW.action='accepted' THEN PERFORM pg_sleep(0.5); END IF;
+          RETURN NEW; END $$`);
+      await verificationPool.query(`CREATE TRIGGER delay_acceptance_receipt_for_test
+        AFTER INSERT ON pilot_seat_request_operations FOR EACH ROW EXECUTE FUNCTION delay_acceptance_receipt_for_test()`);
+      const receiptDirectory = `${process.env.PILOT_RECEIPT_PATH}.seat-request`;
+      try {
+        const pendingResponse = Promise.resolve(request(createApp())
+          .post(`/v1/seat-requests/${remainingOtherRequest}/accept`)
+          .set("Authorization",`Bearer ${otherDriver.token}`)
+          .set("Idempotency-Key","unknown-acceptance").send({}));
+        await new Promise(resolve => setTimeout(resolve,150));
+        await chmod(receiptDirectory,0o500);
+        const uncertain = await pendingResponse;
+        expect(uncertain.body.error.code).toBe("OPERATION_PENDING");
+        const operationId = uncertain.body.error.details.operationId;
+        const queried = await request(createApp()).get(`/v1/seat-requests/operations/${operationId}`)
+          .set("Authorization",`Bearer ${otherDriver.token}`);
+        expect(queried.body.operation.operation_id).toBe(operationId);
+        expect(queried.body.operation.state).toBe("committed");
+        await chmod(receiptDirectory,0o700);
+        await verificationPool.query("DROP TRIGGER delay_acceptance_receipt_for_test ON pilot_seat_request_operations");
+        await verificationPool.query("DROP FUNCTION delay_acceptance_receipt_for_test()");
+        expect(await new SeatRequestsService().reconcileReceipts(operatorId)).toBe(10);
+        const recovered = await request(createApp()).get(`/v1/seat-requests/operations/${operationId}`)
+          .set("Authorization",`Bearer ${otherDriver.token}`);
+        expect(recovered.body.operation.state).toBe("recovered");
+      } finally {
+        await chmod(receiptDirectory,0o700);
+        await verificationPool.query("DROP TRIGGER IF EXISTS delay_acceptance_receipt_for_test ON pilot_seat_request_operations");
+        await verificationPool.query("DROP FUNCTION IF EXISTS delay_acceptance_receipt_for_test()");
+      }
     } finally {setSeatRequestClockForTests(null);await rm(directory,{recursive:true,force:true});}
   });
   it("keeps capacity available, freezes terms, rejects by owner, and expires at the decision deadline", async () => {

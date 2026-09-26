@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
 import { env } from "../../config/env";
 import { pool } from "../../db/pool";
 import { AppError } from "../../shared/errors/app-error";
@@ -51,6 +51,20 @@ function notification(row:repo.RequestOperation,snapshot:repo.SeatRequest) {
       : row.action === "accepted" ? "The driver accepted your seat request. One whole-ride seat is confirmed."
       : "The driver rejected your seat request."};
 }
+type WithdrawnRequest = {id:string;passenger_id:string};
+async function recordDecisionNotifications(client:PoolClient,row:repo.RequestOperation,
+  snapshot:repo.SeatRequest,withdrawn:WithdrawnRequest[]) {
+  await recordDurableNotification(client,notification(row,snapshot));
+  if (row.action === "accepted") await recordDurableNotification(client,{
+    originType:"seat_request",operationId:row.id,eventId:relatedEventId(row.id,"accepted_driver",row.request_id),
+    recipientId:snapshot.driver_id,eventType:"accepted_driver",relatedEntityType:"seat_request",
+    relatedEntityId:row.request_id,title:"Seat confirmed",body:"You accepted one whole-ride seat."});
+  for (const item of withdrawn) await recordDurableNotification(client,{
+    originType:"seat_request",operationId:row.id,eventId:relatedEventId(row.id,"withdrawn",item.id),
+    recipientId:item.passenger_id,eventType:`withdrawn:${item.id}`,relatedEntityType:"seat_request",
+    relatedEntityId:item.id,title:"Seat request withdrawn",
+    body:"This pending request ended because you accepted an overlapping ride."});
+}
 
 export class SeatRequestsService {
   constructor(private readonly db:Pool = pool) {}
@@ -97,19 +111,8 @@ export class SeatRequestsService {
         await repo.restoreAudit(client,row);
         if (row.action === "accepted") await repo.auditWithdrawals(client,row.id,
           ((row.result.withdrawn_requests as Array<{id:string}>|undefined) ?? []).map(value => value.id));
-        await recordDurableNotification(client,notification(row,item.snapshot));
-        if (row.action === "accepted") await recordDurableNotification(client,{
-          originType:"seat_request",operationId:row.id,eventId:relatedEventId(row.id,"accepted_driver",row.request_id),
-          recipientId:item.snapshot.driver_id,eventType:"accepted_driver",relatedEntityType:"seat_request",
-          relatedEntityId:row.request_id,title:"Seat confirmed",body:"You accepted one whole-ride seat."});
-        if (row.action === "accepted") for (const withdrawn of
-          ((row.result.withdrawn_requests as Array<{id:string}>|undefined) ?? [])) {
-          await recordDurableNotification(client,{originType:"seat_request",operationId:row.id,
-            eventId:relatedEventId(row.id,"withdrawn",withdrawn.id),
-            recipientId:item.snapshot.passenger_id,eventType:`withdrawn:${withdrawn.id}`,
-            relatedEntityType:"seat_request",relatedEntityId:withdrawn.id,
-            title:"Seat request withdrawn",body:"This pending request ended because you accepted an overlapping ride."});
-        }
+        await recordDecisionNotifications(client,row,item.snapshot,
+          (row.result.withdrawn_requests as WithdrawnRequest[]|undefined) ?? []);
         await repo.readyNotifications(client,row.id);
       });
     }
@@ -231,27 +234,19 @@ export class SeatRequestsService {
             durationMinutes:Math.ceil((offer.pilot_commitment_until.getTime()-offer.departure_at.getTime())/60_000)});
           allocation = await repo.allocate(client,initial,offer);
           await repo.accept(client,id);
-          withdrawn = await repo.withdrawIncompatible(client,initial.passenger_id,offer.id,
+          withdrawn = await repo.withdrawIncompatible(client,[initial.passenger_id,actorId],offer.id,
             offer.departure_at,offer.pilot_commitment_until);
         } else await repo.rejectRequest(client,id);
         requestId = id;
       }
       const snapshot = await repo.requestSnapshot(client,requestId);
       const result = {request:visibleRequest(snapshot),...(allocation ? {booking:allocation,
-        withdrawn_requests:withdrawn.map(item => ({id:item.id,reason:"overlapping confirmed ride"}))} : {})};
+        withdrawn_requests:withdrawn.map(item => ({id:item.id,passenger_id:item.passenger_id,
+          reason:"overlapping confirmed ride"}))} : {})};
       const row = await repo.insertOperation(client,{actorId,key,digest:payloadDigest,requestId,action,result,snapshot});
       await repo.audit(client,row);
       if (withdrawn.length) await repo.auditWithdrawals(client,row.id,withdrawn.map(item => item.id));
-      await recordDurableNotification(client,notification(row,snapshot));
-      if (action === "accepted") await recordDurableNotification(client,{
-        originType:"seat_request",operationId:row.id,eventId:relatedEventId(row.id,"accepted_driver",row.request_id),
-        recipientId:snapshot.driver_id,eventType:"accepted_driver",relatedEntityType:"seat_request",
-        relatedEntityId:row.request_id,title:"Seat confirmed",body:"You accepted one whole-ride seat."});
-      for (const item of withdrawn) await recordDurableNotification(client,{
-        originType:"seat_request",operationId:row.id,eventId:relatedEventId(row.id,"withdrawn",item.id),
-        recipientId:item.passenger_id,
-        eventType:`withdrawn:${item.id}`,relatedEntityType:"seat_request",relatedEntityId:item.id,
-        title:"Seat request withdrawn",body:"This pending request ended because you accepted an overlapping ride."});
+      await recordDecisionNotifications(client,row,snapshot,withdrawn);
       return row;
     });
     if (operation.state !== "committed") return this.operation(actorId,operation.id);

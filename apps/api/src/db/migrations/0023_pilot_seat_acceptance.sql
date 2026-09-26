@@ -22,9 +22,19 @@ CREATE TABLE IF NOT EXISTS pilot_seat_allocations (
   commitment_until timestamptz NOT NULL,
   status text NOT NULL DEFAULT 'confirmed' CHECK (status IN ('confirmed', 'held', 'cancelled', 'completed')),
   accepted_at timestamptz NOT NULL DEFAULT now(),
+  ended_at timestamptz,
   CHECK (driver_id <> passenger_id),
-  CHECK (commitment_until > departure_at)
+  CHECK (commitment_until > departure_at),
+  CONSTRAINT pilot_seat_allocations_end_time CHECK (status IN ('confirmed','held') OR ended_at IS NOT NULL)
 );
+ALTER TABLE pilot_seat_allocations ADD COLUMN IF NOT EXISTS ended_at timestamptz;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='pilot_seat_allocations_end_time'
+    AND conrelid='pilot_seat_allocations'::regclass) THEN
+    ALTER TABLE pilot_seat_allocations ADD CONSTRAINT pilot_seat_allocations_end_time
+      CHECK (status IN ('confirmed','held') OR ended_at IS NOT NULL);
+  END IF;
+END $$;
 CREATE INDEX IF NOT EXISTS pilot_seat_allocations_offer_active ON pilot_seat_allocations(offer_id)
   WHERE status IN ('confirmed', 'held');
 CREATE INDEX IF NOT EXISTS pilot_seat_allocations_passenger_active ON pilot_seat_allocations(passenger_id)
