@@ -153,6 +153,10 @@ describe("pilot seat requests through HTTP and PostgreSQL", () => {
       await verificationPool.query("UPDATE ride_offers SET price_per_seat_paise=2600 WHERE id=$1",[offer.body.offer.id]);
       expect((await accept(one.body.request.id,"changed-terms")).body.error.code).toBe("OFFER_TERMS_CHANGED");
       await verificationPool.query("UPDATE ride_offers SET price_per_seat_paise=2500 WHERE id=$1",[offer.body.offer.id]);
+      const pendingTrip = await request(createApp()).get(`/v1/seat-requests/confirmed/${offer.body.offer.id}`)
+        .set("Authorization",`Bearer ${first.token}`);
+      expect(pendingTrip.status).toBe(404);
+      expect(pendingTrip.headers["cache-control"]).toContain("no-store");
       setSeatRequestClockForTests(() => new Date(offer.body.offer.acceptance_cutoff_at));
       expect((await accept(one.body.request.id,"deadline")).status).toBe(409);
       setSeatRequestClockForTests(null);
@@ -268,19 +272,40 @@ describe("pilot seat requests through HTTP and PostgreSQL", () => {
         a.status === 200 ? "accept-one" : "accept-two")).body.error.code).toBe("IDEMPOTENCY_PAYLOAD_MISMATCH");
       const bookings = await request(createApp()).get("/v1/seat-requests/confirmed")
         .set("Authorization",`Bearer ${driver.token}`);
+      expect(bookings.headers["cache-control"]).toContain("no-store");
+      expect(JSON.stringify(bookings.body)).not.toMatch(/phone|emergency_contact|registration_number/i);
       expect(bookings.body.bookings).toEqual(expect.arrayContaining([
         expect.objectContaining({offer_id:offer.body.offer.id,contribution_paise:2500,
           car_make:"Tata",car_model:"Tiago",car_color:"Blue",
           pickup_location:"Amravati University",passenger_origin_code:"university",
           passenger_destination_code:"prmitr"})]));
+      const driverTrip = await request(createApp()).get(`/v1/seat-requests/confirmed/${offer.body.offer.id}`)
+        .set("Authorization",`Bearer ${driver.token}`);
+      expect(driverTrip.status).toBe(200);
+      expect(driverTrip.body.trip.bookings).toHaveLength(1);
+      const passengerTrip = await request(createApp()).get(`/v1/seat-requests/confirmed/${offer.body.offer.id}`)
+        .set("Authorization",`Bearer ${winnerPassenger.token}`);
+      expect(passengerTrip.status).toBe(200);
+      expect(passengerTrip.body.trip.bookings[0]).toHaveProperty("driver_verified_name");
+      expect(passengerTrip.body.trip.bookings[0].car_registration_last4).toBe("1234");
+      expect(JSON.stringify(passengerTrip.body)).not.toMatch(/phone|emergency_contact|registration_number/i);
+      expect((await request(createApp()).get(`/v1/seat-requests/confirmed/${offer.body.offer.id}`)
+        .set("Authorization",`Bearer ${otherDriver.token}`)).status).toBe(404);
+      expect((await request(createApp()).get(`/v1/seat-requests/confirmed/${offer.body.offer.id}`)).status).toBe(401);
       expect((await verificationPool.query<{count:number}>(`SELECT count(*)::int AS count
         FROM pilot_seat_allocations WHERE offer_id=$1`,[offer.body.offer.id])).rows[0].count).toBe(1);
+      await verificationPool.query(`UPDATE pilot_seat_allocations SET status='cancelled',
+        ended_at=now()-interval '23 hours 59 minutes' WHERE offer_id=$1`,[offer.body.offer.id]);
+      expect((await request(createApp()).get(`/v1/seat-requests/confirmed/${offer.body.offer.id}`)
+        .set("Authorization",`Bearer ${winnerPassenger.token}`)).status).toBe(200);
       await verificationPool.query(`UPDATE pilot_seat_allocations SET status='completed',
-        ended_at=now()-interval '25 hours' WHERE offer_id=$1`,[offer.body.offer.id]);
+        ended_at=now()-interval '24 hours' WHERE offer_id=$1`,[offer.body.offer.id]);
       const afterAccessWindow = await request(createApp()).get("/v1/seat-requests/confirmed")
         .set("Authorization",`Bearer ${driver.token}`);
       expect(afterAccessWindow.body.bookings.some((item:{offer_id:string}) =>
         item.offer_id === offer.body.offer.id)).toBe(false);
+      expect((await request(createApp()).get(`/v1/seat-requests/confirmed/${offer.body.offer.id}`)
+        .set("Authorization",`Bearer ${driver.token}`)).status).toBe(404);
       const expiredTripDetails = await request(createApp()).get("/v1/seat-requests")
         .set("Authorization",`Bearer ${driver.token}`);
       expect(expiredTripDetails.body.requests.some((item:{id:string}) =>

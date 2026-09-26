@@ -87,7 +87,7 @@ export default function PostRide() {
       <label className="block">Departure (IST)<input className="mt-1 w-full rounded border p-2" type="datetime-local" value={departure} onChange={event => setDeparture(event.target.value)} required /></label>
       <label className="block">Whole ride passenger capacity<input className="mt-1 w-full rounded border p-2" type="number" min="1" max={selectedCar?.seat_capacity ?? 12} value={capacity} onChange={event => setCapacity(Number(event.target.value))} required /></label>
       {pair && <p className="rounded border p-3 font-medium">Contribution per passenger: ₹{(pair.amount_paise/100).toFixed(2)} {policy?.currency}</p>}
-      {policy && <div className="space-y-2 text-sm"><p>{policy.cancellation_notice}</p><p>{policy.contact_notice}</p></div>}
+      {policy && <div className="space-y-2 text-sm"><p>{policy.cancellation_notice}</p><p>{policy.contact_notice} Confirmed riders use trip details and durable in-app or email notices; exceptions go to the published operator support contact during operating windows.</p></div>}
       <button className="rounded bg-primary px-4 py-2 text-primary-foreground disabled:opacity-50" disabled={busy || !pair || !policy}>Publish offer</button>
     </form>
     {message && <p role="status" className="rounded border p-3">{message}</p>}

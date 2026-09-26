@@ -156,6 +156,12 @@ export class SeatRequestsService {
     return repo.listConfirmedForParticipant(this.db,actorId);
   }
 
+  async confirmedTrip(actorId:string,offerId:string) {
+    const bookings = await repo.listConfirmedForParticipant(this.db,actorId,offerId);
+    if (!bookings.length) throw new AppError(404,"Confirmed trip not found","TRIP_NOT_FOUND");
+    return {offer_id:offerId,bookings};
+  }
+
   async mutate(actorId:string,key:string,action:"requested"|"rejected"|"accepted",id:string) {
     const payloadDigest = digest(action,id);
     const existing = await repo.byKey(this.db,actorId,key);

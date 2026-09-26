@@ -103,7 +103,7 @@ export default function SearchRidesPage() {
       <p>Departs {new Date(offer.departure_at).toLocaleString("en-IN",{timeZone:"Asia/Kolkata"})} IST</p>
       <p>₹{(offer.contribution_paise/100).toFixed(2)} {offer.currency} per passenger · {offer.available_seats} of {offer.capacity} seats available</p>
       <p className="text-sm">Requests close {new Date(offer.request_cutoff_at).toLocaleString("en-IN",{timeZone:"Asia/Kolkata"})} IST</p>
-      <p className="mt-2 text-sm">{offer.cancellation_notice} {offer.contact_notice}</p>
+      <p className="mt-2 text-sm">{offer.cancellation_notice} {offer.contact_notice} Confirmed riders use trip details and durable in-app or email notices; exceptions go to the published operator support contact during operating windows.</p>
       <button className="mt-3 rounded bg-primary px-4 py-2 text-primary-foreground disabled:opacity-50"
         disabled={busy !== null || requests.some(item => item.offer_id === offer.id && item.status === "pending")}
         onClick={() => void changeRequest("/v1/seat-requests",{offer_id:offer.id,seats:1},offer.id)}>
@@ -123,7 +123,7 @@ export default function SearchRidesPage() {
         <span className="block text-sm">{booking.passenger_id === user?.id
           ? `Driver: ${booking.driver_verified_name ?? "Name pending"}.`
           : `Passenger: ${booking.passenger_verified_name ?? "Name pending"}; ${booking.passenger_origin_code} → ${booking.passenger_destination_code}.`}
-          {" "}Phone numbers remain private until ownership verification is available. No contribution is due before journey confirmation.</span>
+          {" "}Participant phone numbers are never shared. Use trip details and in-app or email notices to coordinate pickup. For exceptions during operating hours, use the published operator support contact. No contribution is due before journey confirmation.</span>
       </li>)}</ul>
     </section>
   </main>;
