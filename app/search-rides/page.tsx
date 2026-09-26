@@ -1,77 +1,54 @@
-import SearchComponent from "@/components/searchRides/SearchComponent";
-import SuggestedRides from "@/components/searchRides/SuggestedRides";
-import NearbyRides from "@/components/searchRides/NearbyRides";
-import { redirect } from "next/navigation";
-import { getServerCurrentUser } from "@/lib/server-auth";
-import { Button } from "@/components/ui/button";
+"use client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import Icon from "@/components/AppIcon";
+import { useRouter } from "next/navigation";
+import { apiRequest } from "@/lib/api/client";
+import { useCurrentUser } from "@/hooks/auth/useCurrentUser";
 
-const SearchRidesPage = async () => {
-  const user = await getServerCurrentUser();
-  if (!user) {
-    redirect("/login");
+type Stop = {code:string;label:string};
+type Policy = {stops:Stop[];permitted_pairs:{origin_code:string;destination_code:string}[]};
+type Offer = {id:string;origin_code:string;destination_code:string;departure_at:string;
+  contribution_paise:number;currency:string;capacity:number;available_seats:number;
+  request_cutoff_at:string;cancellation_notice:string;contact_notice:string};
+export default function SearchRidesPage() {
+  const {isAuthenticated,loading} = useCurrentUser();
+  const router = useRouter();
+  const [policy,setPolicy] = useState<Policy | null>(null);
+  const [origin,setOrigin] = useState("");
+  const [destination,setDestination] = useState("");
+  const [offers,setOffers] = useState<Offer[]>([]);
+  const [message,setMessage] = useState("");
+  useEffect(() => {if (!loading && !isAuthenticated) router.replace("/login");},[loading,isAuthenticated,router]);
+  useEffect(() => {if (!isAuthenticated) return;
+    void apiRequest<{policy:Policy}>("/v1/corridor-offers/policy").then(result => setPolicy(result.policy))
+      .catch(error => setMessage(error instanceof Error ? error.message : "Corridor policy is unavailable"));
+  },[isAuthenticated]);
+  async function search(event:React.FormEvent) {
+    event.preventDefault();setMessage("");
+    try {
+      const query = new URLSearchParams({origin_code:origin,destination_code:destination});
+      const result = await apiRequest<{offers:Offer[]}>(`/v1/corridor-offers?${query}`);
+      setOffers(result.offers);
+      if (!result.offers.length) setMessage("No offers for this stop pair yet.");
+    } catch(error) {setMessage(error instanceof Error ? error.message : "Could not load offers");}
   }
-
-  return (
-    <div className="min-h-screen pb-16 md:pb-0 bg-gradient-hero">
-      <div className="page container mx-auto space-y-6">
-        <section className="rounded-3xl border border-primary/20 p-5 md:p-7 bg-card/95 shadow-card">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div>
-              <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                Ride Discovery
-              </p>
-              <h1 className="mt-2 text-2xl md:text-3xl font-semibold text-foreground">
-                Find the right campus ride
-              </h1>
-              <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-                Search active offers and ride requests on your route, then book
-                directly in a few taps.
-              </p>
-              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-                <span className="rounded-full border border-primary/25 bg-primary/10 px-2.5 py-1 text-primary">
-                  Live route feed
-                </span>
-                <span className="rounded-full border border-success/25 bg-success/10 px-2.5 py-1 text-success">
-                  Verified students
-                </span>
-                <span className="rounded-full border border-warning/25 bg-warning/10 px-2.5 py-1 text-foreground">
-                  Fast booking
-                </span>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              <Button asChild className="h-10 px-4">
-                <Link href="/post-a-ride">
-                  <Icon name="Plus" size={16} />
-                  Post Ride
-                </Link>
-              </Button>
-              <Button asChild variant="outline" className="h-10 px-4">
-                <Link href="/dashboard">
-                  <Icon name="LayoutDashboard" size={16} />
-                  Dashboard
-                </Link>
-              </Button>
-            </div>
-          </div>
-        </section>
-
-        <SearchComponent />
-
-        <div className="grid grid-cols-1 xl:grid-cols-5 gap-6">
-          <div className="xl:col-span-3">
-            <NearbyRides />
-          </div>
-          <div className="xl:col-span-2">
-            <SuggestedRides />
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-export default SearchRidesPage;
+  return <main className="mx-auto max-w-3xl space-y-6 p-6">
+    <h1 className="text-3xl font-semibold">Discover corridor offers</h1>
+    <p>See departure, contribution, and whole ride capacity before requesting a seat.</p>
+    <Link href="/post-a-ride" className="underline">Publish an offer</Link>
+    <form onSubmit={search} className="flex flex-wrap items-end gap-3">
+      <label>Origin<select className="mt-1 block rounded border p-2" value={origin} onChange={event => {setOrigin(event.target.value);setDestination("");}} required><option value="">Choose origin</option>{policy?.stops.map(stop => <option key={stop.code} value={stop.code}>{stop.label}</option>)}</select></label>
+      <label>Destination<select className="mt-1 block rounded border p-2" value={destination} onChange={event => setDestination(event.target.value)} required><option value="">Choose destination</option>{policy?.permitted_pairs.filter(pair => pair.origin_code === origin).map(pair => <option key={pair.destination_code} value={pair.destination_code}>{policy.stops.find(stop => stop.code === pair.destination_code)?.label}</option>)}</select></label>
+      <button className="rounded bg-primary px-4 py-2 text-primary-foreground">Find offers</button>
+    </form>
+    {message && <p role="status">{message}</p>}
+    <ul className="space-y-4">{offers.map(offer => <li key={offer.id} className="rounded border p-4">
+      <h2 className="font-medium">{policy?.stops.find(stop => stop.code === offer.origin_code)?.label} → {policy?.stops.find(stop => stop.code === offer.destination_code)?.label}</h2>
+      <p>Departs {new Date(offer.departure_at).toLocaleString("en-IN",{timeZone:"Asia/Kolkata"})} IST</p>
+      <p>₹{(offer.contribution_paise/100).toFixed(2)} {offer.currency} per passenger · {offer.available_seats} of {offer.capacity} seats available</p>
+      <p className="text-sm">Requests close {new Date(offer.request_cutoff_at).toLocaleString("en-IN",{timeZone:"Asia/Kolkata"})} IST</p>
+      <p className="mt-2 text-sm">{offer.cancellation_notice} {offer.contact_notice}</p>
+    </li>)}</ul>
+  </main>;
+}

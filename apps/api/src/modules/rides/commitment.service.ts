@@ -30,13 +30,16 @@ export function assertWithinSupportWindow(now: Date) {
 
 export async function assertCommitmentsEligible(client: PoolClient, input: {
   driverId: string; vehicleId: string; passengerIds: string[];
-  rideId: string | null; departureAt: Date;
+  rideId: string | null; departureAt: Date; durationMinutes?: number;
 }) {
   if (process.env.PILOT_CONFLICT_POLICY_APPROVED !== "true") {
     throw new AppError(503, "Pilot commitment policy is unapproved", "PILOT_POLICY_UNAVAILABLE");
   }
-  const duration = positiveMinutes("PILOT_EXPECTED_TRIP_MINUTES") +
-    positiveMinutes("PILOT_CONFLICT_BUFFER_MINUTES");
+  const duration = input.durationMinutes ?? (positiveMinutes("PILOT_EXPECTED_TRIP_MINUTES") +
+    positiveMinutes("PILOT_CONFLICT_BUFFER_MINUTES"));
+  if (!Number.isSafeInteger(duration) || duration < 1 || duration > 960) {
+    throw new AppError(503, "Pilot commitment policy is invalid", "PILOT_POLICY_UNAVAILABLE");
+  }
   const passengers = [...new Set(input.passengerIds)].sort();
   await repo.lockCommitmentActors(client, input.driverId, input.vehicleId, passengers);
   if (passengers.length) {

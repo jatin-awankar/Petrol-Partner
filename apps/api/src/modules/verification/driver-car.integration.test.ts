@@ -13,12 +13,15 @@ import { confirmBooking } from "../bookings/bookings.service";
 import { PauseService } from "../operator/pause.service";
 
 const db = new Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
-const migrations = ["0001_init.sql", "0006_operator_allowlist.sql", "0007_operator_pause.sql",
+const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql",
+  "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql",
+  "0006_operator_allowlist.sql", "0007_operator_pause.sql",
   "0008_operator_intent_handoff.sql", "0009_durable_notifications.sql", "0010_email_retry_operations.sql",
   "0011_backup_attempts.sql", "0012_student_adult_review.sql", "0013_student_review_cycles.sql",
   "0014_student_review_operations.sql", "0015_student_evidence_access.sql",
   "0016_student_evidence_deletion_outcomes.sql", "0017_student_evidence_retry_schedule.sql",
-  "0018_driver_car_approval.sql", "0019_ride_departures.sql"];
+  "0018_driver_car_approval.sql", "0019_ride_departures.sql", "0020_corridor_offers.sql",
+  "0021_corridor_offer_recovery.sql"];
 let directory: string;
 
 beforeAll(async () => {
@@ -28,6 +31,7 @@ beforeAll(async () => {
 });
 beforeEach(async () => {
   await db.query("TRUNCATE users CASCADE");
+  await db.query("UPDATE pilot_pause_state SET paused = false, operation_id = NULL");
   await db.query(`INSERT INTO pilot_recovery_state (singleton, mode) VALUES (true, 'open')
     ON CONFLICT (singleton) DO UPDATE SET mode = 'open', cause = NULL, started_at = NULL`);
   directory = await mkdtemp(resolve(tmpdir(), "driver-car-test-"));

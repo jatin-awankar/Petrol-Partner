@@ -4,7 +4,7 @@
 
 **Blocked by:** 14 (Driver and car approval).
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 **Work type:** Feature slice
 

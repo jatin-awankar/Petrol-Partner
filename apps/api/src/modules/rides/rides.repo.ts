@@ -38,8 +38,6 @@ interface RideOfferRow {
   createdAt: string;
   updatedAt: string;
   fullName: string;
-  email: string;
-  phone: string | null;
   isVerified: boolean;
   college: string | null;
   profileImage: string | null;
@@ -72,8 +70,6 @@ interface RideRequestRow {
   createdAt: string;
   updatedAt: string;
   fullName: string;
-  email: string;
-  phone: string | null;
   isVerified: boolean;
   college: string | null;
   profileImage: string | null;
@@ -113,8 +109,6 @@ function mapRideOffer(row: RideOfferRow) {
     created_at: row.createdAt,
     updated_at: row.updatedAt,
     full_name: row.fullName,
-    email: row.email,
-    phone: row.phone,
     is_verified: row.isVerified,
     college: row.college,
     profile_image: row.profileImage,
@@ -152,8 +146,6 @@ function mapRideRequest(row: RideRequestRow) {
     created_at: row.createdAt,
     updated_at: row.updatedAt,
     full_name: row.fullName,
-    email: row.email,
-    phone: row.phone,
     is_verified: row.isVerified,
     college: row.college,
     profile_image: row.profileImage,
@@ -191,8 +183,6 @@ function rideOfferSelectColumns() {
     r.created_at AS "createdAt",
     r.updated_at AS "updatedAt",
     p.full_name AS "fullName",
-    u.email,
-    p.phone,
     p.is_verified AS "isVerified",
     p.college,
     p.avatar_url AS "profileImage",
@@ -233,8 +223,6 @@ function rideRequestSelectColumns() {
     r.created_at AS "createdAt",
     r.updated_at AS "updatedAt",
     p.full_name AS "fullName",
-    u.email,
-    p.phone,
     p.is_verified AS "isVerified",
     p.college,
     p.avatar_url AS "profileImage",
