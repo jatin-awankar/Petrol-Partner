@@ -5,6 +5,8 @@ import { corridorOffersService } from "../modules/rides/corridor-offers.service"
 import { SeatRequestsService, setSeatRequestClockForTests } from "../modules/rides/seat-requests.service";
 import { CancellationsService } from "../modules/rides/cancellations.service";
 import { PilotDepartureService } from "../modules/rides/pilot-departure.service";
+import { PilotJourneyService } from "../modules/rides/pilot-journey.service";
+import { reviewSilentJourneys } from "../../../worker/src/jobs/pilot-journey-silence";
 import { StudentRevocationService } from "../modules/verification/student-revocation.service";
 import { DriverCarReviewService } from "../modules/verification/driver-car-review.service";
 import { RevocationCasesService } from "../modules/operator/revocation-cases.service";
@@ -27,7 +29,7 @@ import { setBackupObjectProbeForTests } from "../modules/operator/backup-status"
 import { setStudentReviewAfterCommitHookForTests } from "../modules/verification/student-review.service";
 
 const verificationPool = new Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
-const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql", "0006_operator_allowlist.sql", "0007_operator_pause.sql", "0008_operator_intent_handoff.sql", "0009_durable_notifications.sql", "0010_email_retry_operations.sql", "0011_backup_attempts.sql", "0012_student_adult_review.sql", "0013_student_review_cycles.sql", "0014_student_review_operations.sql", "0015_student_evidence_access.sql", "0016_student_evidence_deletion_outcomes.sql", "0017_student_evidence_retry_schedule.sql", "0018_driver_car_approval.sql", "0019_ride_departures.sql", "0020_corridor_offers.sql", "0021_corridor_offer_recovery.sql", "0022_pilot_seat_requests.sql", "0023_pilot_seat_acceptance.sql", "0024_pilot_cancellations.sql", "0025_pilot_departure.sql", "0026_revocation_holds_incidents.sql"];
+const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql", "0006_operator_allowlist.sql", "0007_operator_pause.sql", "0008_operator_intent_handoff.sql", "0009_durable_notifications.sql", "0010_email_retry_operations.sql", "0011_backup_attempts.sql", "0012_student_adult_review.sql", "0013_student_review_cycles.sql", "0014_student_review_operations.sql", "0015_student_evidence_access.sql", "0016_student_evidence_deletion_outcomes.sql", "0017_student_evidence_retry_schedule.sql", "0018_driver_car_approval.sql", "0019_ride_departures.sql", "0020_corridor_offers.sql", "0021_corridor_offer_recovery.sql", "0022_pilot_seat_requests.sql", "0023_pilot_seat_acceptance.sql", "0024_pilot_cancellations.sql", "0025_pilot_departure.sql", "0026_revocation_holds_incidents.sql", "0027_pilot_journeys.sql"];
 
 function fakeProvider(identity: ProviderIdentity): AuthProvider {
   const session = { accessToken: "provider-access", refreshToken: "provider-refresh", expiresIn: 900, identity };
@@ -52,6 +54,323 @@ beforeAll(async () => {
     const sql = await readFile(resolve(import.meta.dirname, "../db/migrations", migration), "utf8");
     await verificationPool.query(sql);
   }
+});
+
+describe("ticket 22 individual journey confirmation",()=>{
+  let directory:string;
+  beforeEach(async()=>{
+    await verificationPool.query("TRUNCATE users CASCADE");
+    await verificationPool.query(`INSERT INTO pilot_recovery_state(singleton,mode) VALUES(true,'open')
+      ON CONFLICT(singleton) DO UPDATE SET mode='open',cause=NULL,started_at=NULL`);
+    await verificationPool.query("UPDATE pilot_pause_state SET paused=false,operation_id=NULL");
+    directory=await mkdtemp(resolve(tmpdir(),"pilot-journey-"));
+    Object.assign(process.env,{PILOT_RECEIPT_PATH:resolve(directory,"receipts"),
+      PILOT_RECEIPT_SECRET:"pilot-journey-independent-secret-for-tests",
+      PILOT_CONFLICT_POLICY_APPROVED:"true",PILOT_EXPECTED_TRIP_MINUTES:"35",
+      PILOT_CONFLICT_BUFFER_MINUTES:"20",PILOT_SUPPORT_WINDOW_APPROVED:"true",
+      PILOT_SUPPORT_WINDOW_START:new Date(Date.now()-60*60_000).toISOString(),
+      PILOT_SUPPORT_WINDOW_END:new Date(Date.now()+48*60*60_000).toISOString()});
+  });
+  afterEach(async()=>{
+    delete process.env.PILOT_RECEIPT_PATH;
+    delete process.env.PILOT_RECEIPT_SECRET;
+    for(const name of ["PILOT_CONFLICT_POLICY_APPROVED","PILOT_EXPECTED_TRIP_MINUTES",
+      "PILOT_CONFLICT_BUFFER_MINUTES","PILOT_SUPPORT_WINDOW_APPROVED",
+      "PILOT_SUPPORT_WINDOW_START","PILOT_SUPPORT_WINDOW_END"]) delete process.env[name];
+    await rm(directory,{recursive:true,force:true});
+  });
+  async function fixture(){
+    const users=await Promise.all(["driver","first","second","silent","absent","outsider","operator"]
+      .map(async label=>{
+        const email=`journey-${label}-${randomUUID()}@example.test`;
+        const id=(await verificationPool.query<{id:string}>(`INSERT INTO users(email,role,email_verified_at)
+          VALUES($1,$2,now()) RETURNING id`,[email,label==='operator'?'admin':'user'])).rows[0].id;
+        if(label!=='operator') await verificationPool.query(`INSERT INTO student_verifications
+          (user_id,provider,status,adult_eligible,institution_name,eligibility_ends_at)
+          VALUES($1,'manual_review','verified',true,'Synthetic College',now()+interval '1 year')`,[id]);
+        return {id,token:signAccessToken({userId:id,email,role:label==='operator'?'admin':'user'})};
+      }));
+    const [driver,first,second,silent,absent,outsider,operator]=users;
+    await verificationPool.query(`INSERT INTO operator_allowlist(user_id,active,reason,reviewed_at)
+      VALUES($1,true,'synthetic journey review',now())`,[operator.id]);
+    await verificationPool.query(`INSERT INTO driver_eligibility(user_id,status,license_expires_at,review_after)
+      VALUES($1,'approved',CURRENT_DATE+100,CURRENT_DATE+100)`,[driver.id]);
+    const car=(await verificationPool.query<{id:string}>(`INSERT INTO vehicles
+      (owner_user_id,vehicle_type,registration_number_last4,seat_capacity,use_category,
+       applicable_document_required,insurance_expires_at,review_after,verification_status)
+      VALUES($1,'car','4321',4,'private',false,CURRENT_DATE+100,CURRENT_DATE+100,'approved')
+      RETURNING id`,[driver.id])).rows[0].id;
+    await verificationPool.query(`INSERT INTO driver_vehicle_approvals
+      (driver_user_id,vehicle_id,permission_category,status,review_after)
+      VALUES($1,$2,'owner','approved',CURRENT_DATE+100)`,[driver.id,car]);
+    const offer=(await verificationPool.query<{id:string}>(`INSERT INTO ride_offers
+      (driver_id,vehicle_id,pickup_location,pickup_lat,pickup_lng,drop_location,
+       drop_lat,drop_lng,date,time,available_seats,price_per_seat_paise,status,
+       pilot_policy_id,pilot_policy_snapshot,pilot_origin_code,pilot_destination_code,
+       pilot_capacity,pilot_currency,pilot_request_cutoff_at,pilot_acceptance_cutoff_at,
+       pilot_commitment_until)
+      VALUES($1,$2,'University',20,77,'College',20.1,77.1,
+       ((now()-interval '10 minutes') AT TIME ZONE 'Asia/Kolkata')::date,
+       ((now()-interval '10 minutes') AT TIME ZONE 'Asia/Kolkata')::time,
+       0,2500,'active',(SELECT id FROM pilot_corridor_policies WHERE version=1),
+       '{"version":1}'::jsonb,'university','prmitr',4,'INR',
+       now()-interval '70 minutes',now()-interval '40 minutes',now()+interval '1 hour')
+      RETURNING id`,[driver.id,car])).rows[0].id;
+    const allocations:string[]=[];
+    for(const [i,passenger] of [first,second,silent,absent].entries()){
+      const requestId=(await verificationPool.query<{id:string}>(`INSERT INTO pilot_seat_requests
+        (offer_id,passenger_id,driver_id,status,offer_version,offer_terms,decision_deadline_at)
+        VALUES($1,$2,$3,'accepted',1,'{}',now()-interval '40 minutes') RETURNING id`,
+        [offer,passenger.id,driver.id])).rows[0].id;
+      const allocationId=(await verificationPool.query<{id:string}>(`INSERT INTO pilot_seat_allocations
+        (request_id,offer_id,driver_id,passenger_id,vehicle_id,contribution_paise,currency,
+         offer_version,policy_version,departure_at,commitment_until)
+        VALUES($1,$2,$3,$4,$5,$6,'INR',1,1,now()-interval '10 minutes',now()+interval '1 hour')
+        RETURNING id`,[requestId,offer,driver.id,passenger.id,car,2500+i*100])).rows[0].id;
+      allocations.push(allocationId);
+    }
+    return {driver,first,second,silent,absent,outsider,operator,offer,allocations};
+  }
+  async function start(f:Awaited<ReturnType<typeof fixture>>){
+    const boarded=f.allocations.slice(0,3);
+    expect((await new PilotDepartureService(pool).start(f.driver.id,randomUUID(),f.offer,boarded,
+      'departure',null,new Date())).state).toBe('acknowledged');
+  }
+  it("keeps claims per passenger, creates only mutual debt, and reviews disagreement and exact 24-hour silence",async()=>{
+    const f=await fixture();
+    const service=new PilotJourneyService(pool);
+    const [a,b,c,d]=f.allocations;
+    const claims=[a,b,c].map(allocation_id=>({allocation_id,travelled:true,completed:true}));
+    await expect(service.complete(f.driver.id,randomUUID(),f.offer,claims))
+      .rejects.toMatchObject({code:'JOURNEY_NOT_STARTED'});
+    await start(f);
+    const wrongHttp=await request(createApp()).post(`/v1/corridor-offers/${f.offer}/complete`)
+      .set('Authorization',`Bearer ${f.outsider.token}`).set('Idempotency-Key',randomUUID())
+      .send({claims});
+    expect(wrongHttp.status).toBe(403);
+    await expect(service.complete(f.outsider.id,randomUUID(),f.offer,claims))
+      .rejects.toMatchObject({code:'FORBIDDEN'});
+    await expect(service.confirm(f.second.id,randomUUID(),f.offer,a,true,true))
+      .rejects.toMatchObject({code:'FORBIDDEN'});
+    await expect(service.confirm(f.absent.id,randomUUID(),f.offer,d,true,true))
+      .rejects.toMatchObject({code:'BOARDING_REQUIRED'});
+    const at=new Date('2026-09-27T10:00:00.000Z');
+    const key=randomUUID();
+    const completion=await service.complete(f.driver.id,key,f.offer,claims,at);
+    expect(completion.state).toBe('acknowledged');
+    await service.verifyEvidence();
+    expect((await service.complete(f.driver.id,key,f.offer,claims)).operation_id).toBe(completion.operation_id);
+    await expect(service.complete(f.driver.id,key,f.offer,claims.slice(0,2)))
+      .rejects.toMatchObject({code:'IDEMPOTENCY_PAYLOAD_MISMATCH'});
+    expect((await verificationPool.query('SELECT id FROM pilot_contribution_obligations')).rows).toHaveLength(0);
+    const confirmedAt=new Date(at.getTime()+60_000);
+    const passengerKey=randomUUID();
+    const first=await service.confirm(f.first.id,passengerKey,f.offer,a,true,true,confirmedAt);
+    expect((await service.confirm(f.first.id,passengerKey,f.offer,a,true,true)).operation_id)
+      .toBe(first.operation_id);
+    await service.confirm(f.second.id,randomUUID(),f.offer,b,false,false,confirmedAt);
+    const obligations=(await verificationPool.query<{allocation_id:string;amount_paise:number;
+      currency:string;policy_version:number;confirmed_at:Date;due_at:Date}>(
+      'SELECT * FROM pilot_contribution_obligations')).rows;
+    expect(obligations).toHaveLength(1);
+    expect(obligations[0]).toMatchObject({allocation_id:a,amount_paise:2500,currency:'INR',policy_version:1});
+    expect(obligations[0].confirmed_at.toISOString()).toBe(confirmedAt.toISOString());
+    expect(obligations[0].due_at.toISOString()).toBe(new Date(confirmedAt.getTime()+86_400_000).toISOString());
+    const reviews=await service.reviews(f.operator.id);
+    expect(reviews).toEqual(expect.arrayContaining([expect.objectContaining({allocation_id:b,reason:'disagreement'})]));
+    expect((await reviewSilentJourneys(verificationPool,new Date(at.getTime()+86_400_000-1))).opened).toBe(0);
+    expect((await reviewSilentJourneys(verificationPool,new Date(at.getTime()+86_400_000))).opened).toBe(1);
+    expect((await reviewSilentJourneys(verificationPool,new Date(at.getTime()+86_400_000))).opened).toBe(0);
+    expect((await verificationPool.query<{n:number}>(`SELECT count(*)::int AS n
+      FROM pilot_notification_events WHERE origin_type='pilot_journey_silence'
+        AND ready_at IS NOT NULL`)).rows[0].n).toBe(3);
+    expect((await service.reviews(f.operator.id)).map(row=>row.allocation_id).sort()).toEqual([b,c].sort());
+    expect((await verificationPool.query('SELECT id FROM pilot_contribution_obligations')).rows).toHaveLength(1);
+    await verificationPool.query(`UPDATE pilot_email_jobs SET due_at=now()+interval '1 hour'
+      WHERE event_id IN(SELECT id FROM pilot_notification_events WHERE origin_type<>'pilot_journey')`);
+    process.env.REDIS_URL='redis://127.0.0.1:6379';
+    const {processDueEmail}=await import("../../../worker/src/jobs/durable-email.job");
+    expect(await processDueEmail(verificationPool,{async send(){throw new Error('provider unavailable');}})).toBe(true);
+    delete process.env.REDIS_URL;
+    expect((await verificationPool.query<{n:number}>(`SELECT count(*)::int AS n FROM pilot_email_jobs j
+      JOIN pilot_notification_events e ON e.id=j.event_id WHERE e.origin_type='pilot_journey'
+        AND j.attempts=1 AND j.status='pending'`)).rows[0].n).toBe(1);
+    expect((await verificationPool.query('SELECT id FROM pilot_contribution_obligations')).rows).toHaveLength(1);
+    const trip=await request(createApp()).get(`/v1/seat-requests/confirmed/${f.offer}`)
+      .set('Authorization',`Bearer ${f.first.token}`);
+    expect(trip.body.trip.bookings[0]).toMatchObject({obligation_paise:2500,driver_completed:true,
+      passenger_completed:true});
+    expect((await request(createApp()).get('/v1/operator/journey-reviews')
+      .set('Authorization',`Bearer ${f.first.token}`)).status).toBe(403);
+  });
+  it("restores acknowledged claims and their obligation from independent receipts",async()=>{
+    const f=await fixture();
+    await start(f);
+    const service=new PilotJourneyService(pool);
+    const allocation=f.allocations[0];
+    const at=new Date('2026-09-27T11:00:00.000Z');
+    await service.complete(f.driver.id,randomUUID(),f.offer,[
+      ...f.allocations.slice(0,3).map(allocation_id=>({allocation_id,travelled:true,completed:true}))],at);
+    await service.confirm(f.first.id,randomUUID(),f.offer,allocation,true,true,
+      new Date(at.getTime()+120_000));
+    const original=(await verificationPool.query<{amount_paise:number;due_at:Date}>(
+      'SELECT amount_paise,due_at FROM pilot_contribution_obligations WHERE allocation_id=$1',
+      [allocation])).rows[0];
+    await verificationPool.query('DELETE FROM pilot_contribution_obligations WHERE allocation_id=$1',[allocation]);
+    await verificationPool.query('DELETE FROM pilot_journey_review_work WHERE allocation_id=ANY($1::uuid[])',
+      [f.allocations]);
+    await verificationPool.query(`DELETE FROM pilot_email_jobs WHERE event_id IN
+      (SELECT id FROM pilot_notification_events WHERE origin_type='pilot_journey')`);
+    await verificationPool.query("DELETE FROM pilot_notification_events WHERE origin_type='pilot_journey'");
+    await verificationPool.query("DELETE FROM pilot_journey_claims WHERE allocation_id=ANY($1::uuid[])",
+      [f.allocations]);
+    await verificationPool.query("DELETE FROM audit_logs WHERE action IN ('pilot_driver_completion','pilot_passenger_journey')");
+    await verificationPool.query("DELETE FROM pilot_journey_operations WHERE offer_id=$1",[f.offer]);
+    await verificationPool.query("UPDATE pilot_recovery_state SET mode='restricted' WHERE singleton=true");
+    expect(await service.reconcileReceipts(f.operator.id)).toBe(2);
+    const restored=(await verificationPool.query<{amount_paise:number;due_at:Date}>(
+      'SELECT amount_paise,due_at FROM pilot_contribution_obligations WHERE allocation_id=$1',
+      [allocation])).rows[0];
+    expect(restored.amount_paise).toBe(original.amount_paise);
+    expect(restored.due_at.toISOString()).toBe(original.due_at.toISOString());
+    expect((await verificationPool.query("SELECT count(*)::int AS n FROM pilot_journey_claims")).rows[0].n)
+      .toBe(4);
+    expect((await verificationPool.query<{n:number}>(`SELECT count(*)::int AS n
+      FROM pilot_email_jobs j JOIN pilot_notification_events e ON e.id=j.event_id
+      WHERE e.origin_type='pilot_journey' AND j.status='exhausted'`)).rows[0].n)
+      .toBeGreaterThan(0);
+    await service.verifyEvidence();
+  });
+  it("opens review at the silence boundary even when the worker has not run",async()=>{
+    const f=await fixture();
+    await start(f);
+    const service=new PilotJourneyService(pool);
+    const at=new Date('2026-09-27T12:00:00.000Z');
+    await service.complete(f.driver.id,randomUUID(),f.offer,f.allocations.slice(0,3)
+      .map(allocation_id=>({allocation_id,travelled:true,completed:true})),at);
+    await service.confirm(f.first.id,randomUUID(),f.offer,f.allocations[0],true,true,
+      new Date(at.getTime()+86_400_000));
+    expect((await verificationPool.query('SELECT id FROM pilot_contribution_obligations')).rows)
+      .toHaveLength(0);
+    expect((await service.reviews(f.operator.id)).map(row=>row.allocation_id))
+      .toContain(f.allocations[0]);
+  });
+  it("does not create debt when confirmation races the silence worker",async()=>{
+    const f=await fixture();
+    await start(f);
+    const allocation=f.allocations[0];
+    const driverAt=new Date(Date.now()-86_400_000+10_000);
+    await new PilotJourneyService(pool).complete(f.driver.id,randomUUID(),f.offer,
+      f.allocations.slice(0,3).map(allocation_id=>({allocation_id,travelled:true,completed:true})),driverAt);
+    const workerPool=new Pool({connectionString:process.env.DATABASE_URL,max:1});
+    try{
+      await verificationPool.query(`CREATE FUNCTION journey_race_delay() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN PERFORM pg_sleep(2); RETURN NEW; END $$`);
+      await verificationPool.query(`CREATE TRIGGER journey_race_delay AFTER INSERT ON pilot_journey_reviews
+        FOR EACH ROW WHEN (NEW.allocation_id='${allocation}'::uuid AND NEW.reason='silence')
+        EXECUTE FUNCTION journey_race_delay()`);
+      const worker=reviewSilentJourneys(workerPool,new Date(driverAt.getTime()+86_400_000));
+      let sleeping=false;
+      for(let attempt=0;attempt<100;attempt++){
+        sleeping=(await verificationPool.query<{sleeping:boolean}>(`SELECT EXISTS(
+          SELECT 1 FROM pg_stat_activity WHERE query LIKE 'INSERT INTO pilot_journey_reviews%'
+            AND wait_event='PgSleep') AS sleeping`)).rows[0].sleeping;
+        if(sleeping) break;
+        await new Promise(resolve=>setTimeout(resolve,20));
+      }
+      expect(sleeping).toBe(true);
+      const confirmation=request(createApp()).post(`/v1/corridor-offers/${f.offer}/journeys/${allocation}/confirm`)
+        .set('Authorization',`Bearer ${f.first.token}`).set('Idempotency-Key',randomUUID())
+        .send({travelled:true,completed:true});
+      expect((await confirmation).status).toBe(200);
+      expect((await worker).opened).toBe(3);
+      const trip=await request(createApp()).get(`/v1/seat-requests/confirmed/${f.offer}`)
+        .set('Authorization',`Bearer ${f.first.token}`);
+      expect(trip.body.trip.bookings[0]).toMatchObject({journey_review_reason:'silence',obligation_paise:null});
+    }finally{
+      await workerPool.end();
+      await verificationPool.query('DROP TRIGGER IF EXISTS journey_race_delay ON pilot_journey_reviews');
+      await verificationPool.query('DROP FUNCTION IF EXISTS journey_race_delay()');
+    }
+  },10_000);
+  it("serializes concurrent retries from separate PostgreSQL connections",async()=>{
+    const f=await fixture();
+    await start(f);
+    const driver=new PilotJourneyService(pool);
+    await driver.complete(f.driver.id,randomUUID(),f.offer,f.allocations.slice(0,3)
+      .map(allocation_id=>({allocation_id,travelled:true,completed:true})),new Date());
+    const firstPool=new Pool({connectionString:process.env.DATABASE_URL,max:1});
+    const secondPool=new Pool({connectionString:process.env.DATABASE_URL,max:1});
+    try{
+      const key=randomUUID();
+      const outcomes=await Promise.allSettled([
+        new PilotJourneyService(firstPool).confirm(f.first.id,key,f.offer,f.allocations[0],true,true),
+        new PilotJourneyService(secondPool).confirm(f.first.id,key,f.offer,f.allocations[0],true,true)]);
+      expect(outcomes.every(item=>item.status==='fulfilled')).toBe(true);
+      const ids=outcomes.map(item=>item.status==='fulfilled'?item.value.operation_id:null);
+      expect(new Set(ids).size).toBe(1);
+      expect((await verificationPool.query<{n:number}>(`SELECT count(*)::int AS n
+        FROM pilot_contribution_obligations WHERE allocation_id=$1`,[f.allocations[0]])).rows[0].n).toBe(1);
+    }finally{await Promise.all([firstPool.end(),secondPool.end()]);}
+  });
+  it("reviews a boarded absence and keeps a minimal case visible after trip details expire",async()=>{
+    const f=await fixture();
+    await start(f);
+    const service=new PilotJourneyService(pool);
+    const at=new Date('2026-09-27T13:00:00.000Z');
+    await service.complete(f.driver.id,randomUUID(),f.offer,f.allocations.slice(0,3)
+      .map(allocation_id=>({allocation_id,travelled:false,completed:false})),at);
+    await service.confirm(f.first.id,randomUUID(),f.offer,f.allocations[0],false,false,
+      new Date(at.getTime()+60_000));
+    expect((await verificationPool.query('SELECT id FROM pilot_contribution_obligations')).rows)
+      .toHaveLength(0);
+    expect((await service.participantReviews(f.first.id))).toEqual(expect.arrayContaining([
+      expect.objectContaining({allocation_id:f.allocations[0],reason:'absence',status:'open'})]));
+    setSeatRequestClockForTests(()=>new Date(at.getTime()+86_400_000));
+    try{
+      const trip=await request(createApp()).get(`/v1/seat-requests/confirmed/${f.offer}`)
+        .set('Authorization',`Bearer ${f.first.token}`);
+      expect(trip.status).toBe(404);
+      const minimal=await request(createApp()).get('/v1/seat-requests/journey-reviews')
+        .set('Authorization',`Bearer ${f.first.token}`);
+      expect(minimal.status).toBe(200);
+      expect(minimal.body.cases).toEqual(expect.arrayContaining([
+        expect.objectContaining({allocation_id:f.allocations[0],reason:'absence'})]));
+      expect(JSON.stringify(minimal.body)).not.toContain('registration_number');
+    }finally{setSeatRequestClockForTests(null);}
+  });
+  it("rejects completion of a future unstarted trip",async()=>{
+    const f=await fixture();
+    await verificationPool.query(`UPDATE ride_offers SET
+      date=((now()+interval '1 day') AT TIME ZONE 'Asia/Kolkata')::date,
+      time=((now()+interval '1 day') AT TIME ZONE 'Asia/Kolkata')::time WHERE id=$1`,[f.offer]);
+    await expect(new PilotJourneyService(pool).complete(f.driver.id,randomUUID(),f.offer,[]))
+      .rejects.toMatchObject({code:'JOURNEY_NOT_STARTED'});
+    expect((await verificationPool.query('SELECT id FROM pilot_journey_operations')).rows).toHaveLength(0);
+  });
+  it("rejects new journey claims after participant approval is revoked",async()=>{
+    const f=await fixture();
+    await start(f);
+    const claims=f.allocations.slice(0,3)
+      .map(allocation_id=>({allocation_id,travelled:true,completed:true}));
+    await verificationPool.query("UPDATE driver_eligibility SET status='suspended' WHERE user_id=$1",[f.driver.id]);
+    const deniedDriver=await request(createApp()).post(`/v1/corridor-offers/${f.offer}/complete`)
+      .set('Authorization',`Bearer ${f.driver.token}`).set('Idempotency-Key',randomUUID())
+      .send({claims});
+    expect(deniedDriver.status).toBe(403);
+    await verificationPool.query("UPDATE driver_eligibility SET status='approved' WHERE user_id=$1",[f.driver.id]);
+    const completed=await request(createApp()).post(`/v1/corridor-offers/${f.offer}/complete`)
+      .set('Authorization',`Bearer ${f.driver.token}`).set('Idempotency-Key',randomUUID())
+      .send({claims});
+    expect(completed.status).toBe(200);
+    await verificationPool.query("UPDATE student_verifications SET status='suspended' WHERE user_id=$1",[f.first.id]);
+    const deniedPassenger=await request(createApp()).post(
+      `/v1/corridor-offers/${f.offer}/journeys/${f.allocations[0]}/confirm`)
+      .set('Authorization',`Bearer ${f.first.token}`).set('Idempotency-Key',randomUUID())
+      .send({travelled:true,completed:true});
+    expect(deniedPassenger.status).toBe(403);
+    expect((await verificationPool.query('SELECT id FROM pilot_contribution_obligations')).rows).toHaveLength(0);
+  });
 });
 
 describe("ticket 21 revocation holds and incidents",()=>{
@@ -631,9 +950,16 @@ describe("pilot cancellation and replacement", () => {
       const requestSeat=(actor:typeof one,key:string,rideId=offerId) => request(createApp())
         .post("/v1/seat-requests").set("Authorization",`Bearer ${actor.token}`)
         .set("Idempotency-Key",key).send({offer_id:rideId,seats:1});
-      const [a,b,c]=await Promise.all([requestSeat(one,"cancel-request-one"),
-        requestSeat(two,"cancel-request-two"),requestSeat(three,"cancel-request-three")]);
-      expect([a.status,b.status,c.status]).toEqual([201,201,201]);
+      const attempts=[{actor:one,key:"cancel-request-one"},{actor:two,key:"cancel-request-two"},
+        {actor:three,key:"cancel-request-three"}];
+      const firstResults=await Promise.all(attempts.map(({actor,key})=>requestSeat(actor,key)));
+      const [a,b,c]=await Promise.all(firstResults.map(async(response,index)=>{
+        if(response.status!==503||response.body.error?.code!=="OPERATION_PENDING") return response;
+        const {actor,key}=attempts[index];
+        return requestSeat(actor,key);
+      }));
+      expect([a,b,c].map(response=>({status:response.status,code:response.body.error?.code})))
+        .toEqual([{status:201,code:undefined},{status:201,code:undefined},{status:201,code:undefined}]);
       const accept=(id:string,key:string) => request(createApp()).post(`/v1/seat-requests/${id}/accept`)
         .set("Authorization",`Bearer ${driver.token}`).set("Idempotency-Key",key).send({});
       const accepted=await accept(a.body.request.id,"cancel-accept-one");

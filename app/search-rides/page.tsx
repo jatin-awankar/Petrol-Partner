@@ -14,6 +14,7 @@ type Policy = {stops:Stop[];permitted_pairs:{origin_code:string;destination_code
 type Offer = {id:string;origin_code:string;destination_code:string;departure_at:string;
   contribution_paise:number;currency:string;capacity:number;available_seats:number;
   request_cutoff_at:string;cancellation_notice:string;contact_notice:string};
+type JourneyReview={allocation_id:string;offer_id:string;reason:string;status:string;created_at:string};
 export default function SearchRidesPage() {
   const {isAuthenticated,loading,user} = useCurrentUser();
   const router = useRouter();
@@ -29,6 +30,7 @@ export default function SearchRidesPage() {
     pickup_location:string;car_registration_last4:string;car_make:string|null;car_model:string|null;
     car_color:string|null;driver_verified_name:string|null;passenger_verified_name:string|null;
     trip_state:string;boarded:boolean|null;started_at:string|null}>>([]);
+  const [journeyReviews,setJourneyReviews]=useState<JourneyReview[]>([]);
   const [busy,setBusy] = useState<string | null>(null);
   useEffect(() => {if (!loading && !isAuthenticated) router.replace("/login");},[loading,isAuthenticated,router]);
   useEffect(() => {if (!isAuthenticated) return;
@@ -36,11 +38,13 @@ export default function SearchRidesPage() {
       .catch(error => setMessage(error instanceof Error ? error.message : "Corridor policy is unavailable"));
   },[isAuthenticated]);
   const refreshRequests=useCallback(async () => {
-    const [result,confirmed] = await Promise.all([
+    const [result,confirmed,reviews] = await Promise.all([
       apiRequest<{requests:SeatRequest[]}>("/v1/seat-requests"),
-      apiRequest<{bookings:typeof bookings}>("/v1/seat-requests/confirmed")]);
+      apiRequest<{bookings:typeof bookings}>("/v1/seat-requests/confirmed"),
+      apiRequest<{cases:JourneyReview[]}>("/v1/seat-requests/journey-reviews")]);
     setRequests(result.requests);
     setBookings(confirmed.bookings);
+    setJourneyReviews(reviews.cases);
   },[]);
   useEffect(() => {if (isAuthenticated) void refreshRequests().catch(() => undefined);},[isAuthenticated,refreshRequests]);
   async function changeRequest(path:string,body:Record<string,unknown>,key:string) {
@@ -140,6 +144,13 @@ export default function SearchRidesPage() {
       onAccept={id => void changeRequest(`/v1/seat-requests/${id}/accept`,{},`accept:${id}`)}
       onCancel={(id,reason) => void cancelRequest(id,reason)} />
     <PilotBoarding bookings={bookings as BoardingBooking[]} userId={user?.id} onRefresh={refreshRequests} />
+    {journeyReviews.length>0&&<section aria-label="Journey reviews" className="space-y-2">
+      <h2 className="text-xl font-semibold">Journey reviews</h2>
+      {journeyReviews.map(item=><p key={item.allocation_id} className="rounded border p-3">
+        Ride {item.offer_id}: {item.reason} requires operator review. This case alone does not create a contribution.
+        {" "}Case status: {item.status}.
+      </p>)}
+    </section>}
     <section><h2 className="text-xl font-semibold">Confirmed bookings</h2>
       <ul>{bookings.map(booking => <li key={booking.id} className="rounded border p-3">
         {booking.origin_code} → {booking.destination_code} · One seat ·

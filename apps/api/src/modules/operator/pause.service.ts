@@ -20,6 +20,7 @@ import { CorridorOffersService } from "../rides/corridor-offers.service";
 import { SeatRequestsService } from "../rides/seat-requests.service";
 import { CancellationsService } from "../rides/cancellations.service";
 import { PilotDepartureService } from "../rides/pilot-departure.service";
+import { PilotJourneyService } from "../rides/pilot-journey.service";
 
 export const capabilities = ["offers", "requests", "acceptance", "booking"] as const;
 export type Capability = typeof capabilities[number];
@@ -81,6 +82,7 @@ export class PauseService {
   private departures() { return new DepartureService(this.database); }
   private cancellations() { return new CancellationsService(this.database); }
   private pilotDepartures() { return new PilotDepartureService(this.database); }
+  private pilotJourneys() { return new PilotJourneyService(this.database); }
 
   private async verifyEvidence() {
     try {
@@ -117,6 +119,7 @@ export class PauseService {
       await new SeatRequestsService(this.database).verifyEvidence();
       await this.cancellations().verifyEvidence();
       await this.pilotDepartures().verifyEvidence();
+      await this.pilotJourneys().verifyEvidence();
       await this.departures().verifyEvidence();
     } catch (error) {
       await restrict(this.database, `evidence_unavailable:${error instanceof Error ? error.message : "unknown"}`);
@@ -280,6 +283,7 @@ export class PauseService {
     await new SeatRequestsService(this.database).reconcileReceipts(operatorId);
     await this.cancellations().reconcileReceipts(operatorId);
     await this.pilotDepartures().reconcileReceipts(operatorId);
+    await this.pilotJourneys().reconcileReceipts(operatorId);
     await this.studentRevocations().reconcileReceipts(operatorId);
     await this.departures().reconcileReceipts(operatorId);
     await this.driverCarReviews().reconcileReceipts(operatorId);
@@ -329,7 +333,7 @@ export class PauseService {
     await reopenReceipts().probe();
     const corridorOffers = new CorridorOffersService(this.database);
     const seatRequests = new SeatRequestsService(this.database);
-    const reconciliationDigest = createHash("sha256").update(JSON.stringify({ pauses: await listReceipts(), reopens: await reopenReceipts().list(), studentReviews: await this.studentReviews().receipts(), studentRevocations: await this.studentRevocations().receipts(), revocationCases: await this.revocationCases().receipts(), driverCarReviews: await this.driverCarReviews().receipts(), corridorOffers: await corridorOffers.receipts(), seatRequests: await seatRequests.receipts(), departures: await this.departures().receipts(), pilotDepartures: await this.pilotDepartures().receipts() })).digest("hex");
+    const reconciliationDigest = createHash("sha256").update(JSON.stringify({ pauses: await listReceipts(), reopens: await reopenReceipts().list(), studentReviews: await this.studentReviews().receipts(), studentRevocations: await this.studentRevocations().receipts(), revocationCases: await this.revocationCases().receipts(), driverCarReviews: await this.driverCarReviews().receipts(), corridorOffers: await corridorOffers.receipts(), seatRequests: await seatRequests.receipts(), departures: await this.departures().receipts(), pilotDepartures: await this.pilotDepartures().receipts(), pilotJourneys: await this.pilotJourneys().receipts() })).digest("hex");
     if ((await this.studentReviews().pending()).length) throw new AppError(409, "Student review recovery is incomplete", "RECONCILIATION_REQUIRED");
     if ((await this.studentRevocations().pending()).length) throw new AppError(409, "Student revocation recovery is incomplete", "RECONCILIATION_REQUIRED");
     if ((await this.revocationCases().pending()).length) throw new AppError(409, "Revocation case recovery is incomplete", "RECONCILIATION_REQUIRED");

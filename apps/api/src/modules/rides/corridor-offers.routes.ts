@@ -7,6 +7,7 @@ import { corridorOfferInput,corridorOfferUpdate,corridorOfferSearch } from "./co
 import { corridorOffersService } from "./corridor-offers.service";
 import { cancellationsService } from "./cancellations.service";
 import { pilotDepartureService } from "./pilot-departure.service";
+import { pilotJourneyService } from "./pilot-journey.service";
 
 export const corridorOffersRouter = Router();
 function key(value: string | undefined) {
@@ -40,6 +41,27 @@ corridorOffersRouter.get("/departures/:id",requireAuth,asyncHandler(async(req,re
   if(!req.user) throw new AppError(401,"Unauthorized","UNAUTHORIZED");
   const {id}=z.strictObject({id:z.uuid()}).parse(req.params);
   res.json({operation:await pilotDepartureService.operation(req.user.userId,id)});
+}));
+corridorOffersRouter.get("/journeys/operations/:id",requireAuth,asyncHandler(async(req,res)=>{
+  const {id}=z.strictObject({id:z.uuid()}).parse(req.params);
+  res.set('Cache-Control','private, no-store').json({operation:await pilotJourneyService.operation(req.user!.userId,id)});
+}));
+corridorOffersRouter.get("/:id/journeys",requireAuth,asyncHandler(async(req,res)=>{
+  const {id}=z.strictObject({id:z.uuid()}).parse(req.params);
+  res.set('Cache-Control','private, no-store').json({journeys:await pilotJourneyService.visible(req.user!.userId,id)});
+}));
+corridorOffersRouter.post("/:id/complete",requireAuth,asyncHandler(async(req,res)=>{
+  const {id}=z.strictObject({id:z.uuid()}).parse(req.params);
+  const {claims}=z.strictObject({claims:z.array(z.strictObject({
+    allocation_id:z.uuid(),travelled:z.boolean(),completed:z.boolean()})).max(30)}).parse(req.body);
+  res.json({completion:await pilotJourneyService.complete(req.user!.userId,key(req.get('Idempotency-Key')),
+    id,claims)});
+}));
+corridorOffersRouter.post("/:id/journeys/:allocationId/confirm",requireAuth,asyncHandler(async(req,res)=>{
+  const {id,allocationId}=z.strictObject({id:z.uuid(),allocationId:z.uuid()}).parse(req.params);
+  const {travelled,completed}=z.strictObject({travelled:z.boolean(),completed:z.boolean()}).parse(req.body);
+  res.json({confirmation:await pilotJourneyService.confirm(req.user!.userId,key(req.get('Idempotency-Key')),
+    id,allocationId,travelled,completed)});
 }));
 corridorOffersRouter.post("/:id/depart",requireAuth,asyncHandler(async(req,res)=>{
   if(!req.user) throw new AppError(401,"Unauthorized","UNAUTHORIZED");

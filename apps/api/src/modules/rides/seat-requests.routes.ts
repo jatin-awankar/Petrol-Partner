@@ -5,6 +5,7 @@ import { asyncHandler } from "../../shared/http/async-handler";
 import { AppError } from "../../shared/errors/app-error";
 import { seatRequestsService } from "./seat-requests.service";
 import { cancellationsService } from "./cancellations.service";
+import { pilotJourneyService } from "./pilot-journey.service";
 
 export const seatRequestsRouter = Router();
 seatRequestsRouter.use(requireAuth);
@@ -25,6 +26,9 @@ seatRequestsRouter.get("/",asyncHandler(async(req,res) => {
 }));
 seatRequestsRouter.get("/confirmed",asyncHandler(async(req,res) => {
   res.json({bookings:await seatRequestsService.confirmed(actor(req))});
+}));
+seatRequestsRouter.get("/journey-reviews",asyncHandler(async(req,res) => {
+  res.json({cases:await pilotJourneyService.participantReviews(actor(req))});
 }));
 seatRequestsRouter.get("/confirmed/:offerId",asyncHandler(async(req,res) => {
   const {offerId} = z.strictObject({offerId:z.uuid()}).parse(req.params);

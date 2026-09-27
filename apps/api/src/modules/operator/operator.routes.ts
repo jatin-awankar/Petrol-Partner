@@ -7,6 +7,7 @@ import { pauseService } from "./pause.service";
 import { deliveryStatus, retryDelivery } from "../notifications/durable.service";
 import { cancellationsService } from "../rides/cancellations.service";
 import { pilotDepartureService } from "../rides/pilot-departure.service";
+import { pilotJourneyService } from "../rides/pilot-journey.service";
 import { studentRevocationService } from "../verification/student-revocation.service";
 import { revocationCasesService } from "./revocation-cases.service";
 
@@ -24,6 +25,9 @@ operatorRouter.get("/cancellation-reviews", asyncHandler(async (req,res) => {
 }));
 operatorRouter.get("/departure-reviews",asyncHandler(async(req,res)=>{
   res.json({signals:await pilotDepartureService.openSignals(req.user!.userId)});
+}));
+operatorRouter.get("/journey-reviews",asyncHandler(async(req,res)=>{
+  res.set("Cache-Control","private, no-store").json({cases:await pilotJourneyService.reviews(req.user!.userId)});
 }));
 operatorRouter.get("/revocation-cases",asyncHandler(async(req,res)=>{
   res.set("Cache-Control","private, no-store").json(await revocationCasesService.list(req.user!.userId));
