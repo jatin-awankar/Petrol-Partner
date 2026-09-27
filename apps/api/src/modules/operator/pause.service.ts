@@ -74,18 +74,41 @@ export function setPauseCrashHookForTests(hook: typeof crashHook) {
   crashHook = hook;
 }
 
+type RecoverySlice = {
+  name: string;
+  service: {
+    verifyEvidence(): Promise<unknown>;
+    reconcileReceipts(operatorId: string): Promise<unknown>;
+    receipts(): Promise<unknown>;
+    pending?: () => Promise<unknown[]>;
+  };
+  verifyOrder: number;
+  reconcileOrder: number;
+  digestOrder?: number;
+  pendingOrder?: number;
+  pendingMessage?: string;
+};
+
+// Each protected slice is registered once. Orders preserve restore dependencies and
+// the established digest field order used by previously acknowledged reopen receipts.
+function recoverySlices(database: Pool): RecoverySlice[] {
+  return [
+    { name: "studentReviews", service: new StudentReviewService(database), verifyOrder: 0, reconcileOrder: 0, digestOrder: 0, pendingOrder: 1, pendingMessage: "Student review recovery is incomplete" },
+    { name: "studentRevocations", service: new StudentRevocationService(database), verifyOrder: 1, reconcileOrder: 7, digestOrder: 1, pendingOrder: 2, pendingMessage: "Student revocation recovery is incomplete" },
+    { name: "revocationCases", service: new RevocationCasesService(database), verifyOrder: 2, reconcileOrder: 10, digestOrder: 2, pendingOrder: 3, pendingMessage: "Revocation case recovery is incomplete" },
+    { name: "driverCarReviews", service: new DriverCarReviewService(database), verifyOrder: 3, reconcileOrder: 9, digestOrder: 3 },
+    { name: "corridorOffers", service: new CorridorOffersService(database), verifyOrder: 4, reconcileOrder: 1, digestOrder: 4, pendingOrder: 4, pendingMessage: "Offer recovery is incomplete" },
+    { name: "seatRequests", service: new SeatRequestsService(database), verifyOrder: 5, reconcileOrder: 2, digestOrder: 5, pendingOrder: 5, pendingMessage: "Seat request recovery is incomplete" },
+    { name: "cancellations", service: new CancellationsService(database), verifyOrder: 6, reconcileOrder: 3, },
+    { name: "pilotDepartures", service: new PilotDepartureService(database), verifyOrder: 7, reconcileOrder: 4, digestOrder: 7 },
+    { name: "pilotJourneys", service: new PilotJourneyService(database), verifyOrder: 8, reconcileOrder: 5, digestOrder: 8 },
+    { name: "journeyReviews", service: new JourneyReviewService(database), verifyOrder: 9, reconcileOrder: 6, digestOrder: 9, pendingOrder: 0, pendingMessage: "Journey review recovery is incomplete" },
+    { name: "departures", service: new DepartureService(database), verifyOrder: 10, reconcileOrder: 8, digestOrder: 6 },
+  ];
+}
+
 export class PauseService {
   constructor(private readonly database: Pool = pool) {}
-  private studentReviews() { return new StudentReviewService(this.database); }
-  private studentRevocations() { return new StudentRevocationService(this.database); }
-  private revocationCases() { return new RevocationCasesService(this.database); }
-  private driverCarReviews() { return new DriverCarReviewService(this.database); }
-  private departures() { return new DepartureService(this.database); }
-  private cancellations() { return new CancellationsService(this.database); }
-  private pilotDepartures() { return new PilotDepartureService(this.database); }
-  private pilotJourneys() { return new PilotJourneyService(this.database); }
-  private journeyReviews() { return new JourneyReviewService(this.database); }
-
   private async verifyEvidence() {
     try {
       const backup = await backupStatus(this.database);
@@ -113,17 +136,8 @@ export class PauseService {
           (receipt.resumedBy ?? null) !== row.resumed_by || (receipt.resumeReason ?? null) !== row.resume_reason || (receipt.resumedFrom ?? null) !== row.resumed_from ||
           receipt.payloadDigest !== digest({ capability: receipt.capability, paused: receipt.paused, reason: receipt.reason });
       })) throw new AppError(503, "Acknowledged recovery evidence is missing or inconsistent", "RECOVERY_MISSING");
-      await this.studentReviews().verifyEvidence();
-      await this.studentRevocations().verifyEvidence();
-      await this.revocationCases().verifyEvidence();
-      await this.driverCarReviews().verifyEvidence();
-      await new CorridorOffersService(this.database).verifyEvidence();
-      await new SeatRequestsService(this.database).verifyEvidence();
-      await this.cancellations().verifyEvidence();
-      await this.pilotDepartures().verifyEvidence();
-      await this.pilotJourneys().verifyEvidence();
-      await this.journeyReviews().verifyEvidence();
-      await this.departures().verifyEvidence();
+      for (const slice of recoverySlices(this.database).sort((a, b) => a.verifyOrder - b.verifyOrder))
+        await slice.service.verifyEvidence();
     } catch (error) {
       await restrict(this.database, `evidence_unavailable:${error instanceof Error ? error.message : "unknown"}`);
       throw error;
@@ -281,17 +295,8 @@ export class PauseService {
     let receipts: Receipt[];
     try { receipts = await listReceipts(); }
     catch (error) { await restrict(this.database, "evidence_unavailable"); throw error; }
-    await this.studentReviews().reconcileReceipts(operatorId);
-    await new CorridorOffersService(this.database).reconcileReceipts(operatorId);
-    await new SeatRequestsService(this.database).reconcileReceipts(operatorId);
-    await this.cancellations().reconcileReceipts(operatorId);
-    await this.pilotDepartures().reconcileReceipts(operatorId);
-    await this.pilotJourneys().reconcileReceipts(operatorId);
-    await this.journeyReviews().reconcileReceipts(operatorId);
-    await this.studentRevocations().reconcileReceipts(operatorId);
-    await this.departures().reconcileReceipts(operatorId);
-    await this.driverCarReviews().reconcileReceipts(operatorId);
-    await this.revocationCases().reconcileReceipts(operatorId);
+    for (const slice of recoverySlices(this.database).sort((a, b) => a.reconcileOrder - b.reconcileOrder))
+      await slice.service.reconcileReceipts(operatorId);
     for (const receipt of receipts) {
       if (receipt.payloadDigest !== digest({ capability: receipt.capability, paused: receipt.paused, reason: receipt.reason })) throw new AppError(409, "Recovery payload is inconsistent", "RECOVERY_CONFLICT");
       await transaction(this.database, async (client) => {
@@ -335,15 +340,17 @@ export class PauseService {
     await this.verifyEvidence();
     await pauseReceipts().probe();
     await reopenReceipts().probe();
-    const corridorOffers = new CorridorOffersService(this.database);
-    const seatRequests = new SeatRequestsService(this.database);
-    const reconciliationDigest = createHash("sha256").update(JSON.stringify({ pauses: await listReceipts(), reopens: await reopenReceipts().list(), studentReviews: await this.studentReviews().receipts(), studentRevocations: await this.studentRevocations().receipts(), revocationCases: await this.revocationCases().receipts(), driverCarReviews: await this.driverCarReviews().receipts(), corridorOffers: await corridorOffers.receipts(), seatRequests: await seatRequests.receipts(), departures: await this.departures().receipts(), pilotDepartures: await this.pilotDepartures().receipts(), pilotJourneys: await this.pilotJourneys().receipts(), journeyReviews: await this.journeyReviews().receipts() })).digest("hex");
-    if ((await this.journeyReviews().pending()).length) throw new AppError(409, "Journey review recovery is incomplete", "RECONCILIATION_REQUIRED");
-    if ((await this.studentReviews().pending()).length) throw new AppError(409, "Student review recovery is incomplete", "RECONCILIATION_REQUIRED");
-    if ((await this.studentRevocations().pending()).length) throw new AppError(409, "Student revocation recovery is incomplete", "RECONCILIATION_REQUIRED");
-    if ((await this.revocationCases().pending()).length) throw new AppError(409, "Revocation case recovery is incomplete", "RECONCILIATION_REQUIRED");
-    if ((await corridorOffers.pending()).length) throw new AppError(409, "Offer recovery is incomplete", "RECONCILIATION_REQUIRED");
-    if ((await seatRequests.pending()).length) throw new AppError(409, "Seat request recovery is incomplete", "RECONCILIATION_REQUIRED");
+    const slices = recoverySlices(this.database);
+    const digestPayload: Record<string, unknown> = { pauses: await listReceipts(), reopens: await reopenReceipts().list() };
+    for (const slice of [...slices].filter(item => item.digestOrder !== undefined)
+      .sort((a, b) => a.digestOrder! - b.digestOrder!))
+      digestPayload[slice.name] = await slice.service.receipts();
+    const reconciliationDigest = createHash("sha256").update(JSON.stringify(digestPayload)).digest("hex");
+    for (const slice of slices.filter(item => item.pendingOrder !== undefined)
+      .sort((a, b) => a.pendingOrder! - b.pendingOrder!)) {
+      if (slice.service.pending && (await slice.service.pending()).length)
+        throw new AppError(409, slice.pendingMessage!, "RECONCILIATION_REQUIRED");
+    }
     const operation = await transaction(this.database, async (client) => {
       const status = await operatorQuery(client, "recoveryStateForUpdate");
       await assertCurrentOperator(client, operatorId);
