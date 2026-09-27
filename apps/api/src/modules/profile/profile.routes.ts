@@ -3,6 +3,7 @@ import { Router } from "express";
 import { requireAuth } from "../../middleware/auth";
 import { asyncHandler } from "../../shared/http/async-handler";
 import * as profileController from "./profile.controller";
+import { accountClosureService } from "./account-closure.service";
 
 export const profileRouter = Router();
 
@@ -28,3 +29,9 @@ profileRouter.patch("/preferences", asyncHandler(profileController.patchPreferen
 profileRouter.get("/safety", asyncHandler(profileController.getSafety));
 profileRouter.patch("/safety", asyncHandler(profileController.patchSafety));
 profileRouter.get("/security", asyncHandler(profileController.getSecurity));
+profileRouter.post("/closure", asyncHandler(async(req,res)=>{
+  res.set("Cache-Control","private, no-store").json({closure:await accountClosureService.request(req.user!.userId)});
+}));
+profileRouter.get("/closure", asyncHandler(async(req,res)=>{
+  res.set("Cache-Control","private, no-store").json({closure:await accountClosureService.mine(req.user!.userId)});
+}));
