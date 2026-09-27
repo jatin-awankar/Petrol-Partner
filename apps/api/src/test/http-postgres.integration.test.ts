@@ -8,7 +8,7 @@ import { PilotDepartureService } from "../modules/rides/pilot-departure.service"
 import { PilotJourneyService } from "../modules/rides/pilot-journey.service";
 import { JourneyReviewService } from "../modules/rides/journey-review.service";
 import { DirectSettlementService } from "../modules/rides/direct-settlement.service";
-import { reviewSilentSettlements } from "../../../worker/src/jobs/pilot-settlement-silence";
+import { DirectSettlementSilenceService } from "../modules/rides/direct-settlement-silence.service";
 import { reviewSilentJourneys } from "../../../worker/src/jobs/pilot-journey-silence";
 import { StudentRevocationService } from "../modules/verification/student-revocation.service";
 import { DriverCarReviewService } from "../modules/verification/driver-car-review.service";
@@ -662,8 +662,12 @@ describe("ticket 22 individual journey confirmation",()=>{
     expect((await appRequest(f.first.token,'claim',{method:'cash'},key)).status).toBe(409);
     expect((await settlement.detail(f.first.id,id,new Date())).receipt).toBeNull();
     expect((await settlement.detail(f.first.id,id,new Date())).status).toBe('claim_pending');
-    const confirmed=await appRequest(f.driver.token,'confirm',{});
+    const receiptKey=randomUUID();
+    const confirmed=await appRequest(f.driver.token,'confirm',{},receiptKey);
     expect(confirmed.status).toBe(200);
+    expect((await appRequest(f.driver.token,'confirm',{},receiptKey)).body.operation_id)
+      .toBe(confirmed.body.operation_id);
+    expect((await appRequest(f.driver.token,'confirm',{})).status).toBe(409);
     expect((await settlement.detail(f.first.id,id)).status).toBe('settled');
     expect((await verificationPool.query<{n:number}>(`SELECT count(*)::int AS n FROM pilot_settlement_operations
       WHERE obligation_id=$1 AND kind='confirm'`,[id])).rows[0].n).toBe(1);
@@ -698,9 +702,11 @@ describe("ticket 22 individual journey confirmation",()=>{
     const firstClaimAt=new Date(Date.now()-86_400_000);
     await settlement.mutate(f.first.id,randomUUID(),first,'claim','cash',firstClaimAt);
     await settlement.mutate(f.second.id,randomUUID(),second,'claim','upi');
-    expect((await reviewSilentSettlements(verificationPool,new Date(firstClaimAt.getTime()+86_400_000-1))).opened).toBe(0);
-    expect((await reviewSilentSettlements(verificationPool,new Date(firstClaimAt.getTime()+86_400_000))).opened).toBe(1);
-    expect((await reviewSilentSettlements(verificationPool,new Date(firstClaimAt.getTime()+86_400_000))).opened).toBe(0);
+    const silence=new DirectSettlementSilenceService(pool);
+    expect((await silence.sweep(new Date(firstClaimAt.getTime()+86_400_000-1))).opened).toBe(0);
+    expect((await silence.sweep(new Date(firstClaimAt.getTime()+86_400_000))).opened).toBe(1);
+    await silence.verifyEvidence();
+    expect((await silence.sweep(new Date(firstClaimAt.getTime()+86_400_000))).opened).toBe(0);
     expect((await settlement.detail(f.first.id,first,new Date(firstClaimAt.getTime()+86_400_000))).status).toBe('review');
     await expect(settlement.mutate(f.driver.id,randomUUID(),first,'confirm',null,
       new Date(firstClaimAt.getTime()+86_400_000))).rejects.toMatchObject({code:'REVIEW_REQUIRED'});
@@ -762,6 +768,31 @@ describe("ticket 22 individual journey confirmation",()=>{
     expect((await settlement.detail(f.first.id,id)).claim?.method).toBe('upi');
     expect((await settlement.detail(f.first.id,id)).receipt).toBeNull();
     await settlement.verifyEvidence();
+  });
+  it('restores an acknowledged silence review from independent evidence',async()=>{
+    const f=await fixture();await start(f);
+    const journey=new PilotJourneyService(pool),settlement=new DirectSettlementService(pool);
+    await journey.complete(f.driver.id,randomUUID(),f.offer,f.allocations.slice(0,3)
+      .map(allocation_id=>({allocation_id,travelled:true,completed:true})));
+    await journey.confirm(f.first.id,randomUUID(),f.offer,f.allocations[0],true,true);
+    const id=(await verificationPool.query<{id:string}>(
+      'SELECT id FROM pilot_contribution_obligations WHERE allocation_id=$1',[f.allocations[0]])).rows[0].id;
+    const claimedAt=new Date(Date.now()-86_400_000);
+    await settlement.mutate(f.first.id,randomUUID(),id,'claim','cash',claimedAt);
+    const silence=new DirectSettlementSilenceService(pool);
+    expect((await silence.sweep(new Date(claimedAt.getTime()+86_400_000))).opened).toBe(1);
+    const operation=(await verificationPool.query<{id:string}>(
+      'SELECT id FROM pilot_settlement_silence_operations WHERE obligation_id=$1',[id])).rows[0].id;
+    await verificationPool.query(`DELETE FROM pilot_email_jobs WHERE event_id IN
+      (SELECT id FROM pilot_notification_events WHERE origin_type='pilot_settlement_silence')`);
+    await verificationPool.query("DELETE FROM pilot_notification_events WHERE origin_type='pilot_settlement_silence'");
+    await verificationPool.query("DELETE FROM audit_logs WHERE action='pilot_settlement_driver_silence'");
+    await verificationPool.query('DELETE FROM pilot_settlement_reviews WHERE silence_operation_id=$1',[operation]);
+    await verificationPool.query('DELETE FROM pilot_settlement_silence_operations WHERE id=$1',[operation]);
+    await verificationPool.query("UPDATE pilot_recovery_state SET mode='restricted' WHERE singleton=true");
+    expect(await silence.reconcileReceipts(f.operator.id)).toBe(1);
+    await silence.verifyEvidence();
+    expect((await settlement.detail(f.first.id,id)).review?.reason).toBe('driver_silence');
   });
 });
 

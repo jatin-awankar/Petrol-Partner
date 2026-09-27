@@ -34,6 +34,16 @@ export const overdue=async(db:Db)=>(await db.query(`SELECT o.id AS obligation_id
   FROM pilot_contribution_obligations o JOIN pilot_seat_allocations a ON a.id=o.allocation_id
   WHERE o.due_at<=now() AND NOT EXISTS(SELECT 1 FROM pilot_settlement_operations c
     WHERE c.obligation_id=o.id AND c.kind='claim') ORDER BY o.due_at,o.id LIMIT 100`)).rows;
+export const vehicleForAllocation=async(db:Db,id:string)=>(await db.query<{vehicle_id:string}>(
+  'SELECT vehicle_id FROM pilot_seat_allocations WHERE id=$1',[id])).rows[0]?.vehicle_id??null;
+export async function recoveryEvidence(db:Db,row:Operation){
+  const audit=await db.query(`SELECT 1 FROM audit_logs WHERE action=$1
+    AND metadata->>'operationId'=$2`,[`pilot_settlement_${row.kind}`,row.id]);
+  const notifications=await db.query<{recipient_id:string}>(`SELECT recipient_id
+    FROM pilot_notification_events WHERE origin_type='pilot_direct_settlement'
+    AND operation_id=$1 AND ready_at IS NOT NULL`,[row.id]);
+  return {audited:Boolean(audit.rowCount),recipients:notifications.rows.map(x=>x.recipient_id)};
+}
 export async function insert(db:PoolClient,input:{id?:string;obligationId:string;actorId:string;key:string;
   digest:string;kind:Operation['kind'];method:'cash'|'upi'|null;at:Date;state?:Operation['state']}){
   const row=(await db.query<Operation>(`INSERT INTO pilot_settlement_operations

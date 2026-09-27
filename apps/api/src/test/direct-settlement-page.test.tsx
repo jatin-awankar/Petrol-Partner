@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
+import {act,cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import Page from '../../../../app/direct-settlements/page';
 const state=vi.hoisted(()=>({actor:'passenger',calls:[] as Array<{path:string;key:string|undefined}>,
@@ -33,5 +33,20 @@ describe('direct settlement browser journey',()=>{
     await waitFor(()=>expect(screen.getByText(/settled/i)).not.toBeNull());
     expect(state.calls.map(x=>x.path)).toEqual([
       '/v1/direct-settlements/obligation/claim','/v1/direct-settlements/obligation/confirm']);
+  });
+  it('removes driver response actions at the exact 24-hour claim deadline',async()=>{
+    const deadline=Date.now()+60_000;
+    state.actor='driver';
+    state.item.claim={id:'claim',method:'cash',recorded_at:new Date(deadline-86_400_000).toISOString()};
+    state.item.status='claim_pending';
+    vi.useFakeTimers();
+    try{
+      vi.setSystemTime(new Date(deadline-60_000));
+      render(<Page/>);
+      await act(async()=>{});
+      expect(screen.getByRole('button',{name:'Confirm receipt'})).not.toBeNull();
+      await act(async()=>{vi.advanceTimersByTime(60_000);});
+      expect(screen.queryByRole('button',{name:'Confirm receipt'})).toBeNull();
+    }finally{vi.useRealTimers();}
   });
 });

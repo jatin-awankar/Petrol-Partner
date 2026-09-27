@@ -21,3 +21,12 @@ CREATE TABLE IF NOT EXISTS pilot_settlement_reviews (
   opened_at timestamptz NOT NULL,
   status text NOT NULL DEFAULT 'open' CHECK (status IN ('open','resolved'))
 );
+CREATE TABLE IF NOT EXISTS pilot_settlement_silence_operations (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  obligation_id uuid NOT NULL UNIQUE REFERENCES pilot_contribution_obligations(id),
+  recorded_at timestamptz NOT NULL,
+  state text NOT NULL CHECK (state IN ('committed','acknowledged','recovered')),
+  acknowledged_at timestamptz
+);
+ALTER TABLE pilot_settlement_reviews ADD COLUMN IF NOT EXISTS silence_operation_id uuid
+  REFERENCES pilot_settlement_silence_operations(id);

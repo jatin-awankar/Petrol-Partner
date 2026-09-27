@@ -4,7 +4,7 @@
 
 **Blocked by:** 22 (Confirm each passenger’s journey).
 
-**Status:** claimed
+**Status:** resolved
 
 **Work type:** Feature slice
 
@@ -12,13 +12,13 @@
 
 ## Acceptance criteria
 
-- [ ] Deliver due/overdue obligation, passenger payment-claim and driver receipt-confirmation views; no platform charge, collection, escrow, payout or fee participates.
-- [ ] Permit claims only for an established contribution and keep the accepted amount/currency immutable.
-- [ ] A passenger claim never marks receipt or settlement complete. Only authorized driver receipt confirmation establishes the normal settled outcome.
-- [ ] After 24 hours without a claim, show overdue visibility. A claim starts a separate 24-hour driver response window; silence or dispute opens review without automatic restrictions.
-- [ ] Keep obligation, claim, receipt and settlement state distinct. Repeated claims/confirmations return the original logical result and cannot duplicate receipt records.
-- [ ] Apply recovery-protected transactions, current participant authorization, audit and durable notification work to all settlement changes.
-- [ ] Test driver/passenger role reversal, absent obligation, deadline boundaries, lost-response retries, evidence-store failure and the direct-settlement browser journey.
+- [x] Deliver due/overdue obligation, passenger payment-claim and driver receipt-confirmation views; no platform charge, collection, escrow, payout or fee participates.
+- [x] Permit claims only for an established contribution and keep the accepted amount/currency immutable.
+- [x] A passenger claim never marks receipt or settlement complete. Only authorized driver receipt confirmation establishes the normal settled outcome.
+- [x] After 24 hours without a claim, show overdue visibility. A claim starts a separate 24-hour driver response window; silence or dispute opens review without automatic restrictions.
+- [x] Keep obligation, claim, receipt and settlement state distinct. Repeated claims/confirmations return the original logical result and cannot duplicate receipt records.
+- [x] Apply recovery-protected transactions, current participant authorization, audit and durable notification work to all settlement changes.
+- [x] Test driver/passenger role reversal, absent obligation, deadline boundaries, lost-response retries, evidence-store failure and the direct-settlement browser journey.
 
 ## Completion evidence
 
@@ -28,8 +28,10 @@ Follow the local tracker's claim/resolution convention: use `claimed` when work 
 
 ## Answer
 
-Implemented a direct cash/UPI settlement slice on `codex/24-direct-settlement`. A frozen pilot contribution obligation remains independent of a passenger claim, a driver confirmation or dispute, and a review case. A claim leaves the obligation unpaid; only the driver's receipt confirmation produces the normal settled view. Due and overdue status is computed at the exact 24-hour boundary. Driver silence opens a durable review case through the PostgreSQL worker; a dispute opens one in the protected transaction. No automatic account restriction is applied.
+Implemented a direct cash/UPI settlement slice on `codex/24-direct-settlement`. A frozen pilot contribution obligation remains independent of a passenger claim, a driver confirmation or dispute, and a review case. A claim leaves the obligation unpaid; only the driver's receipt confirmation produces the normal settled view. Due and overdue status is computed at the exact 24-hour boundary. Driver silence opens a durable review case through a protected API sweep; a dispute opens one in the protected transaction. No automatic account restriction is applied.
 
-Evidence: PostgreSQL-backed HTTP tests cover wrong actors, absent obligations, frozen amount/currency, idempotent claims, payload mismatch, driver confirmation, exact deadline boundaries, dispute, silence worker retries, operator queue, failed email retry, evidence-store failure with restricted mode, and restoration from an independent claim receipt. A browser component test covers the passenger claim followed by the driver confirmation. `npm run lint` passed with 10 pre-existing warnings; `npm run typecheck`, `npm test`, `npm run api:build`, and `npm run worker:build` passed. The final `npm test` run reported 27 script passes with 4 skips, 117 API passes with 1 skip, and 16 worker passes.
+Evidence: PostgreSQL-backed HTTP tests cover wrong actors, absent obligations, frozen amount/currency, idempotent claims and confirmations, payload mismatch, exact deadline boundaries, dispute, durable silence-review retries, operator queue, failed email retry, evidence-store failure with restricted mode, and restoration from independent claim and silence-review receipts. A rendered browser journey sends real HTTP requests to the API against PostgreSQL and verifies the passenger claim stays unpaid until driver confirmation. An exact-boundary component test verifies that response actions disappear when the driver window ends. `npm run lint` passed with 10 pre-existing warnings; `npm run typecheck`, `npm test`, and `npm run build:all` passed. The final `npm test` run reported 27 script passes with 4 skips, 120 API passes with 1 skip, and 16 worker passes.
 
-Remaining limits: the browser journey test uses a mocked API client, while the corresponding HTTP flow is covered separately against PostgreSQL; an end-to-end browser session against the PostgreSQL HTTP server is not yet evidenced. `npm run build:all` could not complete because Next.js could not fetch the Poppins font from Google Fonts in the restricted environment. The deployed schema and user population were not inventoried or migrated. Real trips remain disabled. Ticket status remains claimed until the browser evidence and production build gate are completed.
+Code review against `main`: the Standards pass found SQL in a service and worker; it was moved into settlement repositories. The Spec pass found silence-review writes without independent recovery, mocked browser evidence, and expired driver actions; these were corrected and tested.
+
+Remaining limits: the browser test renders the actual React page in jsdom and forwards its API calls to Express/PostgreSQL; it does not drive a graphical browser. The deployed schema and user population were not inventoried or migrated. No real trips, platform money movement, or deployment were enabled.

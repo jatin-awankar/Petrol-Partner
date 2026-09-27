@@ -14,12 +14,22 @@ export default function DirectSettlementsPage(){
   const [items,setItems]=useState<Obligation[]>([]);
   const [busy,setBusy]=useState<string|null>(null);
   const [message,setMessage]=useState('');
+  const [now,setNow]=useState(()=>Date.now());
   const refresh=useCallback(async()=>{
     const response=await apiRequest<{obligations:Obligation[]}>('/v1/direct-settlements');
     setItems(response.obligations);
   },[]);
   useEffect(()=>{if(!loading&&!isAuthenticated) router.replace('/login');},[loading,isAuthenticated,router]);
   useEffect(()=>{if(isAuthenticated) void refresh().catch(error=>setMessage(String(error)));},[isAuthenticated,refresh]);
+  useEffect(()=>{
+    const deadlines=items.map(item=>item.claim&&!item.response?
+      Date.parse(item.claim.recorded_at)+86_400_000:!item.claim?Date.parse(item.due_at):Infinity)
+      .filter(deadline=>deadline>now&&Number.isFinite(deadline));
+    if(!deadlines.length) return;
+    const delay=Math.min(Math.min(...deadlines)-now,2_147_483_647);
+    const timer=window.setTimeout(()=>{setNow(Date.now());void refresh().catch(()=>undefined);},delay);
+    return ()=>window.clearTimeout(timer);
+  },[items,now,refresh]);
   async function act(item:Obligation,kind:'claim'|'confirm'|'dispute',method?:'cash'|'upi'){
     const storageKey=`direct-settlement:${item.obligation_id}:${kind}`;
     const key=sessionStorage.getItem(storageKey)??crypto.randomUUID();
@@ -54,7 +64,8 @@ export default function DirectSettlementsPage(){
         <button disabled={Boolean(busy)} onClick={()=>void act(item,'claim','cash')}>Report cash paid</button>
         <button disabled={Boolean(busy)} onClick={()=>void act(item,'claim','upi')}>Report UPI paid</button>
       </div>}
-      {user?.id===item.driver_id&&item.claim&&!item.response&&<div className="flex gap-2">
+      {user?.id===item.driver_id&&item.claim&&!item.response&&!item.review&&
+        now<Date.parse(item.claim.recorded_at)+86_400_000&&<div className="flex gap-2">
         <button disabled={Boolean(busy)} onClick={()=>void act(item,'confirm')}>Confirm receipt</button>
         <button disabled={Boolean(busy)} onClick={()=>void act(item,'dispute')}>Dispute claim</button>
       </div>}

@@ -10,7 +10,6 @@ import { processDueEmail } from "./jobs/durable-email.job";
 import { deleteDueStudentEvidence, deleteDueDriverCarEvidence, deleteReplacedDriverCarEvidence } from "./jobs/student-evidence-retention.job";
 import { recordDueDriverCarExpiryNotice } from "./jobs/driver-car-expiry.job";
 import { reviewSilentJourneys } from "./jobs/pilot-journey-silence";
-import { reviewSilentSettlements } from "./jobs/pilot-settlement-silence";
 
 const workers = [
   createBookingExpiryWorker(),
@@ -33,7 +32,6 @@ async function sweepEmail() {
     while (await deleteReplacedDriverCarEvidence()) { /* Drain replaced evidence. */ }
     while (await recordDueDriverCarExpiryNotice()) { /* Drain due notices. */ }
     while ((await reviewSilentJourneys(pool)).processed) { /* Drain due journey reviews. */ }
-    while ((await reviewSilentSettlements(pool)).opened) { /* Drain due settlement reviews. */ }
   }
   catch (error) { logger.error({ error }, "Durable email sweep failed"); }
   finally { emailBusy = false; }

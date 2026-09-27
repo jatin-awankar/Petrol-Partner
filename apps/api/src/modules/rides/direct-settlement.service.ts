@@ -93,13 +93,9 @@ export class DirectSettlementService {
     const item=await repo.detail(this.db,row.obligation_id);
     if(!item||!(row.kind==='claim'?item.claim_id===row.id:item.response_id===row.id)) return false;
     if(row.kind==='dispute'&&item.review_reason!=='disputed') return false;
-    const audit=await this.db.query(`SELECT 1 FROM audit_logs WHERE action=$1
-      AND metadata->>'operationId'=$2`,[`pilot_settlement_${row.kind}`,row.id]);
-    const notifications=await this.db.query<{recipient_id:string}>(`SELECT recipient_id
-      FROM pilot_notification_events WHERE origin_type='pilot_direct_settlement'
-      AND operation_id=$1 AND ready_at IS NOT NULL`,[row.id]);
-    const recipients=notifications.rows.map(x=>x.recipient_id);
-    return Boolean(audit.rowCount)&&recipients.includes(item.driver_id)&&recipients.includes(item.passenger_id);
+    const evidence=await repo.recoveryEvidence(this.db,row);
+    return evidence.audited&&evidence.recipients.includes(item.driver_id)&&
+      evidence.recipients.includes(item.passenger_id);
   }
   async mutate(actorId:string,key:string,id:string,kind:repo.Operation['kind'],
     method:'cash'|'upi'|null=null,now=new Date()){
@@ -128,8 +124,7 @@ export class DirectSettlementService {
         if(item.claim_id) throw new AppError(409,'Payment already claimed','CLAIM_EXISTS');
       }else{
         if(item.driver_id!==actorId) throw new AppError(403,'Only the driver may respond','FORBIDDEN');
-        const car=(await client.query<{vehicle_id:string}>(`SELECT vehicle_id FROM pilot_seat_allocations
-          WHERE id=$1`,[item.allocation_id])).rows[0]?.vehicle_id;
+        const car=await repo.vehicleForAllocation(client,item.allocation_id);
         if(!car) throw new AppError(409,'Allocation missing','ALLOCATION_MISSING');
         await assertCurrentDriverCarEligibility(client,actorId,car);
         if(!item.claim_id) throw new AppError(409,'Payment claim required','CLAIM_REQUIRED');
