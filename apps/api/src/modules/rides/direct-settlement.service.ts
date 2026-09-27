@@ -50,10 +50,14 @@ export class DirectSettlementService {
       due_at:row.due_at,driver_id:row.driver_id,passenger_id:row.passenger_id,
       claim:row.claim_id?{id:row.claim_id,method:row.claim_method,recorded_at:row.claimed_at}:null,
       receipt:row.response_kind==='confirm'?{id:row.response_id,recorded_at:row.responded_at}:null,
-      response:row.response_kind,review:row.review_id?{id:row.review_id,reason:row.review_reason}:
+      response:row.response_kind,review:row.review_id?{id:row.review_id,reason:row.review_reason,
+        status:row.review_status}:
         row.claimed_at&&!row.response_id&&now.getTime()>=row.claimed_at.getTime()+DRIVER_RESPONSE_WINDOW_MS
           ?{id:null,reason:'driver_silence'}:null,
-      status:row.response_kind==='confirm'?'settled':row.response_kind==='dispute'?'review':
+      contribution_owed:row.decision_owed,
+      receipt_established:row.decision_receipt,
+      status:row.review_status==='resolved'?'case_resolved':row.response_kind==='confirm'?'settled':
+        row.response_kind==='dispute'?'review':
         row.claimed_at?now.getTime()>=row.claimed_at.getTime()+DRIVER_RESPONSE_WINDOW_MS?'review':'claim_pending':
         now.getTime()>=row.due_at.getTime()?'overdue':'due'};
   }
@@ -129,6 +133,7 @@ export class DirectSettlementService {
         if(!car) throw new AppError(409,'Allocation missing','ALLOCATION_MISSING');
         await assertCurrentDriverCarEligibility(client,actorId,car);
         if(!item.claim_id) throw new AppError(409,'Payment claim required','CLAIM_REQUIRED');
+        if(item.review_status==='resolved') throw new AppError(409,'Settlement case resolved','CASE_RESOLVED');
         if(item.response_id) throw new AppError(409,'Driver already responded','RESPONSE_EXISTS');
         if(item.claimed_at&&now.getTime()>=item.claimed_at.getTime()+DRIVER_RESPONSE_WINDOW_MS)
           throw new AppError(409,'Driver response window elapsed; review required','REVIEW_REQUIRED');
