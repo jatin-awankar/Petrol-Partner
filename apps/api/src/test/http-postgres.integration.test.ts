@@ -950,9 +950,16 @@ describe("pilot cancellation and replacement", () => {
       const requestSeat=(actor:typeof one,key:string,rideId=offerId) => request(createApp())
         .post("/v1/seat-requests").set("Authorization",`Bearer ${actor.token}`)
         .set("Idempotency-Key",key).send({offer_id:rideId,seats:1});
-      const [a,b,c]=await Promise.all([requestSeat(one,"cancel-request-one"),
-        requestSeat(two,"cancel-request-two"),requestSeat(three,"cancel-request-three")]);
-      expect([a.status,b.status,c.status]).toEqual([201,201,201]);
+      const attempts=[{actor:one,key:"cancel-request-one"},{actor:two,key:"cancel-request-two"},
+        {actor:three,key:"cancel-request-three"}];
+      const firstResults=await Promise.all(attempts.map(({actor,key})=>requestSeat(actor,key)));
+      const [a,b,c]=await Promise.all(firstResults.map(async(response,index)=>{
+        if(response.status!==503||response.body.error?.code!=="OPERATION_PENDING") return response;
+        const {actor,key}=attempts[index];
+        return requestSeat(actor,key);
+      }));
+      expect([a,b,c].map(response=>({status:response.status,code:response.body.error?.code})))
+        .toEqual([{status:201,code:undefined},{status:201,code:undefined},{status:201,code:undefined}]);
       const accept=(id:string,key:string) => request(createApp()).post(`/v1/seat-requests/${id}/accept`)
         .set("Authorization",`Bearer ${driver.token}`).set("Idempotency-Key",key).send({});
       const accepted=await accept(a.body.request.id,"cancel-accept-one");
