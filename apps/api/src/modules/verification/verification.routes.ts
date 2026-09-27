@@ -3,6 +3,7 @@ import { Router, raw } from "express";
 import { requireAdmin, requireAuth } from "../../middleware/auth";
 import { asyncHandler } from "../../shared/http/async-handler";
 import * as verificationController from "./verification.controller";
+import {accountRestrictionsService} from "../operator/account-restrictions.service";
 
 export const verificationRouter = Router();
 
@@ -21,6 +22,10 @@ verificationRouter.get("/_status", (_req, res) => {
 });
 
 verificationRouter.use(requireAuth);
+verificationRouter.get("/account-restrictions",asyncHandler(async(req,res)=>{
+  res.set("Cache-Control","private, no-store").json({history:await accountRestrictionsService.history(
+    req.user!.userId,req.user!.userId)});
+}));
 
 verificationRouter.get("/overview", asyncHandler(verificationController.getOverview));
 verificationRouter.get("/student", asyncHandler(verificationController.getStudentVerification));

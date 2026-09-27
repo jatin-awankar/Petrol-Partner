@@ -12,6 +12,7 @@ import { directSettlementService } from "../rides/direct-settlement.service";
 import { settlementCasesService } from "../rides/settlement-cases.service";
 import { studentRevocationService } from "../verification/student-revocation.service";
 import { revocationCasesService } from "./revocation-cases.service";
+import {accountRestrictionsService} from "./account-restrictions.service";
 
 export const operatorRouter = Router();
 const decision = z.object({ capability: z.enum(["offers", "requests", "acceptance", "booking"]), paused: z.boolean(), reason: z.string().trim().min(8).max(500) });
@@ -20,6 +21,34 @@ const operationId = z.uuid();
 
 operatorRouter.get("/pilot-status", asyncHandler(async (_req, res) => { res.json(await pauseService.publicStatus()); }));
 operatorRouter.use(requireAdmin);
+const restrictionInput=z.strictObject({target_user_id:z.uuid(),scope:z.enum(["driver","passenger","all"]),
+  source_type:z.enum(["incident","settlement"]),source_id:z.uuid(),
+  reason:z.string().trim().min(8).max(500),
+  reviewed_evidence:z.string().trim().min(8).max(1000)});
+operatorRouter.get("/account-restrictions/:userId",asyncHandler(async(req,res)=>{
+  res.set("Cache-Control","private, no-store").json({history:await accountRestrictionsService.history(
+    req.user!.userId,z.uuid().parse(req.params.userId),true)});
+}));
+operatorRouter.get("/account-restriction-operations/:id",asyncHandler(async(req,res)=>{
+  res.json({operation:await accountRestrictionsService.operation(req.user!.userId,
+    z.uuid().parse(req.params.id))});
+}));
+operatorRouter.post("/account-restrictions",asyncHandler(async(req,res)=>{
+  const key=req.header("Idempotency-Key");
+  if(!key||key.length>128) throw new AppError(400,"Idempotency-Key is required","IDEMPOTENCY_KEY_REQUIRED");
+  const input=restrictionInput.parse(req.body);
+  res.json({operation:await accountRestrictionsService.restrict(req.user!.userId,key,{
+    targetUserId:input.target_user_id,scope:input.scope,sourceType:input.source_type,
+    sourceId:input.source_id,reason:input.reason,reviewedEvidence:input.reviewed_evidence})});
+}));
+operatorRouter.post("/account-restrictions/:id/reverse",asyncHandler(async(req,res)=>{
+  const key=req.header("Idempotency-Key");
+  if(!key||key.length>128) throw new AppError(400,"Idempotency-Key is required","IDEMPOTENCY_KEY_REQUIRED");
+  const input=z.strictObject({reason:z.string().trim().min(8).max(500),
+    reviewed_evidence:z.string().trim().min(8).max(1000)}).parse(req.body);
+  res.json({operation:await accountRestrictionsService.reverse(req.user!.userId,key,
+    z.uuid().parse(req.params.id),input.reason,input.reviewed_evidence)});
+}));
 operatorRouter.get("/status", asyncHandler(async (_req, res) => { res.json(await pauseService.status()); }));
 operatorRouter.get("/notifications/delivery", asyncHandler(async (_req, res) => { res.json(await deliveryStatus()); }));
 operatorRouter.get("/cancellation-reviews", asyncHandler(async (req,res) => {

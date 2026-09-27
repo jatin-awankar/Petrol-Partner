@@ -194,6 +194,7 @@ export default function OperatorPage() {
   if (authorized === false) return <main className="p-8">Operator access requires current allowlist membership and MFA. {message}</main>;
   return <main className="mx-auto max-w-3xl space-y-6 p-8">
     <Link className="underline" href="/operator/settlement-reviews">Open settlement review queue</Link>
+    <Link className="ml-4 underline" href="/operator/restrictions">Review account restrictions</Link>
     <h1 className="text-2xl font-semibold">Pilot operator console</h1>
     <p>All decisions require current operator access and MFA. A pending decision keeps protected activity paused.</p>
     <p role="status">{message}</p>
@@ -253,6 +254,8 @@ export default function OperatorPage() {
         <p>Incident {item.id} · offer {item.offer_id} · {item.offer_status}</p>
         <p>{item.subject_type} {item.subject_id} · original reason: {item.reason}</p>
         <p>{item.resolved_at?`Resolved: ${item.resolution}`:"Open: coordinate support with confirmed participants."}</p>
+        <p><Link className="underline" href={`/operator/restrictions?source_type=incident&source_id=${item.id}&target=${item.subject_id}`}>
+          Review an account restriction from this incident</Link></p>
         {!item.resolved_at&&<div className="flex gap-3"><button disabled={busy||reason.trim().length<8}
           onClick={()=>actOnCase("incident",item,"outreach")}>Record participant outreach</button>
           <button disabled={busy||reason.trim().length<8} onClick={()=>actOnCase("incident",item,"resolve","safe_completion")}>

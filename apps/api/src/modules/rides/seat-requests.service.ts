@@ -11,9 +11,10 @@ import { pauseService } from "../operator/pause.service";
 import { inProtectedTransaction } from "../protected-mutation/protocol";
 import { pilotReceiptStore, restrictProtectedWrites } from "../protected-mutation/receipt-evidence";
 import { assertCurrentDriverCarEligibility, assertCurrentStudentForSubmission } from "../verification/verification.service";
+import {assertNoAccountRestriction} from "../operator/account-restrictions.policy";
 import * as repo from "./seat-requests.repo";
 import { assertCommitmentsEligible } from "./commitment.service";
-import { lockCommitmentActors } from "./commitment.repo";
+import { lockCommitmentActors,lockStudentActor } from "./commitment.repo";
 
 type Receipt = { operationId:string; actorId:string; key:string; digest:string; requestId:string;
   action:string; result:Record<string,unknown>; snapshot:repo.SeatRequest; createdAt:string };
@@ -204,8 +205,12 @@ export class SeatRequestsService {
         const vehicleId = await repo.vehicleForOffer(client,preview.offer_id);
         if (!vehicleId) throw new AppError(404,"Offer not found","RIDE_NOT_FOUND");
         await lockCommitmentActors(client,preview.driver_id,vehicleId,[preview.passenger_id]);
+      } else if(action === "requested") {
+        await lockStudentActor(client,actorId);
       }
       await assertCurrentStudentForSubmission(client,actorId);
+      if(action==="requested") await assertNoAccountRestriction(client,actorId,"passenger");
+      if(action==="accepted") await assertNoAccountRestriction(client,actorId,"driver");
       let requestId:string;
       let allocation:repo.Allocation|undefined;
       let withdrawn:repo.SeatRequest[]=[];
@@ -220,6 +225,7 @@ export class SeatRequestsService {
         if (await repo.hasConfirmedSeat(client,offer.id,actorId))
           throw new AppError(409,"You already have a confirmed seat","DUPLICATE_ACTIVE_REQUEST");
         await assertCurrentDriverCarEligibility(client,offer.driver_id,offer.vehicle_id);
+        await assertNoAccountRestriction(client,offer.driver_id,"driver");
         try { requestId = await repo.insertRequest(client,offer,actorId); }
         catch (error) {
           if ((error as {code?:string}).code === "23505")
@@ -238,6 +244,7 @@ export class SeatRequestsService {
           throw new AppError(409,"Request is no longer pending","REQUEST_NOT_PENDING");
         if (action === "accepted") {
           await assertCurrentStudentForSubmission(client,initial.passenger_id);
+          await assertNoAccountRestriction(client,initial.passenger_id,"passenger");
           if (offer.status !== "active" || offer.pilot_acceptance_cutoff_at <= clock())
             throw new AppError(409,"Acceptance window is closed","ACCEPTANCE_WINDOW_CLOSED");
           if (initial.offer_version !== offer.pilot_version ||

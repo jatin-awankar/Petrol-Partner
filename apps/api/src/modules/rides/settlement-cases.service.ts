@@ -51,7 +51,8 @@ export class SettlementCasesService {
       throw new AppError(404,'Settlement case not found','CASE_NOT_FOUND');
     const history=await repo.history(this.db,id);
     const audit=await repo.audit(this.db,id);
-    return {obligation:{id:source.id,amount_paise:source.amount_paise,currency:source.currency,
+    return {...(operator?{participants:{driver_id:source.driver_id,passenger_id:source.passenger_id}}:{}),
+      obligation:{id:source.id,amount_paise:source.amount_paise,currency:source.currency,
       due_at:source.due_at},claim:source.claim_id?{id:source.claim_id,method:source.claim_method,
       recorded_at:source.claimed_at}:null,response:source.response_id?{id:source.response_id,
       kind:source.response_kind,recorded_at:source.responded_at}:null,

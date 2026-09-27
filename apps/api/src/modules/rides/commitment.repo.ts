@@ -1,5 +1,9 @@
 import type { PoolClient } from "pg";
 
+export async function lockStudentActor(client:PoolClient,userId:string){
+  await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))",[`student:${userId}`]);
+}
+
 export async function lockCommitmentActors(client: PoolClient, driverId: string,
   vehicleId: string, passengerIds: string[]) {
   const keys = [`student:${driverId}`, `vehicle:${vehicleId}`,

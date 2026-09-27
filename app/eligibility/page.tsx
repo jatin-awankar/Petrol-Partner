@@ -6,12 +6,15 @@ import { apiRequest } from "@/lib/api/client";
 import { useCurrentUser } from "@/hooks/auth/useCurrentUser";
 
 type Review = { status: string; enrolled_name: string | null; institution_name: string; graduation_year: number | null; adult_eligible: boolean | null; reviewed_at: string | null; metadata: { reviewReason?: string } } | null;
+type Restriction={id:string;action:'restrict'|'reverse';scope:string;reason:string;
+  recorded_at:string;reverses_id:string|null};
 const categories = ["enrollment_letter", "student_card", "college_email", "other_enrollment"] as const;
 const ageCategories = ["redacted_government_id", "redacted_birth_certificate", "institution_age_record", "other_age_record"] as const;
 
 export default function EligibilityPage() {
   const { user, loading } = useCurrentUser();
   const [review, setReview] = useState<Review>(null);
+  const [restrictions,setRestrictions]=useState<Restriction[]>([]);
   const [evidenceMode, setEvidenceMode] = useState<"closed" | "synthetic" | "real">("closed");
   const [name, setName] = useState("");
   const [institution, setInstitution] = useState("");
@@ -27,6 +30,7 @@ export default function EligibilityPage() {
   const refresh = useCallback(async () => {
     const response = await apiRequest<{ student_verification: Review }>("/v1/verification/student");
     setReview(response.student_verification);
+    setRestrictions((await apiRequest<{history:Restriction[]}>("/v1/verification/account-restrictions")).history);
     const capability = await apiRequest<{ mode: "closed" | "synthetic" | "real" }>("/v1/verification/evidence-capability");
     setEvidenceMode(capability.mode);
   }, []);
@@ -68,6 +72,14 @@ export default function EligibilityPage() {
       {review?.reviewed_at && <p>Reviewed {new Date(review.reviewed_at).toLocaleString()}. Adult eligibility: {review.adult_eligible ? "confirmed" : "not confirmed"}.</p>}
       {review?.metadata?.reviewReason && <p>Reason: {review.metadata.reviewReason}</p>}
       {review?.status === "verified" && <p>Separate driver and car approvals are still required before offering rides.</p>}
+    </section>
+    <section className="space-y-2 rounded border p-4" aria-label="Travel restrictions">
+      <h2 className="font-semibold">Travel restrictions</h2>
+      {restrictions.length?restrictions.map(item=><p key={item.id}>
+        {item.action==='restrict'?(restrictions.some(next=>next.reverses_id===item.id)?
+          'Reversed restriction':'Active restriction'):'Reversal'} · {item.scope} ·
+        {' '}{new Date(item.recorded_at).toLocaleString()} · {item.reason}</p>):
+        <p>No travel restrictions recorded.</p>}
     </section>
     {review?.status === "rejected" && <p>A new submission can be made while the prior documents follow their deletion schedule.</p>}
     {review?.status === "pending_review" && <form onSubmit={replaceLostEvidence} className="space-y-3 rounded border p-4">
