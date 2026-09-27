@@ -96,6 +96,12 @@ export const acknowledge=async(db:PoolClient,id:string)=>(await db.query<Operati
   WHERE id=$1 AND state='committed' RETURNING *`,[id])).rows[0]??null;
 export const ready=async(db:PoolClient,id:string)=>{await db.query(
   "UPDATE pilot_notification_events SET ready_at=now() WHERE origin_type='pilot_journey' AND operation_id=$1",[id]);};
+export async function suppressRecoveredEmail(db:PoolClient,id:string){
+  await db.query(`UPDATE pilot_email_jobs SET status='exhausted',lease_until=NULL,
+    last_error='Suppressed after snapshot restore; delivery outcome requires review',updated_at=now()
+    WHERE event_id IN(SELECT id FROM pilot_notification_events WHERE origin_type='pilot_journey'
+      AND operation_id=$1) AND status<>'sent'`,[id]);
+}
 export async function stateMatches(db:Db,row:Operation) {
   const claims=(await db.query<Claim>(`SELECT allocation_id,travelled,completed FROM pilot_journey_claims
     WHERE operation_id=$1 ORDER BY allocation_id`,[row.id])).rows;

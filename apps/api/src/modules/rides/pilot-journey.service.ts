@@ -163,10 +163,7 @@ export class PilotJourneyService {
         if(!ride) throw new AppError(409,'Journey offer needs manual recovery','RECOVERY_INCOMPLETE');
         await notify(client,row,[ride.driver_id,...seats.map(s=>s.passenger_id)]);
         await repo.ready(client,row.id);
-        await client.query(`UPDATE pilot_email_jobs SET status='exhausted',lease_until=NULL,
-          last_error='Suppressed after snapshot restore; delivery outcome requires review',updated_at=now()
-          WHERE event_id IN(SELECT id FROM pilot_notification_events WHERE origin_type='pilot_journey'
-            AND operation_id=$1) AND status<>'sent'`,[row.id]);
+        await repo.suppressRecoveredEmail(client,row.id);
       });
     }
     return items.length;
