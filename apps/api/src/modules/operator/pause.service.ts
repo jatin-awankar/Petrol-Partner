@@ -27,6 +27,7 @@ import { DirectSettlementService } from "../rides/direct-settlement.service";
 import { DirectSettlementSilenceService } from "../rides/direct-settlement-silence.service";
 import { SettlementCasesService } from "../rides/settlement-cases.service";
 import {AccountRestrictionsService} from "./account-restrictions.service";
+import {accountClosureService} from "../profile/account-closure.service";
 
 export const capabilities = ["offers", "requests", "acceptance", "booking"] as const;
 export type Capability = typeof capabilities[number];
@@ -114,6 +115,8 @@ function recoverySlices(database: Pool): RecoverySlice[] {
     { name: "settlementCases", service: new SettlementCasesService(database), verifyOrder: 13, reconcileOrder: 13, digestOrder: 12, pendingOrder: 8, pendingMessage: "Settlement case recovery is incomplete" },
     { name: "accountRestrictions", service: new AccountRestrictionsService(database), verifyOrder: 14, reconcileOrder: 14, digestOrder: 13, pendingOrder: 9, pendingMessage: "Account restriction recovery is incomplete" },
     { name: "urgentOutreach", service: new UrgentOutreachService(database), verifyOrder: 15, reconcileOrder: 15, digestOrder: 14, pendingOrder: 10, pendingMessage: "Urgent outreach recovery is incomplete" },
+    { name: "accountClosure", service: accountClosureService, verifyOrder: 16, reconcileOrder: 16,
+      pendingOrder: 11, pendingMessage: "Account closure recovery is incomplete" },
   ];
 }
 

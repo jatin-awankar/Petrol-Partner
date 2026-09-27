@@ -16,6 +16,7 @@ import { recordUrgentOutreach, urgentOutreachHistory } from "./urgent-outreach.s
 import {accountRestrictionsService} from "./account-restrictions.service";
 import outreachValues from "./outreach-values.json";
 import type {OutreachInput} from "./urgent-outreach.repo";
+import {accountClosureService} from "../profile/account-closure.service";
 
 export const operatorRouter = Router();
 const decision = z.object({ capability: z.enum(["offers", "requests", "acceptance", "booking"]), paused: z.boolean(), reason: z.string().trim().min(8).max(500) });
@@ -24,6 +25,29 @@ const operationId = z.uuid();
 
 operatorRouter.get("/pilot-status", asyncHandler(async (_req, res) => { res.json(await pauseService.publicStatus()); }));
 operatorRouter.use(requireAdmin);
+operatorRouter.get("/account-closures",asyncHandler(async(req,res)=>{
+  const {limit,offset}=z.strictObject({limit:z.coerce.number().int().min(1).max(100).default(100),
+    offset:z.coerce.number().int().min(0).default(0)}).parse(req.query);
+  res.set("Cache-Control","private, no-store").json({closures:await accountClosureService.queue(req.user!.userId,limit,offset)});
+}));
+operatorRouter.get("/account-retention/status",asyncHandler(async(req,res)=>{
+  res.set("Cache-Control","private, no-store").json(await accountClosureService.status(req.user!.userId));
+}));
+operatorRouter.post("/account-closures/:id/holds",asyncHandler(async(req,res)=>{
+  const key=req.header("Idempotency-Key");
+  if(!key||key.length>128) throw new AppError(400,"Idempotency-Key is required","IDEMPOTENCY_KEY_REQUIRED");
+  const {scope,reason,review_at}=z.strictObject({
+    scope:z.enum(["journey_case","settlement_case","incident","commitment","legal_review"]),
+    reason:z.string().trim().min(8).max(500),review_at:z.iso.datetime({offset:true})}).parse(req.body);
+  res.set("Cache-Control","private, no-store").json({hold:await accountClosureService.hold(
+    req.user!.userId,key,z.uuid().parse(req.params.id),scope,reason,new Date(review_at))});
+}));
+operatorRouter.post("/account-closure-holds/:id/release",asyncHandler(async(req,res)=>{
+  const key=req.header("Idempotency-Key");
+  if(!key||key.length>128) throw new AppError(400,"Idempotency-Key is required","IDEMPOTENCY_KEY_REQUIRED");
+  const {reason}=z.strictObject({reason:z.string().trim().min(8).max(500)}).parse(req.body);
+  res.json(await accountClosureService.release(req.user!.userId,key,z.uuid().parse(req.params.id),reason));
+}));
 const restrictionInput=z.strictObject({target_user_id:z.uuid(),scope:z.enum(["driver","passenger","all"]),
   source_type:z.enum(["incident","settlement"]),source_id:z.uuid(),
   reason:z.string().trim().min(8).max(500),
