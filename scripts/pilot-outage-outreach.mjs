@@ -54,8 +54,17 @@ export async function reconcileFallback(path,secret,client) {
   await client.query('BEGIN');
   try {
     for(const record of records) {
-      const existing=await client.query('SELECT id FROM pilot_urgent_outreach WHERE id=$1',[record.id]);
-      if(existing.rowCount) continue;
+      const existing=await client.query(`SELECT operator_id,participant_id,method,occurred_at,reason,outcome,payload_digest,state
+        FROM pilot_urgent_outreach WHERE id=$1`,[record.id]);
+      if(existing.rowCount) {
+        const row=existing.rows[0];
+        if(row.operator_id!==record.operatorId||row.participant_id!==record.participantId||
+          row.method!==record.method||new Date(row.occurred_at).toISOString()!==record.occurredAt||
+          row.reason!==record.reason||row.outcome!==record.outcome||
+          row.payload_digest!==signRecord(record,secret)||row.state!=='recovered')
+          throw Error('Fallback record conflicts with existing state');
+        continue;
+      }
       const operator=await client.query(`SELECT 1 FROM users u JOIN operator_allowlist a ON a.user_id=u.id
         WHERE u.id=$1 AND u.role='admin' AND a.active=true`,[record.operatorId]);
       if(!operator.rowCount) throw Error('Fallback operator no longer authorized; manual review required');

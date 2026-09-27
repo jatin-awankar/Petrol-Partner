@@ -28,11 +28,16 @@ test('alert gateway failure exits as failure',async()=>{
   await assert.rejects(runMonitor({env,now,query:async()=>({rows:[{worker_seen_at:null,oldest_ready_at:null,queue_size:0}]}),
     send:async()=>({ok:false,status:503})}),/HTTP 503/);
 });
-test('outside operating window does not alert for a stale worker',()=>{
-  assert.deepEqual(monitorSignals({now:new Date('2026-09-27T15:00:00Z'),windowStart:env.PILOT_SUPPORT_WINDOW_START,
+test('before operating window does not alert for a stale worker',()=>{
+  assert.deepEqual(monitorSignals({now:new Date('2026-09-27T09:00:00Z'),windowStart:env.PILOT_SUPPORT_WINDOW_START,
     windowEnd:env.PILOT_SUPPORT_WINDOW_END,workerSeenAt:null,oldestReadyAt:null,queueSize:0}),[]);
 });
 
 test('unconfigured operating window alerts instead of silently passing',()=>{
   assert.deepEqual(monitorSignals({now,windowStart:undefined,windowEnd:undefined,workerSeenAt:null,oldestReadyAt:null,queueSize:0}),['operating_window_unconfigured']);
+});
+
+test('expired operating window alerts rather than leaving the watch permanently quiet',()=>{
+  assert.deepEqual(monitorSignals({now:new Date('2026-09-27T15:00:00Z'),windowStart:env.PILOT_SUPPORT_WINDOW_START,
+    windowEnd:env.PILOT_SUPPORT_WINDOW_END,workerSeenAt:null,oldestReadyAt:null,queueSize:0}),['operating_window_expired']);
 });

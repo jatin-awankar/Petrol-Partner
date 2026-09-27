@@ -4,7 +4,7 @@
 
 **Blocked by:** 10 (Durable notifications from an operator action).
 
-**Status:** resolved
+**Status:** claimed
 
 **Work type:** Feature slice
 
@@ -13,8 +13,8 @@
 ## Acceptance criteria
 
 - [x] Display worker heartbeat, oldest important queued event, queue size, recent failures and last successful processing time in the protected console.
-- [x] During operating windows, target first important delivery attempt within one minute and independently alert on worker stall or an important event waiting over five minutes.
-- [x] Ensure a stopped worker is not responsible for sending its own outage alert; exercise the independent monitoring/fallback path.
+- [ ] During operating windows, target first important delivery attempt within one minute and independently alert on worker stall or an important event waiting over five minutes. Local behavior is demonstrated; live independent paging remains unverified.
+- [ ] Ensure a stopped worker is not responsible for sending its own outage alert; exercise the independent monitoring/fallback path. The separate process passed a local rehearsal; an independently hosted process and operator receipt remain unverified.
 - [x] Expose bounded retries and exhausted delivery states. Operator retry never repeats the originating booking or financial mutation.
 - [x] Record urgent outreach method, participant reference, time, reason and outcome through protected operator actions; include an independent fallback record usable during primary-system outage.
 - [x] Keep phone numbers and sensitive payloads out of logs/URLs; authorize access to any protected contact record.
@@ -37,9 +37,11 @@ The repeatable isolated rehearsal in `docs/operations/evidence/ticket27-syntheti
 
 `npm run check` passed after the browser integration fixture was isolated from another suite's authentication cutover state: root scripts 35 passed/4 skipped, API 139 passed/1 skipped, worker 17 passed; lint had zero errors and ten existing warnings; typechecks and all builds passed. `node scripts/pilot-notification-watch.mjs` also exited nonzero when its independent HTTPS alert channel was unconfigured.
 
-Remaining deployment limits: the HTTPS receiver in this rehearsal was local and synthetic. A production paging destination, independent host or supervisor, actual operator receipt, private credential custody, and the broader provider arrangement still require deployment evidence before real trips. The automatic recovery gate cannot discover an offline file that an operator has not submitted; the recovery operator must inspect and reconcile each operator's fallback file before reopening writes. Ticket 27's technical acceptance behavior is demonstrated; these provider and launch gates remain open, and real trips stay disabled.
+Remaining deployment limits: the HTTPS receiver in this rehearsal was local and synthetic. A production paging destination, independent host or supervisor, actual operator receipt, private credential custody, and the broader provider arrangement still require deployment evidence before this ticket can be resolved. The automatic recovery gate cannot discover an offline file that an operator has not submitted; the recovery operator must inspect and reconcile each operator's fallback file before reopening writes. Real trips stay disabled.
 
 ## Comments
 
 - Code review found direct SQL in the outreach service and shell-argument exposure in the outage command. SQL was moved into the repository; the command reads participant data from stdin and requires an individual private credential plus a one-time code. Missing operating-window configuration produces an alert signal.
 - The final rehearsal and complete check above supersede the earlier partial synthetic checks. The unrelated settlement browser test now explicitly resets its legacy authentication fixture, removing the observed cross-suite failure.
+- Completion review found that the local HTTPS receiver does not establish live operator paging or independent hosting. The ticket has been returned to `claimed` until those two alert criteria are evidenced. An expired operating window now produces an alert signal, and reconciliation rejects a fallback ID whose existing durable record has conflicting contents.
+- Follow-up verification: monitor and fallback unit tests passed (9/9); the PostgreSQL urgent-outreach integration test passed, including conflicting durable fallback state; lint passed with the same ten warnings and typechecks passed. A repeat `npm run check` completed lint and typechecks but its root script test runner stopped producing output after the commit-hook tests and was interrupted; the preceding complete check had passed before these follow-up changes. The remaining live paging evidence and this interrupted rerun prevent resolution.

@@ -16,7 +16,7 @@ test('fallback fsync record contains only coded details and rejects tampering',a
     const content=await readFile(path,'utf8');
     assert.equal(content.includes('phone number'),false);
     const calls=[];
-    const fake={async query(sql){calls.push(sql);return {rowCount:1,rows:[]};}};
+    const fake={async query(sql){calls.push(sql);return {rowCount:sql.includes('FROM pilot_urgent_outreach WHERE id=')?0:1,rows:[]};}};
     await reconcileFallback(path,'fallback-test-secret-with-32-characters',fake);
     assert.ok(calls.some(sql=>sql.includes('pilot_urgent_outreach')));
     await assert.rejects(reconcileFallback(path,'a-different-secret-with-32-characters',fake),/signature mismatch/);

@@ -4,6 +4,8 @@ export function monitorSignals({ now, windowStart, windowEnd, workerSeenAt, olde
   const active = Number.isFinite(Date.parse(windowStart)) && Number.isFinite(Date.parse(windowEnd)) &&
     now >= new Date(windowStart) && now < new Date(windowEnd);
   if (!Number.isFinite(Date.parse(windowStart)) || !Number.isFinite(Date.parse(windowEnd))) return ['operating_window_unconfigured'];
+  if (new Date(windowEnd) <= new Date(windowStart)) return ['operating_window_invalid'];
+  if (now >= new Date(windowEnd)) return ['operating_window_expired'];
   if (!active) return [];
   const signals = [];
   if (!workerSeenAt || now.getTime() - new Date(workerSeenAt).getTime() > 5 * 60_000)

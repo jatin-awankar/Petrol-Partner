@@ -3416,7 +3416,10 @@ describe("protected operator pause HTTP/PostgreSQL", () => {
       occurredAt:new Date().toISOString()});
     const independent=await verificationPool.connect();
     try {expect(await reconcileFallback(path,secret,independent)).toBe(1);
-      expect(await reconcileFallback(path,secret,independent)).toBe(1);} finally {independent.release();}
+      expect(await reconcileFallback(path,secret,independent)).toBe(1);
+      await independent.query("UPDATE pilot_urgent_outreach SET outcome='escalated' WHERE id=$1",[fallbackId]);
+      await expect(reconcileFallback(path,secret,independent)).rejects.toThrow(/conflicts with existing state/);
+    } finally {independent.release();}
     expect((await verificationPool.query("SELECT count(*)::int AS n FROM pilot_urgent_outreach WHERE id=$1",[fallbackId])).rows[0].n).toBe(1);
   });
   it("commits a recipient notification and email job once, visible after recovery evidence", async () => {
