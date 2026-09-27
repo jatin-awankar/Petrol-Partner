@@ -45,12 +45,16 @@ CREATE TABLE IF NOT EXISTS pilot_contribution_obligations (
 CREATE TABLE IF NOT EXISTS pilot_journey_reviews (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   allocation_id uuid NOT NULL UNIQUE REFERENCES pilot_seat_allocations(id),
-  reason text NOT NULL CHECK (reason IN ('disagreement','silence','interruption')),
+  reason text NOT NULL CHECK (reason IN ('absence','disagreement','silence','interruption')),
   status text NOT NULL DEFAULT 'open' CHECK (status IN ('open','resolved')),
   created_at timestamptz NOT NULL,
   driver_claim_operation_id uuid REFERENCES pilot_journey_operations(id),
   passenger_claim_operation_id uuid REFERENCES pilot_journey_operations(id)
 );
+-- Keep disposable rehearsal schemas created before absence was made explicit compatible.
+ALTER TABLE pilot_journey_reviews DROP CONSTRAINT IF EXISTS pilot_journey_reviews_reason_check;
+ALTER TABLE pilot_journey_reviews ADD CONSTRAINT pilot_journey_reviews_reason_check
+  CHECK (reason IN ('absence','disagreement','silence','interruption'));
 CREATE TABLE IF NOT EXISTS pilot_journey_review_work (
   allocation_id uuid PRIMARY KEY REFERENCES pilot_seat_allocations(id),
   driver_operation_id uuid NOT NULL REFERENCES pilot_journey_operations(id),

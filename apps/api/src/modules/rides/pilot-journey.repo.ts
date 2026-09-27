@@ -80,11 +80,12 @@ export async function settle(db:PoolClient,allocationId:string,at:Date) {
     return 'obligation' as const;
   }
   if(pair.driver_travelled!==pair.passenger_travelled||pair.driver_completed!==pair.passenger_completed||
-    (pair.driver_travelled&&!pair.driver_completed)) {
+    (pair.driver_travelled&&!pair.driver_completed)||!pair.driver_travelled) {
     await db.query(`INSERT INTO pilot_journey_reviews
       (allocation_id,reason,created_at,driver_claim_operation_id,passenger_claim_operation_id)
       VALUES($1,$2,$3,$4,$5) ON CONFLICT(allocation_id) DO NOTHING`,
-      [allocationId,pair.driver_travelled===pair.passenger_travelled?'interruption':'disagreement',
+      [allocationId,pair.driver_travelled!==pair.passenger_travelled?'disagreement':
+        pair.driver_travelled?'interruption':'absence',
         confirmedAt,pair.driver_id,pair.passenger_id]);
     return 'review' as const;
   }
@@ -123,7 +124,7 @@ export async function stateMatches(db:Db,row:Operation) {
       const mutual=facts.driver_travelled&&facts.driver_completed&&facts.passenger_travelled&&facts.passenger_completed;
       const disagreement=facts.driver_travelled!==facts.passenger_travelled||
         facts.driver_completed!==facts.passenger_completed||
-        (facts.driver_travelled&&!facts.driver_completed);
+        (facts.driver_travelled&&!facts.driver_completed)||!facts.driver_travelled;
       if(mutual&&!facts.confirmed_at&&!facts.review_reason) return false;
       if(disagreement&&!facts.review_reason) return false;
       if(!mutual&&facts.confirmed_at) return false;
@@ -155,4 +156,19 @@ export async function visible(db:Db,userId:string,offerId?:string) {
       AND NOT EXISTS(SELECT 1 FROM pilot_journey_operations j WHERE j.offer_id=a.offer_id
         AND j.kind='driver_completion' AND j.recorded_at<=now()-interval '24 hours')
     ORDER BY a.accepted_at DESC`,[userId,offerId??null])).rows;
+}
+export async function reviewRequiredForOperation(db:Db,id:string){
+  return Boolean((await db.query(`SELECT 1 FROM pilot_journey_reviews
+    WHERE driver_claim_operation_id=$1 OR passenger_claim_operation_id=$1 LIMIT 1`,[id])).rowCount);
+}
+export async function openReviews(db:Db){
+  return (await db.query(`SELECT r.*,a.offer_id,a.passenger_id,a.driver_id
+    FROM pilot_journey_reviews r JOIN pilot_seat_allocations a ON a.id=r.allocation_id
+    WHERE r.status='open' ORDER BY r.created_at,r.id LIMIT 100`)).rows;
+}
+export async function participantReviews(db:Db,userId:string){
+  return (await db.query<{allocation_id:string;offer_id:string;reason:string;status:string;
+    created_at:Date}>(`SELECT r.allocation_id,a.offer_id,r.reason,r.status,r.created_at
+    FROM pilot_journey_reviews r JOIN pilot_seat_allocations a ON a.id=r.allocation_id
+    WHERE a.driver_id=$1 OR a.passenger_id=$1 ORDER BY r.created_at DESC LIMIT 100`,[userId])).rows;
 }

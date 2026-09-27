@@ -5,6 +5,7 @@ import SearchRidesPage from "../../../../app/search-rides/page";
 import PostRide from "../../../../app/post-a-ride/page";
 
 const session = vi.hoisted(() => ({userId:"passenger",bookings:[] as Array<Record<string,unknown>>,
+  reviews:[] as Array<Record<string,unknown>>,
   calls:[] as Array<{path:string;body:unknown;key:string|undefined}>}));
 vi.mock("next/navigation",() => ({useRouter:() => ({replace:vi.fn()})}));
 vi.mock("@/hooks/auth/useCurrentUser",() => ({useCurrentUser:() => ({
@@ -27,10 +28,11 @@ vi.mock("@/lib/api/client",() => ({apiRequest:async(path:string,init?:{body?:str
   if (path === "/v1/verification/overview") return {vehicles:[]};
   if (path === "/v1/seat-requests") return {requests:[]};
   if (path === "/v1/seat-requests/confirmed") return {bookings:session.bookings};
+  if (path === "/v1/seat-requests/journey-reviews") return {cases:session.reviews};
   throw new Error(`Unexpected request ${path}`);
 }}));
 
-afterEach(() => {cleanup();session.userId="passenger";session.bookings=[];session.calls=[];});
+afterEach(() => {cleanup();session.userId="passenger";session.bookings=[];session.reviews=[];session.calls=[];});
 
 const booking = {id:"booking",offer_id:"offer",contribution_paise:2500,currency:"INR",
   departure_at:"2026-09-26T12:00:00.000Z",status:"confirmed",origin_code:"university",
@@ -108,5 +110,12 @@ describe("pilot coordination notice on offer and request pages",() => {
     await waitFor(()=>expect(session.calls).toHaveLength(1));
     expect(session.calls[0].path).toBe("/v1/corridor-offers/offer/journeys/booking/confirm");
     expect(session.calls[0].body).toEqual({travelled:false,completed:false});
+  });
+  it("shows a silence review after ordinary trip details have expired",async()=>{
+    session.reviews=[{allocation_id:"booking",offer_id:"offer",reason:"silence",status:"open",
+      created_at:"2026-09-28T10:00:00.000Z"}];
+    render(<SearchRidesPage />);
+    expect(await screen.findByText(/silence requires operator review/i)).not.toBeNull();
+    expect(screen.queryByText(/registration ending/)).toBeNull();
   });
 });

@@ -30,9 +30,7 @@ async function notify(db:PoolClient,row:repo.Operation,recipients:string[]) {
     eventType:row.kind,relatedEntityType:'ride_offer',relatedEntityId:row.offer_id,
     title:row.kind==='driver_completion'?'Driver reported journey completion':'Passenger reported journey outcome',
     body:'Check your confirmed trip for individual journey and contribution status.'});
-  const reviews=(await db.query<{allocation_id:string}>(`SELECT allocation_id FROM pilot_journey_reviews
-    WHERE driver_claim_operation_id=$1 OR passenger_claim_operation_id=$1`,[row.id])).rows;
-  if(reviews.length) for(const recipientId of await operatorRecipients(db))
+  if(await repo.reviewRequiredForOperation(db,row.id)) for(const recipientId of await operatorRecipients(db))
     await recordDurableNotification(db,{originType:'pilot_journey',operationId:row.id,recipientId,
       eventType:'journey_review',relatedEntityType:'ride_offer',relatedEntityId:row.offer_id,
       title:'Journey needs review',body:'One or more passenger journey outcomes need an operator decision.'});
@@ -41,11 +39,10 @@ export class PilotJourneyService {
   constructor(private readonly db:Pool=pool){}
   async receipts(){return store().list();}
   async visible(actorId:string,offerId?:string){return repo.visible(this.db,actorId,offerId);}
+  async participantReviews(actorId:string){return repo.participantReviews(this.db,actorId);}
   async reviews(operatorId:string){
     await inProtectedTransaction(this.db,client=>assertCurrentOperator(client,operatorId));
-    return (await this.db.query(`SELECT r.*,a.offer_id,a.passenger_id,a.driver_id
-      FROM pilot_journey_reviews r JOIN pilot_seat_allocations a ON a.id=r.allocation_id
-      WHERE r.status='open' ORDER BY r.created_at,r.id LIMIT 100`)).rows;
+    return repo.openReviews(this.db);
   }
   async verifyEvidence(retry?:{actorId:string;key:string}) {
     try {

@@ -181,6 +181,9 @@ describe("ticket 22 individual journey confirmation",()=>{
     expect((await reviewSilentJourneys(verificationPool,new Date(at.getTime()+86_400_000-1))).opened).toBe(0);
     expect((await reviewSilentJourneys(verificationPool,new Date(at.getTime()+86_400_000))).opened).toBe(1);
     expect((await reviewSilentJourneys(verificationPool,new Date(at.getTime()+86_400_000))).opened).toBe(0);
+    expect((await verificationPool.query<{n:number}>(`SELECT count(*)::int AS n
+      FROM pilot_notification_events WHERE origin_type='pilot_journey_silence'
+        AND ready_at IS NOT NULL`)).rows[0].n).toBe(3);
     expect((await service.reviews(f.operator.id)).map(row=>row.allocation_id).sort()).toEqual([b,c].sort());
     expect((await verificationPool.query('SELECT id FROM pilot_contribution_obligations')).rows).toHaveLength(1);
     await verificationPool.query(`UPDATE pilot_email_jobs SET due_at=now()+interval '1 hour'
@@ -271,6 +274,41 @@ describe("ticket 22 individual journey confirmation",()=>{
       expect((await verificationPool.query<{n:number}>(`SELECT count(*)::int AS n
         FROM pilot_contribution_obligations WHERE allocation_id=$1`,[f.allocations[0]])).rows[0].n).toBe(1);
     }finally{await Promise.all([firstPool.end(),secondPool.end()]);}
+  });
+  it("reviews a boarded absence and keeps a minimal case visible after trip details expire",async()=>{
+    const f=await fixture();
+    await start(f);
+    const service=new PilotJourneyService(pool);
+    const at=new Date('2026-09-27T13:00:00.000Z');
+    await service.complete(f.driver.id,randomUUID(),f.offer,f.allocations.slice(0,3)
+      .map(allocation_id=>({allocation_id,travelled:false,completed:false})),at);
+    await service.confirm(f.first.id,randomUUID(),f.offer,f.allocations[0],false,false,
+      new Date(at.getTime()+60_000));
+    expect((await verificationPool.query('SELECT id FROM pilot_contribution_obligations')).rows)
+      .toHaveLength(0);
+    expect((await service.participantReviews(f.first.id))).toEqual(expect.arrayContaining([
+      expect.objectContaining({allocation_id:f.allocations[0],reason:'absence',status:'open'})]));
+    setSeatRequestClockForTests(()=>new Date(at.getTime()+86_400_000));
+    try{
+      const trip=await request(createApp()).get(`/v1/seat-requests/confirmed/${f.offer}`)
+        .set('Authorization',`Bearer ${f.first.token}`);
+      expect(trip.status).toBe(404);
+      const minimal=await request(createApp()).get('/v1/seat-requests/journey-reviews')
+        .set('Authorization',`Bearer ${f.first.token}`);
+      expect(minimal.status).toBe(200);
+      expect(minimal.body.cases).toEqual(expect.arrayContaining([
+        expect.objectContaining({allocation_id:f.allocations[0],reason:'absence'})]));
+      expect(JSON.stringify(minimal.body)).not.toContain('registration_number');
+    }finally{setSeatRequestClockForTests(null);}
+  });
+  it("rejects completion of a future unstarted trip",async()=>{
+    const f=await fixture();
+    await verificationPool.query(`UPDATE ride_offers SET
+      date=((now()+interval '1 day') AT TIME ZONE 'Asia/Kolkata')::date,
+      time=((now()+interval '1 day') AT TIME ZONE 'Asia/Kolkata')::time WHERE id=$1`,[f.offer]);
+    await expect(new PilotJourneyService(pool).complete(f.driver.id,randomUUID(),f.offer,[]))
+      .rejects.toMatchObject({code:'JOURNEY_NOT_STARTED'});
+    expect((await verificationPool.query('SELECT id FROM pilot_journey_operations')).rows).toHaveLength(0);
   });
 });
 
