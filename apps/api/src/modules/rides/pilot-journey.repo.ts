@@ -117,12 +117,12 @@ export async function stateMatches(db:Db,row:Operation) {
       passenger_travelled:boolean;passenger_completed:boolean;amount_paise:number;
       currency:string;policy_version:number;frozen_paise:number;frozen_currency:string;
       frozen_policy_version:number;confirmed_at:Date|null;due_at:Date|null;
-      review_reason:string|null}>(`SELECT d.travelled AS driver_travelled,d.completed AS driver_completed,
+      review_reason:string|null;review_decision_id:string|null}>(`SELECT d.travelled AS driver_travelled,d.completed AS driver_completed,
       p.travelled AS passenger_travelled,p.completed AS passenger_completed,
       o.amount_paise,o.currency,o.policy_version,o.confirmed_at,o.due_at,
       a.contribution_paise AS frozen_paise,a.currency AS frozen_currency,
       a.policy_version AS frozen_policy_version,
-      r.reason AS review_reason
+      r.reason AS review_reason,o.review_decision_id
       FROM pilot_seat_allocations a
       LEFT JOIN pilot_journey_claims d ON d.allocation_id=a.id AND d.actor_role='driver'
       LEFT JOIN pilot_journey_claims p ON p.allocation_id=a.id AND p.actor_role='passenger'
@@ -136,7 +136,7 @@ export async function stateMatches(db:Db,row:Operation) {
         passenger_completed:facts.passenger_completed});
       if(outcome==='obligation'&&!facts.confirmed_at&&!facts.review_reason) return false;
       if(outcome!=='obligation'&&!facts.review_reason) return false;
-      if(outcome!=='obligation'&&facts.confirmed_at) return false;
+      if(outcome!=='obligation'&&facts.confirmed_at&&!facts.review_decision_id) return false;
     }
     if(facts.confirmed_at&&(facts.amount_paise!==facts.frozen_paise||
       facts.currency!==facts.frozen_currency||facts.policy_version!==facts.frozen_policy_version||
@@ -176,8 +176,11 @@ export async function openReviews(db:Db){
     WHERE r.status='open' ORDER BY r.created_at,r.id LIMIT 100`)).rows;
 }
 export async function participantReviews(db:Db,userId:string){
-  return (await db.query<{allocation_id:string;offer_id:string;reason:string;status:string;
-    created_at:Date}>(`SELECT r.allocation_id,a.offer_id,r.reason,r.status,r.created_at
+  return (await db.query<{id:string;allocation_id:string;offer_id:string;reason:string;status:string;
+    created_at:Date;outcome:string|null;contribution_owed:boolean|null;obligation_paise:number|null;due_at:Date|null}>(`SELECT r.id,r.allocation_id,a.offer_id,r.reason,r.status,r.created_at,
+      d.outcome,d.contribution_owed,o.amount_paise AS obligation_paise,o.due_at
     FROM pilot_journey_reviews r JOIN pilot_seat_allocations a ON a.id=r.allocation_id
+    LEFT JOIN pilot_journey_review_decisions d ON d.review_id=r.id AND d.outcome<>'insufficient_evidence'
+    LEFT JOIN pilot_contribution_obligations o ON o.allocation_id=a.id
     WHERE a.driver_id=$1 OR a.passenger_id=$1 ORDER BY r.created_at DESC LIMIT 100`,[userId])).rows;
 }

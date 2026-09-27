@@ -14,7 +14,8 @@ type Policy = {stops:Stop[];permitted_pairs:{origin_code:string;destination_code
 type Offer = {id:string;origin_code:string;destination_code:string;departure_at:string;
   contribution_paise:number;currency:string;capacity:number;available_seats:number;
   request_cutoff_at:string;cancellation_notice:string;contact_notice:string};
-type JourneyReview={allocation_id:string;offer_id:string;reason:string;status:string;created_at:string};
+type JourneyReview={id:string;allocation_id:string;offer_id:string;reason:string;status:string;created_at:string;
+  outcome:string|null;contribution_owed:boolean|null;obligation_paise:number|null;due_at:string|null};
 export default function SearchRidesPage() {
   const {isAuthenticated,loading,user} = useCurrentUser();
   const router = useRouter();
@@ -148,7 +149,9 @@ export default function SearchRidesPage() {
       <h2 className="text-xl font-semibold">Journey reviews</h2>
       {journeyReviews.map(item=><p key={item.allocation_id} className="rounded border p-3">
         Ride {item.offer_id}: {item.reason} requires operator review. This case alone does not create a contribution.
-        {" "}Case status: {item.status}.
+        {" "}Case status: {item.status}. {item.outcome?`Outcome: ${item.outcome}. Contribution ${item.contribution_owed?"owed":"not owed"}.`:"No operator decision yet."}
+        {item.obligation_paise!==null&&` Frozen contribution due: ₹${(item.obligation_paise/100).toFixed(2)} by ${new Date(item.due_at!).toLocaleString()}. Payment is not marked received.`}
+        {" "}<Link className="underline" href={`/journey-reviews/${item.id}`}>Review details</Link>
       </p>)}
     </section>}
     <section><h2 className="text-xl font-semibold">Confirmed bookings</h2>

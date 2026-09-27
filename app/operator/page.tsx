@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api/client";
 import { useCurrentUser } from "@/hooks/auth/useCurrentUser";
+import {JourneyReviewQueue} from "@/components/pilot/JourneyReviewQueue";
 
 type Capability = "offers" | "requests" | "acceptance" | "booking";
 type PilotStatus = { recovery: { mode: string; cause: string | null; started_at: string | null; reconciled_at: string | null }; backup: { required: boolean; healthy: boolean; maximumAgeMinutes: number; ageMinutes: number | null; latest: { snapshot_at: string; uploaded_at: string; ciphertext_sha256: string } | null; failedAttempts: { id: string; started_at: string; error_code: string | null }[]; runningAttempts: { id: string; started_at: string }[] }; capabilities: { capability: Capability; paused: boolean; pending: boolean }[] };
@@ -219,6 +220,7 @@ export default function OperatorPage() {
         {job.attempt_history.length > 0 && <ul className="list-disc pl-5">{job.attempt_history.map((attempt, index) => <li key={`${attempt.started_at}-${index}`}>Attempt {attempt.attempt}: {attempt.outcome ?? "in progress"} at {new Date(attempt.started_at).toLocaleString()}</li>)}</ul>}
         {job.status === "exhausted" && <button disabled={busy} onClick={() => retryEmail(job.id, job.updated_at)}>Retry email</button>}</div>)}
     </section>
+    <JourneyReviewQueue />
     <section className="space-y-3"><h2 className="font-semibold">Cancellation review cases</h2>
       {cancellationReviews.length ? cancellationReviews.map(item => <div key={item.id} className="rounded border p-3">
         <p>Case {item.id} · {item.target_type} {item.target_id} · offer {item.offer_id}</p>
