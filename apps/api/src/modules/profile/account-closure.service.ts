@@ -32,10 +32,16 @@ export const accountClosureService = {
     const result = await closureQuery(pool,"mine",[userId]);
     return result.rows[0] ?? null;
   },
-  async queue(operatorId: string) {
+  async queue(operatorId: string, limit=100, offset=0) {
     return transaction(async client => {
       await assertCurrentOperator(client,operatorId);
-      return (await closureQuery(client,"queue")).rows;
+      return (await closureQuery(client,"queue",[limit,offset])).rows;
+    });
+  },
+  async status(operatorId: string) {
+    return transaction(async client => {
+      await assertCurrentOperator(client,operatorId);
+      return (await closureQuery(client,"status")).rows[0];
     });
   },
   async hold(operatorId: string, key: string, closureId: string, scope: string, reason: string, reviewAt: Date) {

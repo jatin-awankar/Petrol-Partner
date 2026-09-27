@@ -26,7 +26,12 @@ const operationId = z.uuid();
 operatorRouter.get("/pilot-status", asyncHandler(async (_req, res) => { res.json(await pauseService.publicStatus()); }));
 operatorRouter.use(requireAdmin);
 operatorRouter.get("/account-closures",asyncHandler(async(req,res)=>{
-  res.set("Cache-Control","private, no-store").json({closures:await accountClosureService.queue(req.user!.userId)});
+  const {limit,offset}=z.strictObject({limit:z.coerce.number().int().min(1).max(100).default(100),
+    offset:z.coerce.number().int().min(0).default(0)}).parse(req.query);
+  res.set("Cache-Control","private, no-store").json({closures:await accountClosureService.queue(req.user!.userId,limit,offset)});
+}));
+operatorRouter.get("/account-retention/status",asyncHandler(async(req,res)=>{
+  res.set("Cache-Control","private, no-store").json(await accountClosureService.status(req.user!.userId));
 }));
 operatorRouter.post("/account-closures/:id/holds",asyncHandler(async(req,res)=>{
   const key=req.header("Idempotency-Key");

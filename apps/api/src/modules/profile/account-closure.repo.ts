@@ -28,7 +28,29 @@ export const closureSql = {
     coalesce((SELECT jsonb_agg(jsonb_build_object('id',h.id,'scope',h.scope,'reason',h.reason,
       'operator_id',h.operator_id,'review_at',h.review_at) ORDER BY h.review_at)
       FROM pilot_retention_holds h WHERE h.closure_id=c.id AND h.released_at IS NULL),'[]'::jsonb) AS holds
-    FROM pilot_account_closures c ORDER BY c.due_at,c.id LIMIT 100`,
+    FROM pilot_account_closures c ORDER BY c.due_at,c.id LIMIT $1 OFFSET $2`,
+  status: `SELECT
+    (SELECT count(*)::int FROM pilot_account_closures WHERE due_at<=now() AND status<>'completed') AS overdue_closures,
+    (SELECT count(*)::int FROM pilot_account_closures WHERE status='held') AS held_closures,
+    (SELECT count(*)::int FROM pilot_account_closures WHERE status='provider_failed') AS failed_closures,
+    (SELECT count(*)::int FROM pilot_deletion_receipts) AS deletion_receipts,
+    (SELECT count(*)::int FROM student_evidence WHERE status='retained' AND delete_after<=now()
+      AND (hold_until IS NULL OR hold_until<=now())) AS due_student_objects,
+    (SELECT count(*)::int FROM student_evidence WHERE deletion_outcome='failed') AS failed_student_objects,
+    (SELECT count(*)::int FROM driver_car_evidence WHERE status='retained' AND delete_after<=now()
+      AND (hold_until IS NULL OR hold_until<=now())) AS due_driver_car_objects,
+    (SELECT count(*)::int FROM driver_car_evidence WHERE deletion_outcome='failed') AS failed_driver_car_objects,
+    (SELECT count(*)::int FROM driver_car_evidence_replacements WHERE status='retained'
+      AND delete_after<=now() AND (hold_until IS NULL OR hold_until<=now())) AS due_replaced_objects,
+    (SELECT count(*)::int FROM driver_car_evidence_replacements WHERE deletion_outcome='failed') AS failed_replaced_objects,
+    (SELECT count(*)::int FROM users u WHERE u.role='user' AND u.created_at<=now()-interval '30 days'
+      AND NOT EXISTS(SELECT 1 FROM student_verifications s WHERE s.user_id=u.id
+        AND s.status IN ('verified','revalidation_due'))
+      AND NOT EXISTS(SELECT 1 FROM ride_offers o WHERE o.driver_id=u.id)
+      AND NOT EXISTS(SELECT 1 FROM bookings b WHERE b.created_by_user_id=u.id
+        OR b.passenger_id=u.id OR b.driver_id=u.id)
+      AND NOT EXISTS(SELECT 1 FROM pilot_seat_allocations a WHERE a.driver_id=u.id OR a.passenger_id=u.id)
+      AND NOT EXISTS(SELECT 1 FROM pilot_account_closures c WHERE c.user_id=u.id)) AS onboarding_review_candidates`,
   lockClosure: "SELECT * FROM pilot_account_closures WHERE id=$1 FOR UPDATE",
   addHold: `INSERT INTO pilot_retention_holds(closure_id,scope,reason,operator_id,review_at,idempotency_key)
     VALUES($1,$2,$3,$4,$5,$6) RETURNING *`,

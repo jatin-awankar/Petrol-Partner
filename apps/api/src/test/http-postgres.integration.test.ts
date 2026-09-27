@@ -90,8 +90,23 @@ describe("ticket 28 closure safety queue",()=>{
     await verificationPool.query(`INSERT INTO operator_allowlist(user_id,active,reason,reviewed_at)
       VALUES($1,true,'synthetic operator',now())`,[operator.id]);
     const closure=await accountClosureService.request(user.id);
+    const candidate=(await verificationPool.query<{id:string}>(`INSERT INTO users(email,created_at)
+      VALUES($1,now()-interval '31 days') RETURNING id`,
+      [`onboarding-${randomUUID()}@example.test`])).rows[0];
+    await verificationPool.query(`INSERT INTO student_verifications
+      (user_id,provider,status,institution_name,eligibility_ends_at)
+      VALUES($1,'manual_review','pending_review','Synthetic College',now()+interval '1 year')`,
+      [candidate.id]);
+    await verificationPool.query(`INSERT INTO student_evidence
+      (user_id,object_key,content_type,byte_count,sha256,status,decision_at,delete_after,
+       deletion_outcome,next_delete_attempt_at)
+      VALUES($1,$2,'application/pdf',1,'synthetic','retained',now()-interval '7 days',
+        now()-interval '1 minute','failed',now()+interval '5 minutes')`,[user.id,randomUUID()]);
     const hold=await accountClosureService.hold(operator.id,"hold-once",closure.id,"incident",
       "Synthetic unresolved incident",new Date(Date.now()+86400000));
+    expect(await accountClosureService.status(operator.id)).toEqual(expect.objectContaining({
+      held_closures:1,due_student_objects:1,failed_student_objects:1,
+      onboarding_review_candidates:1,deletion_receipts:0}));
     expect((await accountClosureService.hold(operator.id,"hold-once",closure.id,"incident",
       "Synthetic unresolved incident",new Date(hold.review_at))).id).toBe(hold.id);
     await expect(accountClosureService.hold(operator.id,"hold-once",closure.id,"legal_review",
@@ -100,6 +115,8 @@ describe("ticket 28 closure safety queue",()=>{
     expect((await accountClosureService.queue(operator.id)).find(item=>item.id===closure.id)?.holds)
       .toEqual([expect.objectContaining({scope:"incident",reason:"Synthetic unresolved incident"})]);
     await verificationPool.query("UPDATE operator_allowlist SET active=false WHERE user_id=$1",[operator.id]);
+    await expect(accountClosureService.status(operator.id))
+      .rejects.toMatchObject({code:"OPERATOR_ACCESS_REVOKED"});
     await expect(accountClosureService.release(operator.id,"release-once",hold.id,"Review was completed"))
       .rejects.toMatchObject({code:"OPERATOR_ACCESS_REVOKED"});
     await verificationPool.query("UPDATE operator_allowlist SET active=true WHERE user_id=$1",[operator.id]);
@@ -200,6 +217,18 @@ describe("ticket 22 individual journey confirmation",()=>{
     expect((await new PilotDepartureService(pool).start(f.driver.id,randomUUID(),f.offer,boarded,
       'departure',null,new Date())).state).toBe('acknowledged');
   }
+  it('keeps closure held through an active commitment and an unrelated manual hold release',async()=>{
+    const f=await fixture();
+    const closure=await accountClosureService.request(f.first.id);
+    expect(closure.status).toBe('held');
+    const hold=await accountClosureService.hold(f.operator.id,'synthetic-case-hold',closure.id,
+      'commitment','Synthetic confirmed seat still active',new Date(Date.now()+86400000));
+    await accountClosureService.release(f.operator.id,'synthetic-case-release',hold.id,
+      'Manual case hold completed');
+    expect((await accountClosureService.mine(f.first.id))?.status).toBe('held');
+    expect((await verificationPool.query('SELECT status FROM pilot_seat_allocations WHERE id=$1',
+      [f.allocations[0]])).rows[0].status).toBe('confirmed');
+  });
   it('requires a reviewed settlement decision before manual restriction and preserves the original claim',async()=>{
     const f=await fixture();
     await start(f);
