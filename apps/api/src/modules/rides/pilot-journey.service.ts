@@ -9,6 +9,7 @@ import {assertCurrentOperator} from "../operator/operator.authorization";
 import {pauseService} from "../operator/pause.service";
 import {inProtectedTransaction} from "../protected-mutation/protocol";
 import {pilotReceiptStore,restrictProtectedWrites} from "../protected-mutation/receipt-evidence";
+import {assertCurrentDriverCarEligibility,assertCurrentStudentForSubmission} from "../verification/verification.service";
 import {operatorRecipients} from "./pilot-departure.repo";
 import * as repo from "./pilot-journey.repo";
 
@@ -106,6 +107,7 @@ export class PilotJourneyService {
       const boarded=seats.filter(s=>s.boarded);
       if(kind==='driver_completion'){
         if(offer.driver_id!==actorId) throw new AppError(403,'Only the driver may complete','FORBIDDEN');
+        await assertCurrentDriverCarEligibility(client,actorId,offer.vehicle_id);
         if(sorted.length!==boarded.length||sorted.some((c,i)=>c.allocation_id!==boarded[i].id))
           throw new AppError(409,'Completion must report every boarded passenger','JOURNEY_INVALID');
         if(await repo.driverCompletion(client,offerId))
@@ -114,6 +116,7 @@ export class PilotJourneyService {
         const seat=boarded.find(s=>s.id===allocationId);
         if(!seat) throw new AppError(409,'Passenger was not boarded','BOARDING_REQUIRED');
         if(seat.passenger_id!==actorId) throw new AppError(403,'Only this passenger may confirm','FORBIDDEN');
+        await assertCurrentStudentForSubmission(client,actorId);
         if(await repo.passengerConfirmation(client,allocationId!))
           throw new AppError(409,'Passenger confirmation already recorded','JOURNEY_ALREADY_RECORDED');
       }

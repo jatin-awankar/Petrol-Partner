@@ -37,3 +37,11 @@ Verification: focused PostgreSQL integration tests passed for multiple different
 Final checks: `npm run typecheck` passed; `npm run lint` passed with 10 existing warnings and no errors; `npm test` passed (27 script tests, 4 skipped; 107 API tests, 1 skipped; 16 worker tests); `npm run build:all` passed. The two-axis `/code-review` against `main` found repository SQL-boundary issues and gaps for matching absence and review visibility after trip-detail expiry; these were corrected. The follow-up spec review found no remaining critical gap, and the final SQL-boundary correction was verified by typecheck and the full suite.
 
 Remaining launch limits: no deployed schema or user-population inventory, live email-provider outage, or provider restore rehearsal was performed here. No deployment, migration of an existing deployment, or real-trip enablement occurred. Operator decisions on review cases and payment claims belong to later settlement/operator slices; this ticket creates no operator-imposed debt.
+
+## Comments
+
+PR #44 follow-up review: new driver completion and passenger confirmation now recheck current driver/car or student approval inside the protected transaction. An HTTP/PostgreSQL test demonstrated that suspended actors were previously accepted (red), then passed after the change (green). The repeated journey outcome conditions in settlement and recovery validation now use one classifier.
+
+The reported silence-worker race was a false positive. The worker holds `pilot_recovery_state` with `FOR SHARE` during its transaction; journey confirmation requires `FOR UPDATE` on the same row before writing. PostgreSQL serializes them, so both an obligation and a silence review cannot be committed by that race. A separate-connection HTTP/PostgreSQL regression test pauses the worker with an uncommitted review and verifies the confirmation waits and creates no debt. This test was green before the code change, as expected for a false positive.
+
+Follow-up checks: ticket 22 PostgreSQL integration tests passed (8); `npm test` passed (31 script tests, 4 skipped; 109 API tests, 1 skipped; 16 worker tests); `npm run typecheck`, `npm run lint` (10 existing warnings, zero errors), and `npm run build:all` passed. No deployment or real-trip enablement was performed.

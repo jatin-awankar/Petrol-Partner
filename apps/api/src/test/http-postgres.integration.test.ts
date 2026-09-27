@@ -255,6 +255,44 @@ describe("ticket 22 individual journey confirmation",()=>{
     expect((await service.reviews(f.operator.id)).map(row=>row.allocation_id))
       .toContain(f.allocations[0]);
   });
+  it("does not create debt when confirmation races the silence worker",async()=>{
+    const f=await fixture();
+    await start(f);
+    const allocation=f.allocations[0];
+    const driverAt=new Date(Date.now()-86_400_000+10_000);
+    await new PilotJourneyService(pool).complete(f.driver.id,randomUUID(),f.offer,
+      f.allocations.slice(0,3).map(allocation_id=>({allocation_id,travelled:true,completed:true})),driverAt);
+    const workerPool=new Pool({connectionString:process.env.DATABASE_URL,max:1});
+    try{
+      await verificationPool.query(`CREATE FUNCTION journey_race_delay() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN PERFORM pg_sleep(2); RETURN NEW; END $$`);
+      await verificationPool.query(`CREATE TRIGGER journey_race_delay AFTER INSERT ON pilot_journey_reviews
+        FOR EACH ROW WHEN (NEW.allocation_id='${allocation}'::uuid AND NEW.reason='silence')
+        EXECUTE FUNCTION journey_race_delay()`);
+      const worker=reviewSilentJourneys(workerPool,new Date(driverAt.getTime()+86_400_000));
+      let sleeping=false;
+      for(let attempt=0;attempt<100;attempt++){
+        sleeping=(await verificationPool.query<{sleeping:boolean}>(`SELECT EXISTS(
+          SELECT 1 FROM pg_stat_activity WHERE query LIKE 'INSERT INTO pilot_journey_reviews%'
+            AND wait_event='PgSleep') AS sleeping`)).rows[0].sleeping;
+        if(sleeping) break;
+        await new Promise(resolve=>setTimeout(resolve,20));
+      }
+      expect(sleeping).toBe(true);
+      const confirmation=request(createApp()).post(`/v1/corridor-offers/${f.offer}/journeys/${allocation}/confirm`)
+        .set('Authorization',`Bearer ${f.first.token}`).set('Idempotency-Key',randomUUID())
+        .send({travelled:true,completed:true});
+      expect((await confirmation).status).toBe(200);
+      expect((await worker).opened).toBe(3);
+      const trip=await request(createApp()).get(`/v1/seat-requests/confirmed/${f.offer}`)
+        .set('Authorization',`Bearer ${f.first.token}`);
+      expect(trip.body.trip.bookings[0]).toMatchObject({journey_review_reason:'silence',obligation_paise:null});
+    }finally{
+      await workerPool.end();
+      await verificationPool.query('DROP TRIGGER IF EXISTS journey_race_delay ON pilot_journey_reviews');
+      await verificationPool.query('DROP FUNCTION IF EXISTS journey_race_delay()');
+    }
+  },10_000);
   it("serializes concurrent retries from separate PostgreSQL connections",async()=>{
     const f=await fixture();
     await start(f);
@@ -309,6 +347,29 @@ describe("ticket 22 individual journey confirmation",()=>{
     await expect(new PilotJourneyService(pool).complete(f.driver.id,randomUUID(),f.offer,[]))
       .rejects.toMatchObject({code:'JOURNEY_NOT_STARTED'});
     expect((await verificationPool.query('SELECT id FROM pilot_journey_operations')).rows).toHaveLength(0);
+  });
+  it("rejects new journey claims after participant approval is revoked",async()=>{
+    const f=await fixture();
+    await start(f);
+    const claims=f.allocations.slice(0,3)
+      .map(allocation_id=>({allocation_id,travelled:true,completed:true}));
+    await verificationPool.query("UPDATE driver_eligibility SET status='suspended' WHERE user_id=$1",[f.driver.id]);
+    const deniedDriver=await request(createApp()).post(`/v1/corridor-offers/${f.offer}/complete`)
+      .set('Authorization',`Bearer ${f.driver.token}`).set('Idempotency-Key',randomUUID())
+      .send({claims});
+    expect(deniedDriver.status).toBe(403);
+    await verificationPool.query("UPDATE driver_eligibility SET status='approved' WHERE user_id=$1",[f.driver.id]);
+    const completed=await request(createApp()).post(`/v1/corridor-offers/${f.offer}/complete`)
+      .set('Authorization',`Bearer ${f.driver.token}`).set('Idempotency-Key',randomUUID())
+      .send({claims});
+    expect(completed.status).toBe(200);
+    await verificationPool.query("UPDATE student_verifications SET status='suspended' WHERE user_id=$1",[f.first.id]);
+    const deniedPassenger=await request(createApp()).post(
+      `/v1/corridor-offers/${f.offer}/journeys/${f.allocations[0]}/confirm`)
+      .set('Authorization',`Bearer ${f.first.token}`).set('Idempotency-Key',randomUUID())
+      .send({travelled:true,completed:true});
+    expect(deniedPassenger.status).toBe(403);
+    expect((await verificationPool.query('SELECT id FROM pilot_contribution_obligations')).rows).toHaveLength(0);
   });
 });
 

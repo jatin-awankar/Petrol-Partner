@@ -2,6 +2,15 @@ import type {Pool,PoolClient} from "pg";
 
 type Db=Pool|PoolClient;
 export type Claim={allocation_id:string;travelled:boolean;completed:boolean};
+type OutcomeFlags={driver_travelled:boolean;driver_completed:boolean;
+  passenger_travelled:boolean;passenger_completed:boolean};
+function classifyOutcome(pair:OutcomeFlags):'obligation'|'disagreement'|'interruption'|'absence'{
+  if(pair.driver_travelled&&pair.driver_completed&&pair.passenger_travelled&&pair.passenger_completed)
+    return 'obligation';
+  if(pair.driver_travelled!==pair.passenger_travelled||pair.driver_completed!==pair.passenger_completed)
+    return 'disagreement';
+  return pair.driver_travelled?'interruption':'absence';
+}
 export type Operation={id:string;offer_id:string;allocation_id:string|null;actor_id:string;
   idempotency_key:string;payload_digest:string;kind:"driver_completion"|"passenger_confirmation";
   claims:Claim[];recorded_at:Date;state:"committed"|"acknowledged"|"recovered"};
@@ -13,8 +22,8 @@ export const acknowledged=async(db:Db)=>(await db.query<Operation>(
   "SELECT * FROM pilot_journey_operations WHERE state IN ('acknowledged','recovered') ORDER BY recorded_at,id")).rows;
 export const pending=async(db:Db)=>(await db.query<Operation>(
   "SELECT * FROM pilot_journey_operations WHERE state='committed' ORDER BY recorded_at,id")).rows;
-export const offer=async(db:PoolClient,id:string)=>(await db.query<{id:string;driver_id:string;status:string}>(
-  "SELECT id,driver_id,status FROM ride_offers WHERE id=$1 AND pilot_policy_id IS NOT NULL FOR UPDATE",[id])).rows[0]??null;
+export const offer=async(db:PoolClient,id:string)=>(await db.query<{id:string;driver_id:string;vehicle_id:string;status:string}>(
+  "SELECT id,driver_id,vehicle_id,status FROM ride_offers WHERE id=$1 AND pilot_policy_id IS NOT NULL FOR UPDATE",[id])).rows[0]??null;
 export const seats=async(db:Db,id:string)=>(await db.query<{id:string;passenger_id:string;
   contribution_paise:number;currency:string;policy_version:number;boarded:boolean}>(`
   SELECT a.id,a.passenger_id,a.contribution_paise,a.currency,a.policy_version,b.boarded
@@ -71,7 +80,8 @@ export async function settle(db:PoolClient,allocationId:string,at:Date) {
       [allocationId,confirmedAt,pair.driver_id,pair.passenger_id]);
     return 'review' as const;
   }
-  if(pair.driver_travelled&&pair.driver_completed&&pair.passenger_travelled&&pair.passenger_completed) {
+  const outcome=classifyOutcome(pair);
+  if(outcome==='obligation') {
     await db.query(`INSERT INTO pilot_contribution_obligations
       (allocation_id,driver_claim_operation_id,passenger_claim_operation_id,amount_paise,currency,
        policy_version,confirmed_at,due_at)
@@ -79,17 +89,11 @@ export async function settle(db:PoolClient,allocationId:string,at:Date) {
       [allocationId,pair.driver_id,pair.passenger_id,pair.amount_paise,pair.currency,pair.policy_version,confirmedAt]);
     return 'obligation' as const;
   }
-  if(pair.driver_travelled!==pair.passenger_travelled||pair.driver_completed!==pair.passenger_completed||
-    (pair.driver_travelled&&!pair.driver_completed)||!pair.driver_travelled) {
-    await db.query(`INSERT INTO pilot_journey_reviews
-      (allocation_id,reason,created_at,driver_claim_operation_id,passenger_claim_operation_id)
-      VALUES($1,$2,$3,$4,$5) ON CONFLICT(allocation_id) DO NOTHING`,
-      [allocationId,pair.driver_travelled!==pair.passenger_travelled?'disagreement':
-        pair.driver_travelled?'interruption':'absence',
-        confirmedAt,pair.driver_id,pair.passenger_id]);
-    return 'review' as const;
-  }
-  return 'no_obligation' as const;
+  await db.query(`INSERT INTO pilot_journey_reviews
+    (allocation_id,reason,created_at,driver_claim_operation_id,passenger_claim_operation_id)
+    VALUES($1,$2,$3,$4,$5) ON CONFLICT(allocation_id) DO NOTHING`,
+    [allocationId,outcome,confirmedAt,pair.driver_id,pair.passenger_id]);
+  return 'review' as const;
 }
 export const acknowledge=async(db:PoolClient,id:string)=>(await db.query<Operation>(`
   UPDATE pilot_journey_operations SET state='acknowledged',acknowledged_at=now()
@@ -127,13 +131,12 @@ export async function stateMatches(db:Db,row:Operation) {
       [claim.allocation_id])).rows[0];
     if(!facts) return false;
     if(facts.driver_travelled!==null&&facts.passenger_travelled!==null){
-      const mutual=facts.driver_travelled&&facts.driver_completed&&facts.passenger_travelled&&facts.passenger_completed;
-      const disagreement=facts.driver_travelled!==facts.passenger_travelled||
-        facts.driver_completed!==facts.passenger_completed||
-        (facts.driver_travelled&&!facts.driver_completed)||!facts.driver_travelled;
-      if(mutual&&!facts.confirmed_at&&!facts.review_reason) return false;
-      if(disagreement&&!facts.review_reason) return false;
-      if(!mutual&&facts.confirmed_at) return false;
+      const outcome=classifyOutcome({driver_travelled:facts.driver_travelled,
+        driver_completed:facts.driver_completed===true,passenger_travelled:facts.passenger_travelled,
+        passenger_completed:facts.passenger_completed});
+      if(outcome==='obligation'&&!facts.confirmed_at&&!facts.review_reason) return false;
+      if(outcome!=='obligation'&&!facts.review_reason) return false;
+      if(outcome!=='obligation'&&facts.confirmed_at) return false;
     }
     if(facts.confirmed_at&&(facts.amount_paise!==facts.frozen_paise||
       facts.currency!==facts.frozen_currency||facts.policy_version!==facts.frozen_policy_version||
