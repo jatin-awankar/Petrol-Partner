@@ -24,6 +24,7 @@ import { PilotJourneyService } from "../rides/pilot-journey.service";
 import { JourneyReviewService } from "../rides/journey-review.service";
 import { DirectSettlementService } from "../rides/direct-settlement.service";
 import { DirectSettlementSilenceService } from "../rides/direct-settlement-silence.service";
+import { SettlementCasesService } from "../rides/settlement-cases.service";
 
 export const capabilities = ["offers", "requests", "acceptance", "booking"] as const;
 export type Capability = typeof capabilities[number];
@@ -108,6 +109,7 @@ function recoverySlices(database: Pool): RecoverySlice[] {
     { name: "departures", service: new DepartureService(database), verifyOrder: 10, reconcileOrder: 8, digestOrder: 6 },
     { name: "directSettlements", service: new DirectSettlementService(database), verifyOrder: 11, reconcileOrder: 11, digestOrder: 10, pendingOrder: 6, pendingMessage: "Direct settlement recovery is incomplete" },
     { name: "settlementSilence", service: new DirectSettlementSilenceService(database), verifyOrder: 12, reconcileOrder: 12, digestOrder: 11, pendingOrder: 7, pendingMessage: "Settlement silence recovery is incomplete" },
+    { name: "settlementCases", service: new SettlementCasesService(database), verifyOrder: 13, reconcileOrder: 13, digestOrder: 12, pendingOrder: 8, pendingMessage: "Settlement case recovery is incomplete" },
   ];
 }
 

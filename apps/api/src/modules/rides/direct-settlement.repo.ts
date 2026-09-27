@@ -6,7 +6,8 @@ export type Operation={id:string;obligation_id:string;actor_id:string;idempotenc
 export type Obligation={id:string;allocation_id:string;amount_paise:number;currency:string;
   policy_version:number;confirmed_at:Date;due_at:Date;driver_id:string;passenger_id:string;
   claim_id:string|null;claim_method:string|null;claimed_at:Date|null;response_id:string|null;
-  response_kind:string|null;responded_at:Date|null;review_id:string|null;review_reason:string|null};
+  response_kind:string|null;responded_at:Date|null;review_id:string|null;review_reason:string|null;
+  review_status:string|null;decision_owed:boolean|null;decision_receipt:boolean|null};
 export const byKey=async(db:Db,actor:string,key:string)=>(await db.query<Operation>(
   'SELECT * FROM pilot_settlement_operations WHERE actor_id=$1 AND idempotency_key=$2',[actor,key])).rows[0]??null;
 export const byId=async(db:Db,id:string,lock=false)=>(await db.query<Operation>(
@@ -15,11 +16,13 @@ export const all=async(db:Db)=>(await db.query<Operation>(
   'SELECT * FROM pilot_settlement_operations ORDER BY recorded_at,id')).rows;
 const detailSql=`SELECT o.*,a.driver_id,a.passenger_id,c.id AS claim_id,c.method AS claim_method,
  c.recorded_at AS claimed_at,r.id AS response_id,r.kind AS response_kind,r.recorded_at AS responded_at,
- v.id AS review_id,v.reason AS review_reason
+ v.id AS review_id,v.reason AS review_reason,v.status AS review_status,
+ d.contribution_owed AS decision_owed,d.receipt_established AS decision_receipt
  FROM pilot_contribution_obligations o JOIN pilot_seat_allocations a ON a.id=o.allocation_id
  LEFT JOIN pilot_settlement_operations c ON c.obligation_id=o.id AND c.kind='claim'
  LEFT JOIN pilot_settlement_operations r ON r.obligation_id=o.id AND r.kind IN ('confirm','dispute')
- LEFT JOIN pilot_settlement_reviews v ON v.obligation_id=o.id`;
+ LEFT JOIN pilot_settlement_reviews v ON v.obligation_id=o.id
+ LEFT JOIN pilot_settlement_case_operations d ON d.id=v.final_decision_id`;
 export const detail=async(db:Db,id:string,lock=false)=>(await db.query<Obligation>(
   `${detailSql} WHERE o.id=$1 ${lock?'FOR UPDATE OF o':''}`,[id])).rows[0]??null;
 export const list=async(db:Db,actor:string)=>(await db.query<Obligation>(

@@ -9,6 +9,7 @@ import { PilotJourneyService } from "../modules/rides/pilot-journey.service";
 import { JourneyReviewService } from "../modules/rides/journey-review.service";
 import { DirectSettlementService } from "../modules/rides/direct-settlement.service";
 import { DirectSettlementSilenceService } from "../modules/rides/direct-settlement-silence.service";
+import { SettlementCasesService,setSettlementCaseAfterReceiptHookForTests } from "../modules/rides/settlement-cases.service";
 import { reviewSilentJourneys } from "../../../worker/src/jobs/pilot-journey-silence";
 import { StudentRevocationService } from "../modules/verification/student-revocation.service";
 import { DriverCarReviewService } from "../modules/verification/driver-car-review.service";
@@ -32,7 +33,7 @@ import { setBackupObjectProbeForTests } from "../modules/operator/backup-status"
 import { setStudentReviewAfterCommitHookForTests } from "../modules/verification/student-review.service";
 
 const verificationPool = new Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
-const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql", "0006_operator_allowlist.sql", "0007_operator_pause.sql", "0008_operator_intent_handoff.sql", "0009_durable_notifications.sql", "0010_email_retry_operations.sql", "0011_backup_attempts.sql", "0012_student_adult_review.sql", "0013_student_review_cycles.sql", "0014_student_review_operations.sql", "0015_student_evidence_access.sql", "0016_student_evidence_deletion_outcomes.sql", "0017_student_evidence_retry_schedule.sql", "0018_driver_car_approval.sql", "0019_ride_departures.sql", "0020_corridor_offers.sql", "0021_corridor_offer_recovery.sql", "0022_pilot_seat_requests.sql", "0023_pilot_seat_acceptance.sql", "0024_pilot_cancellations.sql", "0025_pilot_departure.sql", "0026_revocation_holds_incidents.sql", "0027_pilot_journeys.sql", "0028_journey_review_decisions.sql", "0029_direct_settlement.sql"];
+const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql", "0006_operator_allowlist.sql", "0007_operator_pause.sql", "0008_operator_intent_handoff.sql", "0009_durable_notifications.sql", "0010_email_retry_operations.sql", "0011_backup_attempts.sql", "0012_student_adult_review.sql", "0013_student_review_cycles.sql", "0014_student_review_operations.sql", "0015_student_evidence_access.sql", "0016_student_evidence_deletion_outcomes.sql", "0017_student_evidence_retry_schedule.sql", "0018_driver_car_approval.sql", "0019_ride_departures.sql", "0020_corridor_offers.sql", "0021_corridor_offer_recovery.sql", "0022_pilot_seat_requests.sql", "0023_pilot_seat_acceptance.sql", "0024_pilot_cancellations.sql", "0025_pilot_departure.sql", "0026_revocation_holds_incidents.sql", "0027_pilot_journeys.sql", "0028_journey_review_decisions.sql", "0029_direct_settlement.sql", "0030_settlement_dispute_resolution.sql"];
 
 function fakeProvider(identity: ProviderIdentity): AuthProvider {
   const session = { accessToken: "provider-access", refreshToken: "provider-refresh", expiresIn: 900, identity };
@@ -75,6 +76,11 @@ describe("ticket 22 individual journey confirmation",()=>{
       PILOT_SUPPORT_WINDOW_END:new Date(Date.now()+48*60*60_000).toISOString()});
   });
   afterEach(async()=>{
+    setSettlementCaseAfterReceiptHookForTests(null);
+    setManagedAuthEnabledForTests(null);
+    setAuthProviderForTests(null);
+    await verificationPool.query(`UPDATE auth_cutover_state SET active_provider='legacy',
+      legacy_login_enabled=true,authorized_at=NULL,authorized_by=NULL WHERE singleton=true`);
     delete process.env.PILOT_RECEIPT_PATH;
     delete process.env.PILOT_RECEIPT_SECRET;
     for(const name of ["PILOT_CONFLICT_POLICY_APPROVED","PILOT_EXPECTED_TRIP_MINUTES",
@@ -726,6 +732,177 @@ describe("ticket 22 individual journey confirmation",()=>{
         AND ready_at IS NOT NULL`,[f.operator.id])).rows[0].n).toBe(1);
     expect((await verificationPool.query('SELECT amount_paise,currency FROM pilot_contribution_obligations WHERE id=$1',
       [second])).rows[0]).toEqual({amount_paise:2600,currency:'INR'});
+  });
+  it('reports participant disputes and keeps owed, receipt, and closure as separate findings',async()=>{
+    const f=await fixture();await start(f);
+    const journey=new PilotJourneyService(pool),settlement=new DirectSettlementService(pool);
+    const cases=new SettlementCasesService(pool),app=createApp();
+    await journey.complete(f.driver.id,randomUUID(),f.offer,f.allocations.slice(0,3)
+      .map(allocation_id=>({allocation_id,travelled:true,completed:true})));
+    await journey.confirm(f.first.id,randomUUID(),f.offer,f.allocations[0],true,true);
+    const id=(await verificationPool.query<{id:string}>(
+      'SELECT id FROM pilot_contribution_obligations WHERE allocation_id=$1',[f.allocations[0]])).rows[0].id;
+    await settlement.mutate(f.first.id,randomUUID(),id,'claim','upi');
+    const url=`/v1/direct-settlements/${id}`;
+    expect((await request(app).get(`${url}/case`).set('Authorization',`Bearer ${f.outsider.token}`)).status).toBe(404);
+    expect((await request(app).post(`${url}/report-dispute`).set('Authorization',`Bearer ${f.outsider.token}`)
+      .set('Idempotency-Key',randomUUID()).send({reason:'I did not receive the transfer'})).status).toBe(403);
+    const key=randomUUID();
+    const report=await request(app).post(`${url}/report-dispute`).set('Authorization',`Bearer ${f.driver.token}`)
+      .set('Idempotency-Key',key).send({reason:'I did not receive the transfer'});
+    expect(report.status).toBe(200);
+    expect((await request(app).post(`${url}/report-dispute`).set('Authorization',`Bearer ${f.driver.token}`)
+      .set('Idempotency-Key',key).send({reason:'I did not receive the transfer'})).body.operation.operation_id)
+      .toBe(report.body.operation.operation_id);
+    expect((await request(app).get(`${url}/case`).set('Authorization',`Bearer ${f.first.token}`)).body
+      .claim.method).toBe('upi');
+    expect((await cases.queue(f.operator.id)).map((x:{obligation_id:string})=>x.obligation_id)).toContain(id);
+    expect((await request(app).post(`/v1/operator/settlement-reviews/${id}/decide`)
+      .set('Authorization',`Bearer ${f.operator.token}`).set('Idempotency-Key',randomUUID())
+      .send({contribution_owed:true,receipt_established:false,case_resolution:'resolved',
+        reason:'Reviewed the claim and driver response',evidence_refs:[],participant_confirmation_id:null})).status)
+      .toBe(403);
+    const unresolved={kind:'decision' as const,contribution_owed:true,receipt_established:null,
+      case_resolution:'unresolved' as const,reason:'Transfer record is inconclusive',
+      evidence_refs:[],participant_confirmation_id:null};
+    expect((await cases.mutate(f.operator.id,randomUUID(),id,unresolved)).state).toBe('acknowledged');
+    expect((await cases.detail(f.first.id,id)).review?.status).toBe('open');
+    const resolved={...unresolved,receipt_established:false,case_resolution:'resolved' as const,
+      reason:'Reviewed evidence; receipt was not established'};
+    const decisionKey=randomUUID();
+    const [a,b]=await Promise.allSettled([
+      cases.mutate(f.operator.id,decisionKey,id,resolved),
+      cases.mutate(f.operator.id,randomUUID(),id,{...resolved,receipt_established:true,
+        evidence_refs:['reviewed-transfer-record']})]);
+    expect([a,b].filter(x=>x.status==='fulfilled')).toHaveLength(1);
+    if(a.status==='fulfilled') expect((await cases.mutate(f.operator.id,decisionKey,id,resolved)).operation_id)
+      .toBe(a.value.operation_id);
+    expect((await cases.detail(f.first.id,id)).review?.status).toBe('resolved');
+    expect((await verificationPool.query('SELECT id FROM pilot_settlement_operations WHERE obligation_id=$1 AND kind=\'claim\'',[id])).rows).toHaveLength(1);
+    expect((await verificationPool.query('SELECT id FROM pilot_settlement_operations WHERE obligation_id=$1 AND kind=\'confirm\'',[id])).rows).toHaveLength(0);
+    expect((await verificationPool.query<{n:number}>(`SELECT count(*)::int AS n FROM pilot_notification_events
+      WHERE origin_type='pilot_settlement_case' AND ready_at IS NOT NULL`,[])).rows[0].n).toBe(6);
+  });
+  it('requires current MFA operator authority and receipt evidence in settlement HTTP decisions',async()=>{
+    const f=await fixture();await start(f);
+    const journey=new PilotJourneyService(pool),settlement=new DirectSettlementService(pool);
+    await journey.complete(f.driver.id,randomUUID(),f.offer,f.allocations.slice(0,3)
+      .map(allocation_id=>({allocation_id,travelled:true,completed:true})));
+    await journey.confirm(f.first.id,randomUUID(),f.offer,f.allocations[0],true,true);
+    const id=(await verificationPool.query<{id:string}>(
+      'SELECT id FROM pilot_contribution_obligations WHERE allocation_id=$1',[f.allocations[0]])).rows[0].id;
+    await settlement.mutate(f.first.id,randomUUID(),id,'claim','cash');
+    await settlement.mutate(f.driver.id,randomUUID(),id,'dispute');
+    const email=`settlement-operator-${randomUUID()}@example.test`;
+    const operatorId=(await verificationPool.query<{id:string}>(`INSERT INTO users(email,role,email_verified_at)
+      VALUES($1,'admin',now()) RETURNING id`,[email])).rows[0].id;
+    await verificationPool.query("INSERT INTO user_profiles(user_id,full_name) VALUES($1,'Settlement Operator')",[operatorId]);
+    await verificationPool.query(`INSERT INTO operator_allowlist(user_id,active,reason,reviewed_at)
+      VALUES($1,true,'settlement test',now())`,[operatorId]);
+    await verificationPool.query(`INSERT INTO auth_identities(provider,provider_subject,user_id,provider_email)
+      VALUES('supabase','settlement-http-operator',$1,$2)`,[operatorId,email]);
+    await verificationPool.query(`UPDATE auth_cutover_state SET active_provider='supabase',
+      legacy_login_enabled=false,authorized_at=now(),authorized_by='integration-test'`);
+    setManagedAuthEnabledForTests(true);
+    const identity={subject:'settlement-http-operator',email,emailVerified:true,
+      assuranceLevel:'aal2' as const,userMetadata:{}};
+    setAuthProviderForTests(fakeProvider(identity));
+    expect((await verificationPool.query('SELECT user_id,disabled_at FROM auth_identities WHERE provider_subject=$1',
+      [identity.subject])).rows).toMatchObject([{user_id:operatorId,disabled_at:null}]);
+    const agent=request.agent(createApp());
+    const login=await agent.post('/v1/auth/login').send({email,password:'synthetic'});
+    expect(login.status).toBe(200);
+    const csrf=login.headers['set-cookie']?.find((cookie:string)=>cookie.startsWith('pp_csrf_token='))
+      ?.split(';',1)[0]?.split('=',2)[1];
+    const cookie=login.headers['set-cookie'].map((item:string)=>item.split(';',1)[0]).join('; ');
+    const queue=await agent.get('/v1/operator/settlement-reviews');
+    expect(queue.status).toBe(200);
+    expect(queue.body.queue.map((x:{obligation_id:string})=>x.obligation_id)).toContain(id);
+    expect((await agent.get(`/v1/operator/settlement-reviews/${id}`)).body.claim.method).toBe('cash');
+    const url=`/v1/operator/settlement-reviews/${id}/decide`;
+    const input={contribution_owed:true,receipt_established:true,case_resolution:'resolved',
+      reason:'Reviewed transfer evidence and receipt',evidence_refs:[],participant_confirmation_id:null};
+    async function decide(key:string,body:object){return request(createApp()).post(url)
+      .set('Cookie',cookie).set('Origin','http://localhost:3000')
+      .set('X-CSRF-Token',csrf!).set('Idempotency-Key',key).send(body);}
+    expect((await decide(randomUUID(),input)).status).toBe(409);
+    setAuthProviderForTests(fakeProvider({...identity,assuranceLevel:'aal1'}));
+    expect((await decide(randomUUID(),{...input,evidence_refs:['transfer-proof']})).status).toBe(403);
+    setAuthProviderForTests(fakeProvider(identity));
+    const key=randomUUID(),body={...input,evidence_refs:['transfer-proof']};
+    const result=await decide(key,body);
+    expect(result.status).toBe(200);
+    expect((await decide(key,body)).body.operation.operation_id).toBe(result.body.operation.operation_id);
+    expect((await decide(key,{...body,contribution_owed:false})).status).toBe(409);
+    expect((await agent.get(`/v1/operator/settlement-reviews/${id}`)).body.decisions[0])
+      .toMatchObject({contribution_owed:true,receipt_established:true,case_resolution:'resolved'});
+    await verificationPool.query('UPDATE operator_allowlist SET active=false WHERE user_id=$1',[operatorId]);
+    expect((await agent.get('/v1/operator/settlement-reviews')).status).toBe(403);
+    expect((await decide(key,body)).status).toBe(403);
+  });
+  it('records not owed without receipt and blocks case acknowledgement when independent evidence is unavailable',async()=>{
+    const f=await fixture();await start(f);
+    const journey=new PilotJourneyService(pool),settlement=new DirectSettlementService(pool);
+    const cases=new SettlementCasesService(pool);
+    await journey.complete(f.driver.id,randomUUID(),f.offer,f.allocations.slice(0,3)
+      .map(allocation_id=>({allocation_id,travelled:true,completed:true})));
+    await journey.confirm(f.first.id,randomUUID(),f.offer,f.allocations[0],true,true);
+    const id=(await verificationPool.query<{id:string}>(
+      'SELECT id FROM pilot_contribution_obligations WHERE allocation_id=$1',[f.allocations[0]])).rows[0].id;
+    await settlement.mutate(f.first.id,randomUUID(),id,'claim','cash');
+    await settlement.mutate(f.driver.id,randomUUID(),id,'dispute');
+    const command={kind:'decision' as const,contribution_owed:false,receipt_established:false,
+      case_resolution:'resolved' as const,reason:'Reviewed journey and payment evidence',
+      evidence_refs:['journey-review-record'],participant_confirmation_id:null};
+    const path=resolve(directory,'receipts.pilot-settlement-case');
+    const {writeFile}=await import('node:fs/promises');
+    await writeFile(path,'unavailable');
+    await expect(cases.mutate(f.operator.id,randomUUID(),id,command))
+      .rejects.toMatchObject({code:'RECOVERY_UNAVAILABLE'});
+    expect((await verificationPool.query('SELECT id FROM pilot_settlement_case_operations')).rows).toHaveLength(0);
+    expect((await verificationPool.query<{mode:string}>(
+      'SELECT mode FROM pilot_recovery_state WHERE singleton=true')).rows[0].mode).toBe('restricted');
+    await rm(path,{recursive:true});
+    await verificationPool.query("UPDATE pilot_recovery_state SET mode='open',cause=NULL WHERE singleton=true");
+    const result=await cases.mutate(f.operator.id,randomUUID(),id,command);
+    expect(result.state).toBe('acknowledged');
+    const view=await cases.detail(f.first.id,id);
+    expect(view.decisions[0]).toMatchObject({contribution_owed:false,receipt_established:false,
+      case_resolution:'resolved'});
+    expect((await verificationPool.query('SELECT amount_paise FROM pilot_contribution_obligations WHERE id=$1',
+      [id])).rows[0].amount_paise).toBe(2500);
+  });
+  it('returns pending unknown after an uncertain resolution and reconciles its durable receipt once',async()=>{
+    const f=await fixture();await start(f);
+    const journey=new PilotJourneyService(pool),settlement=new DirectSettlementService(pool);
+    const cases=new SettlementCasesService(pool);
+    await journey.complete(f.driver.id,randomUUID(),f.offer,f.allocations.slice(0,3)
+      .map(allocation_id=>({allocation_id,travelled:true,completed:true})));
+    await journey.confirm(f.first.id,randomUUID(),f.offer,f.allocations[0],true,true);
+    const id=(await verificationPool.query<{id:string}>(
+      'SELECT id FROM pilot_contribution_obligations WHERE allocation_id=$1',[f.allocations[0]])).rows[0].id;
+    await settlement.mutate(f.first.id,randomUUID(),id,'claim','cash');
+    await settlement.mutate(f.driver.id,randomUUID(),id,'dispute');
+    const key=randomUUID(),command={kind:'decision' as const,contribution_owed:true,
+      receipt_established:false,case_resolution:'resolved' as const,
+      reason:'Reviewed claim and disputed receipt',evidence_refs:[],participant_confirmation_id:null};
+    setSettlementCaseAfterReceiptHookForTests(()=>{throw new Error('lost response after receipt');});
+    let operationId='';
+    try{await cases.mutate(f.operator.id,key,id,command);}catch(error){
+      expect(error).toMatchObject({code:'OPERATION_PENDING'});
+      operationId=(error as {details:{operationId:string}}).details.operationId;
+    }
+    expect(operationId).toBeTruthy();
+    setSettlementCaseAfterReceiptHookForTests(null);
+    expect(await cases.operation(f.operator.id,operationId,true))
+      .toEqual({operation_id:operationId,state:'pending_unknown'});
+    expect((await verificationPool.query<{mode:string}>(
+      'SELECT mode FROM pilot_recovery_state WHERE singleton=true')).rows[0].mode).toBe('restricted');
+    expect(await cases.reconcileReceipts(f.operator.id)).toBe(1);
+    await cases.verifyEvidence();
+    expect((await verificationPool.query<{n:number}>(`SELECT count(*)::int AS n
+      FROM pilot_settlement_case_operations WHERE obligation_id=$1 AND kind='decision'`,[id])).rows[0].n).toBe(1);
+    expect((await cases.detail(f.first.id,id)).review?.status).toBe('resolved');
   });
   it('restricts protected settlement writes when independent evidence storage fails',async()=>{
     const f=await fixture();await start(f);

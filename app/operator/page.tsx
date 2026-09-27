@@ -193,6 +193,7 @@ export default function OperatorPage() {
   if (!user) return <main className="p-8">Sign in to access the operator console. <Link href="/login">Sign in</Link></main>;
   if (authorized === false) return <main className="p-8">Operator access requires current allowlist membership and MFA. {message}</main>;
   return <main className="mx-auto max-w-3xl space-y-6 p-8">
+    <Link className="underline" href="/operator/settlement-reviews">Open settlement review queue</Link>
     <h1 className="text-2xl font-semibold">Pilot operator console</h1>
     <p>All decisions require current operator access and MFA. A pending decision keeps protected activity paused.</p>
     <p role="status">{message}</p>

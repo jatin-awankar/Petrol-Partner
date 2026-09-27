@@ -9,6 +9,7 @@ import { cancellationsService } from "../rides/cancellations.service";
 import { pilotDepartureService } from "../rides/pilot-departure.service";
 import { journeyReviewService } from "../rides/journey-review.service";
 import { directSettlementService } from "../rides/direct-settlement.service";
+import { settlementCasesService } from "../rides/settlement-cases.service";
 import { studentRevocationService } from "../verification/student-revocation.service";
 import { revocationCasesService } from "./revocation-cases.service";
 
@@ -31,7 +32,26 @@ operatorRouter.get("/journey-reviews",asyncHandler(async(req,res)=>{
   res.set("Cache-Control","private, no-store").json({cases:await journeyReviewService.queue(req.user!.userId)});
 }));
 operatorRouter.get("/settlement-reviews",asyncHandler(async(req,res)=>{
-  res.set("Cache-Control","private, no-store").json(await directSettlementService.openReviews(req.user!.userId));
+  res.set("Cache-Control","private, no-store").json({...(await directSettlementService.openReviews(req.user!.userId)),
+    queue:await settlementCasesService.queue(req.user!.userId)});
+}));
+operatorRouter.get('/settlement-reviews/:id',asyncHandler(async(req,res)=>{
+  res.set('Cache-Control','private, no-store').json(await settlementCasesService.detail(req.user!.userId,
+    operationId.parse(req.params.id),true));
+}));
+operatorRouter.get('/settlement-case-operations/:id',asyncHandler(async(req,res)=>{
+  res.json({operation:await settlementCasesService.operation(req.user!.userId,
+    operationId.parse(req.params.id),true)});
+}));
+operatorRouter.post('/settlement-reviews/:id/decide',asyncHandler(async(req,res)=>{
+  const key=req.header('Idempotency-Key');
+  if(!key||key.length>128) throw new AppError(400,'Idempotency-Key is required','IDEMPOTENCY_KEY_REQUIRED');
+  const input=z.strictObject({contribution_owed:z.boolean().nullable(),receipt_established:z.boolean().nullable(),
+    case_resolution:z.enum(['resolved','unresolved']),reason:z.string().trim().min(8).max(500),
+    evidence_refs:z.array(z.string().trim().min(1).max(200)).max(20),
+    participant_confirmation_id:z.uuid().nullable()}).parse(req.body);
+  res.json({operation:await settlementCasesService.mutate(req.user!.userId,key,
+    operationId.parse(req.params.id),{kind:'decision',...input})});
 }));
 operatorRouter.get("/journey-reviews/:id",asyncHandler(async(req,res)=>{
   res.set("Cache-Control","private, no-store").json(await journeyReviewService.detail(req.user!.userId,operationId.parse(req.params.id)));
