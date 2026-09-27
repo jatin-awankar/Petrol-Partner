@@ -133,6 +133,7 @@ export class DirectSettlementService {
         if(!car) throw new AppError(409,'Allocation missing','ALLOCATION_MISSING');
         await assertCurrentDriverCarEligibility(client,actorId,car);
         if(!item.claim_id) throw new AppError(409,'Payment claim required','CLAIM_REQUIRED');
+        if(item.review_status==='resolved') throw new AppError(409,'Settlement case resolved','CASE_RESOLVED');
         if(item.response_id) throw new AppError(409,'Driver already responded','RESPONSE_EXISTS');
         if(item.claimed_at&&now.getTime()>=item.claimed_at.getTime()+DRIVER_RESPONSE_WINDOW_MS)
           throw new AppError(409,'Driver response window elapsed; review required','REVIEW_REQUIRED');

@@ -773,7 +773,8 @@ describe("ticket 22 individual journey confirmation",()=>{
     const [a,b]=await Promise.allSettled([
       cases.mutate(f.operator.id,decisionKey,id,resolved),
       cases.mutate(f.operator.id,randomUUID(),id,{...resolved,receipt_established:true,
-        evidence_refs:['reviewed-transfer-record']})]);
+        evidence_refs:['reviewed-transfer-record'],receipt_basis:'reviewed_evidence',
+        reviewed_evidence_summary:'Reviewed transfer record against claim'})]);
     expect([a,b].filter(x=>x.status==='fulfilled')).toHaveLength(1);
     if(a.status==='fulfilled') expect((await cases.mutate(f.operator.id,decisionKey,id,resolved)).operation_id)
       .toBe(a.value.operation_id);
@@ -829,7 +830,8 @@ describe("ticket 22 individual journey confirmation",()=>{
     setAuthProviderForTests(fakeProvider({...identity,assuranceLevel:'aal1'}));
     expect((await decide(randomUUID(),{...input,evidence_refs:['transfer-proof']})).status).toBe(403);
     setAuthProviderForTests(fakeProvider(identity));
-    const key=randomUUID(),body={...input,evidence_refs:['transfer-proof']};
+    const key=randomUUID(),body={...input,evidence_refs:['transfer-proof'],
+      receipt_basis:'reviewed_evidence',reviewed_evidence_summary:'Reviewed transfer proof with parties'};
     const result=await decide(key,body);
     expect(result.status).toBe(200);
     expect((await decide(key,body)).body.operation.operation_id).toBe(result.body.operation.operation_id);
@@ -903,6 +905,48 @@ describe("ticket 22 individual journey confirmation",()=>{
     expect((await verificationPool.query<{n:number}>(`SELECT count(*)::int AS n
       FROM pilot_settlement_case_operations WHERE obligation_id=$1 AND kind='decision'`,[id])).rows[0].n).toBe(1);
     expect((await cases.detail(f.first.id,id)).review?.status).toBe('resolved');
+  });
+  it('establishes receipt from a recorded driver confirmation and restores a missing silence review',async()=>{
+    const f=await fixture();await start(f);
+    const journey=new PilotJourneyService(pool),settlement=new DirectSettlementService(pool);
+    const cases=new SettlementCasesService(pool);
+    await journey.complete(f.driver.id,randomUUID(),f.offer,f.allocations.slice(0,3)
+      .map(allocation_id=>({allocation_id,travelled:true,completed:true})));
+    for(const [index,passenger] of [f.first,f.second].entries())
+      await journey.confirm(passenger.id,randomUUID(),f.offer,f.allocations[index],true,true);
+    const rows=(await verificationPool.query<{id:string;allocation_id:string}>(
+      'SELECT id,allocation_id FROM pilot_contribution_obligations')).rows;
+    const first=rows.find(x=>x.allocation_id===f.allocations[0])!.id;
+    const second=rows.find(x=>x.allocation_id===f.allocations[1])!.id;
+    await settlement.mutate(f.first.id,randomUUID(),first,'claim','upi');
+    const confirmation=await settlement.mutate(f.driver.id,randomUUID(),first,'confirm');
+    await cases.mutate(f.first.id,randomUUID(),first,{kind:'report',contribution_owed:null,
+      receipt_established:null,case_resolution:null,reason:'Driver receipt needs review',
+      evidence_refs:[],participant_confirmation_id:null});
+    await expect(cases.mutate(f.operator.id,randomUUID(),first,{kind:'decision',
+      contribution_owed:true,receipt_established:true,case_resolution:'resolved',
+      reason:'Matched recorded driver confirmation',evidence_refs:[],
+      participant_confirmation_id:randomUUID(),receipt_basis:'participant_confirmation'}))
+      .rejects.toMatchObject({code:'CONFIRMATION_MISSING'});
+    const result=await cases.mutate(f.operator.id,randomUUID(),first,{kind:'decision',
+      contribution_owed:true,receipt_established:true,case_resolution:'resolved',
+      reason:'Matched recorded driver confirmation',evidence_refs:[],
+      participant_confirmation_id:confirmation.operation_id,receipt_basis:'participant_confirmation'});
+    expect(result.state).toBe('acknowledged');
+    expect((await cases.detail(f.first.id,first)).decisions[0].receipt_basis).toBe('participant_confirmation');
+    const past=new Date(Date.now()-86_400_100);
+    await settlement.mutate(f.second.id,randomUUID(),second,'claim','cash',past);
+    const silence=new DirectSettlementSilenceService(pool);
+    expect((await silence.sweep(new Date())).opened).toBe(1);
+    const decision=await cases.mutate(f.operator.id,randomUUID(),second,{kind:'decision',
+      contribution_owed:true,receipt_established:false,case_resolution:'resolved',
+      reason:'Claim unanswered after deadline',evidence_refs:[],participant_confirmation_id:null});
+    await verificationPool.query('DELETE FROM pilot_settlement_reviews WHERE obligation_id=$1',[second]);
+    expect(await cases.reconcileReceipts(f.operator.id)).toBe(3);
+    expect((await cases.detail(f.second.id,second)).review?.status).toBe('resolved');
+    expect((await verificationPool.query<{id:string}>(`SELECT final_decision_id AS id FROM pilot_settlement_reviews
+      WHERE obligation_id=$1`,[second])).rows[0].id).toBe(decision.operation_id);
+    await cases.verifyEvidence();
   });
   it('restricts protected settlement writes when independent evidence storage fails',async()=>{
     const f=await fixture();await start(f);

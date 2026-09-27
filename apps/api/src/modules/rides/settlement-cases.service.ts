@@ -15,7 +15,8 @@ const store=()=>pilotReceiptStore<Receipt>('pilot-settlement-case','Settlement c
 const digest=(id:string,command:repo.Command)=>createHash('sha256').update(JSON.stringify({id,command})).digest('hex');
 const command=(row:repo.Operation):repo.Command=>({kind:row.kind,contribution_owed:row.contribution_owed,
   receipt_established:row.receipt_established,case_resolution:row.case_resolution,reason:row.reason,
-  evidence_refs:row.evidence_refs,participant_confirmation_id:row.participant_confirmation_id});
+  evidence_refs:row.evidence_refs,participant_confirmation_id:row.participant_confirmation_id,
+  receipt_basis:row.receipt_basis,reviewed_evidence_summary:row.reviewed_evidence_summary});
 const receipt=(row:repo.Operation):Receipt=>({operationId:row.id,obligationId:row.obligation_id,
   actorId:row.actor_id,key:row.idempotency_key,digest:row.payload_digest,command:command(row),
   recordedAt:row.recorded_at.toISOString()});
@@ -49,9 +50,7 @@ export class SettlementCasesService {
     if(!source||(!operator&&![source.driver_id,source.passenger_id].includes(actorId)))
       throw new AppError(404,'Settlement case not found','CASE_NOT_FOUND');
     const history=await repo.history(this.db,id);
-    const audit=await this.db.query(`SELECT action,created_at,metadata FROM audit_logs
-      WHERE entity_type='pilot_contribution_obligation' AND entity_id=$1
-      ORDER BY created_at,id`,[id]);
+    const audit=await repo.audit(this.db,id);
     return {obligation:{id:source.id,amount_paise:source.amount_paise,currency:source.currency,
       due_at:source.due_at},claim:source.claim_id?{id:source.claim_id,method:source.claim_method,
       recorded_at:source.claimed_at}:null,response:source.response_id?{id:source.response_id,
@@ -61,10 +60,12 @@ export class SettlementCasesService {
       decisions:history.filter(x=>x.kind==='decision').map(x=>({id:x.id,
         contribution_owed:x.contribution_owed,receipt_established:x.receipt_established,
         case_resolution:x.case_resolution,reason:x.reason,recorded_at:x.recorded_at,
-        ...(operator?{evidence_refs:x.evidence_refs,operator_id:x.actor_id}: {})})),
+        receipt_basis:x.receipt_basis,
+        ...(operator?{evidence_refs:x.evidence_refs,reviewed_evidence_summary:x.reviewed_evidence_summary,
+          operator_id:x.actor_id}: {})})),
       reports:history.filter(x=>x.kind==='report').map(x=>({id:x.id,reason:x.reason,
         recorded_at:x.recorded_at,actor_id:x.actor_id})),
-      audit:audit.rows.map(x=>({action:x.action,created_at:x.created_at,
+      audit:audit.map(x=>({action:x.action,created_at:x.created_at,
         operation_id:x.metadata?.operationId}))};
   }
   async operation(actorId:string,id:string,operator=false){
@@ -105,7 +106,9 @@ export class SettlementCasesService {
       throw error;}
   }
   async mutate(actorId:string,key:string,id:string,input:repo.Command,now=new Date()){
-    const normalized={...input,evidence_refs:[...new Set(input.evidence_refs)].sort()};
+    const normalized={...input,evidence_refs:[...new Set(input.evidence_refs)].sort(),
+      receipt_basis:input.receipt_basis??null,
+      reviewed_evidence_summary:input.reviewed_evidence_summary?.trim()??null};
     const payloadDigest=digest(id,normalized);
     if(input.kind==='decision') await inProtectedTransaction(this.db,c=>assertCurrentOperator(c,actorId));
     const prior=await repo.byKey(this.db,actorId,key);
@@ -139,19 +142,24 @@ export class SettlementCasesService {
         if(!source.review_id&&(!source.claimed_at||source.response_kind!=='dispute'&&
           now.getTime()<source.claimed_at.getTime()+86_400_000))
           throw new AppError(409,'No reviewable case','CASE_NOT_OPEN');
-        if(input.receipt_established===true){
-          if(!input.reason.trim()) throw new AppError(400,'Receipt reason required','REASON_REQUIRED');
-          if(input.participant_confirmation_id!==null&&
-            (source.response_kind!=='confirm'||source.response_id!==input.participant_confirmation_id))
-            throw new AppError(409,'Confirmation is not recorded','CONFIRMATION_MISSING');
-          if(input.participant_confirmation_id===null&&input.evidence_refs.length===0)
-            throw new AppError(409,'Receipt evidence required','EVIDENCE_REQUIRED');
+        if(normalized.receipt_established===true){
+          if(normalized.receipt_basis==='participant_confirmation'){
+            if(!normalized.participant_confirmation_id||normalized.evidence_refs.length||
+              normalized.reviewed_evidence_summary||source.response_kind!=='confirm'||
+              source.response_id!==normalized.participant_confirmation_id)
+              throw new AppError(409,'Recorded participant confirmation required','CONFIRMATION_MISSING');
+          }else if(normalized.receipt_basis==='reviewed_evidence'){
+            if(normalized.participant_confirmation_id||!normalized.evidence_refs.length||
+              !normalized.reviewed_evidence_summary||normalized.reviewed_evidence_summary.length<8)
+              throw new AppError(409,'Reviewed evidence and summary required','EVIDENCE_REQUIRED');
+          }else throw new AppError(409,'Receipt basis required','EVIDENCE_REQUIRED');
+        }else if(normalized.receipt_basis||normalized.participant_confirmation_id||
+          normalized.reviewed_evidence_summary){
+          throw new AppError(409,'Receipt basis requires established receipt','INVALID_RECEIPT_BASIS');
         }
         if(input.case_resolution==='resolved'&&(input.contribution_owed===null||input.receipt_established===null))
           throw new AppError(409,'Resolution requires both findings','INCOMPLETE_FINDINGS');
-        if(!source.review_id) await client.query(`INSERT INTO pilot_settlement_reviews
-          (obligation_id,reason,opened_at) VALUES($1,'driver_silence',$2)
-          ON CONFLICT(obligation_id) DO NOTHING`,[id,now]);
+        if(!source.review_id) await repo.ensureReview(client,id,now,'driver_silence');
       }
       const row=await repo.insert(client,{obligationId:id,actorId,key,digest:payloadDigest,
         command:normalized,at:now});
@@ -189,8 +197,16 @@ export class SettlementCasesService {
       if(current&&JSON.stringify(receipt(current))!==JSON.stringify(item))
         throw new AppError(409,'Case operation conflicts','RECOVERY_CONFLICT');
       const source=await repo.source(client,item.obligationId,true);
-      if(!source||!source.claim_id||(item.command.kind==='decision'&&!source.review_id))
+      if(!source||!source.claim_id)
         throw new AppError(409,'Settlement case source missing','RECOVERY_INCOMPLETE');
+      if(item.command.kind==='decision'&&!source.review_id){
+        if(source.response_kind==='dispute') await repo.ensureReview(client,item.obligationId,
+          new Date(item.recordedAt),'disputed');
+        else if(!source.response_id&&source.claimed_at&&
+          new Date(item.recordedAt).getTime()>=source.claimed_at.getTime()+86_400_000)
+          await repo.ensureReview(client,item.obligationId,new Date(item.recordedAt),'driver_silence');
+        else throw new AppError(409,'Review source missing','RECOVERY_INCOMPLETE');
+      }
       const row=current??await repo.insert(client,{id:item.operationId,obligationId:item.obligationId,
         actorId:item.actorId,key:item.key,digest:item.digest,command:item.command,
         at:new Date(item.recordedAt),state:'recovered'});

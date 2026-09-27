@@ -49,7 +49,9 @@ operatorRouter.post('/settlement-reviews/:id/decide',asyncHandler(async(req,res)
   const input=z.strictObject({contribution_owed:z.boolean().nullable(),receipt_established:z.boolean().nullable(),
     case_resolution:z.enum(['resolved','unresolved']),reason:z.string().trim().min(8).max(500),
     evidence_refs:z.array(z.string().trim().min(1).max(200)).max(20),
-    participant_confirmation_id:z.uuid().nullable()}).parse(req.body);
+    participant_confirmation_id:z.uuid().nullable(),
+    receipt_basis:z.enum(['participant_confirmation','reviewed_evidence']).nullable().optional(),
+    reviewed_evidence_summary:z.string().trim().min(8).max(500).nullable().optional()}).parse(req.body);
   res.json({operation:await settlementCasesService.mutate(req.user!.userId,key,
     operationId.parse(req.params.id),{kind:'decision',...input})});
 }));

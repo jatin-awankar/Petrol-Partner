@@ -2,7 +2,9 @@ import type {Pool,PoolClient} from 'pg';
 type Db=Pool|PoolClient;
 export type Command={kind:'report'|'decision';contribution_owed:boolean|null;
   receipt_established:boolean|null;case_resolution:'resolved'|'unresolved'|null;
-  reason:string;evidence_refs:string[];participant_confirmation_id:string|null};
+  reason:string;evidence_refs:string[];participant_confirmation_id:string|null;
+  receipt_basis?:'participant_confirmation'|'reviewed_evidence'|null;
+  reviewed_evidence_summary?:string|null};
 export type Operation=Command&{id:string;obligation_id:string;actor_id:string;idempotency_key:string;
   payload_digest:string;recorded_at:Date;state:'committed'|'acknowledged'|'recovered'};
 export const byKey=async(db:Db,actor:string,key:string)=>(await db.query<Operation>(
@@ -13,6 +15,9 @@ export const all=async(db:Db)=>(await db.query<Operation>(
   'SELECT * FROM pilot_settlement_case_operations ORDER BY recorded_at,id')).rows;
 export const history=async(db:Db,id:string)=>(await db.query<Operation>(
   'SELECT * FROM pilot_settlement_case_operations WHERE obligation_id=$1 ORDER BY recorded_at,id',[id])).rows;
+export const audit=async(db:Db,id:string)=>(await db.query<{action:string;created_at:Date;
+  metadata:{operationId?:string}}>(`SELECT action,created_at,metadata FROM audit_logs
+  WHERE entity_type='pilot_contribution_obligation' AND entity_id=$1 ORDER BY created_at,id`,[id])).rows;
 export const source=async(db:Db,id:string,lock=false)=>(await db.query<{
   id:string;driver_id:string;passenger_id:string;amount_paise:number;currency:string;due_at:Date;
   claim_id:string|null;claim_method:string|null;claimed_at:Date|null;
@@ -44,11 +49,16 @@ export async function insert(db:PoolClient,input:{id?:string;obligationId:string
   const c=input.command;
   return (await db.query<Operation>(`INSERT INTO pilot_settlement_case_operations
     (id,obligation_id,actor_id,idempotency_key,payload_digest,kind,contribution_owed,
-     receipt_established,case_resolution,reason,evidence_refs,participant_confirmation_id,recorded_at,state)
-    VALUES(COALESCE($1::uuid,gen_random_uuid()),$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+     receipt_established,case_resolution,reason,evidence_refs,participant_confirmation_id,
+     receipt_basis,reviewed_evidence_summary,recorded_at,state)
+    VALUES(COALESCE($1::uuid,gen_random_uuid()),$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
     [input.id??null,input.obligationId,input.actorId,input.key,input.digest,c.kind,c.contribution_owed,
       c.receipt_established,c.case_resolution,c.reason,c.evidence_refs,c.participant_confirmation_id,
-      input.at,input.state??'committed'])).rows[0];
+      c.receipt_basis??null,c.reviewed_evidence_summary??null,input.at,input.state??'committed'])).rows[0];
+}
+export async function ensureReview(db:PoolClient,id:string,at:Date,reason:'driver_silence'|'disputed'){
+  await db.query(`INSERT INTO pilot_settlement_reviews(obligation_id,reason,opened_at)
+    VALUES($1,$3,$2) ON CONFLICT(obligation_id) DO NOTHING`,[id,at,reason]);
 }
 export async function apply(db:PoolClient,row:Operation){
   if(row.kind==='report') await db.query(`INSERT INTO pilot_settlement_reviews
