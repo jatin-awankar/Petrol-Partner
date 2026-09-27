@@ -37,3 +37,9 @@ Verification: focused PostgreSQL HTTP tests passed for three passenger outcomes 
 The two-axis `/code-review` against `main` found one standards issue (SQL reads in the service) and one spec evidence gap (different passenger decisions were not all exercised through HTTP). Both were corrected, and the affected tests, typecheck, lint, and API build passed afterward. The review also noted similar client and server payload normalization as a judgment-call duplication; client normalization supplies feedback while server validation remains authoritative.
 
 Remaining limits: no deployed schema or user-population inventory, provider restore rehearsal, live email outage, or real-trip launch gate was performed. This ticket did not deploy, migrate a deployment, or enable real trips. Operator judgment of actual trip evidence remains a human decision for each case.
+
+## Comments
+
+Follow-up `/code-review` fix: the PostgreSQL HTTP test now submits an insufficient-evidence operator decision through the authenticated endpoint, then reads the still-open case through both operator and managed passenger HTTP sessions. It verifies no obligation is present and later final decisions and recovery still work. A temporary local mutation that rejected insufficient-evidence decisions made the focused test fail with HTTP 409 instead of 200; the mutation was removed and the test passed. `npm test` passed again (27 script tests, 4 skipped; 112 API tests, 1 skipped; 16 worker tests), as did `npm run typecheck`.
+
+The standards review's recovery-registry “Shotgun Surgery” note remains a low-severity design judgment, not a documented-standard violation. Recovery, reconciliation, and digest lists use deliberately different orders; a broad registry refactor would change pilot-critical recovery code without a demonstrated correctness defect in this ticket.

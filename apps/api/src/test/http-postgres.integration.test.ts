@@ -443,7 +443,7 @@ describe("ticket 22 individual journey confirmation",()=>{
       .set('Cookie',cookie).set('Origin','http://localhost:3000').set('X-CSRF-Token',csrf!)
       .set('Idempotency-Key',randomUUID()).send(owed)).status).toBe(403);
   });
-  it("acknowledges an HTTP operator decision and restores it from an independent receipt",async()=>{
+  it("keeps an insufficient-evidence HTTP decision visible, then restores final decisions",async()=>{
     const f=await fixture();await start(f);
     const allocation=f.allocations[0];
     const journeys=new PilotJourneyService(pool);
@@ -485,6 +485,38 @@ describe("ticket 22 individual journey confirmation",()=>{
       .set('X-CSRF-Token',csrf!).set('Idempotency-Key',idempotencyKey).send(payload);
     expect((await post(caseId,randomUUID(),{...body,outcome:'did_not_travel',
       contribution_owed:true})).status).toBe(400);
+    const unresolved=await post(caseId,randomUUID(),{outcome:'insufficient_evidence',
+      contribution_owed:null,reason:'Insufficient corroborating journey evidence',
+      evidence_refs:['review-note-unresolved']});
+    expect(unresolved.status,JSON.stringify(unresolved.body)).toBe(200);
+    expect(unresolved.body.operation).toMatchObject({state:'acknowledged',
+      outcome:'insufficient_evidence',contribution_owed:null});
+    const openQueue=await request(createApp()).get('/v1/operator/journey-reviews').set('Cookie',cookie);
+    expect(openQueue.body.cases).toEqual(expect.arrayContaining([
+      expect.objectContaining({id:caseId,status:'open',latest_outcome:'insufficient_evidence'})]));
+    const openDetail=await request(createApp()).get(`/v1/operator/journey-reviews/${caseId}`).set('Cookie',cookie);
+    expect(openDetail.body.case).toMatchObject({status:'open',obligation_id:null});
+    expect(openDetail.body.decisions).toEqual([expect.objectContaining({outcome:'insufficient_evidence'})]);
+    const passengerEmail=(await verificationPool.query<{email:string}>(
+      'SELECT email FROM users WHERE id=$1',[f.first.id])).rows[0].email;
+    const passengerSubject=`journey-passenger-${randomUUID()}`;
+    await verificationPool.query("INSERT INTO user_profiles(user_id,full_name) VALUES($1,'Journey Passenger')",[f.first.id]);
+    await verificationPool.query(`INSERT INTO auth_identities(provider,provider_subject,user_id,provider_email)
+      VALUES('supabase',$1,$2,$3)`,[passengerSubject,f.first.id,passengerEmail]);
+    setAuthProviderForTests(fakeProvider({subject:passengerSubject,email:passengerEmail,
+      emailVerified:true,assuranceLevel:'aal1',userMetadata:{}}));
+    const passengerLogin=await request(createApp()).post('/v1/auth/login')
+      .send({email:passengerEmail,password:'synthetic'});
+    expect(passengerLogin.status).toBe(200);
+    const passengerCookie=(passengerLogin.headers['set-cookie'] as string[])
+      .map(item=>item.split(';',1)[0]).join('; ');
+    const passengerDetail=await request(createApp()).get(`/v1/seat-requests/journey-reviews/${caseId}`)
+      .set('Cookie',passengerCookie);
+    expect(passengerDetail.body.case).toMatchObject({status:'open',obligation_id:null});
+    expect(passengerDetail.body.decisions).toEqual([expect.objectContaining({
+      outcome:'insufficient_evidence',contribution_owed:null})]);
+    setAuthProviderForTests(fakeProvider({subject,email,emailVerified:true,
+      assuranceLevel:'aal2',userMetadata:{}}));
     const first=await post(caseId,key);
     expect(first.status,JSON.stringify(first.body)).toBe(200);
     expect(first.body.operation).toMatchObject({state:'acknowledged',outcome:'interrupted',contribution_owed:true});
@@ -513,7 +545,7 @@ describe("ticket 22 individual journey confirmation",()=>{
     await verificationPool.query("UPDATE pilot_journey_reviews SET status='open' WHERE id=$1",[caseId]);
     await verificationPool.query("UPDATE pilot_recovery_state SET mode='restricted' WHERE singleton=true");
     const reviews=new JourneyReviewService(pool);
-    expect(await reviews.reconcileReceipts(operatorId)).toBe(3);
+    expect(await reviews.reconcileReceipts(operatorId)).toBe(4);
     const restored=(await verificationPool.query<{amount_paise:number;due_at:Date}>(
       'SELECT amount_paise,due_at FROM pilot_contribution_obligations WHERE allocation_id=$1',
       [allocation])).rows[0];
