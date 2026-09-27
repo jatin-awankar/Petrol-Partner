@@ -6,6 +6,7 @@ import { SeatRequestsService, setSeatRequestClockForTests } from "../modules/rid
 import { CancellationsService } from "../modules/rides/cancellations.service";
 import { PilotDepartureService } from "../modules/rides/pilot-departure.service";
 import { PilotJourneyService } from "../modules/rides/pilot-journey.service";
+import { JourneyReviewService } from "../modules/rides/journey-review.service";
 import { reviewSilentJourneys } from "../../../worker/src/jobs/pilot-journey-silence";
 import { StudentRevocationService } from "../modules/verification/student-revocation.service";
 import { DriverCarReviewService } from "../modules/verification/driver-car-review.service";
@@ -29,7 +30,7 @@ import { setBackupObjectProbeForTests } from "../modules/operator/backup-status"
 import { setStudentReviewAfterCommitHookForTests } from "../modules/verification/student-review.service";
 
 const verificationPool = new Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
-const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql", "0006_operator_allowlist.sql", "0007_operator_pause.sql", "0008_operator_intent_handoff.sql", "0009_durable_notifications.sql", "0010_email_retry_operations.sql", "0011_backup_attempts.sql", "0012_student_adult_review.sql", "0013_student_review_cycles.sql", "0014_student_review_operations.sql", "0015_student_evidence_access.sql", "0016_student_evidence_deletion_outcomes.sql", "0017_student_evidence_retry_schedule.sql", "0018_driver_car_approval.sql", "0019_ride_departures.sql", "0020_corridor_offers.sql", "0021_corridor_offer_recovery.sql", "0022_pilot_seat_requests.sql", "0023_pilot_seat_acceptance.sql", "0024_pilot_cancellations.sql", "0025_pilot_departure.sql", "0026_revocation_holds_incidents.sql", "0027_pilot_journeys.sql"];
+const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql", "0006_operator_allowlist.sql", "0007_operator_pause.sql", "0008_operator_intent_handoff.sql", "0009_durable_notifications.sql", "0010_email_retry_operations.sql", "0011_backup_attempts.sql", "0012_student_adult_review.sql", "0013_student_review_cycles.sql", "0014_student_review_operations.sql", "0015_student_evidence_access.sql", "0016_student_evidence_deletion_outcomes.sql", "0017_student_evidence_retry_schedule.sql", "0018_driver_car_approval.sql", "0019_ride_departures.sql", "0020_corridor_offers.sql", "0021_corridor_offer_recovery.sql", "0022_pilot_seat_requests.sql", "0023_pilot_seat_acceptance.sql", "0024_pilot_cancellations.sql", "0025_pilot_departure.sql", "0026_revocation_holds_incidents.sql", "0027_pilot_journeys.sql", "0028_journey_review_decisions.sql"];
 
 function fakeProvider(identity: ProviderIdentity): AuthProvider {
   const session = { accessToken: "provider-access", refreshToken: "provider-refresh", expiresIn: 900, identity };
@@ -338,6 +339,264 @@ describe("ticket 22 individual journey confirmation",()=>{
         expect.objectContaining({allocation_id:f.allocations[0],reason:'absence'})]));
       expect(JSON.stringify(minimal.body)).not.toContain('registration_number');
     }finally{setSeatRequestClockForTests(null);}
+  });
+  it("records separate operator outcomes, frozen obligations, retries and participant views",async()=>{
+    const f=await fixture();
+    await start(f);
+    const journeys=new PilotJourneyService(pool);
+    const [first,second,third]=f.allocations;
+    await journeys.complete(f.driver.id,randomUUID(),f.offer,[first,second,third]
+      .map(allocation_id=>({allocation_id,travelled:true,completed:true})));
+    await journeys.confirm(f.first.id,randomUUID(),f.offer,first,false,false);
+    await journeys.confirm(f.second.id,randomUUID(),f.offer,second,false,false);
+    await journeys.confirm(f.silent.id,randomUUID(),f.offer,third,false,false);
+    const cases=(await verificationPool.query<{id:string;allocation_id:string}>(
+      'SELECT id,allocation_id FROM pilot_journey_reviews WHERE allocation_id=ANY($1::uuid[])',
+      [[first,second,third]])).rows;
+    expect(cases).toHaveLength(3);
+    const bySeat=new Map(cases.map(row=>[row.allocation_id,row.id]));
+    const review=new JourneyReviewService(pool);
+    const undecided=await request(createApp()).get(`/v1/seat-requests/journey-reviews/${bySeat.get(first)}`)
+      .set('Authorization',`Bearer ${f.first.token}`);
+    expect(undecided.status).toBe(200);
+    expect(undecided.body.case).toMatchObject({status:'open',obligation_id:null,
+      driver_travelled:true,passenger_travelled:false});
+    expect((await request(createApp()).get(`/v1/seat-requests/journey-reviews/${bySeat.get(first)}`)
+      .set('Authorization',`Bearer ${f.outsider.token}`)).status).toBe(404);
+    const key=randomUUID();
+    const unresolved={outcome:'insufficient_evidence' as const,contribution_owed:null,
+      reason:'Insufficient independent trip evidence',evidence_refs:['case-note-1']};
+    await review.decide(f.operator.id,key,bySeat.get(first)!,unresolved);
+    expect((await review.decide(f.operator.id,key,bySeat.get(first)!,unresolved)).operation_id).toBeTruthy();
+    await expect(review.decide(f.operator.id,key,bySeat.get(first)!,{...unresolved,reason:'Changed reason'}))
+      .rejects.toMatchObject({code:'IDEMPOTENCY_PAYLOAD_MISMATCH'});
+    expect((await review.detail(f.operator.id,bySeat.get(first)!)).case.status).toBe('open');
+    const owed={outcome:'travelled_completed' as const,contribution_owed:true,
+      reason:'Verified travel against journey evidence',evidence_refs:['case-note-2']};
+    const result=await review.decide(f.operator.id,randomUUID(),bySeat.get(first)!,owed);
+    expect(result.state).toBe('acknowledged');
+    await review.decide(f.operator.id,randomUUID(),bySeat.get(second)!,{
+      outcome:'did_not_travel',contribution_owed:false,
+      reason:'Verified that passenger did not board',evidence_refs:[]});
+    await review.decide(f.operator.id,randomUUID(),bySeat.get(third)!,{
+      outcome:'interrupted',contribution_owed:false,
+      reason:'Travel interrupted before destination',evidence_refs:[]});
+    await expect(review.decide(f.operator.id,randomUUID(),bySeat.get(first)!,owed))
+      .rejects.toMatchObject({code:'REVIEW_RESOLVED'});
+    const obligations=(await verificationPool.query<{allocation_id:string;amount_paise:number;
+      due_at:Date;confirmed_at:Date;review_decision_id:string|null}>(
+      'SELECT * FROM pilot_contribution_obligations')).rows;
+    expect(obligations).toHaveLength(1);
+    expect(obligations[0]).toMatchObject({allocation_id:first,amount_paise:2500,
+      review_decision_id:result.operation_id});
+    expect(obligations[0].due_at.getTime()-obligations[0].confirmed_at.getTime()).toBe(86_400_000);
+    expect((await verificationPool.query('SELECT * FROM pilot_journey_claims')).rows).toHaveLength(6);
+    expect((await verificationPool.query("SELECT * FROM pilot_journey_reviews WHERE status='open'")).rows).toHaveLength(0);
+    expect((await verificationPool.query("SELECT * FROM pilot_notification_events WHERE origin_type='journey_review_decision' AND ready_at IS NOT NULL")).rows).toHaveLength(8);
+    await review.verifyEvidence();
+    const visible=await request(createApp()).get(`/v1/seat-requests/journey-reviews/${bySeat.get(first)}`)
+      .set('Authorization',`Bearer ${f.first.token}`);
+    expect(visible.body.case).toMatchObject({status:'resolved',obligation_paise:2500,
+      outcome:'travelled_completed',contribution_owed:true});
+    expect(JSON.stringify(visible.body)).not.toContain('case-note-2');
+    const operatorEmail=`journey-operator-${randomUUID()}@example.test`;
+    const httpOperator=(await verificationPool.query<{id:string}>(`INSERT INTO users(email,role,email_verified_at)
+      VALUES($1,'admin',now()) RETURNING id`,[operatorEmail])).rows[0].id;
+    await verificationPool.query("INSERT INTO user_profiles(user_id,full_name) VALUES($1,'Journey Operator')",[httpOperator]);
+    await verificationPool.query(`INSERT INTO operator_allowlist(user_id,active,reason,reviewed_at)
+      VALUES($1,true,'test journey access',now())`,[httpOperator]);
+    await verificationPool.query(`INSERT INTO auth_identities(provider,provider_subject,user_id,provider_email)
+      VALUES('supabase','journey-operator-subject',$1,$2)`,[httpOperator,operatorEmail]);
+    await verificationPool.query(`UPDATE auth_cutover_state SET active_provider='supabase',
+      legacy_login_enabled=false,authorized_at=now(),authorized_by='integration-test'`);
+    setManagedAuthEnabledForTests(true);
+    setAuthProviderForTests(fakeProvider({subject:'journey-operator-subject',email:operatorEmail,
+      emailVerified:true,assuranceLevel:'aal2',userMetadata:{}}));
+    const agent=request.agent(createApp());
+    const login=await agent.post('/v1/auth/login').send({email:operatorEmail,password:'synthetic'});
+    expect(login.status).toBe(200);
+    const csrf=login.headers['set-cookie']?.find((cookie:string)=>cookie.startsWith('pp_csrf_token='))
+      ?.split(';',1)[0]?.split('=',2)[1];
+    const cookie=login.headers['set-cookie'].map((item:string)=>item.split(';',1)[0]).join('; ');
+    const queue=await agent.get('/v1/operator/journey-reviews');
+    expect(queue.status).toBe(200);
+    expect(queue.body.cases).toEqual([]);
+    const detail=await agent.get(`/v1/operator/journey-reviews/${bySeat.get(first)}`);
+    expect(detail.status).toBe(200);
+    expect(detail.body.decisions).toHaveLength(2);
+    const conflict=await request(createApp()).post(`/v1/operator/journey-reviews/${bySeat.get(first)}/decide`)
+      .set('Cookie',cookie).set('Origin','http://localhost:3000').set('X-CSRF-Token',csrf!).set('Idempotency-Key',randomUUID()).send(owed);
+    expect(conflict.status).toBe(409);
+    const op=await agent.get(`/v1/operator/journey-review-decisions/${result.operation_id}`);
+    expect(op.status).toBe(404);
+    setAuthProviderForTests(fakeProvider({subject:'journey-operator-subject',email:operatorEmail,
+      emailVerified:true,assuranceLevel:'aal1',userMetadata:{}}));
+    expect((await agent.get('/v1/operator/journey-reviews')).status).toBe(403);
+    expect((await request(createApp()).post(`/v1/operator/journey-reviews/${bySeat.get(first)}/decide`)
+      .set('Cookie',cookie).set('Origin','http://localhost:3000').set('X-CSRF-Token',csrf!)
+      .set('Idempotency-Key',randomUUID()).send(owed)).status).toBe(403);
+    setAuthProviderForTests(fakeProvider({subject:'journey-operator-subject',email:operatorEmail,
+      emailVerified:true,assuranceLevel:'aal2',userMetadata:{}}));
+    await verificationPool.query('UPDATE operator_allowlist SET active=false WHERE user_id=$1',[httpOperator]);
+    expect((await agent.get('/v1/operator/journey-reviews')).status).toBe(403);
+    expect((await request(createApp()).post(`/v1/operator/journey-reviews/${bySeat.get(first)}/decide`)
+      .set('Cookie',cookie).set('Origin','http://localhost:3000').set('X-CSRF-Token',csrf!)
+      .set('Idempotency-Key',randomUUID()).send(owed)).status).toBe(403);
+  });
+  it("keeps an insufficient-evidence HTTP decision visible, then restores final decisions",async()=>{
+    const f=await fixture();await start(f);
+    const allocation=f.allocations[0];
+    const journeys=new PilotJourneyService(pool);
+    await journeys.complete(f.driver.id,randomUUID(),f.offer,f.allocations.slice(0,3)
+      .map(allocation_id=>({allocation_id,travelled:true,completed:true})));
+    await journeys.confirm(f.first.id,randomUUID(),f.offer,allocation,false,false);
+    await journeys.confirm(f.second.id,randomUUID(),f.offer,f.allocations[1],false,false);
+    await journeys.confirm(f.silent.id,randomUUID(),f.offer,f.allocations[2],false,false);
+    const caseId=(await verificationPool.query<{id:string}>(
+      'SELECT id FROM pilot_journey_reviews WHERE allocation_id=$1',[allocation])).rows[0].id;
+    const email=`journey-http-${randomUUID()}@example.test`,subject=`journey-http-${randomUUID()}`;
+    const operatorId=(await verificationPool.query<{id:string}>(`INSERT INTO users(email,role,email_verified_at)
+      VALUES($1,'admin',now()) RETURNING id`,[email])).rows[0].id;
+    await verificationPool.query("INSERT INTO user_profiles(user_id,full_name) VALUES($1,'Journey Operator')",[operatorId]);
+    await verificationPool.query(`INSERT INTO operator_allowlist(user_id,active,reason,reviewed_at)
+      VALUES($1,true,'journey test',now())`,[operatorId]);
+    await verificationPool.query(`INSERT INTO auth_identities(provider,provider_subject,user_id,provider_email)
+      VALUES('supabase',$1,$2,$3)`,[subject,operatorId,email]);
+    await verificationPool.query(`UPDATE auth_cutover_state SET active_provider='supabase',
+      legacy_login_enabled=false,authorized_at=now(),authorized_by='integration-test'`);
+    setManagedAuthEnabledForTests(true);
+    setAuthProviderForTests(fakeProvider({subject,email,emailVerified:true,
+      assuranceLevel:'aal2',userMetadata:{}}));
+    const login=await request(createApp()).post('/v1/auth/login').send({email,password:'synthetic'});
+    expect(login.status).toBe(200);
+    const cookies=login.headers['set-cookie'] as string[];
+    const cookie=cookies.map(item=>item.split(';',1)[0]).join('; ');
+    const csrf=cookies.find(item=>item.startsWith('pp_csrf_token='))?.split(';',1)[0].split('=',2)[1];
+    const otherCases=(await verificationPool.query<{id:string;allocation_id:string}>(
+      'SELECT id,allocation_id FROM pilot_journey_reviews WHERE allocation_id=ANY($1::uuid[])',
+      [[f.allocations[1],f.allocations[2]]])).rows;
+    const caseBySeat=new Map(otherCases.map(row=>[row.allocation_id,row.id]));
+    const body={outcome:'interrupted',contribution_owed:true,
+      reason:'Verified partial travel and frozen share',evidence_refs:['review-note-7']};
+    const key=randomUUID();
+    const post=(reviewId:string,idempotencyKey:string,payload=body)=>request(createApp())
+      .post(`/v1/operator/journey-reviews/${reviewId}/decide`)
+      .set('Cookie',cookie).set('Origin','http://localhost:3000')
+      .set('X-CSRF-Token',csrf!).set('Idempotency-Key',idempotencyKey).send(payload);
+    expect((await post(caseId,randomUUID(),{...body,outcome:'did_not_travel',
+      contribution_owed:true})).status).toBe(400);
+    const unresolved=await post(caseId,randomUUID(),{outcome:'insufficient_evidence',
+      contribution_owed:null,reason:'Insufficient corroborating journey evidence',
+      evidence_refs:['review-note-unresolved']});
+    expect(unresolved.status,JSON.stringify(unresolved.body)).toBe(200);
+    expect(unresolved.body.operation).toMatchObject({state:'acknowledged',
+      outcome:'insufficient_evidence',contribution_owed:null});
+    const openQueue=await request(createApp()).get('/v1/operator/journey-reviews').set('Cookie',cookie);
+    expect(openQueue.body.cases).toEqual(expect.arrayContaining([
+      expect.objectContaining({id:caseId,status:'open',latest_outcome:'insufficient_evidence'})]));
+    const openDetail=await request(createApp()).get(`/v1/operator/journey-reviews/${caseId}`).set('Cookie',cookie);
+    expect(openDetail.body.case).toMatchObject({status:'open',obligation_id:null});
+    expect(openDetail.body.decisions).toEqual([expect.objectContaining({outcome:'insufficient_evidence'})]);
+    const passengerEmail=(await verificationPool.query<{email:string}>(
+      'SELECT email FROM users WHERE id=$1',[f.first.id])).rows[0].email;
+    const passengerSubject=`journey-passenger-${randomUUID()}`;
+    await verificationPool.query("INSERT INTO user_profiles(user_id,full_name) VALUES($1,'Journey Passenger')",[f.first.id]);
+    await verificationPool.query(`INSERT INTO auth_identities(provider,provider_subject,user_id,provider_email)
+      VALUES('supabase',$1,$2,$3)`,[passengerSubject,f.first.id,passengerEmail]);
+    setAuthProviderForTests(fakeProvider({subject:passengerSubject,email:passengerEmail,
+      emailVerified:true,assuranceLevel:'aal1',userMetadata:{}}));
+    const passengerLogin=await request(createApp()).post('/v1/auth/login')
+      .send({email:passengerEmail,password:'synthetic'});
+    expect(passengerLogin.status).toBe(200);
+    const passengerCookie=(passengerLogin.headers['set-cookie'] as string[])
+      .map(item=>item.split(';',1)[0]).join('; ');
+    const passengerDetail=await request(createApp()).get(`/v1/seat-requests/journey-reviews/${caseId}`)
+      .set('Cookie',passengerCookie);
+    expect(passengerDetail.body.case).toMatchObject({status:'open',obligation_id:null});
+    expect(passengerDetail.body.decisions).toEqual([expect.objectContaining({
+      outcome:'insufficient_evidence',contribution_owed:null})]);
+    setAuthProviderForTests(fakeProvider({subject,email,emailVerified:true,
+      assuranceLevel:'aal2',userMetadata:{}}));
+    const first=await post(caseId,key);
+    expect(first.status,JSON.stringify(first.body)).toBe(200);
+    expect(first.body.operation).toMatchObject({state:'acknowledged',outcome:'interrupted',contribution_owed:true});
+    expect((await post(caseId,key)).body.operation.operation_id).toBe(first.body.operation.operation_id);
+    expect((await post(caseId,key,{...body,reason:'Changed decision reason'})).status).toBe(409);
+    const noTravel=await post(caseBySeat.get(f.allocations[1])!,randomUUID(),{
+      outcome:'did_not_travel',contribution_owed:false,
+      reason:'Evidence confirms passenger did not travel',evidence_refs:[]});
+    const interrupted=await post(caseBySeat.get(f.allocations[2])!,randomUUID(),{
+      outcome:'interrupted',contribution_owed:false,
+      reason:'Evidence confirms interrupted trip',evidence_refs:[]});
+    expect(noTravel.status).toBe(200);
+    expect(interrupted.status).toBe(200);
+    expect((await verificationPool.query('SELECT id FROM pilot_contribution_obligations')).rows).toHaveLength(1);
+    expect((await verificationPool.query('SELECT operation_id FROM pilot_journey_claims')).rows).toHaveLength(6);
+    const original=(await verificationPool.query<{amount_paise:number;due_at:Date}>(
+      'SELECT amount_paise,due_at FROM pilot_contribution_obligations WHERE allocation_id=$1',
+      [allocation])).rows[0];
+    expect(original.amount_paise).toBe(2500);
+    await verificationPool.query('DELETE FROM pilot_contribution_obligations WHERE allocation_id=$1',[allocation]);
+    await verificationPool.query(`DELETE FROM pilot_email_jobs WHERE event_id IN
+      (SELECT id FROM pilot_notification_events WHERE origin_type='journey_review_decision')`);
+    await verificationPool.query("DELETE FROM pilot_notification_events WHERE origin_type='journey_review_decision'");
+    await verificationPool.query("DELETE FROM audit_logs WHERE action='pilot_journey_review_decision'");
+    await verificationPool.query('DELETE FROM pilot_journey_review_decisions WHERE review_id=$1',[caseId]);
+    await verificationPool.query("UPDATE pilot_journey_reviews SET status='open' WHERE id=$1",[caseId]);
+    await verificationPool.query("UPDATE pilot_recovery_state SET mode='restricted' WHERE singleton=true");
+    const reviews=new JourneyReviewService(pool);
+    expect(await reviews.reconcileReceipts(operatorId)).toBe(4);
+    const restored=(await verificationPool.query<{amount_paise:number;due_at:Date}>(
+      'SELECT amount_paise,due_at FROM pilot_contribution_obligations WHERE allocation_id=$1',
+      [allocation])).rows[0];
+    expect(restored.amount_paise).toBe(original.amount_paise);
+    expect(restored.due_at.toISOString()).toBe(original.due_at.toISOString());
+    expect((await verificationPool.query("SELECT status FROM pilot_journey_reviews WHERE id=$1",[caseId])).rows[0].status)
+      .toBe('resolved');
+    await reviews.verifyEvidence();
+  });
+  it("serializes conflicting review decisions and rolls back a failed notification",async()=>{
+    const f=await fixture();await start(f);
+    const allocation=f.allocations[0];
+    const journeys=new PilotJourneyService(pool);
+    await journeys.complete(f.driver.id,randomUUID(),f.offer,f.allocations.slice(0,3)
+      .map(allocation_id=>({allocation_id,travelled:true,completed:true})));
+    await journeys.confirm(f.first.id,randomUUID(),f.offer,allocation,false,false);
+    const id=(await verificationPool.query<{id:string}>(
+      'SELECT id FROM pilot_journey_reviews WHERE allocation_id=$1',[allocation])).rows[0].id;
+    const service=new JourneyReviewService(pool);
+    const owed={outcome:'travelled_completed' as const,contribution_owed:true,
+      reason:'Evidence confirms completed passenger travel',evidence_refs:[]};
+    await verificationPool.query(`CREATE FUNCTION reject_journey_decision_notification_for_test()
+      RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+        IF NEW.origin_type='journey_review_decision' THEN RAISE EXCEPTION 'synthetic notification failure'; END IF;
+        RETURN NEW; END $$`);
+    await verificationPool.query(`CREATE TRIGGER reject_journey_decision_notification_for_test
+      BEFORE INSERT ON pilot_notification_events FOR EACH ROW
+      EXECUTE FUNCTION reject_journey_decision_notification_for_test()`);
+    try{
+      await expect(service.decide(f.operator.id,randomUUID(),id,owed)).rejects.toThrow();
+      expect((await verificationPool.query('SELECT id FROM pilot_journey_review_decisions')).rows).toHaveLength(0);
+      expect((await verificationPool.query('SELECT id FROM pilot_contribution_obligations')).rows).toHaveLength(0);
+      expect((await verificationPool.query('SELECT status FROM pilot_journey_reviews WHERE id=$1',[id])).rows[0].status)
+        .toBe('open');
+    }finally{
+      await verificationPool.query('DROP TRIGGER reject_journey_decision_notification_for_test ON pilot_notification_events');
+      await verificationPool.query('DROP FUNCTION reject_journey_decision_notification_for_test()');
+    }
+    const otherPool=new Pool({connectionString:process.env.DATABASE_URL,max:1});
+    try{
+      const outcomes=await Promise.allSettled([
+        new JourneyReviewService(pool).decide(f.operator.id,randomUUID(),id,owed),
+        new JourneyReviewService(otherPool).decide(f.operator.id,randomUUID(),id,{
+          outcome:'did_not_travel',contribution_owed:false,
+          reason:'Conflicting no travel evidence was reviewed',evidence_refs:[]})]);
+      expect(outcomes.filter(x=>x.status==='fulfilled')).toHaveLength(1);
+      expect(outcomes.filter(x=>x.status==='rejected')).toHaveLength(1);
+      expect((await verificationPool.query('SELECT id FROM pilot_journey_review_decisions')).rows).toHaveLength(1);
+      expect((await verificationPool.query('SELECT id FROM pilot_contribution_obligations')).rows.length)
+        .toBe((outcomes[0].status==='fulfilled')?1:0);
+    }finally{await otherPool.end();}
   });
   it("rejects completion of a future unstarted trip",async()=>{
     const f=await fixture();

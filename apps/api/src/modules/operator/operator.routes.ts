@@ -7,7 +7,7 @@ import { pauseService } from "./pause.service";
 import { deliveryStatus, retryDelivery } from "../notifications/durable.service";
 import { cancellationsService } from "../rides/cancellations.service";
 import { pilotDepartureService } from "../rides/pilot-departure.service";
-import { pilotJourneyService } from "../rides/pilot-journey.service";
+import { journeyReviewService } from "../rides/journey-review.service";
 import { studentRevocationService } from "../verification/student-revocation.service";
 import { revocationCasesService } from "./revocation-cases.service";
 
@@ -27,7 +27,24 @@ operatorRouter.get("/departure-reviews",asyncHandler(async(req,res)=>{
   res.json({signals:await pilotDepartureService.openSignals(req.user!.userId)});
 }));
 operatorRouter.get("/journey-reviews",asyncHandler(async(req,res)=>{
-  res.set("Cache-Control","private, no-store").json({cases:await pilotJourneyService.reviews(req.user!.userId)});
+  res.set("Cache-Control","private, no-store").json({cases:await journeyReviewService.queue(req.user!.userId)});
+}));
+operatorRouter.get("/journey-reviews/:id",asyncHandler(async(req,res)=>{
+  res.set("Cache-Control","private, no-store").json(await journeyReviewService.detail(req.user!.userId,operationId.parse(req.params.id)));
+}));
+operatorRouter.get("/journey-review-decisions/:id",asyncHandler(async(req,res)=>{
+  res.json({operation:await journeyReviewService.operation(req.user!.userId,operationId.parse(req.params.id))});
+}));
+operatorRouter.post("/journey-reviews/:id/decide",asyncHandler(async(req,res)=>{
+  const key=req.header("Idempotency-Key");
+  if(!key||key.length>128) throw new AppError(400,"Idempotency-Key is required","IDEMPOTENCY_KEY_REQUIRED");
+  const input=z.strictObject({outcome:z.enum(["travelled_completed","did_not_travel","interrupted","insufficient_evidence"]),
+    contribution_owed:z.boolean().nullable(),reason:z.string().trim().min(8).max(500),
+    evidence_refs:z.array(z.string().trim().min(1).max(200)).max(20)}).refine(value=>
+      value.outcome==='insufficient_evidence'?value.contribution_owed===null:
+      value.outcome==='did_not_travel'?value.contribution_owed===false:value.contribution_owed!==null,
+      {message:"Contribution decision conflicts with journey outcome"}).parse(req.body);
+  res.json({operation:await journeyReviewService.decide(req.user!.userId,key,operationId.parse(req.params.id),input)});
 }));
 operatorRouter.get("/revocation-cases",asyncHandler(async(req,res)=>{
   res.set("Cache-Control","private, no-store").json(await revocationCasesService.list(req.user!.userId));
