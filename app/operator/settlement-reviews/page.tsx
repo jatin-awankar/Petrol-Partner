@@ -2,7 +2,8 @@
 import {useCallback,useEffect,useState} from 'react';
 import {apiRequest,ApiError} from '@/lib/api/client';
 type QueueItem={obligation_id:string;reason:string|null;claimed_at:string;amount_paise:number;currency:string};
-type Detail={claim:{method:string;recorded_at:string}|null;response:{id:string;kind:string;recorded_at:string}|null;
+type Detail={obligation:{id:string;amount_paise:number;currency:string;due_at:string};
+  claim:{method:string;recorded_at:string}|null;response:{id:string;kind:string;recorded_at:string}|null;
   reports:{reason:string}[];decisions:{case_resolution:string;contribution_owed:boolean|null;
     receipt_established:boolean|null;reason:string}[];
   audit:{action:string;created_at:string;operation_id:string}[]};
@@ -61,6 +62,9 @@ export default function SettlementReviewsPage(){
     </section>
     {id&&detail&&<section className="space-y-3 rounded border p-4">
       <h2 className="font-semibold">Case {id}</h2>
+      <p>Original obligation: {detail.obligation.currency}
+        {' '}{(detail.obligation.amount_paise/100).toFixed(2)}</p>
+      <time dateTime={detail.obligation.due_at}>Due {new Date(detail.obligation.due_at).toLocaleString()}</time>
       <p>Claim: {detail.claim?`${detail.claim.method} at ${new Date(detail.claim.recorded_at).toLocaleString()}`:'none'}</p>
       <p>Driver response: {detail.response?`${detail.response.kind} (${detail.response.id}) at ${new Date(detail.response.recorded_at).toLocaleString()}`:'none'}</p>
       {detail.reports.map((item,index)=><p key={index}>Participant report: {item.reason}</p>)}

@@ -54,8 +54,8 @@ export class DirectSettlementService {
         status:row.review_status}:
         row.claimed_at&&!row.response_id&&now.getTime()>=row.claimed_at.getTime()+DRIVER_RESPONSE_WINDOW_MS
           ?{id:null,reason:'driver_silence'}:null,
-      contribution_owed:row.decision_owed??true,
-      receipt_established:row.decision_receipt??(row.response_kind==='confirm'),
+      contribution_owed:row.decision_owed,
+      receipt_established:row.decision_receipt,
       status:row.review_status==='resolved'?'case_resolved':row.response_kind==='confirm'?'settled':
         row.response_kind==='dispute'?'review':
         row.claimed_at?now.getTime()>=row.claimed_at.getTime()+DRIVER_RESPONSE_WINDOW_MS?'review':'claim_pending':

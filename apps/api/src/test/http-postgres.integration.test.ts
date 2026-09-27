@@ -693,6 +693,23 @@ describe("ticket 22 individual journey confirmation",()=>{
       JOIN pilot_notification_events e ON e.id=j.event_id
       WHERE e.origin_type='pilot_direct_settlement' AND j.attempts=1 AND j.status='pending'`)).rows[0].n).toBe(1);
   });
+  it('keeps operator settlement findings unknown before a case decision',async()=>{
+    const f=await fixture();await start(f);
+    const journey=new PilotJourneyService(pool),settlement=new DirectSettlementService(pool);
+    await journey.complete(f.driver.id,randomUUID(),f.offer,f.allocations.slice(0,3)
+      .map(allocation_id=>({allocation_id,travelled:true,completed:true})));
+    await journey.confirm(f.first.id,randomUUID(),f.offer,f.allocations[0],true,true);
+    const id=(await verificationPool.query<{id:string}>(
+      'SELECT id FROM pilot_contribution_obligations WHERE allocation_id=$1',[f.allocations[0]])).rows[0].id;
+    await settlement.mutate(f.first.id,randomUUID(),id,'claim','cash');
+    await settlement.mutate(f.driver.id,randomUUID(),id,'confirm');
+    const response=await request(createApp()).get(`/v1/direct-settlements/${id}`)
+      .set('Authorization',`Bearer ${f.first.token}`);
+    expect(response.status).toBe(200);
+    expect(response.body.obligation).toMatchObject({contribution_owed:null,receipt_established:null,
+      response:'confirm'});
+    expect(response.body.obligation.receipt).toMatchObject({id:expect.any(String)});
+  });
   it('opens review at exact driver silence boundary and preserves claim on dispute',async()=>{
     const f=await fixture();await start(f);
     const journey=new PilotJourneyService(pool),settlement=new DirectSettlementService(pool);
