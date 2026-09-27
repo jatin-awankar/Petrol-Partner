@@ -8,6 +8,7 @@ import { deliveryStatus, retryDelivery } from "../notifications/durable.service"
 import { cancellationsService } from "../rides/cancellations.service";
 import { pilotDepartureService } from "../rides/pilot-departure.service";
 import { journeyReviewService } from "../rides/journey-review.service";
+import { directSettlementService } from "../rides/direct-settlement.service";
 import { studentRevocationService } from "../verification/student-revocation.service";
 import { revocationCasesService } from "./revocation-cases.service";
 
@@ -28,6 +29,9 @@ operatorRouter.get("/departure-reviews",asyncHandler(async(req,res)=>{
 }));
 operatorRouter.get("/journey-reviews",asyncHandler(async(req,res)=>{
   res.set("Cache-Control","private, no-store").json({cases:await journeyReviewService.queue(req.user!.userId)});
+}));
+operatorRouter.get("/settlement-reviews",asyncHandler(async(req,res)=>{
+  res.set("Cache-Control","private, no-store").json(await directSettlementService.openReviews(req.user!.userId));
 }));
 operatorRouter.get("/journey-reviews/:id",asyncHandler(async(req,res)=>{
   res.set("Cache-Control","private, no-store").json(await journeyReviewService.detail(req.user!.userId,operationId.parse(req.params.id)));

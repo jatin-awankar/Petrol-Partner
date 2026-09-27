@@ -7,6 +7,7 @@ import { dbQuery, pool } from "./db/pool";
 import { initializeChatSocketServer } from "./modules/chat/chat.socket";
 import { startMatchRefreshProcessor, stopMatchRefreshProcessor } from "./modules/matching/match-refresh.processor";
 import { assertQueueRuntimeReady, closeApiQueues } from "./queues";
+import {directSettlementSilenceService} from "./modules/rides/direct-settlement-silence.service";
 
 let shuttingDown = false;
 
@@ -62,6 +63,15 @@ async function bootstrap() {
 
   const server = createServer(app);
   initializeChatSocketServer(server);
+  let settlementSweepBusy=false;
+  const settlementSweepTimer=setInterval(()=>{
+    if(settlementSweepBusy||shuttingDown) return;
+    settlementSweepBusy=true;
+    void directSettlementSilenceService.sweep().catch(error=>
+      logger.error({error},'Direct settlement review sweep failed')).finally(()=>{settlementSweepBusy=false;});
+  },10000);
+  void directSettlementSilenceService.sweep().catch(error=>
+    logger.error({error},'Initial direct settlement review sweep failed'));
 
   server.listen(env.PORT, env.HOST, () => {
     logger.info(
@@ -84,6 +94,7 @@ async function bootstrap() {
     }
 
     shuttingDown = true;
+    clearInterval(settlementSweepTimer);
     logger.info({ signal }, "Shutting down API server");
 
     server.close(async () => {
