@@ -4,7 +4,7 @@
 
 **Blocked by:** 10 (Durable notifications from an operator action).
 
-**Status:** claimed
+**Status:** resolved
 
 **Work type:** Feature slice
 
@@ -13,12 +13,12 @@
 ## Acceptance criteria
 
 - [x] Display worker heartbeat, oldest important queued event, queue size, recent failures and last successful processing time in the protected console.
-- [ ] During operating windows, target first important delivery attempt within one minute and independently alert on worker stall or an important event waiting over five minutes.
-- [ ] Ensure a stopped worker is not responsible for sending its own outage alert; exercise the independent monitoring/fallback path.
+- [x] During operating windows, target first important delivery attempt within one minute and independently alert on worker stall or an important event waiting over five minutes.
+- [x] Ensure a stopped worker is not responsible for sending its own outage alert; exercise the independent monitoring/fallback path.
 - [x] Expose bounded retries and exhausted delivery states. Operator retry never repeats the originating booking or financial mutation.
-- [ ] Record urgent outreach method, participant reference, time, reason and outcome through protected operator actions; include an independent fallback record usable during primary-system outage.
+- [x] Record urgent outreach method, participant reference, time, reason and outcome through protected operator actions; include an independent fallback record usable during primary-system outage.
 - [x] Keep phone numbers and sensitive payloads out of logs/URLs; authorize access to any protected contact record.
-- [ ] Demonstrate healthy scheduling, prolonged failure, queue growth, retry exhaustion and process stoppage. Ordinary email failure does not trigger recovery restriction unless required evidence also fails.
+- [x] Demonstrate healthy scheduling, prolonged failure, queue growth, retry exhaustion and process stoppage. Ordinary email failure does not trigger recovery restriction unless required evidence also fails.
 
 ## Completion evidence
 
@@ -29,18 +29,17 @@ Follow the local tracker's claim/resolution convention: use `claimed` when work 
 
 ## Answer
 
-Implemented on `codex/27-stalled-work-and-urgent-outreach`:
+Implemented and verified on `codex/27-stalled-work-and-urgent-outreach` with synthetic data. The protected console shows worker heartbeat, oldest important queued event, queue size, recent failures, last successful processing time, attempt history, and exhausted jobs. The worker attempts ready email within the one-minute target, retries at most five times, and never reruns the originating business mutation. Ordinary email failure leaves recovery mode open.
 
-- Protected delivery status now reports worker heartbeat, oldest ready important event, queue size, late first attempts, recent failures, last successful processing, exhausted jobs, and redacted attempt history. The worker records last success in the same PostgreSQL transaction as a successful delivery outcome.
-- A separate monitor command queries PostgreSQL and sends coded HTTPS alerts for a stale worker, an important event waiting over five minutes, queue growth, and database failure. It has no worker dependency. A healthy worker polls every ten seconds; immediate due time targets the first attempt inside one minute. Operating windows are explicit.
-- Existing five-attempt email delivery and idempotent operator retry remain in place. Retry updates only the email job and audit row; the original pause or other business mutation is not invoked. Email failure alone does not enter recovery restriction.
-- Protected urgent outreach records participant ID, method, timestamp, coded reason and outcome with current MFA operator access, idempotency, audit, and independent signed recovery evidence. An outage CLI uses an individually provisioned private credential and one-time code, reads participant data from stdin, and appends a signed, fsynced, private record independently of the API and PostgreSQL; the reconciliation command verifies and imports records idempotently.
-- Coded reasons and outcomes prevent phone numbers or free-form sensitive payloads in these records. Monitor payloads carry signal codes and counts only.
+A separate continuous monitor process checks every minute during configured operating windows and sends coded alerts over an independent HTTPS channel when the worker or important queue is more than five minutes stale, the queue grows, or the database is unavailable. Failure of the alert channel makes the monitor exit nonzero for its supervisor. Operator urgent outreach records participant reference, method, time, coded reason and outcome through current MFA authorization, audit, idempotency and independent recovery evidence. During database outage an individual operator credential and one-time code permit a signed, fsynced private fallback record without placing participant details in shell arguments; reconciliation is idempotent.
 
-Checks: focused PostgreSQL outreach and queue-health tests passed, durable email PostgreSQL tests passed (4/4), monitor tests passed (6/6), fallback integrity and one-time-code tests passed (2/2), `npm run typecheck` passed. `npm run check` passed lint and typecheck but its API suite failed two intermittent cases (settlement browser timing and departure socket hangup). A separate API suite rerun passed 139/139 and worker suite passed 16/16. After review fixes, another full check failed only the settlement browser case (138/139 API; 16/16 worker); that test passed alone (1/1). `npm run build:all` passed with network access both before and after the review fixes; the first sandboxed build failed fetching the configured Google font.
+The repeatable isolated rehearsal in `docs/operations/evidence/ticket27-synthetic-rehearsal-2026-09-27.md` used fresh forward-migrated PostgreSQL, the actual worker process, a separately running monitor, local HTTPS receivers, and a controlled clock. It measured a **180 ms** first attempt; after a real worker stop and six-minute clock advance, the independent monitor's HTTPS receiver got worker-stall, important-queue-stall, and queue-growth alerts. Offline outreach was recorded without a database URL and reconciled exactly once. PostgreSQL integration tests cover five consecutive delivery failures through exhaustion, recovery mode remaining open, retry idempotency, protected authorization, audit, queue metrics and sensitive-data rejection.
 
-Remaining limits: the independent scheduler, HTTPS paging destination, and operator receipt have not been configured or tested in a deployed environment. Process stoppage was simulated with a stale heartbeat; an actual stopped process and end-to-end external alert receipt remain untested. The fallback file and individual credential need an operator custody, provisioning, and storage decision; offline revocation is checked during reconciliation. The fallback is reconciled by a separate command; the automatic reopening gate cannot discover an unsubmitted offline file, so the recovery operator must inspect it before reopening. Real trips remain disabled. The ticket stays claimed until these operational criteria are demonstrated and the full check is consistently green.
+`npm run check` passed after the browser integration fixture was isolated from another suite's authentication cutover state: root scripts 35 passed/4 skipped, API 139 passed/1 skipped, worker 17 passed; lint had zero errors and ten existing warnings; typechecks and all builds passed. `node scripts/pilot-notification-watch.mjs` also exited nonzero when its independent HTTPS alert channel was unconfigured.
+
+Remaining deployment limits: the HTTPS receiver in this rehearsal was local and synthetic. A production paging destination, independent host or supervisor, actual operator receipt, private credential custody, and the broader provider arrangement still require deployment evidence before real trips. The automatic recovery gate cannot discover an offline file that an operator has not submitted; the recovery operator must inspect and reconcile each operator's fallback file before reopening writes. Ticket 27's technical acceptance behavior is demonstrated; these provider and launch gates remain open, and real trips stay disabled.
 
 ## Comments
 
-- Code review found direct SQL in the outreach service and shell-argument exposure in the outage command. SQL was moved into the repository; the command now reads participant data from stdin and requires an individual private credential plus a one-time code. A missing operating-window configuration now produces an alert signal.
+- Code review found direct SQL in the outreach service and shell-argument exposure in the outage command. SQL was moved into the repository; the command reads participant data from stdin and requires an individual private credential plus a one-time code. Missing operating-window configuration produces an alert signal.
+- The final rehearsal and complete check above supersede the earlier partial synthetic checks. The unrelated settlement browser test now explicitly resets its legacy authentication fixture, removing the observed cross-suite failure.

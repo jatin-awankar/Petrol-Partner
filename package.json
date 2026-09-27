@@ -30,6 +30,8 @@
     "restore:pilot:rehearse": "node scripts/pilot-restore-rehearsal.mjs",
     "recovery:status:offline": "node scripts/pilot-offline-status.mjs",
     "monitor:notifications": "node scripts/pilot-notification-monitor.mjs",
+    "monitor:notifications:watch": "node scripts/pilot-notification-watch.mjs",
+    "rehearse:notifications": "node scripts/pilot-notification-rehearsal.mjs",
     "outreach:fallback": "node scripts/pilot-outage-outreach.mjs",
     "hooks:install": "node scripts/install-hooks.mjs",
     "api:dev": "npm --prefix apps/api run dev",
