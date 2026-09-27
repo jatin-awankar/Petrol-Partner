@@ -7,6 +7,8 @@ import { CancellationsService } from "../modules/rides/cancellations.service";
 import { PilotDepartureService } from "../modules/rides/pilot-departure.service";
 import { PilotJourneyService } from "../modules/rides/pilot-journey.service";
 import { JourneyReviewService } from "../modules/rides/journey-review.service";
+import { DirectSettlementService } from "../modules/rides/direct-settlement.service";
+import { reviewSilentSettlements } from "../../../worker/src/jobs/pilot-settlement-silence";
 import { reviewSilentJourneys } from "../../../worker/src/jobs/pilot-journey-silence";
 import { StudentRevocationService } from "../modules/verification/student-revocation.service";
 import { DriverCarReviewService } from "../modules/verification/driver-car-review.service";
@@ -30,7 +32,7 @@ import { setBackupObjectProbeForTests } from "../modules/operator/backup-status"
 import { setStudentReviewAfterCommitHookForTests } from "../modules/verification/student-review.service";
 
 const verificationPool = new Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
-const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql", "0006_operator_allowlist.sql", "0007_operator_pause.sql", "0008_operator_intent_handoff.sql", "0009_durable_notifications.sql", "0010_email_retry_operations.sql", "0011_backup_attempts.sql", "0012_student_adult_review.sql", "0013_student_review_cycles.sql", "0014_student_review_operations.sql", "0015_student_evidence_access.sql", "0016_student_evidence_deletion_outcomes.sql", "0017_student_evidence_retry_schedule.sql", "0018_driver_car_approval.sql", "0019_ride_departures.sql", "0020_corridor_offers.sql", "0021_corridor_offer_recovery.sql", "0022_pilot_seat_requests.sql", "0023_pilot_seat_acceptance.sql", "0024_pilot_cancellations.sql", "0025_pilot_departure.sql", "0026_revocation_holds_incidents.sql", "0027_pilot_journeys.sql", "0028_journey_review_decisions.sql"];
+const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql", "0006_operator_allowlist.sql", "0007_operator_pause.sql", "0008_operator_intent_handoff.sql", "0009_durable_notifications.sql", "0010_email_retry_operations.sql", "0011_backup_attempts.sql", "0012_student_adult_review.sql", "0013_student_review_cycles.sql", "0014_student_review_operations.sql", "0015_student_evidence_access.sql", "0016_student_evidence_deletion_outcomes.sql", "0017_student_evidence_retry_schedule.sql", "0018_driver_car_approval.sql", "0019_ride_departures.sql", "0020_corridor_offers.sql", "0021_corridor_offer_recovery.sql", "0022_pilot_seat_requests.sql", "0023_pilot_seat_acceptance.sql", "0024_pilot_cancellations.sql", "0025_pilot_departure.sql", "0026_revocation_holds_incidents.sql", "0027_pilot_journeys.sql", "0028_journey_review_decisions.sql", "0029_direct_settlement.sql"];
 
 function fakeProvider(identity: ProviderIdentity): AuthProvider {
   const session = { accessToken: "provider-access", refreshToken: "provider-refresh", expiresIn: 900, identity };
@@ -629,6 +631,137 @@ describe("ticket 22 individual journey confirmation",()=>{
       .send({travelled:true,completed:true});
     expect(deniedPassenger.status).toBe(403);
     expect((await verificationPool.query('SELECT id FROM pilot_contribution_obligations')).rows).toHaveLength(0);
+  });
+  it('records direct payment claim without settling until driver receipt, with HTTP retries and deadlines',async()=>{
+    const f=await fixture();await start(f);
+    const journey=new PilotJourneyService(pool),settlement=new DirectSettlementService(pool);
+    const at=new Date('2026-09-27T10:00:00.000Z');
+    await journey.complete(f.driver.id,randomUUID(),f.offer,f.allocations.slice(0,3)
+      .map(allocation_id=>({allocation_id,travelled:true,completed:true})),at);
+    await journey.confirm(f.first.id,randomUUID(),f.offer,f.allocations[0],true,true,at);
+    const id=(await verificationPool.query<{id:string}>(
+      'SELECT id FROM pilot_contribution_obligations WHERE allocation_id=$1',[f.allocations[0]])).rows[0].id;
+    const app=createApp(),url=`/v1/direct-settlements/${id}`;
+    expect((await settlement.detail(f.first.id,id,new Date(at.getTime()+86_400_000-1))).status).toBe('due');
+    expect((await settlement.detail(f.first.id,id,new Date(at.getTime()+86_400_000))).status).toBe('overdue');
+    expect((await appRequest(f.outsider.token,'claim',{method:'cash'})).status).toBe(403);
+    expect((await appRequest(f.driver.token,'claim',{method:'cash'})).status).toBe(403);
+    expect((await appRequest(f.first.token,'confirm',{})).status).toBe(403);
+    expect((await request(app).post(`/v1/direct-settlements/${randomUUID()}/claim`)
+      .set('Authorization',`Bearer ${f.first.token}`).set('Idempotency-Key',randomUUID())
+      .send({method:'cash'})).status).toBe(404);
+    const key=randomUUID();
+    async function appRequest(token:string,action:string,body:object,idempotencyKey=randomUUID()){
+      return request(app).post(`${url}/${action}`).set('Authorization',`Bearer ${token}`)
+        .set('Idempotency-Key',idempotencyKey).send(body);
+    }
+    const claim=await appRequest(f.first.token,'claim',{method:'upi'},key);
+    expect(claim.status).toBe(200);
+    expect((await appRequest(f.first.token,'claim',{method:'upi'},key)).body.operation_id)
+      .toBe(claim.body.operation_id);
+    expect((await appRequest(f.first.token,'claim',{method:'cash'},key)).status).toBe(409);
+    expect((await settlement.detail(f.first.id,id,new Date())).receipt).toBeNull();
+    expect((await settlement.detail(f.first.id,id,new Date())).status).toBe('claim_pending');
+    const confirmed=await appRequest(f.driver.token,'confirm',{});
+    expect(confirmed.status).toBe(200);
+    expect((await settlement.detail(f.first.id,id)).status).toBe('settled');
+    expect((await verificationPool.query<{n:number}>(`SELECT count(*)::int AS n FROM pilot_settlement_operations
+      WHERE obligation_id=$1 AND kind='confirm'`,[id])).rows[0].n).toBe(1);
+    expect((await verificationPool.query<{amount_paise:number;currency:string}>(
+      'SELECT amount_paise,currency FROM pilot_contribution_obligations WHERE id=$1',[id])).rows[0])
+      .toEqual({amount_paise:2500,currency:'INR'});
+    expect((await verificationPool.query<{n:number}>(`SELECT count(*)::int AS n FROM pilot_notification_events
+      WHERE origin_type='pilot_direct_settlement' AND ready_at IS NOT NULL`,[])).rows[0].n).toBe(4);
+    await verificationPool.query(`UPDATE pilot_email_jobs SET due_at=now()+interval '1 hour'
+      WHERE event_id IN(SELECT id FROM pilot_notification_events WHERE origin_type<>'pilot_direct_settlement')`);
+    process.env.REDIS_URL='redis://127.0.0.1:6379';
+    const {processDueEmail}=await import('../../../worker/src/jobs/durable-email.job');
+    expect(await processDueEmail(verificationPool,{async send(){throw new Error('provider unavailable');}})).toBe(true);
+    delete process.env.REDIS_URL;
+    expect((await settlement.detail(f.first.id,id)).status).toBe('settled');
+    expect((await verificationPool.query<{n:number}>(`SELECT count(*)::int AS n FROM pilot_email_jobs j
+      JOIN pilot_notification_events e ON e.id=j.event_id
+      WHERE e.origin_type='pilot_direct_settlement' AND j.attempts=1 AND j.status='pending'`)).rows[0].n).toBe(1);
+  });
+  it('opens review at exact driver silence boundary and preserves claim on dispute',async()=>{
+    const f=await fixture();await start(f);
+    const journey=new PilotJourneyService(pool),settlement=new DirectSettlementService(pool);
+    const at=new Date('2026-09-27T10:00:00.000Z');
+    await journey.complete(f.driver.id,randomUUID(),f.offer,f.allocations.slice(0,3)
+      .map(allocation_id=>({allocation_id,travelled:true,completed:true})),at);
+    for(const [index,passenger] of [f.first,f.second].entries())
+      await journey.confirm(passenger.id,randomUUID(),f.offer,f.allocations[index],true,true,at);
+    const rows=(await verificationPool.query<{id:string;allocation_id:string}>(
+      'SELECT id,allocation_id FROM pilot_contribution_obligations')).rows;
+    const first=rows.find(x=>x.allocation_id===f.allocations[0])!.id;
+    const second=rows.find(x=>x.allocation_id===f.allocations[1])!.id;
+    const firstClaimAt=new Date(Date.now()-86_400_000);
+    await settlement.mutate(f.first.id,randomUUID(),first,'claim','cash',firstClaimAt);
+    await settlement.mutate(f.second.id,randomUUID(),second,'claim','upi');
+    expect((await reviewSilentSettlements(verificationPool,new Date(firstClaimAt.getTime()+86_400_000-1))).opened).toBe(0);
+    expect((await reviewSilentSettlements(verificationPool,new Date(firstClaimAt.getTime()+86_400_000))).opened).toBe(1);
+    expect((await reviewSilentSettlements(verificationPool,new Date(firstClaimAt.getTime()+86_400_000))).opened).toBe(0);
+    expect((await settlement.detail(f.first.id,first,new Date(firstClaimAt.getTime()+86_400_000))).status).toBe('review');
+    await expect(settlement.mutate(f.driver.id,randomUUID(),first,'confirm',null,
+      new Date(firstClaimAt.getTime()+86_400_000))).rejects.toMatchObject({code:'REVIEW_REQUIRED'});
+    expect((await verificationPool.query('SELECT id FROM pilot_settlement_operations WHERE kind=\'confirm\'')).rows)
+      .toHaveLength(0);
+    // A timely dispute opens review without replacing the passenger's claim or the frozen debt.
+    const response=await request(createApp()).post(`/v1/direct-settlements/${second}/dispute`)
+      .set('Authorization',`Bearer ${f.driver.token}`).set('Idempotency-Key',randomUUID()).send({});
+    expect(response.status).toBe(200);
+    expect((await settlement.detail(f.second.id,second)).status).toBe('review');
+    const queue=await settlement.openReviews(f.operator.id);
+    expect(queue.cases.map((x:{obligation_id:string})=>x.obligation_id)).toContain(second);
+    expect((await request(createApp()).get('/v1/operator/settlement-reviews')
+      .set('Authorization',`Bearer ${f.first.token}`)).status).toBe(403);
+    expect((await verificationPool.query<{n:number}>(`SELECT count(*)::int AS n FROM pilot_notification_events
+      WHERE origin_type='pilot_direct_settlement' AND recipient_id=$1 AND event_type='settlement_dispute'
+        AND ready_at IS NOT NULL`,[f.operator.id])).rows[0].n).toBe(1);
+    expect((await verificationPool.query('SELECT amount_paise,currency FROM pilot_contribution_obligations WHERE id=$1',
+      [second])).rows[0]).toEqual({amount_paise:2600,currency:'INR'});
+  });
+  it('restricts protected settlement writes when independent evidence storage fails',async()=>{
+    const f=await fixture();await start(f);
+    const journey=new PilotJourneyService(pool);
+    await journey.complete(f.driver.id,randomUUID(),f.offer,f.allocations.slice(0,3)
+      .map(allocation_id=>({allocation_id,travelled:true,completed:true})));
+    await journey.confirm(f.first.id,randomUUID(),f.offer,f.allocations[0],true,true);
+    const id=(await verificationPool.query<{id:string}>(
+      'SELECT id FROM pilot_contribution_obligations WHERE allocation_id=$1',[f.allocations[0]])).rows[0].id;
+    const path=resolve(directory,'receipts.pilot-direct-settlement');
+    await chmod(path,0o500).catch(async()=>{
+      const {mkdir}=await import('node:fs/promises');await mkdir(path);await chmod(path,0o500);
+    });
+    try{
+      const response=await request(createApp()).post(`/v1/direct-settlements/${id}/claim`)
+        .set('Authorization',`Bearer ${f.first.token}`).set('Idempotency-Key',randomUUID())
+        .send({method:'cash'});
+      expect(response.status).toBe(503);
+      expect((await verificationPool.query<{mode:string}>(
+        'SELECT mode FROM pilot_recovery_state WHERE singleton=true')).rows[0].mode).toBe('restricted');
+      expect((await verificationPool.query('SELECT id FROM pilot_settlement_operations')).rows).toHaveLength(0);
+    }finally{await chmod(path,0o700);}
+  });
+  it('reconciles a lost claim operation from independent evidence without declaring receipt',async()=>{
+    const f=await fixture();await start(f);
+    const journey=new PilotJourneyService(pool),settlement=new DirectSettlementService(pool);
+    await journey.complete(f.driver.id,randomUUID(),f.offer,f.allocations.slice(0,3)
+      .map(allocation_id=>({allocation_id,travelled:true,completed:true})));
+    await journey.confirm(f.first.id,randomUUID(),f.offer,f.allocations[0],true,true);
+    const id=(await verificationPool.query<{id:string}>(
+      'SELECT id FROM pilot_contribution_obligations WHERE allocation_id=$1',[f.allocations[0]])).rows[0].id;
+    const claim=await settlement.mutate(f.first.id,randomUUID(),id,'claim','upi');
+    await verificationPool.query(`DELETE FROM pilot_email_jobs WHERE event_id IN
+      (SELECT id FROM pilot_notification_events WHERE origin_type='pilot_direct_settlement')`);
+    await verificationPool.query("DELETE FROM pilot_notification_events WHERE origin_type='pilot_direct_settlement'");
+    await verificationPool.query("DELETE FROM audit_logs WHERE action='pilot_settlement_claim'");
+    await verificationPool.query('DELETE FROM pilot_settlement_operations WHERE id=$1',[claim.operation_id]);
+    await verificationPool.query("UPDATE pilot_recovery_state SET mode='restricted' WHERE singleton=true");
+    expect(await settlement.reconcileReceipts(f.operator.id)).toBe(1);
+    expect((await settlement.detail(f.first.id,id)).claim?.method).toBe('upi');
+    expect((await settlement.detail(f.first.id,id)).receipt).toBeNull();
+    await settlement.verifyEvidence();
   });
 });
 
