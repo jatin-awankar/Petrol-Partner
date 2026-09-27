@@ -9,6 +9,7 @@ import { redisConnection, scheduleMaintenanceSweepJobs } from "./queues";
 import { processDueEmail } from "./jobs/durable-email.job";
 import { deleteDueStudentEvidence, deleteDueDriverCarEvidence, deleteReplacedDriverCarEvidence } from "./jobs/student-evidence-retention.job";
 import { recordDueDriverCarExpiryNotice } from "./jobs/driver-car-expiry.job";
+import { reviewSilentJourneys } from "./jobs/pilot-journey-silence";
 
 const workers = [
   createBookingExpiryWorker(),
@@ -30,6 +31,7 @@ async function sweepEmail() {
     while (await deleteDueDriverCarEvidence()) { /* Drain due evidence. */ }
     while (await deleteReplacedDriverCarEvidence()) { /* Drain replaced evidence. */ }
     while (await recordDueDriverCarExpiryNotice()) { /* Drain due notices. */ }
+    while ((await reviewSilentJourneys(pool)).processed) { /* Drain due journey reviews. */ }
   }
   catch (error) { logger.error({ error }, "Durable email sweep failed"); }
   finally { emailBusy = false; }

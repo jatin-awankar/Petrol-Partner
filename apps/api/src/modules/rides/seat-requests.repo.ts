@@ -65,6 +65,9 @@ export async function acceptedTripVisible(db:Database,requestId:string,actorId:s
     JOIN pilot_seat_requests r ON r.id=a.request_id
     WHERE a.request_id=$1 AND r.status IN ('accepted','cancelled')
       AND (a.driver_id=$2 OR a.passenger_id=$2)
+      AND NOT EXISTS(SELECT 1 FROM pilot_journey_operations j
+        WHERE j.offer_id=a.offer_id AND j.kind='driver_completion'
+          AND j.recorded_at <= COALESCE($3::timestamptz,now())-interval '24 hours')
       AND (a.status IN ('confirmed','held') OR
         (a.status IN ('completed','cancelled') AND a.ended_at > COALESCE($3::timestamptz,now())-interval '24 hours'))
     LIMIT 1`,[requestId,actorId,asOf ?? null])).rowCount);
@@ -159,6 +162,9 @@ export async function listConfirmedForParticipant(db:Database,userId:string,offe
     passenger_origin_code:string;passenger_destination_code:string;pickup_location:string;
     car_registration_last4:string;car_make:string|null;car_model:string|null;car_color:string|null;
     trip_state:string;boarded:boolean|null;started_at:Date|null;
+    driver_travelled:boolean|null;driver_completed:boolean|null;driver_recorded_at:Date|null;
+    passenger_travelled:boolean|null;passenger_completed:boolean|null;passenger_recorded_at:Date|null;
+    obligation_paise:number|null;obligation_due_at:Date|null;journey_review_reason:string|null;
     driver_verified_name:string|null;passenger_verified_name:string|null}>(
     `SELECT a.id,a.offer_id,a.driver_id,a.passenger_id,a.contribution_paise,a.currency,
       a.departure_at,a.status,r.offer_terms->>'origin_code' AS origin_code,
@@ -175,7 +181,11 @@ export async function listConfirmedForParticipant(db:Database,userId:string,offe
         WHEN o.status='held' THEN 'held'
         WHEN (o.date+o.time) AT TIME ZONE 'Asia/Kolkata' < COALESCE($3::timestamptz,now())-interval '30 minutes'
           THEN 'delayed' ELSE 'scheduled' END AS trip_state,
-      pb.boarded,d.started_at
+      pb.boarded,d.started_at,jd.travelled AS driver_travelled,
+      jd.completed AS driver_completed,jd.recorded_at AS driver_recorded_at,
+      jp.travelled AS passenger_travelled,jp.completed AS passenger_completed,
+      jp.recorded_at AS passenger_recorded_at,ob.amount_paise AS obligation_paise,
+      ob.due_at AS obligation_due_at,jr.reason AS journey_review_reason
       FROM pilot_seat_allocations a JOIN pilot_seat_requests r ON r.id=a.request_id
       JOIN ride_offers o ON o.id=a.offer_id
       JOIN vehicles v ON v.id=a.vehicle_id
@@ -185,8 +195,15 @@ export async function listConfirmedForParticipant(db:Database,userId:string,offe
         WHERE request_id=r.id ORDER BY cancelled_at DESC LIMIT 1) c ON true
       LEFT JOIN pilot_departure_operations d ON d.offer_id=a.offer_id
       LEFT JOIN pilot_departure_boarding pb ON pb.operation_id=d.id AND pb.allocation_id=a.id
+      LEFT JOIN pilot_journey_claims jd ON jd.allocation_id=a.id AND jd.actor_role='driver'
+      LEFT JOIN pilot_journey_claims jp ON jp.allocation_id=a.id AND jp.actor_role='passenger'
+      LEFT JOIN pilot_contribution_obligations ob ON ob.allocation_id=a.id
+      LEFT JOIN pilot_journey_reviews jr ON jr.allocation_id=a.id
       WHERE r.status IN ('accepted','cancelled') AND (a.driver_id=$1 OR a.passenger_id=$1)
         AND ($2::uuid IS NULL OR a.offer_id=$2)
+        AND NOT EXISTS(SELECT 1 FROM pilot_journey_operations j
+          WHERE j.offer_id=a.offer_id AND j.kind='driver_completion'
+            AND j.recorded_at <= COALESCE($3::timestamptz,now())-interval '24 hours')
         AND (a.status IN ('confirmed','held') OR (a.status IN ('completed','cancelled')
           AND a.ended_at > COALESCE($3::timestamptz,now())-interval '24 hours'))
       ORDER BY a.accepted_at DESC`,[userId,offerId ?? null,asOf ?? null])).rows;
