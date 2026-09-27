@@ -11,6 +11,7 @@ import {pilotReceiptStore,restrictProtectedWrites} from '../protected-mutation/r
 import {assertCurrentDriverCarEligibility,assertCurrentStudentForSubmission} from '../verification/verification.service';
 import {operatorRecipients} from './pilot-departure.repo';
 import * as repo from './direct-settlement.repo';
+const DRIVER_RESPONSE_WINDOW_MS=24*60*60*1000;
 
 type Receipt={operationId:string;obligationId:string;actorId:string;key:string;digest:string;
   kind:repo.Operation['kind'];method:'cash'|'upi'|null;recordedAt:string};
@@ -50,10 +51,10 @@ export class DirectSettlementService {
       claim:row.claim_id?{id:row.claim_id,method:row.claim_method,recorded_at:row.claimed_at}:null,
       receipt:row.response_kind==='confirm'?{id:row.response_id,recorded_at:row.responded_at}:null,
       response:row.response_kind,review:row.review_id?{id:row.review_id,reason:row.review_reason}:
-        row.claimed_at&&!row.response_id&&now.getTime()>=row.claimed_at.getTime()+86_400_000
+        row.claimed_at&&!row.response_id&&now.getTime()>=row.claimed_at.getTime()+DRIVER_RESPONSE_WINDOW_MS
           ?{id:null,reason:'driver_silence'}:null,
       status:row.response_kind==='confirm'?'settled':row.response_kind==='dispute'?'review':
-        row.claimed_at?now.getTime()>=row.claimed_at.getTime()+86_400_000?'review':'claim_pending':
+        row.claimed_at?now.getTime()>=row.claimed_at.getTime()+DRIVER_RESPONSE_WINDOW_MS?'review':'claim_pending':
         now.getTime()>=row.due_at.getTime()?'overdue':'due'};
   }
   async detail(actorId:string,id:string,now=new Date()){
@@ -129,10 +130,12 @@ export class DirectSettlementService {
         await assertCurrentDriverCarEligibility(client,actorId,car);
         if(!item.claim_id) throw new AppError(409,'Payment claim required','CLAIM_REQUIRED');
         if(item.response_id) throw new AppError(409,'Driver already responded','RESPONSE_EXISTS');
-        if(item.claimed_at&&now.getTime()>=item.claimed_at.getTime()+86_400_000)
+        if(item.claimed_at&&now.getTime()>=item.claimed_at.getTime()+DRIVER_RESPONSE_WINDOW_MS)
           throw new AppError(409,'Driver response window elapsed; review required','REVIEW_REQUIRED');
       }
       const row=await repo.insert(client,{obligationId:id,actorId,key,digest:payloadDigest,kind,method,at:now});
+      await repo.recordAudit(client,row);
+      if(kind==='dispute') await repo.openDisputeReview(client,row);
       await notify(client,row,item);
       return row;
     });
@@ -173,7 +176,9 @@ export class DirectSettlementService {
         const row=existing??await repo.insert(client,{id:item.operationId,obligationId:item.obligationId,
           actorId:item.actorId,key:item.key,digest:item.digest,kind:item.kind,method:item.method,
           at:new Date(item.recordedAt),state:'recovered'});
-        await repo.restoreEffects(client,row);
+        await repo.recordAudit(client,row);
+        if(row.kind==='dispute') await repo.openDisputeReview(client,row);
+        await repo.markRecovered(client,row);
         await notify(client,row,obligation);
         await repo.ready(client,row.id);
         await repo.suppressRestoredEmail(client,row.id);

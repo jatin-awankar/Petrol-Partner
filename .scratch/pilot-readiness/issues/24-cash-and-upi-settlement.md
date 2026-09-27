@@ -35,3 +35,7 @@ Evidence: PostgreSQL-backed HTTP tests cover wrong actors, absent obligations, f
 Code review against `main`: the Standards pass found SQL in a service and worker; it was moved into settlement repositories. The Spec pass found silence-review writes without independent recovery, mocked browser evidence, and expired driver actions; these were corrected and tested.
 
 Remaining limits: the browser test renders the actual React page in jsdom and forwards its API calls to Express/PostgreSQL; it does not drive a graphical browser. The deployed schema and user population were not inventoried or migrated. No real trips, platform money movement, or deployment were enabled.
+
+## Comments
+
+2026-09-27 — Follow-up code review: moved the dispute-to-review policy choice from the settlement repository into the service, combined duplicate audit and review SQL in repository operations, and named the 24-hour driver response window in the API and page. Kept claim/receipt and silence-review recovery flows separate because they have distinct operation records and independent evidence. Focused PostgreSQL HTTP tests passed after the change.

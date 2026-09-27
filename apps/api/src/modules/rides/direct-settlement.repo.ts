@@ -51,22 +51,20 @@ export async function insert(db:PoolClient,input:{id?:string;obligationId:string
     VALUES(COALESCE($1::uuid,gen_random_uuid()),$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
     [input.id??null,input.obligationId,input.actorId,input.key,input.digest,input.kind,
       input.method,input.at,input.state??'committed'])).rows[0];
-  await db.query(`INSERT INTO audit_logs(actor_user_id,action,entity_type,entity_id,metadata,created_at)
-    VALUES($1,$2,'pilot_contribution_obligation',$3,
-      jsonb_build_object('operationId',$4::text,'method',$5::text),$6)`,
-    [row.actor_id,`pilot_settlement_${row.kind}`,row.obligation_id,row.id,row.method,row.recorded_at]);
-  if(row.kind==='dispute') await db.query(`INSERT INTO pilot_settlement_reviews(obligation_id,reason,opened_at)
-    VALUES($1,'disputed',$2) ON CONFLICT(obligation_id) DO NOTHING`,[row.obligation_id,row.recorded_at]);
   return row;
 }
-export async function restoreEffects(db:PoolClient,row:Operation){
+export async function recordAudit(db:PoolClient,row:Operation){
   await db.query(`INSERT INTO audit_logs(actor_user_id,action,entity_type,entity_id,metadata,created_at)
     SELECT $1,$2,'pilot_contribution_obligation',$3,
       jsonb_build_object('operationId',$4::text,'method',$5::text),$6
     WHERE NOT EXISTS(SELECT 1 FROM audit_logs WHERE action=$2 AND metadata->>'operationId'=$4)`,
     [row.actor_id,`pilot_settlement_${row.kind}`,row.obligation_id,row.id,row.method,row.recorded_at]);
-  if(row.kind==='dispute') await db.query(`INSERT INTO pilot_settlement_reviews(obligation_id,reason,opened_at)
+}
+export async function openDisputeReview(db:PoolClient,row:Operation){
+  await db.query(`INSERT INTO pilot_settlement_reviews(obligation_id,reason,opened_at)
     VALUES($1,'disputed',$2) ON CONFLICT(obligation_id) DO NOTHING`,[row.obligation_id,row.recorded_at]);
+}
+export async function markRecovered(db:PoolClient,row:Operation){
   await db.query(`UPDATE pilot_settlement_operations SET state='recovered'
     WHERE id=$1 AND state='committed'`,[row.id]);
 }

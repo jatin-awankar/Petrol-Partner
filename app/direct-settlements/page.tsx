@@ -8,6 +8,7 @@ type Obligation={obligation_id:string;amount_paise:number;currency:string;due_at
   driver_id:string;passenger_id:string;claim:{id:string;method:string;recorded_at:string}|null;
   receipt:{id:string;recorded_at:string}|null;response:string|null;
   review:{id:string|null;reason:string}|null;status:string};
+const DRIVER_RESPONSE_WINDOW_MS=24*60*60*1000;
 export default function DirectSettlementsPage(){
   const {isAuthenticated,loading,user}=useCurrentUser();
   const router=useRouter();
@@ -23,7 +24,7 @@ export default function DirectSettlementsPage(){
   useEffect(()=>{if(isAuthenticated) void refresh().catch(error=>setMessage(String(error)));},[isAuthenticated,refresh]);
   useEffect(()=>{
     const deadlines=items.map(item=>item.claim&&!item.response?
-      Date.parse(item.claim.recorded_at)+86_400_000:!item.claim?Date.parse(item.due_at):Infinity)
+      Date.parse(item.claim.recorded_at)+DRIVER_RESPONSE_WINDOW_MS:!item.claim?Date.parse(item.due_at):Infinity)
       .filter(deadline=>deadline>now&&Number.isFinite(deadline));
     if(!deadlines.length) return;
     const delay=Math.min(Math.min(...deadlines)-now,2_147_483_647);
@@ -65,7 +66,7 @@ export default function DirectSettlementsPage(){
         <button disabled={Boolean(busy)} onClick={()=>void act(item,'claim','upi')}>Report UPI paid</button>
       </div>}
       {user?.id===item.driver_id&&item.claim&&!item.response&&!item.review&&
-        now<Date.parse(item.claim.recorded_at)+86_400_000&&<div className="flex gap-2">
+        now<Date.parse(item.claim.recorded_at)+DRIVER_RESPONSE_WINDOW_MS&&<div className="flex gap-2">
         <button disabled={Boolean(busy)} onClick={()=>void act(item,'confirm')}>Confirm receipt</button>
         <button disabled={Boolean(busy)} onClick={()=>void act(item,'dispute')}>Dispute claim</button>
       </div>}
