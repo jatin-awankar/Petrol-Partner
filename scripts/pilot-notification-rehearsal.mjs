@@ -99,11 +99,15 @@ try {
   const signals=observations.alerts.find(list=>required.every(x=>list.includes(x)));
   monitorProcess.kill('SIGTERM');
   await waitUntil(()=>monitorProcess.exitCode!==null,10000);
-  const credentialPath=join(directory,'operator.json'),fallbackPath=join(directory,'fallback.jsonl');
+  const credentialPath=join(directory,'operator.json'),verifierPath=join(directory,'mfa-verifier.json'),
+    fallbackPath=join(directory,'fallback.jsonl');
   const signingSecret=randomUUID()+randomUUID(),totpSecret='1234567890123456789012345678901234567890';
-  await writeFile(credentialPath,JSON.stringify({operatorId:user,signingSecret,totpSecret}),{mode:0o600});
+  await writeFile(credentialPath,JSON.stringify({operatorId:user,signingSecret}),{mode:0o600});
+  await writeFile(verifierPath,JSON.stringify({operatorId:user,totpSecret}),{mode:0o600});
   await chmod(credentialPath,0o600);
+  await chmod(verifierPath,0o600);
   const fallbackEnv={...process.env,DATABASE_URL:'',PILOT_OUTAGE_OPERATOR_CREDENTIAL_PATH:credentialPath,
+    PILOT_OUTAGE_MFA_VERIFIER_PATH:verifierPath,
     PILOT_OUTAGE_OUTREACH_PATH:fallbackPath};
   await child(process.execPath,[resolve(root,'scripts/pilot-outage-outreach.mjs'),'record'],fallbackEnv,
     JSON.stringify({participantId:participant,method:'phone',reason:'service_outage',

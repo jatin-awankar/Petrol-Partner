@@ -14,6 +14,8 @@ import { studentRevocationService } from "../verification/student-revocation.ser
 import { revocationCasesService } from "./revocation-cases.service";
 import { recordUrgentOutreach, urgentOutreachHistory } from "./urgent-outreach.service";
 import {accountRestrictionsService} from "./account-restrictions.service";
+import outreachValues from "./outreach-values.json";
+import type {OutreachInput} from "./urgent-outreach.repo";
 
 export const operatorRouter = Router();
 const decision = z.object({ capability: z.enum(["offers", "requests", "acceptance", "booking"]), paused: z.boolean(), reason: z.string().trim().min(8).max(500) });
@@ -51,9 +53,11 @@ operatorRouter.post("/account-restrictions/:id/reverse",asyncHandler(async(req,r
     z.uuid().parse(req.params.id),input.reason,input.reviewed_evidence)});
 }));
 operatorRouter.get("/status", asyncHandler(async (_req, res) => { res.json(await pauseService.status()); }));
-const outreachInput = z.strictObject({participantId:z.uuid(), method:z.enum(["email","phone","in_person","other"]),
-  occurredAt:z.iso.datetime({offset:true}), reason:z.enum(["safety_check","pickup_exception","service_outage","delivery_failure","other_support"]),
-  outcome:z.enum(["contacted","no_answer","follow_up_required","resolved","escalated"])});
+const outreachInput = z.strictObject({participantId:z.uuid(),
+  method:z.enum(outreachValues.methods as [OutreachInput["method"],...OutreachInput["method"][]]),
+  occurredAt:z.iso.datetime({offset:true}),
+  reason:z.enum(outreachValues.reasons as [string,...string[]]),
+  outcome:z.enum(outreachValues.outcomes as [string,...string[]])});
 operatorRouter.get("/urgent-outreach",asyncHandler(async(req,res)=>{
   res.set("Cache-Control","private, no-store").json(await urgentOutreachHistory(req.user!.userId));
 }));

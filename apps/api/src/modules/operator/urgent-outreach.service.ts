@@ -8,9 +8,7 @@ import { assertCurrentOperator } from "./operator.authorization";
 import * as repo from "./urgent-outreach.repo";
 
 type Row=repo.OutreachRow;
-type Receipt={operationId:string;operatorId:string;key:string;participantId:string;
-  method:repo.OutreachInput["method"];occurredAt:string;reason:string;outcome:string;
-  digest:string;recordedAt:string};
+type Receipt=repo.OutreachReceipt;
 const digest=(input:repo.OutreachInput)=>createHash("sha256").update(JSON.stringify(input)).digest("hex");
 const receipt=(row:Row):Receipt=>({operationId:row.id,operatorId:row.operator_id,key:row.idempotency_key,
   participantId:row.participant_id,method:row.method,occurredAt:row.occurred_at.toISOString(),
@@ -25,7 +23,7 @@ async function transaction<T>(db:Pool,fn:(client:PoolClient)=>Promise<T>) {
 export class UrgentOutreachService {
   constructor(private readonly db:Pool=pool){}
   receipts(){return store().list();}
-  async pending(){return (await this.db.query<Row>("SELECT * FROM pilot_urgent_outreach WHERE state='committed'")).rows;}
+  async pending(){return repo.pending(this.db);}
   async verifyEvidence(retry?:{operatorId:string;key:string}) {
     try {
       const backup=await backupStatus(this.db);

@@ -1,12 +1,13 @@
 import {createHmac, randomUUID, timingSafeEqual} from 'node:crypto';
-import {open,readFile,lstat} from 'node:fs/promises';
+import {open,readFile,lstat,realpath} from 'node:fs/promises';
 import {constants} from 'node:fs';
 import {dirname} from 'node:path';
 import pg from 'pg';
+import outreachValues from '../apps/api/src/modules/operator/outreach-values.json' with {type:'json'};
 
-const methods=new Set(['email','phone','in_person','other']);
-const reasons=new Set(['safety_check','pickup_exception','service_outage','delivery_failure','other_support']);
-const outcomes=new Set(['contacted','no_answer','follow_up_required','resolved','escalated']);
+const methods=new Set(outreachValues.methods);
+const reasons=new Set(outreachValues.reasons);
+const outcomes=new Set(outreachValues.outcomes);
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export function validateRecord(record) {
   if(!uuid.test(record.id)||!uuid.test(record.operatorId)||!uuid.test(record.participantId)||
@@ -91,11 +92,20 @@ if(process.argv[1]&&import.meta.url===new URL(`file://${process.argv[1]}`).href)
     if(!stats.isFile()||(stats.mode&0o077)!==0) throw Error('Operator credential must be a private regular file');
     const credential=JSON.parse(await readFile(credentialPath,'utf8'));
     if(!uuid.test(credential.operatorId)||typeof credential.signingSecret!=='string'||
-      credential.signingSecret.length<32) throw Error('Invalid operator credential');
+      credential.signingSecret.length<32||'totpSecret' in credential) throw Error('Invalid operator credential');
     if(command==='record') {
+      const verifierPath=process.env.PILOT_OUTAGE_MFA_VERIFIER_PATH;
+      if(!verifierPath) throw Error('Independent MFA verifier is required');
+      if(await realpath(verifierPath)===await realpath(credentialPath))
+        throw Error('Independent MFA verifier must use a separate file');
+      const verifierStats=await lstat(verifierPath);
+      if(!verifierStats.isFile()||(verifierStats.mode&0o077)!==0)
+        throw Error('Independent MFA verifier must be a private regular file');
+      const verifier=JSON.parse(await readFile(verifierPath,'utf8'));
+      if(verifier.operatorId!==credential.operatorId) throw Error('Independent MFA verifier operator mismatch');
       let input='';for await(const chunk of process.stdin) input+=chunk;
       const {participantId,method,reason,outcome,otp}=JSON.parse(input);
-      if(!verifyTotp(credential.totpSecret,otp)) throw Error('Operator MFA failed');
+      if(!verifyTotp(verifier.totpSecret,otp)) throw Error('Operator MFA failed');
       const id=await appendFallback(path,credential.signingSecret,{operatorId:credential.operatorId,
         participantId,method,reason,outcome,occurredAt:new Date().toISOString()});
       console.log(`Recorded fallback outreach ${id}`);

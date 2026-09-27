@@ -36,6 +36,9 @@ export async function listOutreach(client: PoolClient) {
 export type OutreachRow={id:string;operator_id:string;idempotency_key:string;participant_id:string;
   method:OutreachInput["method"];occurred_at:Date;reason:string;outcome:string;
   payload_digest:string;recorded_at:Date;state:string};
+export type OutreachReceipt={operationId:string;operatorId:string;key:string;participantId:string;
+  method:OutreachInput["method"];occurredAt:string;reason:string;outcome:string;
+  digest:string;recordedAt:string};
 export async function byKey(db:Pool|PoolClient,operatorId:string,key:string) {
   const row=await db.query<OutreachRow>("SELECT * FROM pilot_urgent_outreach WHERE operator_id=$1 AND idempotency_key=$2",[operatorId,key]);
   return row.rows[0];
@@ -62,9 +65,7 @@ export async function forUpdate(client:PoolClient,id:string) {
 export async function acknowledge(client:PoolClient,id:string) {
   await client.query("UPDATE pilot_urgent_outreach SET state='acknowledged' WHERE id=$1",[id]);
 }
-export async function restore(client:PoolClient,item:{operationId:string;operatorId:string;key:string;
-  participantId:string;method:OutreachInput["method"];occurredAt:string;reason:string;outcome:string;
-  digest:string;recordedAt:string}) {
+export async function restore(client:PoolClient,item:OutreachReceipt) {
   await client.query(`INSERT INTO pilot_urgent_outreach
     (id,operator_id,idempotency_key,participant_id,method,occurred_at,reason,outcome,payload_digest,recorded_at,state)
     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'recovered')`,
