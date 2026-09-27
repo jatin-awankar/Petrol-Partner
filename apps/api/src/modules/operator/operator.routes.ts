@@ -12,7 +12,10 @@ import { directSettlementService } from "../rides/direct-settlement.service";
 import { settlementCasesService } from "../rides/settlement-cases.service";
 import { studentRevocationService } from "../verification/student-revocation.service";
 import { revocationCasesService } from "./revocation-cases.service";
+import { recordUrgentOutreach, urgentOutreachHistory } from "./urgent-outreach.service";
 import {accountRestrictionsService} from "./account-restrictions.service";
+import outreachValues from "./outreach-values.json";
+import type {OutreachInput} from "./urgent-outreach.repo";
 
 export const operatorRouter = Router();
 const decision = z.object({ capability: z.enum(["offers", "requests", "acceptance", "booking"]), paused: z.boolean(), reason: z.string().trim().min(8).max(500) });
@@ -50,6 +53,19 @@ operatorRouter.post("/account-restrictions/:id/reverse",asyncHandler(async(req,r
     z.uuid().parse(req.params.id),input.reason,input.reviewed_evidence)});
 }));
 operatorRouter.get("/status", asyncHandler(async (_req, res) => { res.json(await pauseService.status()); }));
+const outreachInput = z.strictObject({participantId:z.uuid(),
+  method:z.enum(outreachValues.methods as [OutreachInput["method"],...OutreachInput["method"][]]),
+  occurredAt:z.iso.datetime({offset:true}),
+  reason:z.enum(outreachValues.reasons as [string,...string[]]),
+  outcome:z.enum(outreachValues.outcomes as [string,...string[]])});
+operatorRouter.get("/urgent-outreach",asyncHandler(async(req,res)=>{
+  res.set("Cache-Control","private, no-store").json(await urgentOutreachHistory(req.user!.userId));
+}));
+operatorRouter.post("/urgent-outreach",asyncHandler(async(req,res)=>{
+  const key=req.header("Idempotency-Key");
+  if(!key||key.length>128) throw new AppError(400,"Idempotency-Key is required","IDEMPOTENCY_KEY_REQUIRED");
+  res.set("Cache-Control","private, no-store").json(await recordUrgentOutreach(req.user!.userId,key,outreachInput.parse(req.body)));
+}));
 operatorRouter.get("/notifications/delivery", asyncHandler(async (_req, res) => { res.json(await deliveryStatus()); }));
 operatorRouter.get("/cancellation-reviews", asyncHandler(async (req,res) => {
   res.json({cases:await cancellationsService.openReviews(req.user!.userId)});

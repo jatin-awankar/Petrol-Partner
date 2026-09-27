@@ -9,7 +9,7 @@ import {JourneyReviewQueue} from "@/components/pilot/JourneyReviewQueue";
 type Capability = "offers" | "requests" | "acceptance" | "booking";
 type PilotStatus = { recovery: { mode: string; cause: string | null; started_at: string | null; reconciled_at: string | null }; backup: { required: boolean; healthy: boolean; maximumAgeMinutes: number; ageMinutes: number | null; latest: { snapshot_at: string; uploaded_at: string; ciphertext_sha256: string } | null; failedAttempts: { id: string; started_at: string; error_code: string | null }[]; runningAttempts: { id: string; started_at: string }[] }; capabilities: { capability: Capability; paused: boolean; pending: boolean }[] };
 type Pending = { id: string; capability: Capability; paused: boolean; reason: string; state: string };
-type Delivery = { jobs: { id: string; operation_id: string; status: string; attempts: number; attempt_count: number; attempt_history: { attempt: number; started_at: string; finished_at: string | null; outcome: string | null }[]; due_at: string; updated_at: string; last_error: string | null }[]; health: { due: number; exhausted: number; expired_leases: number; stalled: number; oldest_open_at: string | null; last_attempt_at: string | null; last_worker_seen_at: string | null } };
+type Delivery = { jobs: { id: string; operation_id: string; status: string; attempts: number; attempt_count: number; attempt_history: { attempt: number; started_at: string; finished_at: string | null; outcome: string | null }[]; due_at: string; updated_at: string; last_error: string | null }[]; health: { due: number; exhausted: number; expired_leases: number; stalled: number; oldest_open_at: string | null; last_attempt_at: string | null; last_worker_seen_at: string | null; last_success_at: string | null; queue_size: number; awaiting_first_attempt: number; first_attempt_late: number; important_stalled: number; oldest_important_queued_at: string | null; recent_failures: number } };
 type StudentReview = { user_id: string; status: string; enrolled_name: string | null; institution_name: string; graduation_year: number | null; evidence_category: string | null; age_evidence_category: string | null };
 type CancellationReview = {id:string;actor_id:string;offer_id:string;target_type:string;
   target_id:string;reason:string|null;created_at:string;status:string};
@@ -26,6 +26,11 @@ export default function OperatorPage() {
   const [cancellationReviews,setCancellationReviews] = useState<CancellationReview[]>([]);
   const [revocationCases,setRevocationCases] = useState<{holds:RevocationCase[];incidents:RevocationCase[]}>({holds:[],incidents:[]});
   const [studentToRevoke,setStudentToRevoke] = useState("");
+  const [outreachParticipant,setOutreachParticipant] = useState("");
+  const [outreachMethod,setOutreachMethod] = useState<"email"|"phone"|"in_person"|"other">("email");
+  const [outreachReason,setOutreachReason] = useState("safety_check");
+  const [outreachOutcome,setOutreachOutcome] = useState("follow_up_required");
+  const [outreach,setOutreach] = useState<{id:string;participant_id:string;method:string;reason:string;outcome:string;occurred_at:string}[]>([]);
   const [adultFindings, setAdultFindings] = useState<Record<string, boolean>>({});
   const [evidenceMode, setEvidenceMode] = useState<"closed" | "synthetic" | "real">("closed");
   const [evidenceRetention, setEvidenceRetention] = useState<{ overdue_count: number; failed_count: number; oldest_due_at: string | null } | null>(null);
@@ -40,6 +45,7 @@ export default function OperatorPage() {
     setStatus(next);
     setPending(operations.operations);
     setDelivery(await apiRequest<Delivery>("/v1/operator/notifications/delivery"));
+    setOutreach((await apiRequest<{records:typeof outreach}>("/v1/operator/urgent-outreach")).records);
     setCancellationReviews((await apiRequest<{cases:CancellationReview[]}>("/v1/operator/cancellation-reviews")).cases);
     setRevocationCases(await apiRequest<{holds:RevocationCase[];incidents:RevocationCase[]}>("/v1/operator/revocation-cases"));
     const reviews = await apiRequest<{ student_verifications: StudentReview[] }>("/v1/verification/admin/pending");
@@ -99,6 +105,18 @@ export default function OperatorPage() {
       const result = await apiRequest<{ state: string }>(`/v1/operator/pending/${operationId}`);
       setMessage(`${context ? `${context}. ` : ""}Decision ${operationId}: ${result.state}. Reconcile before reopening activity.`);
     } catch (error) { setMessage(`Unable to check ${operationId}: ${error instanceof Error ? error.message : "unknown error"}`); }
+  }
+  async function recordOutreach() {
+    setBusy(true);
+    try {
+      const id=crypto.randomUUID();
+      await apiRequest("/v1/operator/urgent-outreach",{method:"POST",headers:{"Idempotency-Key":id},
+        body:JSON.stringify({participantId:outreachParticipant.trim(),method:outreachMethod,
+          occurredAt:new Date().toISOString(),reason:outreachReason,outcome:outreachOutcome})});
+      setMessage(`Urgent outreach ${id} recorded.`);
+      await refresh();
+    } catch(error) {setMessage(error instanceof Error?error.message:"Outreach record failed");}
+    finally {setBusy(false);}
   }
   async function retryEmail(jobId: string, exhaustedAt: string) {
     setBusy(true);
@@ -216,11 +234,22 @@ export default function OperatorPage() {
     <section><h2 className="font-semibold">Uncertain decisions</h2>{pending.length ? pending.map((item) => <div key={item.id} className="rounded border p-3"><p>{item.id} · {item.capability} · {item.paused ? "pause" : "resume"} · {item.state}</p><p>Original reason: {item.reason}</p><div className="flex gap-3"><button disabled={busy || reason.trim().length < 8} onClick={() => resumePending(item.id)}>Complete pending decision</button><button disabled={busy} onClick={() => checkPendingStatus(item.id)}>Check status</button></div></div>) : <p>None recorded.</p>}</section>
     <section className="space-y-3"><h2 className="font-semibold">Notification delivery</h2>
       <p>Due: {delivery?.health.due ?? "—"} · Stalled over five minutes: {delivery?.health.stalled ?? "—"} · Expired leases: {delivery?.health.expired_leases ?? "—"} · Exhausted: {delivery?.health.exhausted ?? "—"}</p>
+      <p>Queue size: {delivery?.health.queue_size ?? "—"} · Awaiting first attempt: {delivery?.health.awaiting_first_attempt ?? "—"} · First attempt late: {delivery?.health.first_attempt_late ?? "—"} · Recent failures: {delivery?.health.recent_failures ?? "—"}</p>
+      <p>Oldest important queued: {delivery?.health.oldest_important_queued_at ? new Date(delivery.health.oldest_important_queued_at).toLocaleString() : "None"} · Last successful processing: {delivery?.health.last_success_at ? new Date(delivery.health.last_success_at).toLocaleString() : "None"}</p>
       <p>Worker last seen: {delivery?.health.last_worker_seen_at ? new Date(delivery.health.last_worker_seen_at).toLocaleString() : "No heartbeat"}</p>
       {delivery?.jobs.map((job) => <div key={job.id} className="rounded border p-3"><p>Operation {job.operation_id} · {job.status} · {job.attempt_count} delivery attempts</p>
         <p>Due: {new Date(job.due_at).toLocaleString()}</p>{job.last_error && <p>{job.last_error}</p>}
         {job.attempt_history.length > 0 && <ul className="list-disc pl-5">{job.attempt_history.map((attempt, index) => <li key={`${attempt.started_at}-${index}`}>Attempt {attempt.attempt}: {attempt.outcome ?? "in progress"} at {new Date(attempt.started_at).toLocaleString()}</li>)}</ul>}
         {job.status === "exhausted" && <button disabled={busy} onClick={() => retryEmail(job.id, job.updated_at)}>Retry email</button>}</div>)}
+    </section>
+    <section className="space-y-2 rounded border p-4"><h2 className="font-semibold">Urgent participant outreach</h2>
+      <p>Record the participant ID and coded result. Keep phone numbers and message content out of this record.</p>
+      <label className="block">Participant ID<input className="w-full rounded border p-2" value={outreachParticipant} onChange={e=>setOutreachParticipant(e.target.value)} /></label>
+      <label className="block">Method<select value={outreachMethod} onChange={e=>setOutreachMethod(e.target.value as typeof outreachMethod)}>{["email","phone","in_person","other"].map(value=><option key={value}>{value}</option>)}</select></label>
+      <label className="block">Reason<select value={outreachReason} onChange={e=>setOutreachReason(e.target.value)}>{["safety_check","pickup_exception","service_outage","delivery_failure","other_support"].map(value=><option key={value}>{value}</option>)}</select></label>
+      <label className="block">Outcome<select value={outreachOutcome} onChange={e=>setOutreachOutcome(e.target.value)}>{["contacted","no_answer","follow_up_required","resolved","escalated"].map(value=><option key={value}>{value}</option>)}</select></label>
+      <button disabled={busy||!outreachParticipant.trim()} onClick={recordOutreach}>Record outreach</button>
+      {outreach.map(item=><p key={item.id}>{item.participant_id} · {item.method} · {item.reason} · {item.outcome} · {new Date(item.occurred_at).toLocaleString()}</p>)}
     </section>
     <JourneyReviewQueue />
     <section className="space-y-3"><h2 className="font-semibold">Cancellation review cases</h2>

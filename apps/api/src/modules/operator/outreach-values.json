@@ -1,0 +1,5 @@
+{
+  "methods": ["email", "phone", "in_person", "other"],
+  "reasons": ["safety_check", "pickup_exception", "service_outage", "delivery_failure", "other_support"],
+  "outcomes": ["contacted", "no_answer", "follow_up_required", "resolved", "escalated"]
+}

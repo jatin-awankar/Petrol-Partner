@@ -1,3 +1,4 @@
+import { UrgentOutreachService } from "./urgent-outreach.service";
 import { createHash } from "node:crypto";
 import type { Pool } from "pg";
 
@@ -112,6 +113,7 @@ function recoverySlices(database: Pool): RecoverySlice[] {
     { name: "settlementSilence", service: new DirectSettlementSilenceService(database), verifyOrder: 12, reconcileOrder: 12, digestOrder: 11, pendingOrder: 7, pendingMessage: "Settlement silence recovery is incomplete" },
     { name: "settlementCases", service: new SettlementCasesService(database), verifyOrder: 13, reconcileOrder: 13, digestOrder: 12, pendingOrder: 8, pendingMessage: "Settlement case recovery is incomplete" },
     { name: "accountRestrictions", service: new AccountRestrictionsService(database), verifyOrder: 14, reconcileOrder: 14, digestOrder: 13, pendingOrder: 9, pendingMessage: "Account restriction recovery is incomplete" },
+    { name: "urgentOutreach", service: new UrgentOutreachService(database), verifyOrder: 15, reconcileOrder: 15, digestOrder: 14, pendingOrder: 10, pendingMessage: "Urgent outreach recovery is incomplete" },
   ];
 }
 

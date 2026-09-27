@@ -6,7 +6,7 @@ import { processDueEmail, type EmailMessage } from "./durable-email.job";
 import { recordDurableNotification, markDurableNotificationReady } from "../../../api/src/modules/notifications/contract.repo";
 
 const database = new Pool({ connectionString: process.env.DATABASE_URL, max: 3 });
-const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql", "0006_operator_allowlist.sql", "0007_operator_pause.sql", "0008_operator_intent_handoff.sql", "0009_durable_notifications.sql", "0010_email_retry_operations.sql"];
+const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql", "0006_operator_allowlist.sql", "0007_operator_pause.sql", "0008_operator_intent_handoff.sql", "0009_durable_notifications.sql", "0010_email_retry_operations.sql", "0032_stalled_work_outreach.sql"];
 
 beforeAll(async () => {
   for (const migration of migrations) await database.query(await readFile(resolve(import.meta.dirname, "../../../api/src/db/migrations", migration), "utf8"));
@@ -56,6 +56,7 @@ describe("durable email PostgreSQL worker", () => {
     expect(sent[0]).toMatchObject({ eventId, to: "future@example.test", subject: "Seat accepted" });
   });
   it("waits for recovery evidence and retries a failed send without repeating the business action", async () => {
+    await database.query("INSERT INTO pilot_recovery_state(singleton,mode) VALUES(true,'open') ON CONFLICT(singleton) DO UPDATE SET mode='open',cause=NULL");
     const seeded = await seed("committed");
     const delivered: EmailMessage[] = [];
     const adapter = { async send(message: EmailMessage) { delivered.push(message); if (delivered.length === 1) throw new Error("provider timeout with sensitive detail"); } };
@@ -65,14 +66,31 @@ describe("durable email PostgreSQL worker", () => {
     expect(await processDueEmail(database, adapter)).toBe(true);
     const afterFailure = await database.query("SELECT status, attempts, last_error, due_at > now() AS backed_off FROM pilot_email_jobs WHERE id = $1", [seeded.jobId]);
     expect(afterFailure.rows).toEqual([{ status: "pending", attempts: 1, last_error: "provider timeout with sensitive detail", backed_off: true }]);
+    expect((await database.query("SELECT mode FROM pilot_recovery_state WHERE singleton=true")).rows[0].mode).toBe("open");
     await database.query("UPDATE pilot_email_jobs SET due_at = now() WHERE id = $1", [seeded.jobId]);
     expect(await processDueEmail(database, adapter)).toBe(true);
     expect(delivered.map((message) => message.eventId)).toEqual([seeded.eventId, seeded.eventId]);
     expect((await database.query("SELECT status, attempts FROM pilot_email_jobs WHERE id = $1", [seeded.jobId])).rows).toEqual([{ status: "sent", attempts: 2 }]);
+    expect((await database.query("SELECT last_success_at IS NOT NULL AS succeeded FROM pilot_email_worker_state WHERE singleton=true")).rows[0].succeeded).toBe(true);
     expect((await database.query("SELECT min(a.started_at) <= min(j.created_at) + interval '1 minute' AS timely FROM pilot_email_attempts a JOIN pilot_email_jobs j ON j.id = a.job_id WHERE j.id = $1", [seeded.jobId])).rows[0].timely).toBe(true);
     expect((await database.query("SELECT count(*)::int AS count FROM pilot_pause_operations WHERE id = $1", [seeded.operationId])).rows[0].count).toBe(1);
   });
 
+  it("bounds a prolonged provider failure at five attempts without restricting recovery", async () => {
+    await database.query("INSERT INTO pilot_recovery_state(singleton,mode) VALUES(true,'open') ON CONFLICT(singleton) DO UPDATE SET mode='open',cause=NULL");
+    const seeded=await seed();
+    let sends=0;
+    for(let attempt=1;attempt<=5;attempt++) {
+      expect(await processDueEmail(database,{async send(){sends++;throw new Error("provider unavailable");}})).toBe(true);
+      const row=(await database.query("SELECT status,attempts FROM pilot_email_jobs WHERE id=$1",[seeded.jobId])).rows[0];
+      expect(row).toEqual({status:attempt===5?"exhausted":"pending",attempts:attempt});
+      if(attempt<5) await database.query("UPDATE pilot_email_jobs SET due_at=now() WHERE id=$1",[seeded.jobId]);
+    }
+    expect(await processDueEmail(database,{async send(){sends++;}})).toBe(false);
+    expect(sends).toBe(5);
+    expect((await database.query("SELECT mode FROM pilot_recovery_state WHERE singleton=true")).rows[0].mode).toBe('open');
+    expect((await database.query("SELECT count(*)::int AS n FROM pilot_pause_operations WHERE id=$1",[seeded.operationId])).rows[0].n).toBe(1);
+  });
   it("recovers an expired lease and leaves exhausted work visible", async () => {
     const seeded = await seed();
     await database.query("UPDATE pilot_email_jobs SET status = 'leased', attempts = 4, lease_until = now() - interval '1 second' WHERE id = $1", [seeded.jobId]);

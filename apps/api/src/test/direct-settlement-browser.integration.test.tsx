@@ -50,6 +50,7 @@ afterEach(async()=>{cleanup();session.actor='passenger';session.tokens={};sessio
   if(directory) await rm(directory,{recursive:true,force:true});});
 async function fixture(){
   await db.query('TRUNCATE users CASCADE');
+  await db.query("UPDATE auth_cutover_state SET active_provider='legacy', legacy_login_enabled=true, authorized_at=NULL, authorized_by=NULL WHERE singleton=true");
   await db.query(`INSERT INTO pilot_recovery_state(singleton,mode) VALUES(true,'open')
     ON CONFLICT(singleton) DO UPDATE SET mode='open',cause=NULL,started_at=NULL`);
   await db.query("UPDATE pilot_pause_state SET paused=false,operation_id=NULL");
