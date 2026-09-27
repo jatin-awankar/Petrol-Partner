@@ -4,11 +4,31 @@ type Database = Pool | PoolClient;
 
 export const closureSql = {
   lockUser: "SELECT id FROM users WHERE id=$1 FOR UPDATE",
+  recoveryModeForUpdate: "SELECT mode FROM pilot_recovery_state WHERE singleton=true FOR UPDATE",
   existing: "SELECT * FROM pilot_account_closures WHERE user_id=$1 FOR UPDATE",
   mine: `SELECT id,requested_at,due_at,status,attempts,last_error_code
     FROM pilot_account_closures WHERE user_id=$1`,
   create: `INSERT INTO pilot_account_closures(user_id,status) VALUES($1,$2) RETURNING *`,
-  event: `INSERT INTO pilot_closure_events(closure_id,event,actor_id) VALUES($1,$2,$3)`,
+  event: `INSERT INTO pilot_closure_events(closure_id,event,actor_id,subject_id,snapshot)
+    VALUES($1,$2,$3,$4,$5) RETURNING *`,
+  eventBySubject: `SELECT * FROM pilot_closure_events WHERE event=$1 AND subject_id=$2`,
+  eventForUpdate: `SELECT * FROM pilot_closure_events WHERE id=$1 FOR UPDATE`,
+  eventById: `SELECT * FROM pilot_closure_events WHERE id=$1`,
+  allEvents: `SELECT * FROM pilot_closure_events ORDER BY recorded_at,id`,
+  pendingEvents: `SELECT id FROM pilot_closure_events WHERE state='committed'`,
+  restoreClosure: `INSERT INTO pilot_account_closures
+    (id,user_id,requested_at,due_at,status,last_error_code,attempts,updated_at)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(id) DO NOTHING`,
+  restoreHold: `INSERT INTO pilot_retention_holds
+    (id,closure_id,scope,reason,operator_id,review_at,created_at,idempotency_key)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(id) DO NOTHING`,
+  restoreHoldRelease: `UPDATE pilot_retention_holds SET released_at=$2,released_by=$3,
+    release_reason=$4,release_key=$5 WHERE id=$1 AND released_at IS NULL`,
+  restoreEvent: `INSERT INTO pilot_closure_events
+    (id,closure_id,event,actor_id,subject_id,snapshot,recorded_at,state)
+    VALUES($1,$2,$3,$4,$5,$6,$7,'recovered')`,
+  markRecovered: `UPDATE pilot_closure_events SET state='recovered' WHERE id=$1`,
+  acknowledgeEvent: `UPDATE pilot_closure_events SET state='acknowledged' WHERE id=$1`,
   activeCommitments: `SELECT EXISTS(SELECT 1 FROM pilot_seat_allocations WHERE (driver_id=$1 OR passenger_id=$1)
     AND status IN ('confirmed','held')) OR EXISTS(SELECT 1 FROM ride_offers
     WHERE driver_id=$1 AND pilot_policy_id IS NOT NULL AND status IN ('active','held','departed')) AS blocked`,

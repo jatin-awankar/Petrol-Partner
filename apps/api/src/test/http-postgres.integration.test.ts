@@ -35,7 +35,7 @@ import { setBackupObjectProbeForTests } from "../modules/operator/backup-status"
 import { setStudentReviewAfterCommitHookForTests } from "../modules/verification/student-review.service";
 
 const verificationPool = new Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
-const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql", "0006_operator_allowlist.sql", "0007_operator_pause.sql", "0008_operator_intent_handoff.sql", "0009_durable_notifications.sql", "0010_email_retry_operations.sql", "0011_backup_attempts.sql", "0012_student_adult_review.sql", "0013_student_review_cycles.sql", "0014_student_review_operations.sql", "0015_student_evidence_access.sql", "0016_student_evidence_deletion_outcomes.sql", "0017_student_evidence_retry_schedule.sql", "0018_driver_car_approval.sql", "0019_ride_departures.sql", "0020_corridor_offers.sql", "0021_corridor_offer_recovery.sql", "0022_pilot_seat_requests.sql", "0023_pilot_seat_acceptance.sql", "0024_pilot_cancellations.sql", "0025_pilot_departure.sql", "0026_revocation_holds_incidents.sql", "0027_pilot_journeys.sql", "0028_journey_review_decisions.sql", "0029_direct_settlement.sql", "0030_settlement_dispute_resolution.sql", "0031_reviewed_account_restrictions.sql", "0032_stalled_work_outreach.sql", "0033_account_closure.sql"];
+const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql", "0006_operator_allowlist.sql", "0007_operator_pause.sql", "0008_operator_intent_handoff.sql", "0009_durable_notifications.sql", "0010_email_retry_operations.sql", "0011_backup_attempts.sql", "0012_student_adult_review.sql", "0013_student_review_cycles.sql", "0014_student_review_operations.sql", "0015_student_evidence_access.sql", "0016_student_evidence_deletion_outcomes.sql", "0017_student_evidence_retry_schedule.sql", "0018_driver_car_approval.sql", "0019_ride_departures.sql", "0020_corridor_offers.sql", "0021_corridor_offer_recovery.sql", "0022_pilot_seat_requests.sql", "0023_pilot_seat_acceptance.sql", "0024_pilot_cancellations.sql", "0025_pilot_departure.sql", "0026_revocation_holds_incidents.sql", "0027_pilot_journeys.sql", "0028_journey_review_decisions.sql", "0029_direct_settlement.sql", "0030_settlement_dispute_resolution.sql", "0031_reviewed_account_restrictions.sql", "0032_stalled_work_outreach.sql", "0033_account_closure.sql", "0034_closure_recovery.sql"];
 
 function fakeProvider(identity: ProviderIdentity): AuthProvider {
   const session = { accessToken: "provider-access", refreshToken: "provider-refresh", expiresIn: 900, identity };
@@ -63,10 +63,110 @@ beforeAll(async () => {
 });
 
 describe("ticket 28 closure safety queue",()=>{
+  let receiptDirectory:string;
   beforeEach(async()=>{
     await verificationPool.query("TRUNCATE users CASCADE");
-    await verificationPool.query("UPDATE pilot_recovery_state SET mode='open',cause=NULL WHERE singleton=true");
+    await verificationPool.query(`INSERT INTO pilot_recovery_state(singleton,mode) VALUES(true,'open')
+      ON CONFLICT(singleton) DO UPDATE SET mode='open',cause=NULL,started_at=NULL`);
     await verificationPool.query("UPDATE pilot_pause_state SET paused=false,operation_id=NULL");
+    receiptDirectory=await mkdtemp(resolve(tmpdir(),"pilot-closure-"));
+    process.env.PILOT_RECEIPT_PATH=resolve(receiptDirectory,"receipts");
+    process.env.PILOT_RECEIPT_SECRET="pilot-closure-independent-evidence-secret";
+  });
+  afterEach(async()=>{
+    delete process.env.PILOT_RECEIPT_PATH;
+    delete process.env.PILOT_RECEIPT_SECRET;
+    await rm(receiptDirectory,{recursive:true,force:true});
+  });
+
+  it("does not acknowledge a closure request when independent recovery evidence fails",async()=>{
+    const user=(await verificationPool.query<{id:string}>(
+      "INSERT INTO users(email) VALUES($1) RETURNING id",[`closure-${randomUUID()}@example.test`])).rows[0];
+    process.env.PILOT_RECEIPT_PATH=resolve(receiptDirectory,"missing","receipts");
+    await chmod(receiptDirectory,0o500);
+    try {
+      expect((await verificationPool.query("SELECT mode FROM pilot_recovery_state WHERE singleton=true"))
+        .rows[0].mode).toBe("open");
+      await expect(accountClosureService.request(user.id))
+        .rejects.toMatchObject({code:"OPERATION_PENDING"});
+      expect((await verificationPool.query("SELECT mode FROM pilot_recovery_state WHERE singleton=true"))
+        .rows[0].mode).toBe("restricted");
+    } finally {await chmod(receiptDirectory,0o700);}
+    const pending=(await verificationPool.query("SELECT id FROM pilot_account_closures WHERE user_id=$1",[user.id])).rows[0];
+    expect((await accountClosureService.request(user.id)).id).toBe(pending.id);
+    expect((await verificationPool.query(`SELECT count(*)::int AS n FROM pilot_closure_events
+      WHERE closure_id=$1 AND state='acknowledged'`,[pending.id])).rows[0].n).toBe(1);
+  });
+  it("rejects a closure retry after its independent receipt disappears",async()=>{
+    const user=(await verificationPool.query<{id:string}>(
+      "INSERT INTO users(email) VALUES($1) RETURNING id",[`closure-${randomUUID()}@example.test`])).rows[0];
+    const closure=await accountClosureService.request(user.id);
+    const event=(await verificationPool.query<{id:string}>(
+      "SELECT id FROM pilot_closure_events WHERE closure_id=$1 AND event='requested'",[closure.id])).rows[0];
+    await rm(resolve(receiptDirectory,"receipts.account-closure",`${event.id}.json`));
+    await expect(accountClosureService.request(user.id))
+      .rejects.toMatchObject({code:"RECOVERY_MISSING"});
+    expect((await verificationPool.query("SELECT mode FROM pilot_recovery_state WHERE singleton=true"))
+      .rows[0].mode).toBe("restricted");
+  });
+
+  it("rebuilds a closure request from independent evidence after an older restore",async()=>{
+    const user=(await verificationPool.query<{id:string}>(
+      "INSERT INTO users(email) VALUES($1) RETURNING id",[`closure-${randomUUID()}@example.test`])).rows[0];
+    const operator=(await verificationPool.query<{id:string}>(
+      "INSERT INTO users(email,role) VALUES($1,'admin') RETURNING id",
+      [`operator-${randomUUID()}@example.test`])).rows[0];
+    await verificationPool.query(`INSERT INTO operator_allowlist(user_id,active,reason,reviewed_at)
+      VALUES($1,true,'synthetic recovery',now())`,[operator.id]);
+    const closure=await accountClosureService.request(user.id);
+    await verificationPool.query("DELETE FROM pilot_closure_events WHERE closure_id=$1",[closure.id]);
+    await verificationPool.query("DELETE FROM pilot_account_closures WHERE id=$1",[closure.id]);
+    await verificationPool.query("UPDATE pilot_recovery_state SET mode='restricted' WHERE singleton=true");
+    await expect(accountClosureService.verifyEvidence())
+      .rejects.toMatchObject({code:"RECOVERY_CONFLICT"});
+    expect(await accountClosureService.reconcileReceipts(operator.id)).toBe(1);
+    expect((await accountClosureService.mine(user.id))?.id).toBe(closure.id);
+    await accountClosureService.verifyEvidence();
+  });
+
+  it("rebuilds a reviewed hold after an older restore",async()=>{
+    const user=(await verificationPool.query<{id:string}>(
+      "INSERT INTO users(email) VALUES($1) RETURNING id",[`closure-${randomUUID()}@example.test`])).rows[0];
+    const operator=(await verificationPool.query<{id:string}>(
+      "INSERT INTO users(email,role) VALUES($1,'admin') RETURNING id",
+      [`operator-${randomUUID()}@example.test`])).rows[0];
+    await verificationPool.query(`INSERT INTO operator_allowlist(user_id,active,reason,reviewed_at)
+      VALUES($1,true,'synthetic recovery',now())`,[operator.id]);
+    const closure=await accountClosureService.request(user.id);
+    const hold=await accountClosureService.hold(operator.id,"restore-hold",closure.id,
+      "incident","Synthetic unresolved incident",new Date(Date.now()+86400000));
+    await verificationPool.query("DELETE FROM pilot_closure_events WHERE subject_id=$1",[hold.id]);
+    await verificationPool.query("DELETE FROM pilot_retention_holds WHERE id=$1",[hold.id]);
+    await verificationPool.query("UPDATE pilot_recovery_state SET mode='restricted' WHERE singleton=true");
+    expect(await accountClosureService.reconcileReceipts(operator.id)).toBe(2);
+    expect((await accountClosureService.queue(operator.id)).find(item=>item.id===closure.id)?.holds)
+      .toEqual([expect.objectContaining({id:hold.id,scope:"incident"})]);
+  });
+  it("rebuilds a reviewed hold release after an older restore",async()=>{
+    const user=(await verificationPool.query<{id:string}>(
+      "INSERT INTO users(email) VALUES($1) RETURNING id",[`closure-${randomUUID()}@example.test`])).rows[0];
+    const operator=(await verificationPool.query<{id:string}>(
+      "INSERT INTO users(email,role) VALUES($1,'admin') RETURNING id",
+      [`operator-${randomUUID()}@example.test`])).rows[0];
+    await verificationPool.query(`INSERT INTO operator_allowlist(user_id,active,reason,reviewed_at)
+      VALUES($1,true,'synthetic recovery',now())`,[operator.id]);
+    const closure=await accountClosureService.request(user.id);
+    const hold=await accountClosureService.hold(operator.id,"restore-hold",closure.id,
+      "incident","Synthetic incident review is open",new Date(Date.now()+86400000));
+    await accountClosureService.release(operator.id,"restore-release",hold.id,"Review was completed");
+    await verificationPool.query("DELETE FROM pilot_closure_events WHERE event='hold_released' AND subject_id=$1",[hold.id]);
+    await verificationPool.query(`UPDATE pilot_retention_holds SET released_at=NULL,released_by=NULL,
+      release_reason=NULL,release_key=NULL WHERE id=$1`,[hold.id]);
+    await verificationPool.query("UPDATE pilot_account_closures SET status='held' WHERE id=$1",[closure.id]);
+    await verificationPool.query("UPDATE pilot_recovery_state SET mode='restricted' WHERE singleton=true");
+    expect(await accountClosureService.reconcileReceipts(operator.id)).toBe(3);
+    expect((await accountClosureService.mine(user.id))?.status).toBe("pending");
+    expect((await accountClosureService.queue(operator.id)).find(item=>item.id===closure.id)?.holds).toEqual([]);
   });
 
   it("serializes repeated requests and keeps a non-personal receipt empty until deletion",async()=>{
@@ -80,6 +180,19 @@ describe("ticket 28 closure safety queue",()=>{
       [first.id])).rows[0].n).toBe(1);
     expect((await verificationPool.query("SELECT count(*)::int AS n FROM pilot_deletion_receipts")).rows[0].n).toBe(0);
     expect((await accountClosureService.mine(user.id))?.id).toBe(first.id);
+  });
+  it("names the participant endpoint as a request and returns its pending state",async()=>{
+    const email=`closure-${randomUUID()}@example.test`;
+    const user=(await verificationPool.query<{id:string}>(
+      "INSERT INTO users(email) VALUES($1) RETURNING id",[email])).rows[0];
+    const token=signAccessToken({userId:user.id,email,role:"user"});
+    const created=await request(createApp()).post("/v1/profile/closure-requests")
+      .set("Authorization",`Bearer ${token}`).send({});
+    expect(created.status).toBe(200);
+    expect(created.body.request.status).toBe("pending");
+    const current=await request(createApp()).get("/v1/profile/closure-requests")
+      .set("Authorization",`Bearer ${token}`);
+    expect(current.body.request.id).toBe(created.body.request.id);
   });
 
   it("records a scoped review hold, blocks stale operator access, and releases with an audit trail",async()=>{
@@ -223,8 +336,8 @@ describe("ticket 22 individual journey confirmation",()=>{
     expect(closure.status).toBe('held');
     const hold=await accountClosureService.hold(f.operator.id,'synthetic-case-hold',closure.id,
       'commitment','Synthetic confirmed seat still active',new Date(Date.now()+86400000));
-    await accountClosureService.release(f.operator.id,'synthetic-case-release',hold.id,
-      'Manual case hold completed');
+    await expect(accountClosureService.release(f.operator.id,'synthetic-case-release',hold.id,
+      'Manual case hold completed')).rejects.toMatchObject({code:'HOLD_CONDITION_ACTIVE'});
     expect((await accountClosureService.mine(f.first.id))?.status).toBe('held');
     expect((await verificationPool.query('SELECT status FROM pilot_seat_allocations WHERE id=$1',
       [f.allocations[0]])).rows[0].status).toBe('confirmed');

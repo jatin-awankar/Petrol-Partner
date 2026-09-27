@@ -29,9 +29,9 @@ profileRouter.patch("/preferences", asyncHandler(profileController.patchPreferen
 profileRouter.get("/safety", asyncHandler(profileController.getSafety));
 profileRouter.patch("/safety", asyncHandler(profileController.patchSafety));
 profileRouter.get("/security", asyncHandler(profileController.getSecurity));
-profileRouter.post("/closure", asyncHandler(async(req,res)=>{
-  res.set("Cache-Control","private, no-store").json({closure:await accountClosureService.request(req.user!.userId)});
+profileRouter.post("/closure-requests", asyncHandler(async(req,res)=>{
+  res.set("Cache-Control","private, no-store").json({request:await accountClosureService.request(req.user!.userId)});
 }));
-profileRouter.get("/closure", asyncHandler(async(req,res)=>{
-  res.set("Cache-Control","private, no-store").json({closure:await accountClosureService.mine(req.user!.userId)});
+profileRouter.get("/closure-requests", asyncHandler(async(req,res)=>{
+  res.set("Cache-Control","private, no-store").json({request:await accountClosureService.mine(req.user!.userId)});
 }));
