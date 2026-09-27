@@ -10,6 +10,7 @@ import {pauseService} from "../operator/pause.service";
 import {inProtectedTransaction} from "../protected-mutation/protocol";
 import {pilotReceiptStore,restrictProtectedWrites} from "../protected-mutation/receipt-evidence";
 import {assertCurrentDriverCarEligibility} from "../verification/verification.service";
+import {assertNoAccountRestriction} from "../operator/account-restrictions.policy";
 import {assertCommitmentsEligible,assertWithinSupportWindow} from "./commitment.service";
 import {lockCommitmentActors} from "./commitment.repo";
 import * as repo from "./pilot-departure.repo";
@@ -105,9 +106,12 @@ export class PilotDepartureService {
       if(!ride) throw new AppError(404,"Pilot offer not found","RIDE_NOT_FOUND");
       if(kind==='departure'&&ride.driver_id!==actorId) throw new AppError(403,"Only the driver may depart","FORBIDDEN");
       if(kind==='late_departure') await assertCurrentOperator(client,actorId);
+      await assertNoAccountRestriction(client,ride.driver_id,"driver");
       if(ride.status!=="active") throw new AppError(409,"Offer is not active","DEPARTURE_INVALID");
       await assertCurrentDriverCarEligibility(client,ride.driver_id,ride.vehicle_id);
       const allocations=await repo.allocations(client,offerId);
+      for(const allocation of allocations)
+        await assertNoAccountRestriction(client,allocation.passenger_id,"passenger");
       if(allocations.some(row=>row.status!=='confirmed')) throw new AppError(409,"A booking is held","BOOKING_HELD");
       const commitment={driverId:ride.driver_id,vehicleId:ride.vehicle_id,
         passengerIds:allocations.map(row=>row.passenger_id),rideId:offerId,

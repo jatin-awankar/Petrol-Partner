@@ -2,7 +2,8 @@ import type { Pool, PoolClient } from "pg";
 import {createHash} from "node:crypto";
 import { lockCommitmentActors } from "../rides/commitment.repo";
 
-export type RevocationSubject = "student" | "driver" | "vehicle" | "association";
+export type RevocationSubject = "student" | "driver" | "vehicle" | "association" | "restriction";
+export type RestrictionScope = "driver" | "passenger" | "all";
 type Database = Pool | PoolClient;
 function caseId(operationId:string,offerId:string,allocationId:string|null) {
   const hex=createHash("sha256").update(`${operationId}:${offerId}:${allocationId ?? "ride"}`).digest("hex");
@@ -11,7 +12,12 @@ function caseId(operationId:string,offerId:string,allocationId:string|null) {
 export type Effect = { id: string; offer_id: string; allocation_id: string | null;
   driver_id: string; passenger_ids: string[]; kind: "hold" | "incident" };
 
-function predicate(subject: RevocationSubject) {
+function predicate(subject: RevocationSubject, scope:RestrictionScope="all") {
+  if (subject === "restriction") {
+    if(scope==="driver") return "o.driver_id=$1";
+    if(scope==="passenger") return "a.passenger_id=$1";
+    return "(a.passenger_id=$1 OR o.driver_id=$1)";
+  }
   if (subject === "student") return "(a.passenger_id=$1 OR o.driver_id=$1)";
   if (subject === "driver") return "o.driver_id=$1";
   if (subject === "vehicle") return "o.vehicle_id=$1";
@@ -21,7 +27,7 @@ function predicate(subject: RevocationSubject) {
 
 // The same advisory keys are taken before request/offer rows in acceptance and departure.
 export async function lockActors(client: PoolClient, subject: RevocationSubject, id: string) {
-  if (subject === "student") {
+  if (subject === "student" || subject === "restriction") {
     await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [`student:${id}`]);
     return;
   }
@@ -38,11 +44,12 @@ export async function lockActors(client: PoolClient, subject: RevocationSubject,
   if (association) await lockCommitmentActors(client,association.driver_user_id,association.vehicle_id,[]);
 }
 
-export async function lockAffectedTrips(client: PoolClient, subject: RevocationSubject, id: string) {
+export async function lockAffectedTrips(client: PoolClient, subject: RevocationSubject, id: string,
+  scope:RestrictionScope="all") {
   const rides = await client.query<{id:string}>(`SELECT DISTINCT o.id FROM ride_offers o
     LEFT JOIN pilot_seat_allocations a ON a.offer_id=o.id AND a.status IN ('confirmed','held')
     WHERE o.pilot_policy_id IS NOT NULL AND o.status IN ('active','held','departed')
-      AND ${predicate(subject)} ORDER BY o.id`,[id]);
+      AND ${predicate(subject,scope)} ORDER BY o.id`,[id]);
   for (const ride of rides.rows) {
     await client.query("SELECT id FROM pilot_seat_requests WHERE offer_id=$1 ORDER BY id FOR UPDATE",[ride.id]);
     await client.query("SELECT id FROM ride_offers WHERE id=$1 FOR UPDATE",[ride.id]);
@@ -50,12 +57,12 @@ export async function lockAffectedTrips(client: PoolClient, subject: RevocationS
 }
 
 export async function apply(client: PoolClient, subject: RevocationSubject, id: string,
-  operationId: string, reason: string): Promise<Effect[]> {
+  operationId: string, reason: string,scope:RestrictionScope="all"): Promise<Effect[]> {
   const rides = await client.query<{id:string;driver_id:string;status:string}>(`SELECT DISTINCT o.id,o.driver_id,o.status
     FROM ride_offers o LEFT JOIN pilot_seat_allocations a ON a.offer_id=o.id
       AND a.status IN ('confirmed','held')
     WHERE o.pilot_policy_id IS NOT NULL AND o.status IN ('active','held','departed')
-      AND ${predicate(subject)} ORDER BY o.id`,[id]);
+      AND ${predicate(subject,scope)} ORDER BY o.id`,[id]);
   const effects: Effect[]=[];
   for (const ride of rides.rows) {
     const passengers=(await client.query<{passenger_id:string}>(`SELECT passenger_id
@@ -71,7 +78,7 @@ export async function apply(client: PoolClient, subject: RevocationSubject, id: 
         passenger_ids:passengers,kind:"incident"});
       continue;
     }
-    if(subject === "student" && ride.driver_id!==id) {
+    if((subject === "student" || subject === "restriction") && ride.driver_id!==id) {
       const allocations=await client.query<{id:string}>(`UPDATE pilot_seat_allocations
         SET status='held' WHERE offer_id=$1 AND passenger_id=$2 AND status IN ('confirmed','held')
         RETURNING id`,[ride.id,id]);
@@ -104,7 +111,8 @@ export async function apply(client: PoolClient, subject: RevocationSubject, id: 
 async function audit(client:PoolClient,operationId:string,item:Effect,reason:string) {
   await client.query(`INSERT INTO audit_logs(actor_user_id,action,entity_type,entity_id,metadata)
     SELECT COALESCE((SELECT operator_id FROM pilot_student_revocations WHERE id=$4::uuid),
-      (SELECT operator_id FROM driver_car_review_operations WHERE id=$4::uuid)),
+      (SELECT operator_id FROM driver_car_review_operations WHERE id=$4::uuid),
+      (SELECT operator_id FROM pilot_account_restriction_operations WHERE id=$4::uuid)),
       $1,$2,$3,jsonb_build_object('operationId',$4::text,'reason',$5::text,
       'offerId',$6::text,'allocationId',$7::text)
     WHERE NOT EXISTS(SELECT 1 FROM audit_logs WHERE action=$1 AND entity_id=$3

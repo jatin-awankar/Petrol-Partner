@@ -1,8 +1,10 @@
 'use client';
 import {useCallback,useEffect,useState} from 'react';
 import {apiRequest,ApiError} from '@/lib/api/client';
+import Link from 'next/link';
 type QueueItem={obligation_id:string;reason:string|null;claimed_at:string;amount_paise:number;currency:string};
 type Detail={obligation:{id:string;amount_paise:number;currency:string;due_at:string};
+  participants?:{driver_id:string;passenger_id:string};
   claim:{method:string;recorded_at:string}|null;response:{id:string;kind:string;recorded_at:string}|null;
   reports:{reason:string}[];decisions:{case_resolution:string;contribution_owed:boolean|null;
     receipt_established:boolean|null;reason:string}[];
@@ -70,6 +72,11 @@ export default function SettlementReviewsPage(){
       {detail.reports.map((item,index)=><p key={index}>Participant report: {item.reason}</p>)}
       {detail.decisions.map((item,index)=><p key={index}>Decision: {item.case_resolution}; contribution
         {' '}{String(item.contribution_owed)}; receipt {String(item.receipt_established)}. {item.reason}</p>)}
+      {detail.decisions.some(item=>item.case_resolution==='resolved')&&detail.participants&&<p>
+        <Link className="underline" href={`/operator/restrictions?source_type=settlement&source_id=${id}&target=${detail.participants.passenger_id}&scope=passenger`}>
+          Review passenger restriction</Link>{' · '}
+        <Link className="underline" href={`/operator/restrictions?source_type=settlement&source_id=${id}&target=${detail.participants.driver_id}&scope=driver`}>
+          Review driver restriction</Link></p>}
       <details><summary>Audit history</summary>{detail.audit.map((item,index)=><p key={index}>
         {item.action} · {new Date(item.created_at).toLocaleString()} · {item.operation_id}</p>)}</details>
       <label className="block">Contribution owed <select value={owed} onChange={e=>setOwed(e.target.value)}>

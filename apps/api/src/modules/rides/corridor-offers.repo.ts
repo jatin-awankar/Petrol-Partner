@@ -1,5 +1,6 @@
 import type { Pool, PoolClient } from "pg";
 import { currentPilotEligibilityWhere } from "../verification/pilot-eligibility.sql";
+import {activeRestrictionSql} from "../operator/account-restrictions.repo";
 
 export type Policy = { id: string; version: number; currency: string; expected_minutes: number;
   buffer_minutes: number; schedule_start: string; schedule_end: string; weekdays: number[];
@@ -155,6 +156,7 @@ export async function discover(db: Pool, origin: string, destination: string, da
         JOIN driver_vehicle_approvals a ON a.driver_user_id=s.user_id AND a.vehicle_id=r.vehicle_id
         JOIN vehicles v ON v.id=a.vehicle_id
         WHERE s.user_id=r.driver_id AND ${currentPilotEligibilityWhere})
+      AND NOT ${activeRestrictionSql('r.driver_id',"'driver'")}
       AND EXISTS (SELECT 1 FROM pilot_corridor_contributions c WHERE c.policy_id=p.id
        AND c.origin_code=$1 AND c.destination_code=$2)
     ORDER BY r.date,r.time LIMIT 50`,[origin,destination,date ?? null])).rows;
