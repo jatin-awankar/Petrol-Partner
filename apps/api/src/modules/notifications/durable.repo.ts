@@ -64,16 +64,22 @@ export async function operatorDeliveryStatus(database: Database = pool) {
     ),
     database.query(
       `SELECT count(*) FILTER (WHERE j.status = 'pending' AND j.due_at <= now())::int AS due,
+              count(*) FILTER (WHERE j.status IN ('pending', 'leased') AND e.ready_at IS NOT NULL)::int AS queue_size,
+              count(*) FILTER (WHERE j.status IN ('pending', 'leased') AND e.ready_at IS NOT NULL AND j.attempts = 0)::int AS awaiting_first_attempt,
+              count(*) FILTER (WHERE j.status IN ('pending', 'leased') AND e.ready_at IS NOT NULL AND j.attempts = 0 AND e.ready_at < now() - interval '1 minute')::int AS first_attempt_late,
+              count(*) FILTER (WHERE j.status IN ('pending', 'leased') AND e.ready_at IS NOT NULL AND e.ready_at < now() - interval '5 minutes')::int AS important_stalled,
               count(*) FILTER (WHERE j.status = 'exhausted')::int AS exhausted,
               count(*) FILTER (WHERE j.status = 'leased' AND j.lease_until < now())::int AS expired_leases,
               count(*) FILTER (WHERE j.status IN ('pending', 'leased') AND j.created_at < now() - interval '5 minutes')::int AS stalled,
+              min(e.ready_at) FILTER (WHERE j.status IN ('pending', 'leased') AND e.ready_at IS NOT NULL) AS oldest_important_queued_at,
+              count(*) FILTER (WHERE j.last_error IS NOT NULL AND j.last_attempt_at > now() - interval '24 hours')::int AS recent_failures,
               min(j.created_at) FILTER (WHERE j.status IN ('pending', 'leased')) AS oldest_open_at,
               max(j.last_attempt_at) AS last_attempt_at
-         FROM pilot_email_jobs j`,
+         FROM pilot_email_jobs j JOIN pilot_notification_events e ON e.id = j.event_id`,
     ),
-    database.query("SELECT last_seen_at FROM pilot_email_worker_state WHERE singleton = true"),
+    database.query("SELECT last_seen_at, last_success_at FROM pilot_email_worker_state WHERE singleton = true"),
   ]);
-  return { jobs: jobs.rows, health: { ...health.rows[0], last_worker_seen_at: worker.rows[0]?.last_seen_at ?? null } };
+  return { jobs: jobs.rows, health: { ...health.rows[0], last_worker_seen_at: worker.rows[0]?.last_seen_at ?? null, last_success_at: worker.rows[0]?.last_success_at ?? null } };
 }
 
 export async function emailJobForUpdate(client: PoolClient, jobId: string) {

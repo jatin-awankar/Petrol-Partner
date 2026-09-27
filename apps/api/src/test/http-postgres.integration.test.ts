@@ -34,7 +34,7 @@ import { setBackupObjectProbeForTests } from "../modules/operator/backup-status"
 import { setStudentReviewAfterCommitHookForTests } from "../modules/verification/student-review.service";
 
 const verificationPool = new Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
-const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql", "0006_operator_allowlist.sql", "0007_operator_pause.sql", "0008_operator_intent_handoff.sql", "0009_durable_notifications.sql", "0010_email_retry_operations.sql", "0011_backup_attempts.sql", "0012_student_adult_review.sql", "0013_student_review_cycles.sql", "0014_student_review_operations.sql", "0015_student_evidence_access.sql", "0016_student_evidence_deletion_outcomes.sql", "0017_student_evidence_retry_schedule.sql", "0018_driver_car_approval.sql", "0019_ride_departures.sql", "0020_corridor_offers.sql", "0021_corridor_offer_recovery.sql", "0022_pilot_seat_requests.sql", "0023_pilot_seat_acceptance.sql", "0024_pilot_cancellations.sql", "0025_pilot_departure.sql", "0026_revocation_holds_incidents.sql", "0027_pilot_journeys.sql", "0028_journey_review_decisions.sql", "0029_direct_settlement.sql", "0030_settlement_dispute_resolution.sql", "0031_reviewed_account_restrictions.sql"];
+const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql", "0006_operator_allowlist.sql", "0007_operator_pause.sql", "0008_operator_intent_handoff.sql", "0009_durable_notifications.sql", "0010_email_retry_operations.sql", "0011_backup_attempts.sql", "0012_student_adult_review.sql", "0013_student_review_cycles.sql", "0014_student_review_operations.sql", "0015_student_evidence_access.sql", "0016_student_evidence_deletion_outcomes.sql", "0017_student_evidence_retry_schedule.sql", "0018_driver_car_approval.sql", "0019_ride_departures.sql", "0020_corridor_offers.sql", "0021_corridor_offer_recovery.sql", "0022_pilot_seat_requests.sql", "0023_pilot_seat_acceptance.sql", "0024_pilot_cancellations.sql", "0025_pilot_departure.sql", "0026_revocation_holds_incidents.sql", "0027_pilot_journeys.sql", "0028_journey_review_decisions.sql", "0029_direct_settlement.sql", "0030_settlement_dispute_resolution.sql", "0031_reviewed_account_restrictions.sql", "0032_stalled_work_outreach.sql"];
 
 function fakeProvider(identity: ProviderIdentity): AuthProvider {
   const session = { accessToken: "provider-access", refreshToken: "provider-refresh", expiresIn: 900, identity };
@@ -3386,6 +3386,39 @@ describe("protected operator pause HTTP/PostgreSQL", () => {
       child.kill("SIGTERM");
     });
   }
+  it("records coded urgent outreach only for current MFA operators and reconciles outage fallback", async () => {
+    const operatorSession=await operator("aal2",true,"outreach");
+    const participant=(await verificationPool.query<{id:string}>(
+      "INSERT INTO users(email) VALUES('outreach-participant@example.test') RETURNING id")).rows[0].id;
+    const body={participantId:participant,method:"phone",occurredAt:new Date().toISOString(),
+      reason:"safety_check",outcome:"contacted"};
+    const send=(payload:typeof body,key="outreach-1")=>request(createApp()).post("/v1/operator/urgent-outreach")
+      .set("Cookie",operatorSession.cookie).set("Origin","http://localhost:3000")
+      .set("X-CSRF-Token",operatorSession.csrf).set("Idempotency-Key",key).send(payload);
+    const first=await send(body);
+    expect(first.status,JSON.stringify(first.body)).toBe(200);
+    expect((await send(body)).body.id).toBe(first.body.id);
+    expect((await send({...body,outcome:"escalated"})).status).toBe(409);
+    expect((await send({...body,reason:"Call 9999999999"},"outreach-sensitive")).status).toBe(400);
+    const history=await operatorSession.agent.get("/v1/operator/urgent-outreach");
+    expect(history.status).toBe(200);
+    expect(history.headers["cache-control"]).toContain("no-store");
+    expect(JSON.stringify(history.body)).not.toContain("9999999999");
+    const weak=await operator("aal1",true,"outreach-weak");
+    expect((await weak.agent.get("/v1/operator/urgent-outreach")).status).toBe(403);
+    const revoked=await operator("aal2",false,"outreach-revoked");
+    expect((await revoked.agent.get("/v1/operator/urgent-outreach")).status).toBe(403);
+    const {appendFallback,reconcileFallback}=await import("../../../../scripts/pilot-outage-outreach.mjs");
+    const path=resolve(receiptDirectory,"outreach.jsonl");
+    const secret="integration-test-independent-fallback-secret";
+    const fallbackId=await appendFallback(path,secret,{operatorId:operatorSession.userId,
+      participantId:participant,method:"phone",reason:"service_outage",outcome:"follow_up_required",
+      occurredAt:new Date().toISOString()});
+    const independent=await verificationPool.connect();
+    try {expect(await reconcileFallback(path,secret,independent)).toBe(1);
+      expect(await reconcileFallback(path,secret,independent)).toBe(1);} finally {independent.release();}
+    expect((await verificationPool.query("SELECT count(*)::int AS n FROM pilot_urgent_outreach WHERE id=$1",[fallbackId])).rows[0].n).toBe(1);
+  });
   it("commits a recipient notification and email job once, visible after recovery evidence", async () => {
     const { agent, userId, csrf, cookie } = await operator();
     const body = { capability: "offers", paused: true, reason: "Corridor access temporarily blocked" };
@@ -3406,7 +3439,11 @@ describe("protected operator pause HTTP/PostgreSQL", () => {
     expect(visible.status).toBe(200);
     expect(visible.body.notifications).toEqual([expect.objectContaining({ related_entity_id: first.body.id })]);
     expect(visible.body.notifications[0].body).toBe("Offers were paused by an operator.");
-    expect((await agent.get("/v1/operator/notifications/delivery")).body.health.due).toBe(1);
+    const queueHealth=(await agent.get("/v1/operator/notifications/delivery")).body.health;
+    expect(queueHealth.due).toBe(1);
+    expect(queueHealth.queue_size).toBe(1);
+    expect(queueHealth.awaiting_first_attempt).toBe(1);
+    expect(queueHealth.oldest_important_queued_at).toBeTruthy();
     expect((await verificationPool.query("SELECT count(*)::int AS count FROM pilot_notification_events WHERE recipient_id = $1", [other.rows[0].id])).rows[0].count).toBe(0);
     const second = await operator("aal2", true, "second-notification");
     expect((await second.agent.get("/v1/notifications/durable")).body.notifications).toEqual([]);

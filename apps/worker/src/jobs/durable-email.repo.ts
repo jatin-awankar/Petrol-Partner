@@ -65,6 +65,9 @@ export async function finishEmailAttempt(database: Pool, job: ClaimedEmail, fail
         [job.id, job.attempts + 1, failure],
       );
     }
+    if (updated.rowCount && failure === null) {
+      await client.query("UPDATE pilot_email_worker_state SET last_success_at = now() WHERE singleton = true");
+    }
     await client.query("COMMIT");
   } catch (error) { await client.query("ROLLBACK"); throw error; }
   finally { client.release(); }

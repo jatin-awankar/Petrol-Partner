@@ -12,6 +12,7 @@ import { directSettlementService } from "../rides/direct-settlement.service";
 import { settlementCasesService } from "../rides/settlement-cases.service";
 import { studentRevocationService } from "../verification/student-revocation.service";
 import { revocationCasesService } from "./revocation-cases.service";
+import { recordUrgentOutreach, urgentOutreachHistory } from "./urgent-outreach.service";
 import {accountRestrictionsService} from "./account-restrictions.service";
 
 export const operatorRouter = Router();
@@ -50,6 +51,17 @@ operatorRouter.post("/account-restrictions/:id/reverse",asyncHandler(async(req,r
     z.uuid().parse(req.params.id),input.reason,input.reviewed_evidence)});
 }));
 operatorRouter.get("/status", asyncHandler(async (_req, res) => { res.json(await pauseService.status()); }));
+const outreachInput = z.strictObject({participantId:z.uuid(), method:z.enum(["email","phone","in_person","other"]),
+  occurredAt:z.iso.datetime({offset:true}), reason:z.enum(["safety_check","pickup_exception","service_outage","delivery_failure","other_support"]),
+  outcome:z.enum(["contacted","no_answer","follow_up_required","resolved","escalated"])});
+operatorRouter.get("/urgent-outreach",asyncHandler(async(req,res)=>{
+  res.set("Cache-Control","private, no-store").json(await urgentOutreachHistory(req.user!.userId));
+}));
+operatorRouter.post("/urgent-outreach",asyncHandler(async(req,res)=>{
+  const key=req.header("Idempotency-Key");
+  if(!key||key.length>128) throw new AppError(400,"Idempotency-Key is required","IDEMPOTENCY_KEY_REQUIRED");
+  res.set("Cache-Control","private, no-store").json(await recordUrgentOutreach(req.user!.userId,key,outreachInput.parse(req.body)));
+}));
 operatorRouter.get("/notifications/delivery", asyncHandler(async (_req, res) => { res.json(await deliveryStatus()); }));
 operatorRouter.get("/cancellation-reviews", asyncHandler(async (req,res) => {
   res.json({cases:await cancellationsService.openReviews(req.user!.userId)});
