@@ -73,9 +73,20 @@ describe("ticket 29 pilot boundary without legacy services", () => {
       expect(response.status, path).toBe(410);
       expect(response.body.error.code, path).toBe("PILOT_SCOPE_DISABLED");
     }
+    await verificationPool.query(`INSERT INTO pilot_recovery_state(singleton,mode)
+      VALUES(true,'open') ON CONFLICT(singleton) DO UPDATE SET mode='open',cause=NULL`);
+    await verificationPool.query(`INSERT INTO pilot_email_worker_state(singleton,last_seen_at)
+      VALUES(true,now()-interval '2 minutes') ON CONFLICT(singleton)
+      DO UPDATE SET last_seen_at=EXCLUDED.last_seen_at`);
+    const stale = await request(app).get("/v1/ready");
+    expect(stale.status).toBe(503);
+    expect(stale.body.worker.status).toBe("stale");
+    await verificationPool.query("UPDATE pilot_email_worker_state SET last_seen_at=now() WHERE singleton=true");
     const readiness = await request(app).get("/v1/ready");
     expect(readiness.status).toBe(200);
     expect(readiness.body.work).toEqual({ executor: "postgresql", configured: true });
+    expect(readiness.body.protected_mutations).toEqual({permitted:true,recovery_mode:"open"});
+    expect(readiness.body.backup.required).toBe(false);
   });
 });
 
@@ -2356,6 +2367,95 @@ describe("pilot cancellation and replacement", () => {
 });
 
 describe("pilot seat requests through HTTP and PostgreSQL", () => {
+  it("runs one synthetic request through direct receipt and retryable notification without legacy credentials", async () => {
+    const directory = await mkdtemp(resolve(tmpdir(), "pilot29-flow-"));
+    const saved = Object.fromEntries(["REDIS_URL","RAZORPAY_KEY_ID","RAZORPAY_KEY_SECRET"]
+      .map(name => [name,process.env[name]]));
+    for (const name of Object.keys(saved)) delete process.env[name];
+    Object.assign(process.env, {PILOT_RECEIPT_PATH:resolve(directory,"receipts"),
+      PILOT_RECEIPT_SECRET:"pilot29-independent-receipt-secret-for-tests",
+      PILOT_CONFLICT_POLICY_APPROVED:"true",PILOT_EXPECTED_TRIP_MINUTES:"35",
+      PILOT_CONFLICT_BUFFER_MINUTES:"20",PILOT_SUPPORT_WINDOW_APPROVED:"true",
+      PILOT_SUPPORT_WINDOW_START:new Date(Date.now()-60_000).toISOString(),
+      PILOT_SUPPORT_WINDOW_END:new Date(Date.now()+5*86_400_000).toISOString()});
+    try {
+      await verificationPool.query("TRUNCATE users CASCADE");
+      await verificationPool.query(`INSERT INTO pilot_recovery_state(singleton,mode) VALUES(true,'open')
+        ON CONFLICT(singleton) DO UPDATE SET mode='open',cause=NULL`);
+      await verificationPool.query("UPDATE pilot_pause_state SET paused=false,operation_id=NULL");
+      const actors=[];
+      for(const label of ["driver","passenger"]){
+        const email=`pilot29-${label}-${randomUUID()}@example.test`;
+        const id=(await verificationPool.query<{id:string}>(
+          "INSERT INTO users(email,email_verified_at) VALUES($1,now()) RETURNING id",[email])).rows[0].id;
+        await verificationPool.query(`INSERT INTO student_verifications
+          (user_id,provider,status,adult_eligible,institution_name,eligibility_ends_at)
+          VALUES($1,'manual_review','verified',true,'Synthetic College',now()+interval '1 year')`,[id]);
+        actors.push({id,token:signAccessToken({userId:id,email,role:"user"})});
+      }
+      const [driver,passenger]=actors;
+      await verificationPool.query(`INSERT INTO driver_eligibility(user_id,status,license_expires_at,review_after)
+        VALUES($1,'approved','2099-12-31','2099-12-30')`,[driver.id]);
+      const car=(await verificationPool.query<{id:string}>(`INSERT INTO vehicles
+        (owner_user_id,vehicle_type,registration_number_last4,seat_capacity,status,verification_status,
+         use_category,applicable_document_required,insurance_expires_at,review_after)
+        VALUES($1,'car','2929',2,'active','approved','private',true,'2099-12-31','2099-12-30') RETURNING id`,
+        [driver.id])).rows[0].id;
+      await verificationPool.query("UPDATE vehicles SET make='Tata',model='Tiago',color='Blue' WHERE id=$1",[car]);
+      await verificationPool.query(`INSERT INTO driver_vehicle_approvals
+        (driver_user_id,vehicle_id,permission_category,status,review_after)
+        VALUES($1,$2,'owner','approved','2099-12-30')`,[driver.id,car]);
+      const departure=new Date(Date.now()+2*86_400_000);
+      while(new Intl.DateTimeFormat("en-GB",{timeZone:"Asia/Kolkata",weekday:"short"}).format(departure)==="Sun")
+        departure.setUTCDate(departure.getUTCDate()+1);
+      departure.setUTCHours(5,0,0,0);
+      const app=createApp();
+      const offer=await request(app).post("/v1/corridor-offers")
+        .set("Authorization",`Bearer ${driver.token}`).set("Idempotency-Key",randomUUID())
+        .send({vehicle_id:car,origin_code:"university",destination_code:"prmitr",
+          departure_at:departure.toISOString(),capacity:1});
+      expect(offer.status,JSON.stringify(offer.body)).toBe(201);
+      const offerId=offer.body.offer.id;
+      const requested=await request(app).post("/v1/seat-requests")
+        .set("Authorization",`Bearer ${passenger.token}`).set("Idempotency-Key",randomUUID())
+        .send({offer_id:offerId,seats:1});
+      expect(requested.status,JSON.stringify(requested.body)).toBe(201);
+      const accepted=await request(app).post(`/v1/seat-requests/${requested.body.request.id}/accept`)
+        .set("Authorization",`Bearer ${driver.token}`).set("Idempotency-Key",randomUUID()).send({});
+      expect(accepted.status,JSON.stringify(accepted.body)).toBe(200);
+      const allocationId=accepted.body.booking.id;
+      expect((await new PilotDepartureService(pool).start(driver.id,randomUUID(),offerId,[allocationId],
+        "departure",null,departure)).state).toBe("acknowledged");
+      const arrived=new Date(departure.getTime()+40*60_000);
+      const journey=new PilotJourneyService(pool);
+      await journey.complete(driver.id,randomUUID(),offerId,
+        [{allocation_id:allocationId,travelled:true,completed:true}],arrived);
+      await journey.confirm(passenger.id,randomUUID(),offerId,allocationId,true,true,arrived);
+      const obligation=(await verificationPool.query<{id:string}>(
+        "SELECT id FROM pilot_contribution_obligations WHERE allocation_id=$1",[allocationId])).rows[0].id;
+      const settlement=new DirectSettlementService(pool);
+      await settlement.mutate(passenger.id,randomUUID(),obligation,"claim","upi",arrived);
+      await settlement.mutate(driver.id,randomUUID(),obligation,"confirm",null,arrived);
+      expect((await settlement.detail(passenger.id,obligation,arrived)).status).toBe("settled");
+      await verificationPool.query(`UPDATE pilot_email_jobs SET due_at=now()+interval '1 hour'
+        WHERE event_id IN(SELECT id FROM pilot_notification_events
+          WHERE origin_type<>'pilot_direct_settlement')`);
+      const {processDueEmail}=await import("../../../worker/src/jobs/durable-email.job");
+      expect(await processDueEmail(verificationPool,{async send(){throw new Error("synthetic provider failure");}}))
+        .toBe(true);
+      expect((await verificationPool.query<{n:number}>(`SELECT count(*)::int AS n FROM pilot_email_jobs j
+        JOIN pilot_notification_events e ON e.id=j.event_id
+        WHERE e.related_entity_id=$1 AND j.status='pending' AND j.attempts=1`,[obligation])).rows[0].n)
+        .toBeGreaterThan(0);
+    } finally {
+      for(const [name,value] of Object.entries(saved)) if(value===undefined) delete process.env[name];
+        else process.env[name]=value;
+      for(const name of ["PILOT_RECEIPT_PATH","PILOT_RECEIPT_SECRET","PILOT_CONFLICT_POLICY_APPROVED",
+        "PILOT_EXPECTED_TRIP_MINUTES","PILOT_CONFLICT_BUFFER_MINUTES","PILOT_SUPPORT_WINDOW_APPROVED",
+        "PILOT_SUPPORT_WINDOW_START","PILOT_SUPPORT_WINDOW_END"]) delete process.env[name];
+      await rm(directory,{recursive:true,force:true});
+    }
+  });
   it("accepts one final seat atomically and keeps retries and confirmed terms visible", async () => {
     const directory = await mkdtemp(resolve(tmpdir(), "seat-accept-"));
     process.env.PILOT_RECEIPT_PATH = resolve(directory,"receipts");

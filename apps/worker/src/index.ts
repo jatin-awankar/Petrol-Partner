@@ -15,16 +15,21 @@ async function sweepEmail() {
   if (emailBusy) return;
   emailBusy = true;
   try {
-    while (await processDueEmail()) { /* Drain work ready now. */ }
-    while (await deleteDueStudentEvidence()) { /* Drain due evidence. */ }
-    while (await deleteDueDriverCarEvidence()) { /* Drain due evidence. */ }
-    while (await deleteReplacedDriverCarEvidence()) { /* Drain replaced evidence. */ }
-    while (await recordDueDriverCarExpiryNotice()) { /* Drain due notices. */ }
-    while ((await reviewSilentJourneys(pool)).processed) { /* Drain due journey reviews. */ }
-    while ((await expirePilotSeatRequests(pool)).expired) { /* Drain due seat requests. */ }
-    while ((await notifyDelayedPilotRides(pool)).delayed) { /* Drain due delayed notices. */ }
+    const sweeps: Array<[string, () => Promise<boolean>]> = [
+      ["email", () => processDueEmail()],
+      ["student evidence", () => deleteDueStudentEvidence()],
+      ["driver/car evidence", () => deleteDueDriverCarEvidence()],
+      ["replaced driver/car evidence", () => deleteReplacedDriverCarEvidence()],
+      ["driver/car expiry notice", () => recordDueDriverCarExpiryNotice()],
+      ["journey silence", async () => (await reviewSilentJourneys(pool)).processed > 0],
+      ["seat expiry", async () => (await expirePilotSeatRequests(pool)).expired > 0],
+      ["delayed ride notice", async () => (await notifyDelayedPilotRides(pool)).delayed > 0],
+    ];
+    for (const [name, sweep] of sweeps) {
+      try { while (await sweep()) { /* Drain due PostgreSQL work. */ } }
+      catch (error) { logger.error({ error, name }, "Pilot work sweep failed"); }
+    }
   }
-  catch (error) { logger.error({ error }, "Durable email sweep failed"); }
   finally { emailBusy = false; }
 }
 
