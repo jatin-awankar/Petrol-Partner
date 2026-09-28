@@ -23,6 +23,7 @@
     "test:integration": "npm --workspace @petrol-partner/api run test:integration",
     "check": "npm run lint && npm run typecheck && npm test && npm run build:all",
     "build:all": "npm run build && npm run build --workspaces --if-present",
+    "release:artifact": "node scripts/release-artifact.mjs",
     "db:migrate": "node scripts/db-migrate.mjs",
     "db:inventory": "node scripts/db-inventory.mjs",
     "db:rehearse": "node scripts/db-rehearsal.mjs",
