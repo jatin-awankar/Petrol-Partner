@@ -19,7 +19,7 @@ interface LockedBookingRow {
   expires_at: Date | string | null;
 }
 
-async function expireBooking(bookingId: string) {
+export async function expireBooking(bookingId: string) {
   return withTransaction(async (client) => {
     const bookingResult = await client.query<LockedBookingRow>(
       `SELECT
@@ -41,6 +41,13 @@ async function expireBooking(bookingId: string) {
     }
 
     const booking = bookingResult.rows[0];
+
+    // A queued legacy job must never touch a corridor offer or its capacity.
+    const pilotOffer = booking.ride_offer_id ? await client.query(
+      "SELECT 1 FROM ride_offers WHERE id = $1 AND pilot_policy_id IS NOT NULL",
+      [booking.ride_offer_id],
+    ) : null;
+    if (pilotOffer?.rowCount) return { outcome: "pilot_scope_disabled" as const };
 
     if (booking.status !== "pending") {
       return { outcome: "already_terminal" as const, status: booking.status };

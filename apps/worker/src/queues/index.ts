@@ -3,6 +3,7 @@ import IORedis from "ioredis";
 
 import { env } from "../config/env";
 
+if (!env.REDIS_URL) throw new Error("Legacy Redis queues require REDIS_URL");
 export const redisConnection = new IORedis(env.REDIS_URL, {
   maxRetriesPerRequest: null,
 });

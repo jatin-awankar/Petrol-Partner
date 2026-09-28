@@ -54,10 +54,6 @@ if (!parsed.success) {
   throw new Error(`Invalid API environment configuration: ${parsed.error.message}`);
 }
 
-if (parsed.data.NODE_ENV === "production" && !parsed.data.REDIS_URL) {
-  throw new Error("Invalid API environment configuration: REDIS_URL is required in production");
-}
-
 if (
   parsed.data.AUTH_PROVIDER === "supabase" &&
   (!parsed.data.SUPABASE_URL || !parsed.data.SUPABASE_PUBLISHABLE_KEY || !parsed.data.AUTH_CALLBACK_URL)

@@ -23,22 +23,12 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20
-      redis:
-        image: redis:7.4.5-alpine
-        ports:
-          - 56379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 20
     env:
       CI: "true"
       NODE_ENV: test
       TEST_DATABASE_DISPOSABLE: "true"
       APP_ORIGIN: http://localhost:3000
       DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:55432/petrol_partner_test
-      REDIS_URL: redis://127.0.0.1:56379
       ACCESS_TOKEN_SECRET: test-access-token-secret-at-least-32-characters
       REFRESH_TOKEN_SECRET: test-refresh-token-secret-at-least-32-characters
       ENABLE_CHAT: "false"

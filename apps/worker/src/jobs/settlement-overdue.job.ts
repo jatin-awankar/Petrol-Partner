@@ -19,7 +19,7 @@ interface LockedSettlementRow {
   due_at: Date | string | null;
 }
 
-async function markSettlementOverdue(settlementId: string) {
+export async function markSettlementOverdue(settlementId: string) {
   return withTransaction(async (client) => {
     const settlementResult = await client.query<LockedSettlementRow>(
       `SELECT
@@ -41,6 +41,12 @@ async function markSettlementOverdue(settlementId: string) {
     }
 
     const settlement = settlementResult.rows[0];
+
+    const pilotBooking = await client.query(
+      `SELECT 1 FROM bookings b JOIN ride_offers o ON o.id = b.ride_offer_id
+       WHERE b.id = $1 AND o.pilot_policy_id IS NOT NULL`, [settlement.booking_id],
+    );
+    if (pilotBooking.rowCount) return { outcome: "pilot_scope_disabled" as const };
 
     if (settlement.status !== "due") {
       return { outcome: "status_not_due" as const, status: settlement.status };

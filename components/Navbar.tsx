@@ -7,7 +7,6 @@ import { useTheme } from "next-themes";
 import Icon from "./AppIcon";
 import { Button } from "./ui/button";
 import { useCurrentUser } from "@/hooks/auth/useCurrentUser";
-import { useChatUnreadCount } from "@/hooks/chat/useChatUnreadCount";
 import { cn } from "@/lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { ScrollArea } from "./ui/scroll-area";
@@ -46,14 +45,12 @@ const Navbar = () => {
     markOneRead,
     markAllRead,
   } = useInAppNotifications(Boolean(user));
-  const { unreadCount: chatUnreadCount } = useChatUnreadCount();
 
   const navigationItems = [
     { label: "Home", path: "/dashboard", icon: "Home" },
     { label: "Search", path: "/search-rides", icon: "Search" },
     { label: "Post", path: "/post-a-ride", icon: "Plus" },
-    { label: "Payments", path: "/payments", icon: "CreditCard" },
-    { label: "Messages", path: "/messages-chat", icon: "MessageCircle" },
+    { label: "Contributions", path: "/direct-settlements", icon: "CreditCard" },
   ];
 
   const isActive = (path: string) => pathname === path;
@@ -132,9 +129,6 @@ const Navbar = () => {
                 strokeWidth={isActive(item.path) ? 2.5 : 2}
               />
               <span>{item.label}</span>
-              {item.path === "/messages-chat" ? (
-                <NotificationBadge count={chatUnreadCount} size="sm" />
-              ) : null}
             </button>
           ))}
         </nav>
@@ -215,7 +209,7 @@ const Navbar = () => {
                         No notifications yet
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        Ride matches and payment updates will appear here.
+                        Trip and contribution updates will appear here.
                       </p>
                     </div>
                   ) : (

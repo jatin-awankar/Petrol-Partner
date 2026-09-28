@@ -5,8 +5,6 @@ import { env } from "./config/env";
 import { logger } from "./config/logger";
 import { dbQuery, pool } from "./db/pool";
 import { initializeChatSocketServer } from "./modules/chat/chat.socket";
-import { startMatchRefreshProcessor, stopMatchRefreshProcessor } from "./modules/matching/match-refresh.processor";
-import { assertQueueRuntimeReady, closeApiQueues } from "./queues";
 import {directSettlementSilenceService} from "./modules/rides/direct-settlement-silence.service";
 
 let shuttingDown = false;
@@ -28,41 +26,10 @@ async function bootstrap() {
     throw error;
   }
 
-  try {
-    await assertQueueRuntimeReady();
-    logger.info("Redis queue runtime is ready");
-  } catch (error) {
-    if (env.NODE_ENV === "production") {
-      throw error;
-    }
-
-    logger.warn(
-      {
-        err: error,
-        stage: "queue_runtime_check",
-      },
-      "API Redis queues are unavailable; readiness will stay degraded",
-    );
-  }
-
   const app = createApp();
 
-  try {
-    startMatchRefreshProcessor();
-    logger.info("Match refresh processor startup completed");
-  } catch (error) {
-    logger.fatal(
-      {
-        err: error,
-        stage: "match_refresh_processor_start",
-      },
-      "API bootstrap failed",
-    );
-    throw error;
-  }
-
   const server = createServer(app);
-  initializeChatSocketServer(server);
+  // Pilot chat remains closed even if a legacy environment flag is present.
   let settlementSweepBusy=false;
   const settlementSweepTimer=setInterval(()=>{
     if(settlementSweepBusy||shuttingDown) return;
@@ -98,7 +65,7 @@ async function bootstrap() {
     logger.info({ signal }, "Shutting down API server");
 
     server.close(async () => {
-      await Promise.allSettled([stopMatchRefreshProcessor(), closeApiQueues(), pool.end()]);
+      await pool.end();
       logger.info("API dependencies closed");
       process.exit(0);
     });

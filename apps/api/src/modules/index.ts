@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { AppError } from "../shared/errors/app-error";
 
 import { authRouter } from "./auth/auth.routes";
 import { bookingsRouter } from "./bookings/bookings.routes";
@@ -20,11 +21,25 @@ import { verificationRouter } from "./verification/verification.routes";
 import { webhooksRouter } from "./webhooks/webhooks.routes";
 
 export const apiRouter = Router();
+const pilotDisabled = () => { throw new AppError(410,
+  "This capability is unavailable in the corridor pilot", "PILOT_SCOPE_DISABLED"); };
 
 apiRouter.use(healthRouter);
 apiRouter.use("/auth", authRouter);
 apiRouter.use("/operator", operatorRouter);
 apiRouter.use("/profile", profileRouter);
+apiRouter.use("/rides", pilotDisabled);
+apiRouter.use("/bookings", pilotDisabled);
+apiRouter.use("/settlements", pilotDisabled);
+apiRouter.use("/matching", pilotDisabled);
+apiRouter.use("/pricing", pilotDisabled);
+apiRouter.use("/chat", pilotDisabled);
+apiRouter.use("/tracking", pilotDisabled);
+apiRouter.use("/webhooks", pilotDisabled);
+apiRouter.use("/payments", (req, _res, next) => {
+  if (req.method === "GET" && /^\/bookings\/[^/]+\/status$/.test(req.path)) return next();
+  return pilotDisabled();
+});
 apiRouter.use("/rides", ridesRouter);
 apiRouter.use("/corridor-offers", corridorOffersRouter);
 apiRouter.use("/seat-requests", seatRequestsRouter);
