@@ -1,6 +1,6 @@
 # Petrol Partner pilot operating policy
 
-**Version:** `pilot-development-2026-09-28.1`  
+**Version:** `pilot-development-2026-09-28.1`
 **Status:** Superseded as a proposed real-trip policy by the maintainer's 2026-09-28 request for anyone to book anywhere. Retained as historical corridor-development evidence only.
 **Basis:** Ten student conversations on 21–26 September 2026 and the maintainer's subsequent decisions, recorded in [`operations/ticket05-corridor-findings.md`](operations/ticket05-corridor-findings.md).
 
