@@ -2,9 +2,11 @@
 
 This is the approved product and operational contract for the first Petrol Partner pilot. Read the sections touched by a change and preserve every applicable invariant. The broader architecture review remains a proposal; this document records the settled pilot behavior.
 
-**Scope amendment pending (2026-09-28):** After student interviews, the maintainer chose to include bikes/scooters as well as cars and to replace Amravati University as a stop with named residential areas. The car-only University–PRMITR rules below remain the current implemented and testable contract until a revised corridor and two-wheeler specification, external determinations, server eligibility, capacity/coordination behavior, and release tests are approved. This decision does not authorize the new stops, two-wheeler offers, or real trips. Aggregate findings and unresolved policy inputs are recorded in [`operations/ticket05-corridor-findings.md`](operations/ticket05-corridor-findings.md).
+**New scope requested but not specified (2026-09-28):** The maintainer now wants real bookings by anyone, with user-chosen locations anywhere, bikes/scooters and cars, and distance-based contributions of ₹5/km per bike/scooter passenger or ₹7/km per car passenger. This replaces the one-college corridor as the intended product direction, but does not change the implemented server contract or satisfy launch gates. `support@pp.com` is not controlled by the maintainer and cannot be published as a real support contact. The new scope requires a fresh specification, review of dependent tickets, and a working monitored contact before real bookings can be enabled. See [`operations/ticket05-corridor-findings.md`](operations/ticket05-corridor-findings.md).
 
-The maintainer's selected development behavior is versioned separately in [`pilot-operating-policy.md`](pilot-operating-policy.md); it is not yet the active database policy or permission to accept real bookings.
+**Prior corridor amendment, now superseded:** After student interviews, the maintainer chose bikes/scooters as well as cars and named residential stops instead of Amravati University. The current car-only University–PRMITR rules below remain the implemented and testable contract until a replacement specification and implementation are approved. This earlier corridor amendment is retained for decision history, not as the new launch plan.
+
+The superseded corridor-development policy is retained in [`pilot-operating-policy.md`](pilot-operating-policy.md); it is not the active database policy or permission to accept real bookings.
 
 ## Scope and launch gates
 

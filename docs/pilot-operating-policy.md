@@ -1,10 +1,12 @@
 # Petrol Partner pilot operating policy
 
 **Version:** `pilot-development-2026-09-28.1`  
-**Status:** Maintainer-approved intended real-trip policy direction; launch blocked by incomplete policy and readiness evidence. This version is usable only for synthetic development.  
+**Status:** Superseded as a proposed real-trip policy by the maintainer's 2026-09-28 request for anyone to book anywhere. Retained as historical corridor-development evidence only.
 **Basis:** Ten student conversations on 21–26 September 2026 and the maintainer's subsequent decisions, recorded in [`operations/ticket05-corridor-findings.md`](operations/ticket05-corridor-findings.md).
 
 ## Cohort and geography
+
+The rules below describe the prior one-college corridor proposal. They are **not** the requirements for the newly requested unrestricted service. No unrestricted real-trip policy has been approved or implemented.
 
 The intended pilot serves verified adult PRMITR students only. The maintainer chose to include approved private bikes/scooters and cars. Current server eligibility still supports cars/SUVs only; two-wheelers remain disabled until their own specification, evidence rules, implementation, tests, and external determinations are complete.
 
