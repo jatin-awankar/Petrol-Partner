@@ -21,11 +21,17 @@ const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql
   "0014_student_review_operations.sql", "0015_student_evidence_access.sql",
   "0016_student_evidence_deletion_outcomes.sql", "0017_student_evidence_retry_schedule.sql",
   "0018_driver_car_approval.sql", "0019_ride_departures.sql", "0020_corridor_offers.sql",
-  "0021_corridor_offer_recovery.sql"];
+  "0021_corridor_offer_recovery.sql", "0022_pilot_seat_requests.sql",
+  "0023_pilot_seat_acceptance.sql", "0024_pilot_cancellations.sql",
+  "0025_pilot_departure.sql", "0026_revocation_holds_incidents.sql"];
 let directory: string;
 
 beforeAll(async () => {
+  const cancellationsPresent = (await db.query<{present:boolean}>(
+    "SELECT to_regclass('public.pilot_cancellation_operations') IS NOT NULL AS present")).rows[0].present;
   for (const migration of migrations) {
+    // Reapplying 0023 would narrow the status check after 0024 stored cancellations.
+    if (cancellationsPresent && migration === "0023_pilot_seat_acceptance.sql") continue;
     await db.query(await readFile(resolve(import.meta.dirname, "../../db/migrations", migration), "utf8"));
   }
 });

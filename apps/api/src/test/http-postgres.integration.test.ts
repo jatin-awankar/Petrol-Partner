@@ -73,6 +73,14 @@ describe("ticket 29 pilot boundary without legacy services", () => {
       expect(response.status, path).toBe(410);
       expect(response.body.error.code, path).toBe("PILOT_SCOPE_DISABLED");
     }
+    const email=`pilot29-boundary-${randomUUID()}@example.test`;
+    const user=(await verificationPool.query<{id:string}>(
+      "INSERT INTO users(email) VALUES($1) RETURNING id",[email])).rows[0];
+    const token=signAccessToken({userId:user.id,email,role:"user"});
+    for(const path of ["/v1/payments/orders","/v1/matching/recompute","/v1/chat/rooms"])
+      expect((await request(app).post(path).set("Authorization",`Bearer ${token}`).send({})).status).toBe(410);
+    expect((await request(app).get("/v1/matching/me").set("Authorization",`Bearer ${token}`)).status).toBe(410);
+    expect((await request(app).get(`/v1/payments/bookings/${randomUUID()}/status`)).status).toBe(401);
     await verificationPool.query(`INSERT INTO pilot_recovery_state(singleton,mode)
       VALUES(true,'open') ON CONFLICT(singleton) DO UPDATE SET mode='open',cause=NULL`);
     await verificationPool.query(`INSERT INTO pilot_email_worker_state(singleton,last_seen_at)
@@ -87,6 +95,19 @@ describe("ticket 29 pilot boundary without legacy services", () => {
     expect(readiness.body.work).toEqual({ executor: "postgresql", configured: true });
     expect(readiness.body.protected_mutations).toEqual({permitted:true,recovery_mode:"open"});
     expect(readiness.body.backup.required).toBe(false);
+    await verificationPool.query(`INSERT INTO pilot_backup_attempts(status,snapshot_at,uploaded_at,finished_at,
+      object_key,ciphertext_sha256) VALUES('complete',now(),now(),now(),'synthetic.enc',$1)`,['0'.repeat(64)]);
+    setBackupObjectProbeForTests(async()=>{throw new Error("synthetic backup probe failure");});
+    try {
+      const backupFailed=await request(app).get("/v1/ready");
+      expect(backupFailed.status).toBe(503);
+      expect(backupFailed.body.database).toBe("connected");
+      expect(backupFailed.body.backup.status).toBe("unknown");
+      expect(backupFailed.body.protected_mutations.permitted).toBe(false);
+    } finally {
+      setBackupObjectProbeForTests(null);
+      await verificationPool.query("DELETE FROM pilot_backup_attempts WHERE object_key='synthetic.enc'");
+    }
   });
 });
 
