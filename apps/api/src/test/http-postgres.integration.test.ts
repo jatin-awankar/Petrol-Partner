@@ -484,8 +484,13 @@ describe("ticket 22 individual journey confirmation",()=>{
       JOIN pilot_notification_events e ON e.id=j.event_id WHERE e.origin_type='pilot_journey'
         AND j.attempts=1 AND j.status='pending'`)).rows[0].n).toBe(1);
     expect((await verificationPool.query('SELECT id FROM pilot_contribution_obligations')).rows).toHaveLength(1);
-    const trip=await request(createApp()).get(`/v1/seat-requests/confirmed/${f.offer}`)
-      .set('Authorization',`Bearer ${f.first.token}`);
+    setSeatRequestClockForTests(()=>new Date(confirmedAt.getTime()+60_000));
+    let trip;
+    try {
+      trip=await request(createApp()).get(`/v1/seat-requests/confirmed/${f.offer}`)
+        .set('Authorization',`Bearer ${f.first.token}`);
+    } finally { setSeatRequestClockForTests(null); }
+    expect(trip.status).toBe(200);
     expect(trip.body.trip.bookings[0]).toMatchObject({obligation_paise:2500,driver_completed:true,
       passenger_completed:true});
     expect((await request(createApp()).get('/v1/operator/journey-reviews')
