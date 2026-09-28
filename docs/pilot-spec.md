@@ -4,6 +4,8 @@ This is the approved product and operational contract for the first Petrol Partn
 
 **Scope amendment pending (2026-09-28):** After student interviews, the maintainer chose to include bikes/scooters as well as cars and to replace Amravati University as a stop with named residential areas. The car-only University–PRMITR rules below remain the current implemented and testable contract until a revised corridor and two-wheeler specification, external determinations, server eligibility, capacity/coordination behavior, and release tests are approved. This decision does not authorize the new stops, two-wheeler offers, or real trips. Aggregate findings and unresolved policy inputs are recorded in [`operations/ticket05-corridor-findings.md`](operations/ticket05-corridor-findings.md).
 
+The maintainer's selected development behavior is versioned separately in [`pilot-operating-policy.md`](pilot-operating-policy.md); it is not yet the active database policy or permission to accept real bookings.
+
 ## Scope and launch gates
 
 The pilot serves 20–30 verified students aged 18 or older from Prof. Ram Meghe Institute of Technology and Research. It supports approved private cars on a small predefined set of stops along the Amravati University–PRMITR corridor. The initial success target is ten real completed trips.

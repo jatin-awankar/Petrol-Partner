@@ -1,6 +1,6 @@
 # Ticket 05: corridor interviews and policy decisions
 
-**State: findings recorded; corridor and operating policy not approved.** This record contains aggregate information supplied by the maintainer on 2026-09-28. It contains no participant names or contact details. The interview notes were not independently reviewed.
+**State: findings recorded; maintainer intends to approve real trips under `pilot-development-2026-09-28.1`, but the policy is not launch-ready and real bookings remain blocked.** This record contains aggregate information supplied by the maintainer on 2026-09-28. It contains no participant names or contact details. The interview notes were not independently reviewed. The versioned development policy is [`../pilot-operating-policy.md`](../pilot-operating-policy.md).
 
 ## Reported student findings
 
