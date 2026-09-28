@@ -19,7 +19,7 @@ interface LockedSettlementRow {
   due_at: Date | string | null;
 }
 
-async function markSettlementOverdue(settlementId: string) {
+export async function markSettlementOverdue(settlementId: string) {
   return withTransaction(async (client) => {
     const settlementResult = await client.query<LockedSettlementRow>(
       `SELECT

@@ -19,7 +19,7 @@ interface LockedBookingRow {
   expires_at: Date | string | null;
 }
 
-async function expireBooking(bookingId: string) {
+export async function expireBooking(bookingId: string) {
   return withTransaction(async (client) => {
     const bookingResult = await client.query<LockedBookingRow>(
       `SELECT
