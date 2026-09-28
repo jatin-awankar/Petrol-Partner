@@ -2,7 +2,6 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID }
 import https from 'node:https';
 import { isIP } from 'node:net';
 import { GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
-import { createClient } from '@supabase/supabase-js';
 import { backupStorageConfig } from './pilot-backup-common.mjs';
 
 if (process.env.PILOT_EVIDENCE_SYNTHETIC_APPROVED !== 'true') {
@@ -21,34 +20,37 @@ if (!prefix.startsWith('ticket07synthetic/')) {
 }
 
 const bucket = 'pilot-student-evidence';
-async function storageFetch(input, init) {
-  const request = new Request(input, init);
-  const target = new URL(request.url);
+async function storageRequest(method, path, { body, contentType, auth = true } = {}) {
+  const target = new URL(path, url);
   if (target.origin !== new URL(url).origin) throw new Error('Unexpected Storage request origin');
-  const body = request.body ? Buffer.from(await request.arrayBuffer()) : undefined;
+  const bytes = body === undefined ? undefined : Buffer.isBuffer(body) ? body : Buffer.from(JSON.stringify(body));
   return new Promise((resolve, reject) => {
     const outgoing = https.request(target, {
-      method: request.method,
+      method,
       autoSelectFamily: false,
-      headers: Object.fromEntries(request.headers),
+      headers: {
+        ...(auth ? { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` } : {}),
+        ...(contentType ? { 'Content-Type': contentType } : {}),
+        ...(bytes ? { 'Content-Length': bytes.length } : {}),
+      },
       ...(dnsIp ? { lookup: (_hostname, _options, done) => done(null, dnsIp, 4) } : {}),
     }, (incoming) => {
       const chunks = [];
       incoming.on('data', (part) => chunks.push(part));
       incoming.on('error', reject);
-      incoming.on('end', () => resolve(new Response(
-        incoming.statusCode === 204 ? null : Buffer.concat(chunks),
-        { status: incoming.statusCode, headers: incoming.headers },
-      )));
+      incoming.on('end', () => resolve({ status: incoming.statusCode, bytes: Buffer.concat(chunks) }));
     });
     outgoing.on('error', reject);
-    outgoing.end(body);
+    outgoing.end(bytes);
   });
 }
-const supabase = createClient(url, serviceKey, {
-  auth: { autoRefreshToken: false, persistSession: false },
-  global: { fetch: storageFetch },
-});
+function storageJson(response, step) {
+  try { return JSON.parse(response.bytes.toString('utf8')); }
+  catch { throw new Error(`${step} returned non-JSON HTTP ${response.status}`); }
+}
+function expectStatus(response, wanted, step) {
+  if (response.status !== wanted) throw new Error(`${step} returned HTTP ${response.status}, expected ${wanted}`);
+}
 const attemptId = randomUUID();
 const sourceKey = `ticket07-synthetic/${attemptId}-source.pdf`;
 const restoredKey = `ticket07-synthetic/${attemptId}-restored.pdf`;
@@ -61,26 +63,31 @@ let restoredCreated = false;
 let report;
 
 async function readStorage(path) {
-  const { data, error } = await supabase.storage.from(bucket).download(path);
-  if (error || !data) throw new Error(`Supabase download failed: ${error?.message ?? 'empty response'}`);
-  return Buffer.from(await data.arrayBuffer());
+  const response = await storageRequest('GET', `/storage/v1/object/${bucket}/${path}`);
+  expectStatus(response, 200, 'Supabase download');
+  return response.bytes;
 }
 
 async function removeStorage(path) {
-  const { data, error } = await supabase.storage.from(bucket).remove([path]);
-  if (error || data?.length !== 1) throw new Error(`Synthetic Storage cleanup failed for ${path}: ${error?.message ?? 'unexpected result'}`);
+  const response = await storageRequest('DELETE', `/storage/v1/object/${bucket}`, {
+    body: { prefixes: [path] }, contentType: 'application/json',
+  });
+  expectStatus(response, 200, `Exact synthetic deletion ${path}`);
+  if (storageJson(response, 'Synthetic deletion').length !== 1) {
+    throw new Error(`Synthetic deletion did not report exactly one object: ${path}`);
+  }
 }
 
 try {
-  const { data: bucketInfo, error: bucketError } = await supabase.storage.getBucket(bucket);
-  if (bucketError || bucketInfo?.public !== false) {
-    throw new Error(`Staging bucket must exist and be private: ${bucketError?.message ?? 'unexpected bucket policy'}`);
-  }
+  const bucketResponse = await storageRequest('GET', `/storage/v1/bucket/${bucket}`);
+  expectStatus(bucketResponse, 200, 'Private staging bucket inventory');
+  const bucketInfo = storageJson(bucketResponse, 'Bucket inventory');
+  if (bucketInfo.public !== false) throw new Error('Staging bucket must be private');
 
-  const uploaded = await supabase.storage.from(bucket).upload(sourceKey, plain, {
-    contentType: 'application/pdf', upsert: false,
+  const uploaded = await storageRequest('POST', `/storage/v1/object/${bucket}/${sourceKey}`, {
+    body: plain, contentType: 'application/pdf',
   });
-  if (uploaded.error) throw new Error(`Synthetic upload failed: ${uploaded.error.message}`);
+  expectStatus(uploaded, 200, 'Synthetic source upload');
   sourceCreated = true;
   const source = await readStorage(sourceKey);
   if (!source.equals(plain)) throw new Error('Supabase source readback mismatch');
@@ -122,16 +129,16 @@ try {
 
   await removeStorage(sourceKey);
   sourceCreated = false;
-  const missing = await supabase.storage.from(bucket).download(sourceKey);
-  if (!missing.error) throw new Error('Source remained readable after deletion');
-  const restored = await supabase.storage.from(bucket).upload(restoredKey, recoveredPlain, {
-    contentType: recovered.Metadata.contenttype, upsert: false,
+  const missing = await storageRequest('GET', `/storage/v1/object/info/${bucket}/${sourceKey}`);
+  if (missing.status === 200) throw new Error('Source metadata remained readable after deletion');
+  const restored = await storageRequest('POST', `/storage/v1/object/${bucket}/${restoredKey}`, {
+    body: recoveredPlain, contentType: recovered.Metadata.contenttype,
   });
-  if (restored.error) throw new Error(`Isolated restore failed: ${restored.error.message}`);
+  expectStatus(restored, 200, 'Isolated restore');
   restoredCreated = true;
   if (!(await readStorage(restoredKey)).equals(plain)) throw new Error('Restored Supabase bytes mismatch');
-  const publicResponse = await storageFetch(`${url}/storage/v1/object/public/${bucket}/${restoredKey}`);
-  if (publicResponse.ok) throw new Error('Restored object is publicly readable');
+  const publicResponse = await storageRequest('GET', `/storage/v1/object/public/${bucket}/${restoredKey}`, { auth: false });
+  if (publicResponse.status === 200) throw new Error('Restored object is publicly readable');
 
   report = {
     result: 'PASS', startedAt, completedAt: new Date().toISOString(), bucket,
