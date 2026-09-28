@@ -20,6 +20,8 @@ Current deployable variable contract (all values are per environment; names and 
 | Evidence and mail | `PILOT_EVIDENCE_BACKEND`, `PILOT_EVIDENCE_SUPABASE_URL`, `PILOT_EVIDENCE_SUPABASE_SERVICE_KEY`, `PILOT_EVIDENCE_SUPABASE_BUCKET`, `PILOT_EVIDENCE_PROVIDER_VERIFIED`, `PILOT_EMAIL_ENDPOINT`, `PILOT_EMAIL_TOKEN` | Server/worker only. Provider-verified flag requires actual privacy/deletion and delivery evidence; secret values never go to client or logs. |
 | Worker timing | `MAINTENANCE_SWEEP_INTERVAL_MS` (default 60000), `WORKER_CONCURRENCY` (default 5) | Worker env schema. Measure lease/retry and external alert behavior with actual executor. |
 
+Non-environment decisions remain **unset for ticket 30**: the maintainer must select and authorize the provider topology, support window and published fallback contact; the operator must approve the corridor stops, contribution table and policy version; the identity owner must approve the allowlist and MFA enrollment; and the recovery owner must identify backup/export credentials, a separate receipt reader, retention and external monitor/paging recipient. Record each owner, decision artifact and date in the restricted staging release record before a provider rehearsal. None is inferred from a synthetic fixture.
+
 Before staging, validate the resolved non-secret configuration against `apps/api/src/config/env.ts`, `apps/worker/src/config/env.ts`, `.env.example`, and the selected provider's service manifest; record who owns each secret and the check outcome in restricted evidence. This matrix is an input contract, not proof that any provider value has been configured.
 
 ## Migration, reversal, and roll-forward
