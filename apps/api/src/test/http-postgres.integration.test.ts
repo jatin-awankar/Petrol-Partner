@@ -897,9 +897,6 @@ describe("ticket 22 individual journey confirmation",()=>{
     expect((await verificationPool.query('SELECT id FROM pilot_contribution_obligations')).rows).toHaveLength(0);
   });
   it('records direct payment claim without settling until driver receipt, with HTTP retries and deadlines',async()=>{
-    expect(process.env.REDIS_URL).toBeUndefined();
-    expect(process.env.RAZORPAY_KEY_ID).toBeUndefined();
-    expect(process.env.RAZORPAY_KEY_SECRET).toBeUndefined();
     const f=await fixture();await start(f);
     const journey=new PilotJourneyService(pool),settlement=new DirectSettlementService(pool);
     const at=new Date('2026-09-27T10:00:00.000Z');
@@ -2372,6 +2369,9 @@ describe("pilot seat requests through HTTP and PostgreSQL", () => {
     const saved = Object.fromEntries(["REDIS_URL","RAZORPAY_KEY_ID","RAZORPAY_KEY_SECRET"]
       .map(name => [name,process.env[name]]));
     for (const name of Object.keys(saved)) delete process.env[name];
+    expect(process.env.REDIS_URL).toBeUndefined();
+    expect(process.env.RAZORPAY_KEY_ID).toBeUndefined();
+    expect(process.env.RAZORPAY_KEY_SECRET).toBeUndefined();
     Object.assign(process.env, {PILOT_RECEIPT_PATH:resolve(directory,"receipts"),
       PILOT_RECEIPT_SECRET:"pilot29-independent-receipt-secret-for-tests",
       PILOT_CONFLICT_POLICY_APPROVED:"true",PILOT_EXPECTED_TRIP_MINUTES:"35",
