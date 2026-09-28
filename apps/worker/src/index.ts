@@ -1,23 +1,12 @@
-import { createBookingExpiryWorker } from "./jobs/booking-expiry.job";
-import { createMaintenanceWorker } from "./jobs/maintenance.job";
-import { createPaymentReconcileWorker } from "./jobs/payment-reconcile.job";
-import { createPayoutWorker } from "./jobs/payout.job";
-import { createSettlementOverdueWorker } from "./jobs/settlement-overdue.job";
 import { logger } from "./config/logger";
 import { pool } from "./db/pool";
-import { redisConnection, scheduleMaintenanceSweepJobs } from "./queues";
 import { processDueEmail } from "./jobs/durable-email.job";
 import { deleteDueStudentEvidence, deleteDueDriverCarEvidence, deleteReplacedDriverCarEvidence } from "./jobs/student-evidence-retention.job";
 import { recordDueDriverCarExpiryNotice } from "./jobs/driver-car-expiry.job";
 import { reviewSilentJourneys } from "./jobs/pilot-journey-silence";
+import { expirePilotSeatRequests } from "./jobs/pilot-seat-expiry";
+import { notifyDelayedPilotRides } from "./jobs/pilot-delayed-rides";
 
-const workers = [
-  createBookingExpiryWorker(),
-  createSettlementOverdueWorker(),
-  createPaymentReconcileWorker(),
-  createMaintenanceWorker(),
-  createPayoutWorker(),
-];
 let shuttingDown = false;
 let emailTimer: ReturnType<typeof setInterval> | undefined;
 let emailBusy = false;
@@ -32,6 +21,8 @@ async function sweepEmail() {
     while (await deleteReplacedDriverCarEvidence()) { /* Drain replaced evidence. */ }
     while (await recordDueDriverCarExpiryNotice()) { /* Drain due notices. */ }
     while ((await reviewSilentJourneys(pool)).processed) { /* Drain due journey reviews. */ }
+    while ((await expirePilotSeatRequests(pool)).expired) { /* Drain due seat requests. */ }
+    while ((await notifyDelayedPilotRides(pool)).delayed) { /* Drain due delayed notices. */ }
   }
   catch (error) { logger.error({ error }, "Durable email sweep failed"); }
   finally { emailBusy = false; }
@@ -39,17 +30,9 @@ async function sweepEmail() {
 
 async function start() {
   await pool.query("SELECT 1");
-  await redisConnection.ping();
-  await scheduleMaintenanceSweepJobs();
-  await Promise.all(workers.map((worker) => worker.waitUntilReady()));
   emailTimer = setInterval(() => { void sweepEmail(); }, 10000);
   void sweepEmail();
-  logger.info(
-    {
-      workers: workers.length,
-    },
-    "Worker processes are ready",
-  );
+  logger.info("PostgreSQL pilot worker is ready");
 }
 
 async function shutdown(signal: NodeJS.Signals) {
@@ -60,9 +43,7 @@ async function shutdown(signal: NodeJS.Signals) {
   shuttingDown = true;
   if (emailTimer) clearInterval(emailTimer);
   logger.info({ signal }, "Shutting down workers");
-  await Promise.all(workers.map((worker) => worker.close()));
   await pool.end();
-  await redisConnection.quit();
   process.exit(0);
 }
 

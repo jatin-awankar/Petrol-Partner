@@ -43,10 +43,7 @@ export const frontendConfig = {
       process.env.NEXT_PUBLIC_USE_NEW_SETTLEMENTS,
       true,
     ),
-    useNewPayments: parseBooleanFlag(
-      process.env.NEXT_PUBLIC_USE_NEW_PAYMENTS,
-      true,
-    ),
+    useNewPayments: false,
     enableCommunityUi: parseBooleanFlag(
       process.env.NEXT_PUBLIC_ENABLE_COMMUNITY_UI,
       false,
@@ -55,10 +52,7 @@ export const frontendConfig = {
       process.env.NEXT_PUBLIC_ENABLE_RATINGS_UI,
       false,
     ),
-    enableChatUi: parseBooleanFlag(process.env.NEXT_PUBLIC_ENABLE_CHAT_UI, true),
-    enableTrackingUi: parseBooleanFlag(
-      process.env.NEXT_PUBLIC_ENABLE_TRACKING_UI,
-      false,
-    ),
+    enableChatUi: false,
+    enableTrackingUi: false,
   },
 };

@@ -4,26 +4,17 @@ import React from "react";
 import { usePathname, useRouter } from "next/navigation";
 
 import Icon from "./AppIcon";
-import { useChatUnreadCount } from "@/hooks/chat/useChatUnreadCount";
-import { frontendConfig } from "@/lib/frontend-config";
 import { cn } from "@/lib/utils";
 
 const BottomNavbar = () => {
   const pathname = usePathname();
   const router = useRouter();
-  const { unreadCount } = useChatUnreadCount();
 
   const navigationItems = [
     { label: "Home", path: "/dashboard", icon: "Home" },
     { label: "Search", path: "/search-rides", icon: "Search" },
     { label: "Post", path: "/post-a-ride", icon: "Plus", isCenter: true },
-    {
-      label: "Messages",
-      path: "/messages-chat",
-      icon: "MessageCircle",
-      badge: unreadCount,
-    },
-    { label: "Payments", path: "/payments", icon: "CreditCard" },
+    { label: "Contributions", path: "/direct-settlements", icon: "CreditCard" },
   ];
 
   return (
@@ -66,11 +57,6 @@ const BottomNavbar = () => {
                     strokeWidth={isActive ? 2.5 : 2}
                   />
 
-                  {item.badge && !item.isCenter ? (
-                    <span className="absolute -right-2 -top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-error px-[3px] text-[10px] font-semibold text-error-foreground shadow-md">
-                      {item.badge > 99 ? "99+" : item.badge}
-                    </span>
-                  ) : null}
                 </div>
 
                 {!item.isCenter ? (

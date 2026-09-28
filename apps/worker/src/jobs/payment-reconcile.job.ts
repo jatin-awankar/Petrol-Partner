@@ -244,6 +244,8 @@ export async function reconcilePayment(data: PaymentReconcileJobData) {
           `SELECT id, booking_id, user_id, provider_order_id, status
            FROM payment_orders
            WHERE provider_order_id = $1
+             AND NOT EXISTS (SELECT 1 FROM bookings b JOIN ride_offers o ON o.id=b.ride_offer_id
+               WHERE b.id=payment_orders.booking_id AND o.pilot_policy_id IS NOT NULL)
            LIMIT 1
            FOR UPDATE`,
           [resolution.providerOrderId],
@@ -253,6 +255,8 @@ export async function reconcilePayment(data: PaymentReconcileJobData) {
             `SELECT id, booking_id, user_id, provider_order_id, status
              FROM payment_orders
              WHERE id = $1
+               AND NOT EXISTS (SELECT 1 FROM bookings b JOIN ride_offers o ON o.id=b.ride_offer_id
+                 WHERE b.id=payment_orders.booking_id AND o.pilot_policy_id IS NOT NULL)
              LIMIT 1
              FOR UPDATE`,
             [data.paymentOrderId],

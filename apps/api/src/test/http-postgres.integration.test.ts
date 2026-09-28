@@ -62,6 +62,23 @@ beforeAll(async () => {
   }
 });
 
+describe("ticket 29 pilot boundary without legacy services", () => {
+  it("keeps legacy mutating routes closed and exposes PostgreSQL readiness", async () => {
+    const app = createApp();
+    const paths = ["/v1/rides/offers", "/v1/bookings", "/v1/settlements/bookings/example/passenger-paid",
+      "/v1/matching/recompute", "/v1/payments/orders", "/v1/webhooks/razorpay",
+      "/v1/chat/rooms", "/v1/pricing/quotes"];
+    for (const path of paths) {
+      const response = await request(app).post(path).send({});
+      expect(response.status, path).toBe(410);
+      expect(response.body.error.code, path).toBe("PILOT_SCOPE_DISABLED");
+    }
+    const readiness = await request(app).get("/v1/ready");
+    expect(readiness.status).toBe(200);
+    expect(readiness.body.work).toEqual({ executor: "postgresql", configured: true });
+  });
+});
+
 describe("ticket 28 closure safety queue",()=>{
   let receiptDirectory:string;
   beforeEach(async()=>{
@@ -429,10 +446,8 @@ describe("ticket 22 individual journey confirmation",()=>{
     expect((await verificationPool.query('SELECT id FROM pilot_contribution_obligations')).rows).toHaveLength(1);
     await verificationPool.query(`UPDATE pilot_email_jobs SET due_at=now()+interval '1 hour'
       WHERE event_id IN(SELECT id FROM pilot_notification_events WHERE origin_type<>'pilot_journey')`);
-    process.env.REDIS_URL='redis://127.0.0.1:6379';
     const {processDueEmail}=await import("../../../worker/src/jobs/durable-email.job");
     expect(await processDueEmail(verificationPool,{async send(){throw new Error('provider unavailable');}})).toBe(true);
-    delete process.env.REDIS_URL;
     expect((await verificationPool.query<{n:number}>(`SELECT count(*)::int AS n FROM pilot_email_jobs j
       JOIN pilot_notification_events e ON e.id=j.event_id WHERE e.origin_type='pilot_journey'
         AND j.attempts=1 AND j.status='pending'`)).rows[0].n).toBe(1);
@@ -871,6 +886,9 @@ describe("ticket 22 individual journey confirmation",()=>{
     expect((await verificationPool.query('SELECT id FROM pilot_contribution_obligations')).rows).toHaveLength(0);
   });
   it('records direct payment claim without settling until driver receipt, with HTTP retries and deadlines',async()=>{
+    expect(process.env.REDIS_URL).toBeUndefined();
+    expect(process.env.RAZORPAY_KEY_ID).toBeUndefined();
+    expect(process.env.RAZORPAY_KEY_SECRET).toBeUndefined();
     const f=await fixture();await start(f);
     const journey=new PilotJourneyService(pool),settlement=new DirectSettlementService(pool);
     const at=new Date('2026-09-27T10:00:00.000Z');
@@ -916,10 +934,8 @@ describe("ticket 22 individual journey confirmation",()=>{
       WHERE origin_type='pilot_direct_settlement' AND ready_at IS NOT NULL`,[])).rows[0].n).toBe(4);
     await verificationPool.query(`UPDATE pilot_email_jobs SET due_at=now()+interval '1 hour'
       WHERE event_id IN(SELECT id FROM pilot_notification_events WHERE origin_type<>'pilot_direct_settlement')`);
-    process.env.REDIS_URL='redis://127.0.0.1:6379';
     const {processDueEmail}=await import('../../../worker/src/jobs/durable-email.job');
     expect(await processDueEmail(verificationPool,{async send(){throw new Error('provider unavailable');}})).toBe(true);
-    delete process.env.REDIS_URL;
     expect((await settlement.detail(f.first.id,id)).status).toBe('settled');
     expect((await verificationPool.query<{n:number}>(`SELECT count(*)::int AS n FROM pilot_email_jobs j
       JOIN pilot_notification_events e ON e.id=j.event_id
@@ -2745,7 +2761,7 @@ describe("pilot seat requests through HTTP and PostgreSQL", () => {
         .set("Idempotency-Key","guest-request").send({offer_id:offerId,seats:1})).status).toBe(401);
       expect((await request(createApp()).post("/v1/bookings")
         .set("Authorization",`Bearer ${passenger.token}`)
-        .send({ride_offer_id:offerId,seats_booked:1})).status).toBe(403);
+        .send({ride_offer_id:offerId,seats_booked:1})).status).toBe(410);
       const post = (token:string,key:string,body:Record<string,unknown>) => request(createApp())
         .post("/v1/seat-requests").set("Authorization",`Bearer ${token}`)
         .set("Idempotency-Key",key).send(body);
