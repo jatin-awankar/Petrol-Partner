@@ -60,6 +60,11 @@ try {
     INSERT INTO users (id, email) VALUES
       ('00000000-0000-4000-8000-000000000001', 'driver@example.test'),
       ('00000000-0000-4000-8000-000000000002', 'passenger@example.test');
+    UPDATE users SET password_hash = 'synthetic-legacy-hash'
+      WHERE id = '00000000-0000-4000-8000-000000000002';
+    INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at)
+      VALUES ('70000000-0000-4000-8000-000000000001',
+        '00000000-0000-4000-8000-000000000002', 'synthetic-token-hash', now() + interval '1 day');
     INSERT INTO user_profiles (user_id, full_name, phone, college) VALUES
       ('00000000-0000-4000-8000-000000000001', 'Synthetic Driver', '0000000001', 'Synthetic College'),
       ('00000000-0000-4000-8000-000000000002', 'Synthetic Passenger', '0000000002', 'Synthetic College');
@@ -122,10 +127,75 @@ try {
     throw new Error(`Representative upgrade invariant failed: ${JSON.stringify({ before, after })}`);
   }
 
+  const claimedUserId = "00000000-0000-4000-8000-000000000002";
+  const claim = await pool.connect();
+  let precommitRollbackPreservedLegacyState = false;
+  try {
+    await claim.query("BEGIN");
+    await claim.query(`UPDATE users SET password_hash = NULL WHERE id = $1`, [claimedUserId]);
+    await claim.query(`UPDATE refresh_tokens SET revoked_at = now() WHERE user_id = $1`, [claimedUserId]);
+    await claim.query(`INSERT INTO auth_identities (provider, provider_subject, user_id, provider_email)
+      VALUES ('supabase', 'synthetic-passenger-subject', $1, 'passenger@example.test')`, [claimedUserId]);
+    await claim.query("ROLLBACK");
+    const rolledBack = (await claim.query(`SELECT
+      app_user.password_hash IS NOT NULL AS legacy_password_preserved,
+      token.revoked_at IS NULL AS legacy_token_preserved,
+      NOT EXISTS (SELECT 1 FROM auth_identities WHERE provider_subject = 'synthetic-passenger-subject') AS mapping_absent,
+      state.active_provider = 'legacy' AND state.legacy_login_enabled AS legacy_mode_preserved
+      FROM users app_user JOIN refresh_tokens token ON token.user_id = app_user.id
+      CROSS JOIN auth_cutover_state state WHERE app_user.id = $1`, [claimedUserId])).rows[0];
+    precommitRollbackPreservedLegacyState = rolledBack?.legacy_password_preserved === true
+      && rolledBack.legacy_token_preserved === true && rolledBack.mapping_absent === true
+      && rolledBack.legacy_mode_preserved === true;
+    if (!precommitRollbackPreservedLegacyState) throw new Error("Precommit rollback lost legacy state");
+
+    await claim.query("BEGIN");
+    await claim.query(`UPDATE users SET email_verified_at = now(), password_hash = NULL WHERE id = $1`, [claimedUserId]);
+    await claim.query(`UPDATE refresh_tokens SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL`, [claimedUserId]);
+    await claim.query(`INSERT INTO auth_identities (provider, provider_subject, user_id, provider_email)
+      VALUES ('supabase', 'synthetic-passenger-subject', $1, 'passenger@example.test')`, [claimedUserId]);
+    await claim.query(`UPDATE auth_cutover_state SET active_provider = 'supabase',
+      legacy_login_enabled = false, authorized_at = now(), authorized_by = 'synthetic-rehearsal'
+      WHERE singleton = true`);
+    await claim.query("COMMIT");
+  } catch (error) {
+    await claim.query("ROLLBACK");
+    throw error;
+  } finally {
+    claim.release();
+  }
+  const authCutover = (await pool.query(`SELECT
+    identity.user_id AS mapped_application_user_id,
+    booking.passenger_id AS historical_booking_passenger_id,
+    token.revoked_at IS NOT NULL AND app_user.password_hash IS NULL AS legacy_session_revoked,
+    state.active_provider = 'supabase' AND state.authorized_at IS NOT NULL AS managed_cutover_authorized,
+    NOT state.legacy_login_enabled AS legacy_login_disabled
+    FROM auth_identities identity
+    JOIN users app_user ON app_user.id = identity.user_id
+    JOIN bookings booking ON booking.passenger_id = app_user.id
+    JOIN refresh_tokens token ON token.user_id = app_user.id
+    CROSS JOIN auth_cutover_state state
+    WHERE identity.provider = 'supabase' AND identity.provider_subject = 'synthetic-passenger-subject'`)).rows[0];
+  if (!authCutover || authCutover.mapped_application_user_id !== claimedUserId
+      || authCutover.historical_booking_passenger_id !== claimedUserId
+      || !authCutover.legacy_session_revoked || !authCutover.managed_cutover_authorized
+      || !authCutover.legacy_login_disabled) {
+    throw new Error("Representative auth cutover invariant failed");
+  }
+
   console.log(JSON.stringify({
     safety: { refusedUntrackedNonEmptyDatabase: untrackedRefusal },
     cleanInstall: { tables: cleanTables },
     representativeUpgrade: { before, after },
+    representativeAuthCutover: {
+      mappedApplicationUserId: authCutover.mapped_application_user_id,
+      historicalBookingPassengerId: authCutover.historical_booking_passenger_id,
+      legacySessionRevoked: authCutover.legacy_session_revoked,
+      managedCutoverAuthorized: authCutover.managed_cutover_authorized,
+      legacyLoginDisabled: authCutover.legacy_login_disabled,
+      precommitRollbackPreservedLegacyState,
+      postCommitLegacyRollbackUnsafe: authCutover.legacy_session_revoked && authCutover.legacy_login_disabled,
+    },
   }, null, 2));
 } finally {
   await pool.end();

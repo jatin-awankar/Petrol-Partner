@@ -46,6 +46,15 @@ test("clean install and representative upgrade preserve migration invariants", {
     stable_identities: 2,
     preserved_request_passengers: 1,
   });
+  assert.deepEqual(report.representativeAuthCutover, {
+    mappedApplicationUserId: "00000000-0000-4000-8000-000000000002",
+    historicalBookingPassengerId: "00000000-0000-4000-8000-000000000002",
+    legacySessionRevoked: true,
+    managedCutoverAuthorized: true,
+    legacyLoginDisabled: true,
+    precommitRollbackPreservedLegacyState: true,
+    postCommitLegacyRollbackUnsafe: true,
+  });
 });
 
 test("inventory tolerates a legacy ledger and reports legacy provider mappings and composite keys", { skip: !canUseDatabase }, async () => {
