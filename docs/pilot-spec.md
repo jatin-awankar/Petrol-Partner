@@ -2,6 +2,8 @@
 
 This is the approved product and operational contract for the first Petrol Partner pilot. Read the sections touched by a change and preserve every applicable invariant. The broader architecture review remains a proposal; this document records the settled pilot behavior.
 
+**Scope amendment pending (2026-09-28):** After student interviews, the maintainer chose to include bikes/scooters as well as cars in the intended pilot. The car-only rules below remain the current implemented and testable contract until a revised two-wheeler specification, external determinations, server eligibility, capacity/coordination behavior, and release tests are approved. This decision does not authorize two-wheeler offers or real trips. Aggregate findings and the unresolved policy inputs are recorded in [`operations/ticket05-corridor-findings.md`](operations/ticket05-corridor-findings.md).
+
 ## Scope and launch gates
 
 The pilot serves 20–30 verified students aged 18 or older from Prof. Ram Meghe Institute of Technology and Research. It supports approved private cars on a small predefined set of stops along the Amravati University–PRMITR corridor. The initial success target is ten real completed trips.
