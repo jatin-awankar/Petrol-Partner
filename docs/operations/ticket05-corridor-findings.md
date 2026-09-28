@@ -6,14 +6,14 @@
 
 - Ten students were spoken with between 2026-09-21 and 2026-09-26. Seven of ten reportedly make the journey regularly.
 - The reported travel/departure period is 10:00–17:30 IST. The usual direction and departure peaks remain to be confirmed.
-- The main reported problem is waiting for rickshaws. Most of the students use bikes or scooters. No available car driver was reported in this group; a bike has one spare seat.
-- The maintainer suggested Gadge Nagar, Dastur Nagar, Tapovan, and PRMITR as pickup points, and PRMITR, Sai Nagar, Dastur Nagar, and Gadge Nagar as drop-off points. Direction, stop order, and which stop pairs are permitted remain undecided.
+- The main reported problem is waiting for rickshaws. Five of the ten students said they could offer one spare bike/scooter seat. The maintainer also reported three available car seats; whether they belong to one or several drivers remains to be confirmed. This corrects the initial summary that implied no car capacity in the interviewed group.
+- Students suggested Gadge Nagar, Dastur Nagar, Tapovan, and PRMITR as pickup points, and PRMITR, Sai Nagar, Dastur Nagar, and Gadge Nagar as drop-off points. Direction, stop order, and which stop pairs are permitted remain undecided.
 - The maintainer estimated an average trip duration of about ten minutes, varying by stop pair. This is an interview estimate, not a measured routing or schedule buffer.
-- UPI is reportedly used more often than cash. No contribution amount, fuel/toll basis, or stop-pair table has yet been approved.
+- UPI is reportedly used more often than cash. The maintainer proposed ₹5 per kilometre for Amravati but has not specified whether that is per passenger and for both vehicle categories, the fuel/mileage/toll basis, or a stop-pair table. This is a proposal, not an approved amount or a city-wide rule.
 
 ## 2026-09-28 scope decision and its boundary
 
-The maintainer explicitly chose to add bikes and scooters **while retaining cars**. They also stated that roughly one in twenty students has a car; whether that is a separate observed count or an estimate remains to be confirmed. The ten interviews do not establish a regular car driver with an unused seat.
+The maintainer explicitly chose to add bikes and scooters **while retaining cars**. They also stated that roughly one in twenty students has a car; whether that is a separate observed count or an estimate remains to be confirmed. The three reported car seats need attribution to actual eligible driver/car candidates before availability is established.
 
 The current approved specification and implemented server eligibility still admit only private cars/SUVs. This human scope decision does **not** activate two-wheelers. The specification, vehicle evidence and approval rules, rider capacity, overlapping-vehicle commitments, confirmed-trip identification, contribution policy, tests, and ticket 06 transport/insurance/institutional determinations must be revised before a two-wheeler can offer a real ride. Existing car behavior remains subject to all current launch gates. No real booking is enabled by this decision.
 
