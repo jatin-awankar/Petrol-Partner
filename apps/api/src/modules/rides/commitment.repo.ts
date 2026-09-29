@@ -3,6 +3,10 @@ import type { PoolClient } from "pg";
 export async function lockStudentActor(client:PoolClient,userId:string){
   await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))",[`student:${userId}`]);
 }
+export async function lockVehicleRegistration(client:PoolClient,registration:string){
+  await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',
+    [`vehicle-registration:${registration.trim().toLowerCase()}`]);
+}
 
 export async function lockCommitmentActors(client: PoolClient, driverId: string,
   vehicleId: string, passengerIds: string[]) {

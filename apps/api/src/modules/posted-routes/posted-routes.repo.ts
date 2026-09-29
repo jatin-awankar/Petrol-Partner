@@ -13,13 +13,26 @@ export type QuoteRoute={id:string;route_version:number;policy_version:string;rou
 export const ownedForQuote=async(db:Db,driver:string,id:string)=>(await db.query<QuoteRoute>(
   'SELECT id,route_version,policy_version,routing_source,routing_mode,geometry,cumulative_meters,distance_meters,duration_seconds,status FROM posted_route_offers WHERE driver_id=$1 AND id=$2',
   [driver,id])).rows[0]??null;
+export const registration=async(db:Db,id:string)=>(await db.query<{registration_identifier:string}>(
+  'SELECT registration_identifier FROM unrestricted_vehicle_declarations WHERE id=$1',[id])).rows[0]?.registration_identifier??null;
 export async function conflict(db:PoolClient,driver:string,vehicle:string,departure:Date,until:Date){
-  const route=(await db.query(`SELECT 1 FROM posted_route_offers WHERE status='prepared' AND (driver_id=$1 OR vehicle_declaration_id=$2)
-    AND departure_at<$4::timestamptz AND commitment_until>$3::timestamptz LIMIT 1`,[driver,vehicle,departure,until])).rowCount;
+  const route=(await db.query(`SELECT 1 FROM posted_route_offers o
+    JOIN unrestricted_vehicle_declarations other ON other.id=o.vehicle_declaration_id
+    JOIN unrestricted_vehicle_declarations chosen ON chosen.id=$2
+    WHERE o.status='prepared' AND (o.driver_id=$1 OR
+      lower(other.registration_identifier)=lower(chosen.registration_identifier))
+    AND o.departure_at<$4::timestamptz AND o.commitment_until>$3::timestamptz LIMIT 1`,
+    [driver,vehicle,departure,until])).rowCount;
   const legacy=(await db.query(`SELECT 1 FROM ride_offers WHERE status IN ('active','held','departed') AND driver_id=$1
     AND (date+time) AT TIME ZONE 'Asia/Kolkata'<$3::timestamptz
     AND COALESCE(pilot_commitment_until,((date+time) AT TIME ZONE 'Asia/Kolkata')+interval '2 hours')>$2::timestamptz LIMIT 1`,[driver,departure,until])).rowCount;
-  return Boolean(route||legacy);
+  const accepted=(await db.query(`SELECT 1 FROM posted_route_seat_allocations
+    WHERE passenger_id=$1 AND status IN ('confirmed','held')
+      AND departure_at<$3 AND commitment_until>$2 LIMIT 1`,[driver,departure,until])).rowCount;
+  const legacyPassenger=(await db.query(`SELECT 1 FROM pilot_seat_allocations
+    WHERE passenger_id=$1 AND status IN ('confirmed','held')
+      AND departure_at<$3 AND commitment_until>$2 LIMIT 1`,[driver,departure,until])).rowCount;
+  return Boolean(route||legacy||accepted||legacyPassenger);
 }
 export async function save(db:PoolClient,input:{driver:string;vehicle:string;route:VerifiedRoute;departure:Date;until:Date;capacity:number;policy:string}){
   return (await db.query<{id:string}>(`INSERT INTO posted_route_offers(driver_id,vehicle_declaration_id,policy_version,operating_policy_version,routing_source,routing_mode,

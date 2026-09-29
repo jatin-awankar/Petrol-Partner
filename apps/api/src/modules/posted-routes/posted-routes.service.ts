@@ -8,7 +8,7 @@ import {assertCurrentOperator} from '../operator/operator.authorization';
 import {backupStatus} from '../operator/backup-status';
 import {recordDurableNotification} from '../notifications/contract.repo';
 import {assertCurrentDriverVehicle} from '../driver-vehicle-declaration/driver-vehicle-declaration.service';
-import {lockCommitmentActors} from '../rides/commitment.repo';
+import {lockCommitmentActors,lockVehicleRegistration} from '../rides/commitment.repo';
 import {verifyRoute,type Point} from './routing';
 import * as repo from './posted-routes.repo';
 import {ROUTE_POLICY_VERSION,ROUTE_OPERATING_POLICY_VERSION} from './policy';
@@ -82,6 +82,9 @@ export async function prepare(actor:string,key:string,input:Input){
     store();
     await lockCommitmentActors(client,actor,input.vehicle_id,[]);
     const declaration=await assertCurrentDriverVehicle(client,actor,input.vehicle_id,input.capacity);
+    const registration=await repo.registration(client,input.vehicle_id);
+    if(!registration)throw new AppError(404,'Vehicle not found','VEHICLE_NOT_FOUND');
+    await lockVehicleRegistration(client,registration);
     if(declaration.category!==input.mode)throw new AppError(400,'Routing mode differs from declared vehicle','ROUTE_MODE_INVALID');
     schedule(departure,new Date(),until);
     if(await repo.conflict(client,actor,input.vehicle_id,departure,until))throw new AppError(409,'Overlapping commitment','COMMITMENT_CONFLICT');
