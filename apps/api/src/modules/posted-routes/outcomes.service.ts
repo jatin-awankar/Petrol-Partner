@@ -24,7 +24,8 @@ type Receipt={operationId:string;actorId:string;key:string;digest:string;offerId
   result:Record<string,unknown>;createdAt:string};
 const store=()=>pilotReceiptStore<Receipt>('posted-route-outcome','Route outcome recovery evidence unavailable');
 const digest=(action:repo.Action,id:string,payload:OutcomePayload)=>createHash('sha256')
-  .update(JSON.stringify({action,id,payload})).digest('hex');
+  .update(JSON.stringify({action,id,payload:Object.fromEntries(Object.entries(payload)
+    .sort(([a],[b])=>a.localeCompare(b)))})).digest('hex');
 const receipt=(row:repo.Operation):Receipt=>({operationId:row.id,actorId:row.actor_id,key:row.idempotency_key,
   digest:row.payload_digest,offerId:row.offer_id,allocationId:row.allocation_id,
   action:row.action,payload:row.payload,result:row.result,createdAt:row.created_at.toISOString()});
@@ -66,7 +67,7 @@ export class PostedRouteOutcomesService{
         throw new AppError(409,'Outcome receipt conflicts','RECOVERY_CONFLICT');
       if(!item&&row.state!=='committed')
         throw new AppError(409,'Acknowledged outcome evidence missing','RECOVERY_CONFLICT');
-      if(!(await this.stateMatches(row)))
+      if(!(await this.stateMatches(row,row.state==='committed')))
         throw new AppError(409,'Outcome state needs manual recovery','RECOVERY_CONFLICT');
       if(!item){await store().append(receipt(row));evidence.set(row.id,receipt(row));}
       await inProtectedTransaction(this.db,async client=>{
@@ -76,25 +77,61 @@ export class PostedRouteOutcomesService{
     }
     return rows.length;
   }
-  private async stateMatches(row:repo.Operation){
+  private async stateMatches(row:repo.Operation,pending=false){
     const audited=Boolean((await this.db.query("SELECT 1 FROM audit_logs WHERE metadata->>'operationId'=$1",[row.id])).rowCount);
-    const notified=Boolean((await this.db.query(`SELECT 1 FROM pilot_notification_events e
+    const notified=(await this.db.query<{recipient_id:string}>(`SELECT DISTINCT e.recipient_id FROM pilot_notification_events e
       JOIN pilot_email_jobs j ON j.event_id=e.id WHERE e.origin_type='posted_route_outcome'
-      AND e.operation_id=$1 LIMIT 1`,[row.id])).rowCount);
-    if(!audited||!notified)return false;
+      AND e.operation_id=$1 AND e.event_type=$2 AND ($3::boolean OR e.ready_at IS NOT NULL)`,
+      [row.id,row.action,pending])).rows
+      .map(item=>item.recipient_id).sort();
+    const expected=(row.result.notification_recipients as string[]|undefined)?.sort();
+    if(!audited||!expected||JSON.stringify(notified)!==JSON.stringify(expected))return false;
     const offer=await repo.offer(this.db,row.offer_id),seat=row.allocation_id?await repo.seat(this.db,row.allocation_id):null;
     if(!offer||row.allocation_id&&!seat)return false;
     if(row.action==='driver_cancel'&&offer.status!=='cancelled')return false;
     if(row.action==='passenger_cancel'&&seat?.status!=='cancelled')return false;
-    if(row.action==='depart'&&offer.status!=='departed')return false;
+    if(row.action==='depart'){
+      if(offer.status!=='departed')return false;
+      const seats=await repo.seats(this.db,row.offer_id);
+      const boarded=(row.result.boarded_ids as string[]|undefined)??[];
+      const confirmed=(row.result.confirmed_ids as string[]|undefined)??[];
+      if(seats.filter(item=>confirmed.includes(item.id)).some(item=>item.boarded!==boarded.includes(item.id)))
+        return false;
+    }
+    if(row.action==='hold'||row.action==='release_hold'){
+      const latest=(await this.db.query<{action:string}>(`SELECT action FROM posted_route_outcome_operations
+        WHERE offer_id=$1 AND action IN ('hold','release_hold','driver_cancel','depart')
+        ORDER BY created_at DESC,id DESC LIMIT 1`,[row.offer_id])).rows[0];
+      if(latest?.action==='hold'&&offer.status!=='held'||
+        latest?.action==='release_hold'&&offer.status!=='prepared')return false;
+    }
     if(row.action==='driver_journey'||row.action==='passenger_journey'){
-      const claims=await repo.journeyClaim(this.db,row.allocation_id!);
+      const claims=(await this.db.query<{role:string;travelled:boolean;completed:boolean}>(
+        'SELECT role,travelled,completed FROM posted_route_journey_claims WHERE operation_id=$1',[row.id])).rows;
       if(!claims.some(item=>item.role===(row.action==='driver_journey'?'driver':'passenger')&&
         item.travelled===row.payload.travelled&&item.completed===row.payload.completed))return false;
     }
     if(row.action==='payment_claim'){
       const obligation=await repo.obligation(this.db,row.allocation_id!);
-      if(!obligation||!await repo.paymentClaim(this.db,obligation.id))return false;
+      if(!obligation||!(await this.db.query(`SELECT 1 FROM posted_route_payment_claims
+        WHERE obligation_id=$1 AND operation_id=$2 AND method=$3`,
+      [obligation.id,row.id,row.payload.method])).rowCount)return false;
+    }
+    if(row.action==='receipt'||row.action==='dispute'){
+      if(!(await this.db.query(`SELECT 1 FROM posted_route_receipt_decisions
+        WHERE operation_id=$1 AND kind=$2`,[row.id,row.action])).rowCount)return false;
+    }
+    if(row.action==='operator_journey'){
+      if(!(await this.db.query(`SELECT 1 FROM posted_route_journey_reviews
+        WHERE allocation_id=$1 AND resolved_by=$2 AND outcome=$3 AND resolution_reason=$4
+          AND status='resolved'`,[row.allocation_id,row.actor_id,row.payload.outcome,row.payload.reason])).rowCount)return false;
+    }
+    if(row.action==='operator_settlement'){
+      if(!(await this.db.query(`SELECT 1 FROM posted_route_settlement_reviews r
+        JOIN posted_route_obligations o ON o.id=r.obligation_id
+        WHERE o.allocation_id=$1 AND r.resolved_by=$2 AND r.receipt_established=$3
+          AND r.resolution_reason=$4 AND r.status='resolved'`,
+        [row.allocation_id,row.actor_id,row.payload.receipt_established,row.payload.reason])).rowCount)return false;
     }
     return true;
   }
@@ -179,6 +216,11 @@ export class PostedRouteOutcomesService{
           if(offer.status!=='held')throw new AppError(409,'Ride is not held','RIDE_INVALID');
           operatingCoverage(offer);
           await assertCurrentDriverVehicle(client,offer.driver_id,offer.vehicle_declaration_id,offer.capacity);
+          await assertNoAccountRestriction(client,offer.driver_id,'driver');
+          for(const item of seats.filter(s=>s.status==='held')){
+            await assertCurrentAdultDeclaration(client,item.passenger_id);
+            await assertNoAccountRestriction(client,item.passenger_id,'passenger');
+          }
           await repo.setOfferStatus(client,offerId,'prepared');
           for(const item of seats)if(item.status==='held')await repo.setSeatStatus(client,item.id,'confirmed');
         }
@@ -239,7 +281,8 @@ export class PostedRouteOutcomesService{
           throw new AppError(400,'Receipt decision required','RECEIPT_INVALID');
       }
       const row=await repo.write(client,{actor,key,digest:hash,offer:offerId,allocation:seat?.id??null,
-        action,payload:payload as Record<string,unknown>,result});
+        action,payload:payload as Record<string,unknown>,result:{...result,
+          notification_recipients:[...new Set(recipients)].sort()}});
       if(action==='driver_journey'||action==='passenger_journey'){
         const role=action==='driver_journey'?'driver':'passenger';
         await repo.insertClaim(client,seat!.id,row.id,role,payload.travelled!,payload.completed!);

@@ -5541,6 +5541,13 @@ describe('ticket 10 isolated posted route preparation',()=>{
     const receipt=await f.call(f.driver.token,`${path}/allocations/${seat}/receipt`,{});
     expect(receipt.status,JSON.stringify(receipt.body)).toBe(200);
     expect((await verificationPool.query("SELECT kind FROM posted_route_receipt_decisions")).rows[0].kind).toBe('receipt');
+    const recovery=(await import('../modules/posted-routes/outcomes.service')).postedRouteOutcomesService;
+    await recovery.verifyEvidence();
+    await verificationPool.query('DELETE FROM posted_route_receipt_decisions WHERE operation_id=$1',
+      [receipt.body.operation_id]);
+    await expect(recovery.verifyEvidence()).rejects.toMatchObject({code:'RECOVERY_UNAVAILABLE'});
+    expect((await verificationPool.query('SELECT mode FROM pilot_recovery_state WHERE singleton=true')).rows[0].mode)
+      .toBe('restricted');
   });
   it('serializes driver cancellation against seat acceptance using separate PostgreSQL connections',async()=>{
     const f=await bookingFixture(),passenger=await participant(),id=await f.ask(passenger);
@@ -5573,6 +5580,19 @@ describe('ticket 10 isolated posted route preparation',()=>{
       expect((await verificationPool.query('SELECT count(*)::int AS n FROM posted_route_outcome_operations')).rows[0].n).toBe(0);
     }finally{await verificationPool.query('DROP TRIGGER reject_route_outcome_audit ON audit_logs');
       await verificationPool.query('DROP FUNCTION reject_route_outcome_audit()');}
+    await verificationPool.query(`CREATE OR REPLACE FUNCTION reject_route_outcome_notice() RETURNS trigger
+      LANGUAGE plpgsql AS $$ BEGIN IF NEW.origin_type='posted_route_outcome' THEN
+      RAISE EXCEPTION 'injected notification failure'; END IF; RETURN NEW; END $$`);
+    await verificationPool.query(`CREATE TRIGGER reject_route_outcome_notice BEFORE INSERT ON pilot_notification_events
+      FOR EACH ROW EXECUTE FUNCTION reject_route_outcome_notice()`);
+    try{const failed=await f.call(passenger.token,`${path}/allocations/${seat}/cancel`,{});
+      expect(failed.status).toBeGreaterThanOrEqual(500);
+      expect((await verificationPool.query('SELECT status FROM posted_route_seat_allocations WHERE id=$1',[seat])).rows[0].status)
+        .toBe('confirmed');
+      expect((await verificationPool.query('SELECT count(*)::int AS n FROM posted_route_outcome_operations')).rows[0].n)
+        .toBe(0);
+    }finally{await verificationPool.query('DROP TRIGGER reject_route_outcome_notice ON pilot_notification_events');
+      await verificationPool.query('DROP FUNCTION reject_route_outcome_notice()');}
     const cancelled=await f.call(passenger.token,`${path}/allocations/${seat}/cancel`,{});
     expect(cancelled.status,JSON.stringify(cancelled.body)).toBe(200);
     await verificationPool.query(`UPDATE pilot_email_jobs SET attempts=1,last_error='synthetic delivery failure'
@@ -5580,6 +5600,32 @@ describe('ticket 10 isolated posted route preparation',()=>{
         WHERE origin_type='posted_route_outcome' AND operation_id=$1)`,[cancelled.body.operation_id]);
     expect((await verificationPool.query('SELECT status FROM posted_route_seat_allocations WHERE id=$1',[seat])).rows[0].status)
       .toBe('cancelled');
+  });
+  it('requires current passenger eligibility before an operator releases a route hold',async()=>{
+    const f=await bookingFixture(),passenger=await participant(),id=await f.ask(passenger);
+    const accepted=await f.call(f.driver.token,`${path}/requests/${id}/accept`,{});
+    expect(accepted.status).toBe(200);
+    let operator=await seatRecoveryOperator();
+    const action=(name:string)=>request(f.app).post(`${path}/${f.offer}/${name}`)
+      .set('Cookie',operator.cookie).set('Origin','http://localhost:3000')
+      .set('X-CSRF-Token',operator.csrf).set('Idempotency-Key',randomUUID())
+      .send({reason:'Synthetic safety review'});
+    try{
+      const held=await action('hold');
+      expect(held.status,JSON.stringify(held.body)).toBe(200);
+      expect((await verificationPool.query('SELECT status FROM posted_route_offers WHERE id=$1',[f.offer])).rows[0].status)
+        .toBe('held');
+      await clearSeatRecoveryOperator();
+      const withdrawn=await request(f.app).post('/v1/adult-declaration/withdraw')
+        .set('Authorization',`Bearer ${passenger.token}`).set('Idempotency-Key',randomUUID())
+        .send({policy_version:version});
+      expect(withdrawn.status,JSON.stringify(withdrawn.body)).toBe(200);
+      operator=await seatRecoveryOperator();
+      const release=await action('release-hold');
+      expect(release.status).toBeGreaterThanOrEqual(400);
+      expect((await verificationPool.query('SELECT status FROM posted_route_offers WHERE id=$1',[f.offer])).rows[0].status)
+        .toBe('held');
+    }finally{await clearSeatRecoveryOperator();}
   });
   it('keeps outcome actions disabled outside synthetic tests',async()=>{
     const f=await bookingFixture();process.env.NODE_ENV='production';
