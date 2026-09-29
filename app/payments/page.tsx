@@ -19,14 +19,11 @@ import { useFetchBookings } from "@/hooks/bookings/useFetchBookings";
 import { useCurrentUser } from "@/hooks/auth/useCurrentUser";
 import {
   confirmOfflineSettlement,
-  createPaymentOrder,
   getBookingPaymentStatus,
   getFinancialHoldStatus,
   getSettlementByBooking,
   markSettlementPassengerPaid,
-  submitClientPaymentVerification,
 } from "@/lib/api/backend";
-import { loadRazorpay } from "@/lib/razorpay-client";
 import {
   buildPaymentCardViewModel,
   buildPaymentSummary,
@@ -214,69 +211,6 @@ export default function PaymentsPage() {
     [refreshFinancialHold, refreshTransaction, refetch],
   );
 
-  const handlePayOnline = useCallback(
-    async (bookingId: string) => {
-      await withAction(bookingId, async () => {
-        const order = await createPaymentOrder({ bookingId });
-
-        if (!order.key_id) {
-          throw new Error(
-            "Online payment is not configured in this environment.",
-          );
-        }
-
-        const loaded = await loadRazorpay();
-
-        if (!loaded || !window.Razorpay) {
-          throw new Error("Unable to load Razorpay checkout.");
-        }
-
-        await new Promise<void>((resolve, reject) => {
-          const razorpay = new window.Razorpay({
-            key: order.key_id,
-            amount: order.amount_paise,
-            currency: order.currency,
-            name: "Petrol Partner",
-            description: "Post-trip ride settlement",
-            order_id: order.order_id,
-            handler: async (response: {
-              razorpay_order_id: string;
-              razorpay_payment_id: string;
-              razorpay_signature: string;
-            }) => {
-              try {
-                await submitClientPaymentVerification({
-                  bookingId,
-                  providerOrderId: response.razorpay_order_id,
-                  providerPaymentId: response.razorpay_payment_id,
-                  providerSignature: response.razorpay_signature,
-                });
-
-                toast.success("Payment submitted. Verification in progress.");
-                resolve();
-              } catch (error) {
-                reject(error);
-              }
-            },
-            modal: {
-              ondismiss: () => reject(new Error("Payment was cancelled.")),
-            },
-            theme: {
-              color: "#0ea5e9",
-            },
-          });
-
-          razorpay.on("payment.failed", () => {
-            reject(new Error("Payment failed. Please retry from the payment card."));
-          });
-
-          razorpay.open();
-        });
-      });
-    },
-    [withAction],
-  );
-
   const handleMarkPaid = useCallback(
     async (bookingId: string, method: "cash" | "upi") => {
       await withAction(bookingId, async () => {
@@ -445,9 +379,6 @@ export default function PaymentsPage() {
                   key={card.bookingId}
                   card={card}
                   loading={Boolean(cardLoading)}
-                  onPayOnline={() =>
-                    void handlePayOnline(card.bookingId).catch(handleApiError)
-                  }
                   onOpenMarkPaidSheet={() =>
                     setSheetState({
                       type: "mark_paid",

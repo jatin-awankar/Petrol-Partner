@@ -16,12 +16,9 @@ const paymentRateLimit = createRateLimitMiddleware({
 paymentsRouter.get("/_status", (_req, res) => {
   res.json({
     module: "payments",
-    status: "active",
+    status: "historical-read-only",
     capabilities: [
-      "post-trip Razorpay order creation",
-      "client-side signature verification intake",
       "booking-scoped payment status reads",
-      "worker-driven final settlement reconciliation",
     ],
   });
 });

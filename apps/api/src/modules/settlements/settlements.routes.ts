@@ -9,12 +9,10 @@ export const settlementsRouter = Router();
 settlementsRouter.get("/_status", (_req, res) => {
   res.json({
     module: "settlements",
-    status: "active",
+    status: "historical-read-only",
     capabilities: [
-      "post-trip settlement lifecycle",
-      "financial hold enforcement",
-      "offline payment confirmation",
-      "settlement dispute handling",
+      "participant-scoped historical settlement reads",
+      "financial hold status reads",
     ],
   });
 });

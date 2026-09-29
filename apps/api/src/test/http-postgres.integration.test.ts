@@ -111,6 +111,73 @@ describe("ticket 29 pilot boundary without legacy services", () => {
   });
 });
 
+describe("ticket 06 legacy entry points", () => {
+  it("rejects authenticated legacy mutations and keeps participant historical reads", async () => {
+    const email=`ticket06-${randomUUID()}@example.test`;
+    const user=(await verificationPool.query<{id:string}>(
+      "INSERT INTO users(email) VALUES($1) RETURNING id",[email])).rows[0];
+    const token=signAccessToken({userId:user.id,email,role:"user"});
+    const app=createApp();
+    const id=randomUUID();
+    const mutations:["post"|"patch",string][]=[
+      ["post","/v1/rides/offers"],["patch",`/v1/rides/offers/${id}`],
+      ["post","/v1/rides/requests"],["patch",`/v1/rides/requests/${id}`],
+      ["post","/v1/bookings"],["post",`/v1/bookings/${id}/confirm`],
+      ["post",`/v1/bookings/${id}/cancel`],["post",`/v1/bookings/${id}/complete`],
+      ["patch","/v1/bookings/status"],["post","/v1/payments/orders"],
+      ["post","/v1/payments/client-verify"],["post","/v1/matching/recompute"],
+      ["post","/v1/webhooks/razorpay"],
+      ["post",`/v1/settlements/bookings/${id}/passenger-paid`],
+      ["post",`/v1/settlements/bookings/${id}/confirm-offline-received`],
+      ["post",`/v1/settlements/bookings/${id}/dispute`],
+      ["post",`/v1/settlements/bookings/${id}/resolve`],
+    ];
+    for (const [method,path] of mutations) {
+      const response=await request(app)[method](path).set("Authorization",`Bearer ${token}`).send({});
+      expect(response.status,path).toBe(410);
+      expect(response.body.error.code,path).toBe("PILOT_SCOPE_DISABLED");
+    }
+    expect((await request(app).get("/v1/bookings")).status).toBe(401);
+    expect((await request(app).get("/v1/bookings").set("Authorization",`Bearer ${token}`)).status).toBe(200);
+    expect((await request(app).get(`/v1/bookings/${id}`).set("Authorization",`Bearer ${token}`)).status).toBe(404);
+    expect((await request(app).get("/v1/settlements").set("Authorization",`Bearer ${token}`)).status).toBe(200);
+    expect((await request(app).get("/v1/direct-settlements").set("Authorization",`Bearer ${token}`)).status).toBe(200);
+    expect((await request(app).get(`/v1/payments/bookings/${id}/status`).set("Authorization",`Bearer ${token}`)).status).toBe(404);
+
+    const outsiderEmail=`ticket06-outsider-${randomUUID()}@example.test`;
+    const outsider=(await verificationPool.query<{id:string}>(
+      "INSERT INTO users(email) VALUES($1) RETURNING id",[outsiderEmail])).rows[0];
+    const offer=(await verificationPool.query<{id:string}>(`INSERT INTO ride_offers
+      (driver_id,pickup_location,pickup_lat,pickup_lng,drop_location,drop_lat,drop_lng,date,time,
+       available_seats,price_per_seat_paise)
+      VALUES($1,'Old origin',20.9,77.7,'Old destination',20.8,77.8,current_date,'09:00',1,2500)
+      RETURNING id`,[outsider.id])).rows[0];
+    const booking=(await verificationPool.query<{id:string}>(`INSERT INTO bookings
+      (ride_offer_id,created_by_user_id,passenger_id,driver_id,seats_booked,total_amount_paise,
+       status,payment_state)
+      VALUES($1,$2,$2,$3,1,2500,'completed','unpaid') RETURNING id`,
+      [offer.id,user.id,outsider.id])).rows[0];
+    await verificationPool.query(`INSERT INTO booking_settlements
+      (booking_id,payer_user_id,payee_user_id,ride_fare_paise,total_due_paise,status)
+      VALUES($1,$2,$3,2500,2500,'due')`,[booking.id,user.id,outsider.id]);
+    const ownerRead=await request(app).get(`/v1/bookings/${booking.id}`)
+      .set("Authorization",`Bearer ${token}`);
+    expect(ownerRead.status).toBe(200);
+    expect(ownerRead.body.booking).toBeTruthy();
+    expect((await request(app).get(`/v1/settlements/bookings/${booking.id}`)
+      .set("Authorization",`Bearer ${token}`)).status).toBe(200);
+    expect((await request(app).get(`/v1/payments/bookings/${booking.id}/status`)
+      .set("Authorization",`Bearer ${token}`)).status).toBe(200);
+    const thirdEmail=`ticket06-third-${randomUUID()}@example.test`;
+    const third=(await verificationPool.query<{id:string}>(
+      "INSERT INTO users(email) VALUES($1) RETURNING id",[thirdEmail])).rows[0];
+    const thirdToken=signAccessToken({userId:third.id,email:thirdEmail,role:"user"});
+    for(const path of [`/v1/bookings/${booking.id}`,`/v1/settlements/bookings/${booking.id}`,
+      `/v1/payments/bookings/${booking.id}/status`])
+      expect((await request(app).get(path).set("Authorization",`Bearer ${thirdToken}`)).status,path).toBe(404);
+  });
+});
+
 describe("ticket 28 closure safety queue",()=>{
   let receiptDirectory:string;
   beforeEach(async()=>{

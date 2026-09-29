@@ -29,8 +29,9 @@ apiRouter.use("/auth", authRouter);
 apiRouter.use("/operator", operatorRouter);
 apiRouter.use("/profile", profileRouter);
 apiRouter.use("/rides", pilotDisabled);
-apiRouter.use("/bookings", pilotDisabled);
-apiRouter.use("/settlements", pilotDisabled);
+// Historical records remain available through their participant-scoped read handlers.
+apiRouter.use("/bookings", (req, _res, next) => req.method === "GET" ? next() : pilotDisabled());
+apiRouter.use("/settlements", (req, _res, next) => req.method === "GET" ? next() : pilotDisabled());
 apiRouter.use("/matching", pilotDisabled);
 apiRouter.use("/pricing", pilotDisabled);
 apiRouter.use("/chat", pilotDisabled);

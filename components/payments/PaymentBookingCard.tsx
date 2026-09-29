@@ -12,7 +12,6 @@ import PaymentStateBadge from "./PaymentStateBadge";
 type PaymentBookingCardProps = {
   card: PaymentCardViewModel;
   loading: boolean;
-  onPayOnline: () => void;
   onOpenMarkPaidSheet: () => void;
   onOpenConfirmReceiptSheet: () => void;
   onRefresh: () => void;
@@ -26,7 +25,6 @@ function paymentMethodLabel(value: string | null) {
 export default function PaymentBookingCard({
   card,
   loading,
-  onPayOnline,
   onOpenMarkPaidSheet,
   onOpenConfirmReceiptSheet,
   onRefresh,
@@ -83,12 +81,6 @@ export default function PaymentBookingCard({
       </div>
 
       <CardFooter className="sticky bottom-0 z-10 flex flex-wrap gap-2 border-t border-border/70 bg-card/95 px-4 py-3 backdrop-blur sm:px-5">
-        {card.canPayOnline ? (
-          <Button onClick={onPayOnline} disabled={loading}>
-            {loading ? "Processing..." : "Pay Online"}
-          </Button>
-        ) : null}
-
         {card.canRetryVerification ? (
           <Button variant="outline" onClick={onRefresh} disabled={loading}>
             {loading ? "Checking..." : "Check Verification"}
