@@ -15,6 +15,13 @@ export const ownedForQuote=async(db:Db,driver:string,id:string)=>(await db.query
   [driver,id])).rows[0]??null;
 export const registration=async(db:Db,id:string)=>(await db.query<{registration_identifier:string}>(
   'SELECT registration_identifier FROM unrestricted_vehicle_declarations WHERE id=$1',[id])).rows[0]?.registration_identifier??null;
+export const replacementSource=async(db:PoolClient,id:string)=>(await db.query<{
+  driver_id:string;status:string;cancel_acknowledged:boolean}>(`SELECT o.driver_id,o.status,
+  EXISTS(SELECT 1 FROM posted_route_outcome_operations x WHERE x.offer_id=o.id
+    AND x.action='driver_cancel' AND x.state IN ('acknowledged','recovered')) AS cancel_acknowledged
+  FROM posted_route_offers o WHERE o.id=$1 FOR UPDATE`,[id])).rows[0]??null;
+export const replacementExists=async(db:PoolClient,id:string)=>(await db.query(
+  'SELECT 1 FROM posted_route_offers WHERE replaces_offer_id=$1 LIMIT 1',[id])).rowCount!==0;
 export async function conflict(db:PoolClient,driver:string,vehicle:string,departure:Date,until:Date){
   const route=(await db.query(`SELECT 1 FROM posted_route_offers o
     JOIN unrestricted_vehicle_declarations other ON other.id=o.vehicle_declaration_id
@@ -34,12 +41,13 @@ export async function conflict(db:PoolClient,driver:string,vehicle:string,depart
       AND departure_at<$3 AND commitment_until>$2 LIMIT 1`,[driver,departure,until])).rowCount;
   return Boolean(route||legacy||accepted||legacyPassenger);
 }
-export async function save(db:PoolClient,input:{driver:string;vehicle:string;route:VerifiedRoute;departure:Date;until:Date;capacity:number;policy:string}){
+export async function save(db:PoolClient,input:{driver:string;vehicle:string;route:VerifiedRoute;departure:Date;until:Date;capacity:number;policy:string;replacesOfferId?:string}){
   return (await db.query<{id:string}>(`INSERT INTO posted_route_offers(driver_id,vehicle_declaration_id,policy_version,operating_policy_version,routing_source,routing_mode,
-    geometry,cumulative_meters,distance_meters,duration_seconds,departure_at,commitment_until,request_cutoff_at,acceptance_cutoff_at,capacity)
-    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::timestamptz,$12::timestamptz,$11::timestamptz-interval '60 minutes',$11::timestamptz-interval '30 minutes',$13) RETURNING id`,
+    geometry,cumulative_meters,distance_meters,duration_seconds,departure_at,commitment_until,request_cutoff_at,acceptance_cutoff_at,capacity,replaces_offer_id)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::timestamptz,$12::timestamptz,$11::timestamptz-interval '60 minutes',$11::timestamptz-interval '30 minutes',$13,$14) RETURNING id`,
     [input.driver,input.vehicle,input.policy,ROUTE_OPERATING_POLICY_VERSION,input.route.source,input.route.mode,JSON.stringify(input.route.geometry),
-      JSON.stringify(input.route.cumulativeMeters),input.route.distanceMeters,input.route.durationSeconds,input.departure,input.until,input.capacity])).rows[0];
+      JSON.stringify(input.route.cumulativeMeters),input.route.distanceMeters,input.route.durationSeconds,input.departure,input.until,input.capacity,
+      input.replacesOfferId??null])).rows[0];
 }
 export async function snapshot(db:PoolClient,id:string){return (await db.query<{snapshot:Record<string,unknown>}>(
   'SELECT to_jsonb(r) AS snapshot FROM posted_route_offers r WHERE id=$1',[id])).rows[0].snapshot;}

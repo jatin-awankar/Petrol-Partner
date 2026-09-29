@@ -13,7 +13,7 @@ import {verifyRoute,type Point} from './routing';
 import * as repo from './posted-routes.repo';
 import {ROUTE_POLICY_VERSION,ROUTE_OPERATING_POLICY_VERSION} from './policy';
 import {quoteSegment} from './segment-quote';
-export type Input={vehicle_id:string;mode:'bike'|'scooter'|'car';origin:Point;destination:Point;departure_at:string;capacity:number};
+export type Input={vehicle_id:string;mode:'bike'|'scooter'|'car';origin:Point;destination:Point;departure_at:string;capacity:number;replaces_offer_id?:string};
 type Receipt={operationId:string;actorId:string;key:string;digest:string;offerId:string;result:Record<string,unknown>;snapshot:Record<string,unknown>;createdAt:string};
 const store=()=>pilotReceiptStore<Receipt>('posted-route','Posted route recovery evidence unavailable');
 const receipt=(row:repo.Operation):Receipt=>({operationId:row.id,actorId:row.actor_id,key:row.idempotency_key,digest:row.payload_digest,
@@ -68,6 +68,10 @@ export async function prepare(actor:string,key:string,input:Input){
   const existing=await repo.byKey(pool,actor,key);
   if(existing&&existing.payload_digest!==digest)throw new AppError(409,'Idempotency payload mismatch','IDEMPOTENCY_PAYLOAD_MISMATCH');
   await verifyEvidence({actor,key});
+  if(input.replaces_offer_id){
+    const {postedRouteOutcomesService}=await import('./outcomes.service');
+    await postedRouteOutcomesService.verifyEvidence();
+  }
   if(existing)return operation(actor,existing.id);
   const departure=new Date(input.departure_at);schedule(departure,new Date());
   const route=await verifyRoute({origin:input.origin,destination:input.destination,mode:input.mode});
@@ -81,6 +85,13 @@ export async function prepare(actor:string,key:string,input:Input){
     if(recovery.rows[0]?.mode!=='open')throw new AppError(503,'Protected writes restricted','RECOVERY_RESTRICTED');
     store();
     await lockCommitmentActors(client,actor,input.vehicle_id,[]);
+    if(input.replaces_offer_id){
+      const source=await repo.replacementSource(client,input.replaces_offer_id);
+      if(!source||source.driver_id!==actor||source.status!=='cancelled'||!source.cancel_acknowledged)
+        throw new AppError(409,'Replacement requires your acknowledged cancellation','REPLACEMENT_INVALID');
+      if(await repo.replacementExists(client,input.replaces_offer_id))
+        throw new AppError(409,'A replacement already exists','REPLACEMENT_EXISTS');
+    }
     const declaration=await assertCurrentDriverVehicle(client,actor,input.vehicle_id,input.capacity);
     const registration=await repo.registration(client,input.vehicle_id);
     if(!registration)throw new AppError(404,'Vehicle not found','VEHICLE_NOT_FOUND');
@@ -88,9 +99,11 @@ export async function prepare(actor:string,key:string,input:Input){
     if(declaration.category!==input.mode)throw new AppError(400,'Routing mode differs from declared vehicle','ROUTE_MODE_INVALID');
     schedule(departure,new Date(),until);
     if(await repo.conflict(client,actor,input.vehicle_id,departure,until))throw new AppError(409,'Overlapping commitment','COMMITMENT_CONFLICT');
-    const saved=await repo.save(client,{driver:actor,vehicle:input.vehicle_id,route,departure,until,capacity:input.capacity,policy:ROUTE_POLICY_VERSION});
+    const saved=await repo.save(client,{driver:actor,vehicle:input.vehicle_id,route,departure,until,
+      capacity:input.capacity,policy:ROUTE_POLICY_VERSION,replacesOfferId:input.replaces_offer_id});
     const snapshot=await repo.snapshot(client,saved.id);
-    const result={id:saved.id,route_version:1,policy_version:ROUTE_POLICY_VERSION,operating_policy_version:ROUTE_OPERATING_POLICY_VERSION,status:'prepared',real_bookings_enabled:false};
+    const result={id:saved.id,route_version:1,policy_version:ROUTE_POLICY_VERSION,operating_policy_version:ROUTE_OPERATING_POLICY_VERSION,status:'prepared',real_bookings_enabled:false,
+      ...(input.replaces_offer_id?{replaces_offer_id:input.replaces_offer_id}:{})};
     const created=await repo.insertOperation(client,{actor,key,digest,offerId:saved.id,result,snapshot});
     await repo.audit(client,created);
     await recordDurableNotification(client,{originType:'posted_route',operationId:created.id,recipientId:actor,

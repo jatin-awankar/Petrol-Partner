@@ -39,6 +39,20 @@ function canonical(value:unknown):unknown{
 }
 const sameTerms=(a:Record<string,unknown>,b:Record<string,unknown>)=>
   JSON.stringify(canonical(a))===JSON.stringify(canonical(b));
+async function matchesAllocation(db:Pool|PoolClient,current:repo.Allocation,expected:repo.Allocation){
+  if(sameTerms(current as unknown as Record<string,unknown>,expected as unknown as Record<string,unknown>))return true;
+  const mutable=['status','boarded'];
+  const strip=(value:Record<string,unknown>)=>Object.fromEntries(Object.entries(value)
+    .filter(([key])=>!mutable.includes(key)));
+  if(!sameTerms(strip(current as unknown as Record<string,unknown>),
+    strip(expected as unknown as Record<string,unknown>)))return false;
+  const changed=current.status!==expected.status||(current as repo.Allocation&{boarded?:boolean|null}).boarded!=null;
+  if(!changed)return true;
+  return Boolean((await db.query(`SELECT 1 FROM posted_route_outcome_operations
+    WHERE offer_id=$1 AND state IN ('acknowledged','recovered') AND
+      (allocation_id=$2 OR action IN ('driver_cancel','hold','release_hold','depart')) LIMIT 1`,
+    [current.offer_id,current.id])).rowCount);
+}
 function sameRequestState(current:repo.SeatRequest,expected:repo.SeatRequest){
   if(sameTerms(current as unknown as Record<string,unknown>,expected as unknown as Record<string,unknown>))return true;
   if(expected.status!=='pending'||current.status!=='expired'||!current.decided_at||
@@ -141,8 +155,7 @@ export class PostedRouteSeatService{
         if(!row||JSON.stringify(receipt(row))!==JSON.stringify(item))throw new Error('Seat receipt conflicts');
         if(item.allocationSnapshot){
           const allocation=await repo.allocationById(this.db,item.allocationSnapshot.id);
-          if(!allocation||!sameTerms(allocation as unknown as Record<string,unknown>,
-            item.allocationSnapshot as unknown as Record<string,unknown>))
+          if(!allocation||!await matchesAllocation(this.db,allocation,item.allocationSnapshot))
             throw new Error('Seat allocation missing or changed');
         }
       }
@@ -255,8 +268,7 @@ export class PostedRouteSeatService{
           throw new AppError(409,'Seat request conflicts','RECOVERY_CONFLICT');
         if(row.allocation_snapshot){
           const currentAllocation=await repo.allocationById(this.db,row.allocation_snapshot.id);
-          if(!currentAllocation||!sameTerms(currentAllocation as unknown as Record<string,unknown>,
-            row.allocation_snapshot as unknown as Record<string,unknown>))
+          if(!currentAllocation||!await matchesAllocation(this.db,currentAllocation,row.allocation_snapshot))
             throw new AppError(409,'Seat allocation conflicts','RECOVERY_CONFLICT');
         }
         for(const withdrawn of (row.result.withdrawn_requests as repo.SeatRequest[]|undefined)??[]){
@@ -282,8 +294,7 @@ export class PostedRouteSeatService{
           throw new AppError(409,'Seat receipt conflicts','RECOVERY_CONFLICT');
         if(item.allocationSnapshot){
           const currentAllocation=await repo.allocationById(client,item.allocationSnapshot.id);
-          if(!currentAllocation||!sameTerms(currentAllocation as unknown as Record<string,unknown>,
-            item.allocationSnapshot as unknown as Record<string,unknown>))
+          if(!currentAllocation||!await matchesAllocation(client,currentAllocation,item.allocationSnapshot))
             throw new AppError(409,'Seat allocation conflicts','RECOVERY_CONFLICT');
         }
         await repo.markRecovered(client,row.id);
