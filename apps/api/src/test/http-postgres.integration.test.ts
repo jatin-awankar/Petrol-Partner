@@ -4924,13 +4924,16 @@ describe('ticket 10 isolated posted route preparation',()=>{
     routing.setRoutingAdapterForTests({verify:async()=>{throw new Error('provider down');}});
     expect((await send()).body.error.code).toBe('ROUTING_UNAVAILABLE');
     routing.setRoutingAdapterForTests({verify:async()=>({source:'synthetic-test',mode:'bike',
-      geometry:{type:'LineString',coordinates:[input.origin,input.destination]},distanceMeters:6000,durationSeconds:900})});
+      geometry:{type:'LineString',coordinates:[input.origin,input.destination]},cumulativeMeters:[0,6000],distanceMeters:6000,durationSeconds:900})});
     expect((await send()).body.error.code).toBe('ROUTE_INVALID');
     routing.setRoutingAdapterForTests({verify:async()=>({source:'synthetic-test',mode:'car',
-      geometry:{type:'LineString',coordinates:[[0,0],input.destination]},distanceMeters:6000,durationSeconds:900})});
+      geometry:{type:'LineString',coordinates:[[0,0],input.destination]},cumulativeMeters:[0,6000],distanceMeters:6000,durationSeconds:900})});
     expect((await send()).body.error.code).toBe('ROUTE_INVALID');
     routing.setRoutingAdapterForTests({verify:async()=>({source:'synthetic-test',mode:'car',
-      geometry:{type:'LineString',coordinates:[input.origin,input.destination]},distanceMeters:6000,durationSeconds:900})});
+      geometry:{type:'LineString',coordinates:[input.origin,input.destination]},cumulativeMeters:[0,6000],distanceMeters:6000,durationSeconds:900})});
+    process.env.ROUTE_SUPPORT_WINDOW_END=new Date(new Date(input.departure_at).getTime()+5*60000).toISOString();
+    expect((await send()).body.error.code).toBe('SUPPORT_WINDOW_CLOSED');
+    process.env.ROUTE_SUPPORT_WINDOW_END=new Date(Date.now()+8*86400000).toISOString();
     await verificationPool.query(`CREATE OR REPLACE FUNCTION ticket10_reject_notice() RETURNS trigger LANGUAGE plpgsql AS $$
       BEGIN IF NEW.origin_type='posted_route' THEN RAISE EXCEPTION 'injected notice failure'; END IF; RETURN NEW; END $$`);
     await verificationPool.query(`CREATE TRIGGER ticket10_reject_notice BEFORE INSERT ON pilot_notification_events
@@ -4945,18 +4948,47 @@ describe('ticket 10 isolated posted route preparation',()=>{
     const a=await participant(),app=createApp();
     const input={vehicle_id:a.vehicle,mode:'car',origin:[77.75,20.9],destination:[77.8,20.95],departure_at:departure(),capacity:2};
     (await routeModule()).setRoutingAdapterForTests({verify:async()=>({source:'synthetic-test',mode:'car',
-      geometry:{type:'LineString',coordinates:[input.origin,input.destination]},distanceMeters:6000,durationSeconds:900})});
+      geometry:{type:'LineString',coordinates:[input.origin,input.destination]},cumulativeMeters:[0,6000],distanceMeters:6000,durationSeconds:900})});
     const send=()=>request(app).post(path).set('Authorization',`Bearer ${a.token}`)
       .set('Idempotency-Key',randomUUID()).send(input);
     const [one,two]=await Promise.all([send(),send()]);
     expect([one.status,two.status].sort()).toEqual([201,409]);
     expect((await verificationPool.query('SELECT count(*)::int AS n FROM posted_route_offers')).rows[0].n).toBe(1);
   });
+  it('restores a prepared route, audit, and suppressed notice from independent receipt',async()=>{
+    const a=await participant(),app=createApp();
+    const input={vehicle_id:a.vehicle,mode:'car',origin:[77.75,20.9],destination:[77.8,20.95],departure_at:departure(),capacity:2};
+    (await routeModule()).setRoutingAdapterForTests({verify:async()=>({source:'synthetic-test',mode:'car',
+      geometry:{type:'LineString',coordinates:[input.origin,input.destination]},
+      cumulativeMeters:[0,6000],distanceMeters:6000,durationSeconds:900})});
+    const created=await request(app).post(path).set('Authorization',`Bearer ${a.token}`)
+      .set('Idempotency-Key',randomUUID()).send(input);
+    expect(created.status,JSON.stringify(created.body)).toBe(201);
+    const operationId=created.body.offer.operation_id,offerId=created.body.offer.id;
+    expect((await verificationPool.query('SELECT state FROM posted_route_operations WHERE id=$1',[operationId])).rows[0].state).toBe('acknowledged');
+    await verificationPool.query(`DELETE FROM pilot_email_jobs WHERE event_id IN
+      (SELECT id FROM pilot_notification_events WHERE origin_type='posted_route' AND operation_id=$1)`,[operationId]);
+    await verificationPool.query("DELETE FROM pilot_notification_events WHERE origin_type='posted_route' AND operation_id=$1",[operationId]);
+    await verificationPool.query("DELETE FROM audit_logs WHERE metadata->>'operationId'=$1",[operationId]);
+    await verificationPool.query('DELETE FROM posted_route_operations WHERE id=$1',[operationId]);
+    await verificationPool.query('DELETE FROM posted_route_offers WHERE id=$1',[offerId]);
+    const operator=(await verificationPool.query<{id:string}>(`INSERT INTO users(email,role,email_verified_at)
+      VALUES($1,'admin',now()) RETURNING id`,[`operator-${randomUUID()}@example.test`])).rows[0].id;
+    await verificationPool.query(`INSERT INTO operator_allowlist(user_id,active,reason,reviewed_at)
+      VALUES($1,true,'ticket 10 recovery test',now())`,[operator]);
+    const recovery=(await import('../modules/posted-routes/posted-routes.service')).postedRouteRecovery;
+    await expect(recovery.reconcileReceipts(operator)).resolves.toBeGreaterThan(0);
+    expect((await verificationPool.query('SELECT state FROM posted_route_operations WHERE id=$1',[operationId])).rows[0].state).toBe('recovered');
+    expect((await verificationPool.query('SELECT route_version,policy_version FROM posted_route_offers WHERE id=$1',[offerId])).rows[0])
+      .toMatchObject({route_version:1,policy_version:'unrestricted-route-contribution-2026-09-28.1'});
+    expect((await verificationPool.query("SELECT count(*)::int AS n FROM audit_logs WHERE metadata->>'operationId'=$1",[operationId])).rows[0].n).toBe(1);
+    expect((await verificationPool.query("SELECT count(*)::int AS n FROM pilot_email_jobs WHERE status='exhausted' AND event_id IN (SELECT id FROM pilot_notification_events WHERE origin_type='posted_route' AND operation_id=$1)",[operationId])).rows[0].n).toBe(1);
+  });
   it('keeps preparation private, idempotent and distinct from corridor offers',async()=>{
     const a=await participant(),b=await participant(),app=createApp();
     const input={vehicle_id:a.vehicle,mode:'car',origin:[77.75,20.9],destination:[77.8,20.95],departure_at:departure(),capacity:2};
     (await routeModule()).setRoutingAdapterForTests({verify:async()=>({source:'synthetic-test',mode:'car',
-      geometry:{type:'LineString',coordinates:[input.origin,input.destination]},distanceMeters:6000,durationSeconds:900})});
+      geometry:{type:'LineString',coordinates:[input.origin,input.destination]},cumulativeMeters:[0,6000],distanceMeters:6000,durationSeconds:900})});
     const key=randomUUID();const publish=()=>request(app).post(path).set('Authorization',`Bearer ${a.token}`)
       .set('Idempotency-Key',key).send(input);
     const first=await publish();expect(first.status,JSON.stringify(first.body)).toBe(201);

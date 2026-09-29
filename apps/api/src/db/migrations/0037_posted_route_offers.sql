@@ -5,9 +5,11 @@ CREATE TABLE IF NOT EXISTS posted_route_offers (
   vehicle_declaration_id uuid NOT NULL REFERENCES unrestricted_vehicle_declarations(id),
   route_version integer NOT NULL DEFAULT 1 CHECK (route_version > 0),
   policy_version text NOT NULL,
+  operating_policy_version text NOT NULL,
   routing_source text NOT NULL,
   routing_mode text NOT NULL CHECK (routing_mode IN ('bike','scooter','car')),
   geometry jsonb NOT NULL,
+  cumulative_meters jsonb NOT NULL,
   distance_meters integer NOT NULL CHECK (distance_meters > 0 AND distance_meters <= 50000),
   duration_seconds integer NOT NULL CHECK (duration_seconds > 0 AND duration_seconds <= 5400),
   departure_at timestamptz NOT NULL,
@@ -35,3 +37,6 @@ CREATE TABLE IF NOT EXISTS posted_route_operations (
   acknowledged_at timestamptz,
   UNIQUE(actor_id,idempotency_key)
 );
+
+ALTER TABLE posted_route_offers ADD COLUMN IF NOT EXISTS operating_policy_version text NOT NULL DEFAULT '2026-09-29.1';
+ALTER TABLE posted_route_offers ADD COLUMN IF NOT EXISTS cumulative_meters jsonb NOT NULL DEFAULT '[]'::jsonb;
