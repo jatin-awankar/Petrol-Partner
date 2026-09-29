@@ -1,11 +1,13 @@
 import {AppError} from '../../shared/errors/app-error';
-import type {Point,VerifiedRoute} from './routing';
+import {isVerifiedRouteShape,type Point,type VerifiedRoute} from './routing';
 
 export const MATCH_TOLERANCE_METERS=30;
 export const MIN_SEGMENT_METERS=500;
 export const ROUNDING_RULE='nearest_paise_half_up';
 
-type StopCheck=(point:Point,kind:'pickup'|'dropoff',mode:VerifiedRoute['mode'])=>Promise<boolean>;
+export type StopEvidence={placeId:string;driverConfirmed:boolean;legal:boolean;correctSide:boolean;
+  correctDirection:boolean;helmetSpace:boolean};
+type StopCheck=(point:Point,kind:'pickup'|'dropoff',mode:VerifiedRoute['mode'])=>Promise<StopEvidence>;
 let stopCheck:StopCheck|null=null;
 // Until a production stopping-place source is approved, only controlled tests can certify stops.
 export function setStopCheckForTests(check:StopCheck|null){
@@ -41,27 +43,26 @@ function position(route:VerifiedRoute,point:Point){
 }
 
 export async function quoteSegment(route:VerifiedRoute,input:{pickup:Point;dropoff:Point}){
-  const values=[...route.geometry.coordinates.flat(),...route.cumulativeMeters,route.distanceMeters];
-  if(route.geometry.type!=='LineString'||route.geometry.coordinates.length<2||
-    route.cumulativeMeters.length!==route.geometry.coordinates.length||
-    values.some(n=>!Number.isFinite(n))||route.cumulativeMeters[0]!==0||
-    route.cumulativeMeters.at(-1)!==route.distanceMeters||
-    route.cumulativeMeters.some((n,i)=>!Number.isSafeInteger(n)||(i>0&&n<=route.cumulativeMeters[i-1]))||
-    !Number.isSafeInteger(route.distanceMeters)||route.distanceMeters>50000||route.distanceMeters<=0)
+  if(!isVerifiedRouteShape(route))
     throw new AppError(422,'Saved route cannot be verified','SEGMENT_UNVERIFIABLE');
   if(!stopCheck)throw new AppError(503,'Stopping-place verification unavailable','STOP_VERIFICATION_UNAVAILABLE');
-  let safePickup=false,safeDropoff=false;
-  try{[safePickup,safeDropoff]=await Promise.all([
+  let pickupStop:StopEvidence,dropoffStop:StopEvidence;
+  try{[pickupStop,dropoffStop]=await Promise.all([
     stopCheck(input.pickup,'pickup',route.mode),stopCheck(input.dropoff,'dropoff',route.mode)]);
   }catch{throw new AppError(503,'Stopping-place verification unavailable','STOP_VERIFICATION_UNAVAILABLE');}
-  if(!safePickup||!safeDropoff)throw new AppError(422,'Unsafe stopping place','STOP_UNSAFE');
+  const safe=(stop:StopEvidence)=>Boolean(stop&&typeof stop.placeId==='string'&&stop.placeId.length>0&&
+    stop.driverConfirmed===true&&stop.legal===true&&stop.correctSide===true&&stop.correctDirection===true&&
+    (route.mode==='car'||stop.helmetSpace===true));
+  if(!safe(pickupStop!)||!safe(dropoffStop!)||pickupStop!.placeId===dropoffStop!.placeId)
+    throw new AppError(422,'Unsafe stopping place','STOP_UNSAFE');
   const pickupMeters=position(route,input.pickup),dropoffMeters=position(route,input.dropoff);
   if(dropoffMeters<=pickupMeters)throw new AppError(422,'Points are not forward ordered','SEGMENT_REVERSED');
   const exactSegmentMeters=dropoffMeters-pickupMeters;
   if(exactSegmentMeters<MIN_SEGMENT_METERS)throw new AppError(422,'Segment is too short','SEGMENT_TOO_SHORT');
   const segmentMeters=Math.round(exactSegmentMeters);
   const ratePaisePerKm=route.mode==='car'?700:500;
-  return {segment_meters:segmentMeters,pickup_route_meters:Math.round(pickupMeters),
+  return {segment_meters:segmentMeters,pickup_stop_id:pickupStop!.placeId,dropoff_stop_id:dropoffStop!.placeId,
+    pickup_route_meters:Math.round(pickupMeters),
     dropoff_route_meters:Math.round(dropoffMeters),vehicle_category:route.mode,
     rate_paise_per_km:ratePaisePerKm,rounding_rule:ROUNDING_RULE,currency:'INR' as const,
     total_paise:Math.floor((segmentMeters*ratePaisePerKm+500)/1000),additional_charges_paise:0};

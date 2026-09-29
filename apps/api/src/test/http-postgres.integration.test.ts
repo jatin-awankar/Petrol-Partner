@@ -4872,6 +4872,9 @@ describe('ticket 10 isolated posted route preparation',()=>{
   const version='unrestricted-declared-2026-09-28.1';
   const path='/v1/posted-routes';
   const routeModule=()=>import('../modules/posted-routes/routing');
+  const safeStop={placeId:'synthetic-stop',driverConfirmed:true,legal:true,correctSide:true,
+    correctDirection:true,helmetSpace:true};
+  const safeStopForKind=async(_point:unknown,kind:'pickup'|'dropoff')=>({...safeStop,placeId:`synthetic-${kind}`});
   beforeEach(async()=>{
     await verificationPool.query('TRUNCATE users CASCADE');
     await verificationPool.query(`INSERT INTO pilot_recovery_state(singleton,mode) VALUES(true,'open')
@@ -5011,26 +5014,39 @@ describe('ticket 10 isolated posted route preparation',()=>{
     const a=await participant(),b=await participant(),app=createApp();
     const origin:[number,number]=[77.75,20.9],bend:[number,number]=[77.76,20.91],destination:[number,number]=[77.77,20.9];
     const coordinates=[origin,bend,destination];
-    (await routeModule()).setRoutingAdapterForTests({verify:async()=>({source:'synthetic-test',mode:'car',
-      geometry:{type:'LineString',coordinates},cumulativeMeters:[0,1005,4000],distanceMeters:4000,durationSeconds:900})});
-    (await import('../modules/posted-routes/segment-quote')).setStopCheckForTests(async()=>true);
+    (await routeModule()).setRoutingAdapterForTests({verify:async input=>
+      input.destination[0]===bend[0]&&input.destination[1]===bend[1]
+        ? {source:'synthetic-test',mode:'car',geometry:{type:'LineString',coordinates:[origin,bend]},
+          cumulativeMeters:[0,600],distanceMeters:600,durationSeconds:120}
+        : {source:'synthetic-test',mode:'car',geometry:{type:'LineString',coordinates},
+          cumulativeMeters:[0,1005,4000],distanceMeters:4000,durationSeconds:900}});
+    (await import('../modules/posted-routes/segment-quote')).setStopCheckForTests(safeStopForKind);
     const created=await request(app).post(path).set('Authorization',`Bearer ${a.token}`)
       .set('Idempotency-Key',randomUUID()).send({vehicle_id:a.vehicle,mode:'car',origin,destination,departure_at:departure(),capacity:2});
     expect(created.status,JSON.stringify(created.body)).toBe(201);
     const id=created.body.offer.id,quotePath=`${path}/${id}/quote`;
     const body={route_version:1,pickup:origin,dropoff:bend};
     const send=(token:string,payload:unknown)=>request(app).post(quotePath).set('Authorization',`Bearer ${token}`).send(payload);
+    const previousEnvironment=process.env.NODE_ENV;
+    try{process.env.NODE_ENV='production';
+      expect((await send(a.token,body)).body.error.code).toBe('ROUTE_QUOTES_DISABLED');
+    }finally{process.env.NODE_ENV=previousEnvironment;}
     expect((await request(app).post(quotePath).send(body)).status).toBe(401);
     expect((await send(b.token,body)).status).toBe(404);
     const quote=await send(a.token,body);
     expect(quote.status,JSON.stringify(quote.body)).toBe(200);
+    // A separately routed origin-to-bend answer would be 600 m; quote must use the posted 1005 m.
     expect(quote.body.quote).toMatchObject({route_id:id,route_version:1,segment_meters:1005,
       vehicle_category:'car',rate_paise_per_km:700,rounding_rule:'nearest_paise_half_up',currency:'INR',
       total_paise:704,additional_charges_paise:0,distance_source:'saved_posted_route',real_bookings_enabled:false});
     const wholeRoute=await send(a.token,{...body,dropoff:destination});
     expect(wholeRoute.body.quote).toMatchObject({segment_meters:4000,total_paise:2800});
-    // These endpoints are roughly 2.1 km apart directly; the saved 4 km progression is authoritative.
-    expect(Math.abs(destination[0]-origin[0])*104000).toBeLessThan(wholeRoute.body.quote.segment_meters);
+    (await import('../modules/posted-routes/segment-quote')).setStopCheckForTests(async()=>safeStop);
+    expect((await send(a.token,body)).body.error.code).toBe('STOP_UNSAFE');
+    (await import('../modules/posted-routes/segment-quote')).setStopCheckForTests(async()=>({
+      placeId:'synthetic-stop',driverConfirmed:false,legal:true,correctSide:true,correctDirection:true,helmetSpace:true}));
+    expect((await send(a.token,body)).body.error.code).toBe('STOP_UNSAFE');
+    (await import('../modules/posted-routes/segment-quote')).setStopCheckForTests(safeStopForKind);
     expect((await send(a.token,{...body,pickup:[77.7498,20.9]})).status).toBe(200);
     expect((await send(a.token,{...body,pickup:[77.7495,20.9]})).body.error.code).toBe('POINT_OFF_ROUTE');
     expect((await send(a.token,{...body,distance_meters:1})).status).toBe(400);
@@ -5038,13 +5054,20 @@ describe('ticket 10 isolated posted route preparation',()=>{
     expect((await send(a.token,{...body,pickup:bend,dropoff:origin})).body.error.code).toBe('SEGMENT_REVERSED');
     expect((await send(a.token,{...body,dropoff:[78,21]})).body.error.code).toBe('POINT_OFF_ROUTE');
     expect((await send(a.token,{...body,dropoff:[77.750001,20.900001]})).body.error.code).toBe('SEGMENT_TOO_SHORT');
-    (await import('../modules/posted-routes/segment-quote')).setStopCheckForTests(async()=>false);
+    (await import('../modules/posted-routes/segment-quote')).setStopCheckForTests(async()=>({...safeStop,legal:false}));
     expect((await send(a.token,body)).body.error.code).toBe('STOP_UNSAFE');
+    for(const invalid of [{correctSide:false},{correctDirection:false}]){
+      (await import('../modules/posted-routes/segment-quote')).setStopCheckForTests(async(_point,kind)=>
+        ({...safeStop,placeId:`synthetic-${kind}`,...invalid}));
+      expect((await send(a.token,body)).body.error.code).toBe('STOP_UNSAFE');
+    }
     (await import('../modules/posted-routes/segment-quote')).setStopCheckForTests(async()=>{throw new Error('stop source down');});
     expect((await send(a.token,body)).body.error.code).toBe('STOP_VERIFICATION_UNAVAILABLE');
     (await import('../modules/posted-routes/segment-quote')).setStopCheckForTests(null);
     expect((await send(a.token,body)).body.error.code).toBe('STOP_VERIFICATION_UNAVAILABLE');
     await verificationPool.query("UPDATE posted_route_offers SET cumulative_meters='[]'::jsonb WHERE id=$1",[id]);
+    expect((await send(a.token,body)).body.error.code).toBe('SEGMENT_UNVERIFIABLE');
+    await verificationPool.query("UPDATE posted_route_offers SET geometry='null'::jsonb WHERE id=$1",[id]);
     expect((await send(a.token,body)).body.error.code).toBe('SEGMENT_UNVERIFIABLE');
     await verificationPool.query('UPDATE posted_route_offers SET route_version=2 WHERE id=$1',[id]);
     expect((await send(a.token,body)).body.error.code).toBe('ROUTE_VERSION_STALE');
@@ -5057,7 +5080,7 @@ describe('ticket 10 isolated posted route preparation',()=>{
     (await routeModule()).setRoutingAdapterForTests({verify:async()=>({source:'synthetic-test',mode:'car',
       geometry:{type:'LineString',coordinates:[origin,turn,near,destination]},
       cumulativeMeters:[0,1000,2000,3000],distanceMeters:3000,durationSeconds:900})});
-    (await import('../modules/posted-routes/segment-quote')).setStopCheckForTests(async()=>true);
+    (await import('../modules/posted-routes/segment-quote')).setStopCheckForTests(safeStopForKind);
     const created=await request(app).post(path).set('Authorization',`Bearer ${a.token}`)
       .set('Idempotency-Key',randomUUID()).send({vehicle_id:a.vehicle,mode:'car',origin,destination,departure_at:departure(),capacity:2});
     expect(created.status,JSON.stringify(created.body)).toBe(201);
@@ -5065,13 +5088,29 @@ describe('ticket 10 isolated posted route preparation',()=>{
       .set('Authorization',`Bearer ${a.token}`).send({route_version:1,pickup:origin,dropoff:destination});
     expect(response.body.error.code).toBe('POINT_AMBIGUOUS');
   });
+  it.each([{metres:1004,paise:703},{metres:1005,paise:704},{metres:1006,paise:704}])(
+    'rounds a $metres m car segment to $paise paise',async({metres,paise})=>{
+      const a=await participant(),app=createApp();
+      const origin:[number,number]=[77.75,20.9],destination:[number,number]=[77.76,20.9];
+      (await routeModule()).setRoutingAdapterForTests({verify:async()=>({source:'synthetic-test',mode:'car',
+        geometry:{type:'LineString',coordinates:[origin,destination]},
+        cumulativeMeters:[0,metres],distanceMeters:metres,durationSeconds:120})});
+      (await import('../modules/posted-routes/segment-quote')).setStopCheckForTests(safeStopForKind);
+      const created=await request(app).post(path).set('Authorization',`Bearer ${a.token}`)
+        .set('Idempotency-Key',randomUUID()).send({vehicle_id:a.vehicle,mode:'car',origin,destination,departure_at:departure(),capacity:2});
+      expect(created.status,JSON.stringify(created.body)).toBe(201);
+      const quoted=await request(app).post(`${path}/${created.body.offer.id}/quote`)
+        .set('Authorization',`Bearer ${a.token}`).send({route_version:1,pickup:origin,dropoff:destination});
+      expect(quoted.status,JSON.stringify(quoted.body)).toBe(200);
+      expect(quoted.body.quote.total_paise).toBe(paise);
+    });
   it.each(['bike','scooter'] as const)('quotes the %s passenger at 500 paise per kilometre',async mode=>{
     const a=await participant(mode),app=createApp();
     const origin:[number,number]=[77.75,20.9],destination:[number,number]=[77.76,20.9];
     (await routeModule()).setRoutingAdapterForTests({verify:async()=>({source:'synthetic-test',mode,
       geometry:{type:'LineString',coordinates:[origin,destination]},
       cumulativeMeters:[0,501],distanceMeters:501,durationSeconds:120})});
-    (await import('../modules/posted-routes/segment-quote')).setStopCheckForTests(async()=>true);
+    (await import('../modules/posted-routes/segment-quote')).setStopCheckForTests(safeStopForKind);
     const created=await request(app).post(path).set('Authorization',`Bearer ${a.token}`)
       .set('Idempotency-Key',randomUUID()).send({vehicle_id:a.vehicle,mode,origin,destination,departure_at:departure(),capacity:1});
     expect(created.status,JSON.stringify(created.body)).toBe(201);
@@ -5080,5 +5119,10 @@ describe('ticket 10 isolated posted route preparation',()=>{
     expect(quoted.status,JSON.stringify(quoted.body)).toBe(200);
     expect(quoted.body.quote).toMatchObject({segment_meters:501,vehicle_category:mode,
       rate_paise_per_km:500,total_paise:251,additional_charges_paise:0});
+    (await import('../modules/posted-routes/segment-quote')).setStopCheckForTests(async(_point,kind)=>
+      ({...safeStop,placeId:`synthetic-${kind}`,helmetSpace:false}));
+    const unsafe=await request(app).post(`${path}/${created.body.offer.id}/quote`).set('Authorization',`Bearer ${a.token}`)
+      .send({route_version:1,pickup:origin,dropoff:destination});
+    expect(unsafe.body.error.code).toBe('STOP_UNSAFE');
   });
 });

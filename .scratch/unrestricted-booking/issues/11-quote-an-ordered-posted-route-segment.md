@@ -12,7 +12,7 @@
 
 ## Implementation note
 
-The saved, versioned synthetic route now supports a driver-private test quote. The server matches ordered points against saved cumulative metres, rejects off-route and repeated-pass matches, checks the 30 m tolerance and 500 m minimum, and computes integer paise at the recorded category rate with half-paise-up rounding. The HTTP quote boundary remains disabled outside tests; no passenger discovery or booking is enabled.
+The saved, versioned synthetic route now supports a driver-private test quote. The server matches ordered points against saved cumulative metres, rejects off-route and repeated-pass matches, checks the 30 m tolerance and 500 m minimum, and computes integer paise at the recorded category rate with half-paise-up rounding. A shared validator checks route shape at preparation and quote time. The synthetic stop contract requires distinct driver-confirmed places, legal stopping, correct side and direction, and helmet space for two-wheelers. HTTP/PostgreSQL tests cover an independent shorter route response, rounding boundaries, unsafe evidence, and a malformed saved route. The HTTP quote boundary remains disabled outside tests; no passenger discovery or booking is enabled.
 
 ### Remaining acceptance blockers
 
