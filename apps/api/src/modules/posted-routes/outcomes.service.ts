@@ -18,7 +18,8 @@ import * as repo from './outcomes.repo';
 
 export type OutcomePayload={allocation_id?:string;reason?:string;boarded_ids?:string[];
   travelled?:boolean;completed?:boolean;method?:'cash'|'upi';
-  outcome?:'travelled'|'not_travelled'|'interrupted';receipt_established?:boolean};
+  outcome?:'travelled'|'not_travelled'|'interrupted';receipt_established?:boolean;
+  evidence_refs?:string[];kind?:'absence'|'interruption'|'safety'|'disagreement'};
 type Receipt={operationId:string;actorId:string;key:string;digest:string;offerId:string;
   allocationId:string|null;action:repo.Action;payload:Record<string,unknown>;
   result:Record<string,unknown>;createdAt:string};
@@ -55,12 +56,18 @@ async function notify(db:PoolClient,row:repo.Operation,recipients:string[]){
 export class PostedRouteOutcomesService{
   constructor(private readonly db:Pool=pool){}
   async receipts(){return store().list();}
+  async incidents(operatorId:string){boundary();
+    await inProtectedTransaction(this.db,client=>assertCurrentOperator(client,operatorId));
+    return repo.openIncidents(this.db);}
   async pending(){return (await repo.all(this.db)).filter(row=>row.state==='committed');}
   async reconcileReceipts(operatorId:string){
     await inProtectedTransaction(this.db,client=>assertCurrentOperator(client,operatorId));
     const rows=await repo.all(this.db),evidence=new Map((await store().list()).map(item=>[item.operationId,item]));
     for(const row of rows){
-      if(row.payload_digest!==digest(row.action,row.allocation_id??row.offer_id,row.payload as OutcomePayload))
+      if(row.payload_digest!==digest(row.action==='incident_report'&&
+        row.result.requested_action==='passenger_cancel'?'passenger_cancel':row.action,
+        row.action==='operator_incident'?row.result.incident_id as string:row.allocation_id??row.offer_id,
+        row.payload as OutcomePayload))
         throw new AppError(409,'Outcome payload conflicts','RECOVERY_CONFLICT');
       const item=evidence.get(row.id);
       if(item&&JSON.stringify(item)!==JSON.stringify(receipt(row)))
@@ -78,12 +85,8 @@ export class PostedRouteOutcomesService{
     return rows.length;
   }
   private async stateMatches(row:repo.Operation,pending=false){
-    const audited=Boolean((await this.db.query("SELECT 1 FROM audit_logs WHERE metadata->>'operationId'=$1",[row.id])).rowCount);
-    const notified=(await this.db.query<{recipient_id:string}>(`SELECT DISTINCT e.recipient_id FROM pilot_notification_events e
-      JOIN pilot_email_jobs j ON j.event_id=e.id WHERE e.origin_type='posted_route_outcome'
-      AND e.operation_id=$1 AND e.event_type=$2 AND ($3::boolean OR e.ready_at IS NOT NULL)`,
-      [row.id,row.action,pending])).rows
-      .map(item=>item.recipient_id).sort();
+    const audited=await repo.hasAudit(this.db,row.id);
+    const notified=await repo.notifiedRecipients(this.db,row,pending);
     const expected=(row.result.notification_recipients as string[]|undefined)?.sort();
     if(!audited||!expected||JSON.stringify(notified)!==JSON.stringify(expected))return false;
     const offer=await repo.offer(this.db,row.offer_id),seat=row.allocation_id?await repo.seat(this.db,row.allocation_id):null;
@@ -95,12 +98,17 @@ export class PostedRouteOutcomesService{
       const seats=await repo.seats(this.db,row.offer_id);
       if(seats.some(item=>['confirmed','held'].includes(item.status)))return false;
       if(seats.some(item=>cancelled.includes(item.id)&&item.status!=='cancelled'))return false;
-      const requests=(await this.db.query<{id:string;status:string}>(
-        'SELECT id,status FROM posted_route_seat_requests WHERE offer_id=$1',[row.offer_id])).rows;
+      const requests=await repo.requestsForOffer(this.db,row.offer_id);
       if(requests.some(item=>item.status==='pending'))return false;
       if(requests.some(item=>withdrawn.includes(item.id)&&item.status!=='withdrawn'))return false;
     }
     if(row.action==='passenger_cancel'&&seat?.status!=='cancelled')return false;
+    if(row.action==='incident_report'){
+      if(!await repo.incidentForOperation(this.db,row.id,row.result.incident_type as string))return false;
+    }
+    if(row.action==='operator_incident'){
+      if(!await repo.resolvedIncidentForOperation(this.db,row.result.incident_id as string,row.id))return false;
+    }
     if(row.action==='depart'){
       if(offer.status!=='departed')return false;
       const seats=await repo.seats(this.db,row.offer_id);
@@ -113,39 +121,27 @@ export class PostedRouteOutcomesService{
         return false;
     }
     if(row.action==='hold'||row.action==='release_hold'){
-      const latest=(await this.db.query<{action:string}>(`SELECT action FROM posted_route_outcome_operations
-        WHERE offer_id=$1 AND action IN ('hold','release_hold','driver_cancel','depart')
-        ORDER BY created_at DESC,id DESC LIMIT 1`,[row.offer_id])).rows[0];
-      if(latest?.action==='hold'&&offer.status!=='held'||
-        latest?.action==='release_hold'&&offer.status!=='prepared')return false;
+      const latest=await repo.latestRouteAction(this.db,row.offer_id);
+      if(latest==='hold'&&offer.status!=='held'||
+        latest==='release_hold'&&offer.status!=='prepared')return false;
     }
     if(row.action==='driver_journey'||row.action==='passenger_journey'){
-      const claims=(await this.db.query<{role:string;travelled:boolean;completed:boolean}>(
-        'SELECT role,travelled,completed FROM posted_route_journey_claims WHERE operation_id=$1',[row.id])).rows;
+      const claims=await repo.claimsForOperation(this.db,row.id);
       if(!claims.some(item=>item.role===(row.action==='driver_journey'?'driver':'passenger')&&
         item.travelled===row.payload.travelled&&item.completed===row.payload.completed))return false;
     }
     if(row.action==='payment_claim'){
       const obligation=await repo.obligation(this.db,row.allocation_id!);
-      if(!obligation||!(await this.db.query(`SELECT 1 FROM posted_route_payment_claims
-        WHERE obligation_id=$1 AND operation_id=$2 AND method=$3`,
-      [obligation.id,row.id,row.payload.method])).rowCount)return false;
+      if(!obligation||!await repo.hasPaymentClaim(this.db,obligation.id,row.id,row.payload.method))return false;
     }
     if(row.action==='receipt'||row.action==='dispute'){
-      if(!(await this.db.query(`SELECT 1 FROM posted_route_receipt_decisions
-        WHERE operation_id=$1 AND kind=$2`,[row.id,row.action])).rowCount)return false;
+      if(!await repo.hasReceiptDecision(this.db,row.id,row.action))return false;
     }
     if(row.action==='operator_journey'){
-      if(!(await this.db.query(`SELECT 1 FROM posted_route_journey_reviews
-        WHERE allocation_id=$1 AND resolved_by=$2 AND outcome=$3 AND resolution_reason=$4
-          AND status='resolved'`,[row.allocation_id,row.actor_id,row.payload.outcome,row.payload.reason])).rowCount)return false;
+      if(!await repo.hasJourneyDecision(this.db,row))return false;
     }
     if(row.action==='operator_settlement'){
-      if(!(await this.db.query(`SELECT 1 FROM posted_route_settlement_reviews r
-        JOIN posted_route_obligations o ON o.id=r.obligation_id
-        WHERE o.allocation_id=$1 AND r.resolved_by=$2 AND r.receipt_established=$3
-          AND r.resolution_reason=$4 AND r.status='resolved'`,
-        [row.allocation_id,row.actor_id,row.payload.receipt_established,row.payload.reason])).rowCount)return false;
+      if(!await repo.hasSettlementDecision(this.db,row))return false;
     }
     return true;
   }
@@ -174,6 +170,11 @@ export class PostedRouteOutcomesService{
       throw new AppError(503,'Route outcome recovery evidence unavailable','RECOVERY_UNAVAILABLE');}
   }
   async mutate(actor:string,key:string,action:repo.Action,id:string,payload:OutcomePayload={}){
+    const guard=await repo.acquireMutationGuard(this.db);
+    try{return await this.mutateLocked(actor,key,action,id,payload);}
+    finally{await repo.releaseMutationGuard(guard);}
+  }
+  private async mutateLocked(actor:string,key:string,action:repo.Action,id:string,payload:OutcomePayload={}){
     boundary();const hash=digest(action,id,payload),prior=await repo.byKey(this.db,actor,key);
     if(prior&&prior.payload_digest!==hash)
       throw new AppError(409,'Idempotency payload mismatch','IDEMPOTENCY_PAYLOAD_MISMATCH');
@@ -188,10 +189,13 @@ export class PostedRouteOutcomesService{
         throw new AppError(409,'Idempotency payload mismatch','IDEMPOTENCY_PAYLOAD_MISMATCH');return existing;}
       if(recovery.rows[0]?.mode!=='open')throw new AppError(503,'Protected writes restricted','RECOVERY_RESTRICTED');
       store();
-      const seatAction=!['driver_cancel','hold','release_hold','depart'].includes(action);
-      const preview=seatAction?await repo.seat(client,id):null;
+      const seatAction=!['driver_cancel','hold','release_hold','depart','operator_incident'].includes(action);
+      const incident=action==='operator_incident'?await repo.incident(client,id):null;
+      if(action==='operator_incident'&&!incident)throw new AppError(404,'Incident not found','INCIDENT_NOT_FOUND');
+      const preview=seatAction?await repo.seat(client,id):
+        incident?.allocation_id?await repo.seat(client,incident.allocation_id):null;
       if(seatAction&&!preview)throw new AppError(404,'Booking not found','BOOKING_NOT_FOUND');
-      const offerId=preview?.offer_id??id;
+      const offerId=preview?.offer_id??incident?.offer_id??id;
       const initial=await repo.offer(client,offerId);
       if(!initial)throw new AppError(404,'Route not found','ROUTE_NOT_FOUND');
       const initialSeats=await repo.seats(client,offerId);
@@ -206,10 +210,23 @@ export class PostedRouteOutcomesService{
       const result:Record<string,unknown>={offer_id:offerId,allocation_id:seat?.id??null};
       if(action==='passenger_cancel'){
         if(seat!.passenger_id!==actor)throw new AppError(403,'Passenger only','FORBIDDEN');
-        if(offer.status==='departed')throw new AppError(409,'Started rides need incident review','RIDE_STARTED');
-        if(!['confirmed','held'].includes(seat!.status))throw new AppError(409,'Booking is not active','BOOKING_INVALID');
-        await repo.setSeatStatus(client,seat!.id,'cancelled');
+        if(offer.status==='departed'){
+          if(seat!.status!=='confirmed')throw new AppError(409,'Booking is not active','BOOKING_INVALID');
+          result.incident_type='attempted_cancellation';result.requested_action='passenger_cancel';
+        }else{
+          if(!['confirmed','held'].includes(seat!.status))
+            throw new AppError(409,'Booking is not active','BOOKING_INVALID');
+          await repo.setSeatStatus(client,seat!.id,'cancelled');
+        }
         recipients=[offer.driver_id,seat!.passenger_id];
+      }else if(action==='incident_report'){
+        if(![offer.driver_id,seat!.passenger_id].includes(actor))
+          throw new AppError(403,'Participant only','FORBIDDEN');
+        if(offer.status!=='departed'||seat!.status!=='confirmed')
+          throw new AppError(409,'Active trip required','INCIDENT_INVALID');
+        if(!payload.kind)throw new AppError(400,'Incident type required','INCIDENT_INVALID');
+        requireReason(payload.reason);
+        result.incident_type=payload.kind;
       }else if(action==='driver_cancel'){
         if(offer.driver_id!==actor)throw new AppError(403,'Driver only','FORBIDDEN');
         if(!['prepared','held'].includes(offer.status))throw new AppError(409,'Ride cannot be cancelled','RIDE_INVALID');
@@ -251,6 +268,8 @@ export class PostedRouteOutcomesService{
           await assertCurrentAdultDeclaration(client,item.passenger_id);
           await assertNoAccountRestriction(client,item.passenger_id,'passenger');
         }
+        if(await repo.departureConflicts(client,offer))
+          throw new AppError(409,'Departure commitments conflict','COMMITMENT_CONFLICT');
         const delta=Date.now()-offer.departure_at.getTime();
         if(delta< -15*60_000||delta>30*60_000)
           throw new AppError(409,'Departure window closed','DEPARTURE_WINDOW_CLOSED');
@@ -295,16 +314,32 @@ export class PostedRouteOutcomesService{
             throw new AppError(400,'Journey outcome required','JOURNEY_INVALID');
         }else if(typeof payload.receipt_established!=='boolean')
           throw new AppError(400,'Receipt decision required','RECEIPT_INVALID');
+      }else if(action==='operator_incident'){
+        await assertCurrentOperator(client,actor);requireReason(payload.reason);
+        if(incident?.status!=='open')throw new AppError(409,'Incident is not open','INCIDENT_INVALID');
+        result.incident_id=incident.id;
       }
+      const recordedAction=action==='passenger_cancel'&&offer.status==='departed'?'incident_report':action;
       const row=await repo.write(client,{actor,key,digest:hash,offer:offerId,allocation:seat?.id??null,
-        action,payload:payload as Record<string,unknown>,result:{...result,
+        action:recordedAction,payload:payload as Record<string,unknown>,result:{...result,
           notification_recipients:[...new Set(recipients)].sort()}});
-      if(action==='driver_journey'||action==='passenger_journey'){
+      if(recordedAction==='incident_report'){
+        const incident=await repo.insertIncident(client,{offer:offerId,allocation:seat!.id,actor,
+          operation:row.id,kind:result.incident_type as string,
+          reason:payload.reason?.trim()||'Attempted post-departure cancellation',priority:'high'});
+        row.result.incident_id=incident.id;
+        await repo.updateOperationResult(client,row.id,row.result);
+      }else if(action==='operator_incident'){
+        if(!await repo.resolveIncident(client,id,actor,row.id,payload.reason!,payload.evidence_refs??[]))
+          throw new AppError(409,'Incident is not open','INCIDENT_INVALID');
+      }else if(action==='driver_journey'||action==='passenger_journey'){
         const role=action==='driver_journey'?'driver':'passenger';
         await repo.insertClaim(client,seat!.id,row.id,role,payload.travelled!,payload.completed!);
         const claims=await repo.journeyClaim(client,seat!.id);
         if(claims.length===2){
-          if(claims.every(item=>item.travelled&&item.completed))await repo.insertObligation(client,seat!);
+          if(await repo.hasIncidentForAllocation(client,seat!.id))
+            await repo.reviewJourney(client,seat!.id,'active_trip_incident');
+          else if(claims.every(item=>item.travelled&&item.completed))await repo.insertObligation(client,seat!);
           else await repo.reviewJourney(client,seat!.id,'conflicting_or_incomplete_journey');
         }
       }else if(action==='payment_claim')await repo.insertPaymentClaim(client,result.obligation_id as string,row.id,payload.method!);
@@ -324,7 +359,7 @@ export class PostedRouteOutcomesService{
       }
       await repo.audit(client,row);
       await notify(client,row,recipients);
-      return row;
+      return (await repo.byId(client,row.id))!;
     });
     if(operation.state!=='committed')return this.operation(actor,operation.id);
     try{await store().append(receipt(operation));

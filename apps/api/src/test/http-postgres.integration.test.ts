@@ -36,7 +36,7 @@ import { setBackupObjectProbeForTests } from "../modules/operator/backup-status"
 import { setStudentReviewAfterCommitHookForTests } from "../modules/verification/student-review.service";
 
 const verificationPool = new Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
-const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql", "0006_operator_allowlist.sql", "0007_operator_pause.sql", "0008_operator_intent_handoff.sql", "0009_durable_notifications.sql", "0010_email_retry_operations.sql", "0011_backup_attempts.sql", "0012_student_adult_review.sql", "0013_student_review_cycles.sql", "0014_student_review_operations.sql", "0015_student_evidence_access.sql", "0016_student_evidence_deletion_outcomes.sql", "0017_student_evidence_retry_schedule.sql", "0018_driver_car_approval.sql", "0019_ride_departures.sql", "0020_corridor_offers.sql", "0021_corridor_offer_recovery.sql", "0022_pilot_seat_requests.sql", "0023_pilot_seat_acceptance.sql", "0024_pilot_cancellations.sql", "0025_pilot_departure.sql", "0026_revocation_holds_incidents.sql", "0027_pilot_journeys.sql", "0028_journey_review_decisions.sql", "0029_direct_settlement.sql", "0030_settlement_dispute_resolution.sql", "0031_reviewed_account_restrictions.sql", "0032_stalled_work_outreach.sql", "0033_account_closure.sql", "0034_closure_recovery.sql", "0035_adult_declarations.sql", "0036_driver_vehicle_declarations.sql", "0037_posted_route_offers.sql", "0038_posted_route_seats.sql", "0039_posted_route_seat_expiry.sql", "0040_posted_route_outcomes.sql"];
+const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql", "0006_operator_allowlist.sql", "0007_operator_pause.sql", "0008_operator_intent_handoff.sql", "0009_durable_notifications.sql", "0010_email_retry_operations.sql", "0011_backup_attempts.sql", "0012_student_adult_review.sql", "0013_student_review_cycles.sql", "0014_student_review_operations.sql", "0015_student_evidence_access.sql", "0016_student_evidence_deletion_outcomes.sql", "0017_student_evidence_retry_schedule.sql", "0018_driver_car_approval.sql", "0019_ride_departures.sql", "0020_corridor_offers.sql", "0021_corridor_offer_recovery.sql", "0022_pilot_seat_requests.sql", "0023_pilot_seat_acceptance.sql", "0024_pilot_cancellations.sql", "0025_pilot_departure.sql", "0026_revocation_holds_incidents.sql", "0027_pilot_journeys.sql", "0028_journey_review_decisions.sql", "0029_direct_settlement.sql", "0030_settlement_dispute_resolution.sql", "0031_reviewed_account_restrictions.sql", "0032_stalled_work_outreach.sql", "0033_account_closure.sql", "0034_closure_recovery.sql", "0035_adult_declarations.sql", "0036_driver_vehicle_declarations.sql", "0037_posted_route_offers.sql", "0038_posted_route_seats.sql", "0039_posted_route_seat_expiry.sql", "0040_posted_route_outcomes.sql", "0041_posted_route_replacements.sql", "0042_posted_route_incidents.sql"];
 
 function fakeProvider(identity: ProviderIdentity): AuthProvider {
   const session = { accessToken: "provider-access", refreshToken: "provider-refresh", expiresIn: 900, identity };
@@ -5510,6 +5510,84 @@ describe('ticket 10 isolated posted route preparation',()=>{
     expect((await f.call(f.driver.token,`${path}/${f.offer}/depart`,{boarded_ids:[accepted.body.booking.id]})).body.error.code)
       .toBe('DEPARTURE_INVALID');
   });
+  it('replaces a cancelled route with a new identity and requires fresh seat requests',async()=>{
+    const f=await bookingFixture(),passenger=await participant(),id=await f.ask(passenger);
+    const accepted=await f.call(f.driver.token,`${path}/requests/${id}/accept`,{});
+    expect(accepted.status).toBe(200);
+    const cancelled=await f.call(f.driver.token,`${path}/${f.offer}/cancel`,
+      {reason:'Material route and stopping point change'});
+    expect(cancelled.status).toBe(200);
+    const replacement=await f.call(f.driver.token,path,{vehicle_id:f.driver.vehicle,mode:'car',
+      origin:f.selection.pickup,destination:f.selection.dropoff,departure_at:departure(),capacity:1,
+      replaces_offer_id:f.offer});
+    expect(replacement.status,JSON.stringify(replacement.body)).toBe(201);
+    expect(replacement.body.offer).toMatchObject({replaces_offer_id:f.offer,route_version:1});
+    expect(replacement.body.offer.id).not.toBe(f.offer);
+    const old=await request(f.app).get(`${path}/${f.offer}`).set('Authorization',`Bearer ${f.driver.token}`);
+    expect(old.body.offer.status).toBe('cancelled');
+    expect((await f.call(f.driver.token,`${path}/requests/${id}/accept`,{})).status).toBe(409);
+    const fresh=await f.call(passenger.token,`${path}/${replacement.body.offer.id}/requests`,f.selection);
+    expect(fresh.status,JSON.stringify(fresh.body)).toBe(201);
+    expect(fresh.body.request.id).not.toBe(id);
+    const duplicate=await f.call(f.driver.token,path,{vehicle_id:f.driver.vehicle,mode:'car',
+      origin:f.selection.pickup,destination:f.selection.dropoff,departure_at:departure(),capacity:1,
+      replaces_offer_id:f.offer});
+    expect(duplicate.body.error.code).toBe('REPLACEMENT_EXISTS');
+  });
+  it('sends an attempted post-departure cancellation to incident review without creating travel or debt',async()=>{
+    const f=await bookingFixture(),passenger=await participant(),id=await f.ask(passenger);
+    const accepted=await f.call(f.driver.token,`${path}/requests/${id}/accept`,{});
+    expect(accepted.status).toBe(200);
+    const seat=accepted.body.booking.id as string;
+    await verificationPool.query(`UPDATE posted_route_offers SET departure_at=now(),
+      request_cutoff_at=now()-interval '60 minutes',acceptance_cutoff_at=now()-interval '30 minutes'
+      WHERE id=$1`,[f.offer]);
+    expect((await f.call(f.driver.token,`${path}/${f.offer}/depart`,{boarded_ids:[seat]})).status).toBe(200);
+    const attempted=await f.call(passenger.token,`${path}/allocations/${seat}/cancel`,
+      {reason:'I need to report an interruption'});
+    expect(attempted.status,JSON.stringify(attempted.body)).toBe(200);
+    expect(attempted.body).toMatchObject({action:'incident_report',incident_type:'attempted_cancellation'});
+    expect((await verificationPool.query('SELECT status FROM posted_route_seat_allocations WHERE id=$1',[seat])).rows[0].status)
+      .toBe('confirmed');
+    expect((await verificationPool.query('SELECT count(*)::int AS n FROM posted_route_obligations')).rows[0].n).toBe(0);
+    expect((await f.call(f.driver.token,`${path}/allocations/${seat}/driver-journey`,
+      {travelled:true,completed:true})).status).toBe(200);
+    expect((await f.call(passenger.token,`${path}/allocations/${seat}/passenger-journey`,
+      {travelled:true,completed:true})).status).toBe(200);
+    expect((await verificationPool.query('SELECT count(*)::int AS n FROM posted_route_obligations')).rows[0].n).toBe(0);
+    const operator=await seatRecoveryOperator();
+    try{const queue=await request(f.app).get(`${path}/incidents`)
+        .set('Cookie',operator.cookie).set('Origin','http://localhost:3000');
+      expect(queue.status,JSON.stringify(queue.body)).toBe(200);
+      expect(queue.body.incidents).toContainEqual(expect.objectContaining({id:attempted.body.incident_id,
+        allocation_id:seat,status:'open',kind:'attempted_cancellation'}));
+      const resolved=await request(f.app).post(`${path}/incidents/${attempted.body.incident_id}/resolve`)
+        .set('Cookie',operator.cookie).set('Origin','http://localhost:3000')
+        .set('X-CSRF-Token',operator.csrf).set('Idempotency-Key',randomUUID())
+        .send({reason:'Reviewed participant report and kept trip history unchanged',evidence_refs:[]});
+      expect(resolved.status,JSON.stringify(resolved.body)).toBe(200);
+      expect((await request(f.app).get(`${path}/incidents`).set('Cookie',operator.cookie)
+        .set('Origin','http://localhost:3000')).body.incidents).toEqual([]);
+      expect((await verificationPool.query('SELECT count(*)::int AS n FROM posted_route_obligations')).rows[0].n).toBe(0);
+    }finally{await clearSeatRecoveryOperator();}
+  });
+  it('records a driver-reported boarding absence as a high-priority incident without assuming travel',async()=>{
+    const f=await bookingFixture(),passenger=await participant(),id=await f.ask(passenger);
+    const accepted=await f.call(f.driver.token,`${path}/requests/${id}/accept`,{});
+    const seat=accepted.body.booking.id as string;
+    await verificationPool.query(`UPDATE posted_route_offers SET departure_at=now(),
+      request_cutoff_at=now()-interval '60 minutes',acceptance_cutoff_at=now()-interval '30 minutes'
+      WHERE id=$1`,[f.offer]);
+    expect((await f.call(f.driver.token,`${path}/${f.offer}/depart`,{boarded_ids:[]})).status).toBe(200);
+    const reported=await f.call(f.driver.token,`${path}/allocations/${seat}/incidents`,
+      {kind:'absence',reason:'Passenger did not board at pickup'});
+    expect(reported.status,JSON.stringify(reported.body)).toBe(200);
+    expect(reported.body).toMatchObject({action:'incident_report',incident_type:'absence'});
+    expect((await verificationPool.query('SELECT count(*)::int AS n FROM posted_route_obligations')).rows[0].n).toBe(0);
+    const stranger=await participant();
+    expect((await f.call(stranger.token,`${path}/allocations/${seat}/incidents`,
+      {kind:'safety',reason:'Synthetic unrelated report'})).status).toBe(403);
+  });
   it('records boarding, mutual journey, cash claim and independent receipt at the accepted price',async()=>{
     const f=await bookingFixture(),passenger=await participant(),id=await f.ask(passenger);
     const accepted=await f.call(f.driver.token,`${path}/requests/${id}/accept`,{});
@@ -5522,7 +5600,6 @@ describe('ticket 10 isolated posted route preparation',()=>{
       WHERE id=$1`,[f.offer]);
     const departed=await f.call(f.driver.token,`${path}/${f.offer}/depart`,{boarded_ids:[seat]});
     expect(departed.status,JSON.stringify(departed.body)).toBe(200);
-    expect((await f.call(passenger.token,`${path}/allocations/${seat}/cancel`,{})).body.error.code).toBe('RIDE_STARTED');
     expect((await verificationPool.query('SELECT count(*)::int AS n FROM posted_route_obligations')).rows[0].n).toBe(0);
     const driver=await f.call(f.driver.token,`${path}/allocations/${seat}/driver-journey`,
       {travelled:true,completed:true});
@@ -5565,6 +5642,63 @@ describe('ticket 10 isolated posted route preparation',()=>{
     expect(state).toBe('cancelled');
     expect((await verificationPool.query(`SELECT count(*)::int AS n FROM posted_route_seat_allocations
       WHERE offer_id=$1 AND status IN ('confirmed','held')`,[f.offer])).rows[0].n).toBe(0);
+  });
+  it('serializes departure and passenger cancellation on distinct live PostgreSQL connections',async()=>{
+    const f=await bookingFixture(),passenger=await participant(),id=await f.ask(passenger);
+    const accepted=await f.call(f.driver.token,`${path}/requests/${id}/accept`,{});
+    const seat=accepted.body.booking.id as string;
+    await verificationPool.query(`UPDATE posted_route_offers SET departure_at=now(),
+      request_cutoff_at=now()-interval '60 minutes',acceptance_cutoff_at=now()-interval '30 minutes'
+      WHERE id=$1`,[f.offer]);
+    await verificationPool.query(`CREATE OR REPLACE FUNCTION pause_route_departure_race() RETURNS trigger
+      LANGUAGE plpgsql AS $$ BEGIN IF NEW.status='departed' THEN PERFORM pg_sleep(0.8); END IF;
+      RETURN NEW; END $$`);
+    await verificationPool.query(`CREATE TRIGGER pause_route_departure_race BEFORE UPDATE ON posted_route_offers
+      FOR EACH ROW EXECUTE FUNCTION pause_route_departure_race()`);
+    try{
+      const departing=Promise.resolve(f.call(f.driver.token,`${path}/${f.offer}/depart`,{boarded_ids:[seat]}));
+      let departedBackend=false;
+      for(let i=0;i<30&&!departedBackend;i++){
+        departedBackend=(await verificationPool.query(`SELECT 1 FROM pg_stat_activity
+          WHERE datname=current_database() AND state='active'
+            AND query LIKE 'UPDATE posted_route_offers SET status=%' LIMIT 1`)).rowCount!==0;
+        if(!departedBackend)await new Promise(resolve=>setTimeout(resolve,20));
+      }
+      expect(departedBackend).toBe(true);
+      const cancelling=Promise.resolve(f.call(passenger.token,`${path}/allocations/${seat}/cancel`,
+        {reason:'Concurrent cancellation report'}));
+      let concurrentPids:number[]=[];
+      for(let i=0;i<30&&concurrentPids.length<2;i++){
+        concurrentPids=(await verificationPool.query<{pid:number}>(`SELECT DISTINCT pid FROM pg_stat_activity
+          WHERE datname=current_database() AND state='active'
+          AND (query LIKE 'UPDATE posted_route_offers SET status=%'
+            OR query LIKE 'SELECT pg_advisory_lock(93113, 13)%')`)).rows.map(row=>row.pid);
+        if(concurrentPids.length<2)await new Promise(resolve=>setTimeout(resolve,20));
+      }
+      expect(new Set(concurrentPids).size).toBe(2);
+      const [departureOutcome,cancellationOutcome]=await Promise.all([departing,cancelling]);
+      expect(departureOutcome.status,JSON.stringify(departureOutcome.body)).toBe(200);
+      expect(cancellationOutcome.body).toMatchObject({action:'incident_report',
+        incident_type:'attempted_cancellation'});
+      expect((await verificationPool.query('SELECT status FROM posted_route_seat_allocations WHERE id=$1',[seat])).rows[0].status)
+        .toBe('confirmed');
+    }finally{await verificationPool.query('DROP TRIGGER pause_route_departure_race ON posted_route_offers');
+      await verificationPool.query('DROP FUNCTION pause_route_departure_race()');}
+  });
+  it('refuses departure when an accepted seat no longer has the frozen route commitment',async()=>{
+    const f=await bookingFixture(),passenger=await participant(),id=await f.ask(passenger);
+    const accepted=await f.call(f.driver.token,`${path}/requests/${id}/accept`,{});
+    const seat=accepted.body.booking.id as string;
+    await verificationPool.query(`UPDATE posted_route_offers SET departure_at=now(),
+      request_cutoff_at=now()-interval '60 minutes',acceptance_cutoff_at=now()-interval '30 minutes',
+      route_version=2
+      WHERE id=$1`,[f.offer]);
+    const departed=await f.call(f.driver.token,`${path}/${f.offer}/depart`,{boarded_ids:[seat]});
+    expect(departed.body.error.code).toBe('COMMITMENT_CONFLICT');
+    expect((await verificationPool.query('SELECT status FROM posted_route_offers WHERE id=$1',[f.offer])).rows[0].status)
+      .toBe('prepared');
+    expect((await verificationPool.query('SELECT count(*)::int AS n FROM posted_route_outcome_operations')).rows[0].n)
+      .toBe(0);
   });
   it('rolls back cancellation if audit insertion fails and preserves state after delivery failure',async()=>{
     const f=await bookingFixture(),passenger=await participant(),id=await f.ask(passenger);

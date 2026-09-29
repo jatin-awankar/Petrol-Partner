@@ -11,7 +11,8 @@ postedRouteRouter.use(requireAuth);
 postedRouteRouter.use((_req,res,next)=>{res.set('Cache-Control','private, no-store');next();});
 const point=z.tuple([z.number().finite().min(-180).max(180),z.number().finite().min(-90).max(90)]);
 const input=z.strictObject({vehicle_id:z.uuid(),mode:z.enum(['bike','scooter','car']),origin:point,destination:point,
-  departure_at:z.iso.datetime({offset:true}),capacity:z.number().int().min(1).max(8)});
+  departure_at:z.iso.datetime({offset:true}),capacity:z.number().int().min(1).max(8),
+  replaces_offer_id:z.uuid().optional()});
 const selection=z.strictObject({route_version:z.number().int().positive(),pickup:point,dropoff:point});
 function key(value:string|undefined){if(!value||value.length>128)
   throw new AppError(400,'Idempotency-Key required','IDEMPOTENCY_KEY_REQUIRED');return value;}
@@ -28,7 +29,13 @@ function outcome(action:Parameters<typeof postedRouteOutcomesService.mutate>[2],
 }
 postedRouteRouter.get('/outcome-operations/:id',asyncHandler(async(req,res)=>res.json({operation:
   await postedRouteOutcomesService.operation(req.user!.userId,z.uuid().parse(req.params.id))})));
+postedRouteRouter.get('/incidents',asyncHandler(async(req,res)=>res.json({incidents:
+  await postedRouteOutcomesService.incidents(req.user!.userId)})));
+postedRouteRouter.post('/incidents/:id/resolve',outcome('operator_incident',reason.extend({
+  evidence_refs:z.array(z.string().trim().min(1).max(200)).max(20)})));
 postedRouteRouter.post('/allocations/:id/cancel',outcome('passenger_cancel',z.strictObject({reason:z.string().max(1000).optional()})));
+postedRouteRouter.post('/allocations/:id/incidents',outcome('incident_report',reason.extend({
+  kind:z.enum(['absence','interruption','safety','disagreement'])})));
 postedRouteRouter.post('/:id/cancel',outcome('driver_cancel',reason));
 postedRouteRouter.post('/:id/hold',outcome('hold',reason));
 postedRouteRouter.post('/:id/release-hold',outcome('release_hold',reason));
