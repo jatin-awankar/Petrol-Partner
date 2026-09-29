@@ -3860,6 +3860,11 @@ describe("protected operator pause HTTP/PostgreSQL", () => {
     await verificationPool.query("UPDATE pilot_email_jobs SET status = 'exhausted', attempts = 5, last_error = 'secret provider response' WHERE id = $1", [jobId]);
     const delivery = await second.agent.get("/v1/operator/notifications/delivery");
     expect(JSON.stringify(delivery.body)).not.toContain("secret provider response");
+    expect(delivery.body.jobs[0]).toMatchObject({
+      origin_type: "operator_pause", event_type: "operator_pause_changed",
+      related_entity_type: "pilot_pause_operation", related_entity_id: first.body.id,
+    });
+    expect(delivery.body.jobs[0].body).toBeUndefined();
     expect(delivery.body.jobs[0].last_error).toContain("redacted");
     const retry = await request(createApp()).post(`/v1/operator/notifications/email/${jobId}/retry`)
       .set("Cookie", second.cookie).set("Origin", "http://localhost:3000").set("X-CSRF-Token", second.csrf).set("Idempotency-Key", "email-retry-1").send({});
