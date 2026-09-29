@@ -5821,4 +5821,252 @@ describe('ticket 10 isolated posted route preparation',()=>{
       expect(response.body.error.code).toBe('ROUTE_BOOKINGS_DISABLED');}
     finally{process.env.NODE_ENV='test';}
   });
+  it('ticket 15 creates two verified accounts over HTTP before accepting a declared route seat',async()=>{
+    const app=createApp();
+    const identities=new Map<string,{subject:string;verified:boolean}>();
+    const bySubject=(subject:string)=>{
+      const record=[...identities.entries()].find(([,item])=>item.subject===subject);
+      if(!record)throw new Error('Synthetic provider identity missing');
+      return {email:record[0],...record[1]};
+    };
+    const identity=(subject:string):ProviderIdentity=>{
+      const account=bySubject(subject);
+      return {subject,email:account.email,emailVerified:account.verified,assuranceLevel:'aal1',
+        userMetadata:{full_name:'Synthetic Participant'}};
+    };
+    const session=(subject:string)=>({accessToken:'access:'+subject,refreshToken:'refresh:'+subject,
+      expiresIn:900,identity:identity(subject)});
+    setManagedAuthEnabledForTests(true);
+    setAuthProviderForTests({
+      register:async({email})=>{identities.set(email,{subject:randomUUID(),verified:false});},
+      login:async(email)=>session(identities.get(email)!.subject),
+      validate:async(token)=>identity(token.slice('access:'.length)),
+      refresh:async(token)=>session(token.slice('refresh:'.length)),
+      requestRecovery:async()=>undefined,updatePassword:async()=>undefined,
+      logout:async()=>undefined,exchangeCode:async()=>{throw new Error('Unused provider callback');},
+    });
+    await verificationPool.query(`UPDATE auth_cutover_state SET active_provider='supabase',
+      legacy_login_enabled=false,authorized_at=now(),authorized_by='integration-test'`);
+    try{
+      const createAccount=async()=>{
+        const email=`registered-${randomUUID()}@example.test`;
+        const credentials={email,password:'synthetic-password'};
+        const registered=await request(app).post('/v1/auth/register').send({...credentials,
+          fullName:'Synthetic Participant'});
+        expect(registered.status,JSON.stringify(registered.body)).toBe(202);
+        expect((await request(app).post('/v1/auth/login').send(credentials)).body.error.code)
+          .toBe('EMAIL_NOT_VERIFIED');
+        identities.get(email)!.verified=true;
+        const login=await request(app).post('/v1/auth/login').send(credentials);
+        expect(login.status,JSON.stringify(login.body)).toBe(200);
+        expect(login.body.user).toMatchObject({email,isVerified:false});
+        const cookies=(login.headers['set-cookie'] as string[]).map(item=>item.split(';',1)[0]);
+        const csrf=cookies.find(item=>item.startsWith('pp_csrf_token='))!.split('=')[1];
+        const call=(method:'put'|'post',url:string,body:unknown)=>request(app)[method](url)
+          .set('Cookie',cookies.join('; ')).set('Origin','http://localhost:3000')
+          .set('X-CSRF-Token',csrf).set('Idempotency-Key',randomUUID()).send(body);
+        expect((await request(app).get('/v1/auth/me').set('Cookie',cookies.join('; '))).body.user.id)
+          .toBe(login.body.user.id);
+        return {id:login.body.user.id as string,cookies,call};
+      };
+      const driver=await createAccount(),passenger=await createAccount();
+      expect((await driver.call('put','/v1/adult-declaration',
+        {at_least_18:true,policy_version:version})).status).toBe(200);
+      expect((await passenger.call('put','/v1/adult-declaration',
+        {at_least_18:true,policy_version:version})).status).toBe(200);
+      expect((await driver.call('put','/v1/driver-vehicle-declarations/driver',
+        {licence_categories:['car'],licence_expires_on:'2030-12-31',policy_version:version})).status).toBe(200);
+      const vehicle=await driver.call('post','/v1/driver-vehicle-declarations/vehicles',{
+        category:'car',registration_identifier:`MH-${randomUUID().slice(0,8)}`,
+        registration_expires_on:'2030-12-31',insurance_expires_on:'2030-12-31',
+        permission_to_use:true,belted_passenger_seats:2,passenger_capacity:2,policy_version:version});
+      expect(vehicle.status,JSON.stringify(vehicle.body)).toBe(200);
+      const origin:[number,number]=[77.75,20.9],destination:[number,number]=[77.76,20.9];
+      (await routeModule()).setRoutingAdapterForTests({verify:async()=>({source:'synthetic-test',
+        mode:'car',geometry:{type:'LineString',coordinates:[origin,destination]},
+        cumulativeMeters:[0,1005],distanceMeters:1005,durationSeconds:120})});
+      (await import('../modules/posted-routes/segment-quote')).setStopCheckForTests(safeStopForKind);
+      const prepared=await driver.call('post',path,{vehicle_id:vehicle.body.declaration.vehicles[0].id,
+        mode:'car',origin,destination,departure_at:departure(),capacity:2});
+      expect(prepared.status,JSON.stringify(prepared.body)).toBe(201);
+      const mine=await request(app).get(`${path}/mine`).set('Cookie',driver.cookies.join('; '));
+      expect(mine.body.offers).toContainEqual(expect.objectContaining({id:prepared.body.offer.id}));
+      const selection={route_version:1,pickup:origin,dropoff:destination};
+      const quoted=await driver.call('post',`${path}/${prepared.body.offer.id}/quote`,selection);
+      expect(quoted.body.quote).toMatchObject({segment_meters:1005,total_paise:704});
+      const asked=await passenger.call('post',`${path}/${prepared.body.offer.id}/requests`,selection);
+      expect(asked.status,JSON.stringify(asked.body)).toBe(201);
+      const accepted=await driver.call('post',`${path}/requests/${asked.body.request.id}/accept`,{});
+      expect(accepted.status,JSON.stringify(accepted.body)).toBe(200);
+      expect(accepted.body.booking.accepted_terms.total_paise).toBe(704);
+      const notices=await request(app).get('/v1/notifications/durable')
+        .set('Cookie',passenger.cookies.join('; '));
+      expect(notices.body.notifications).toContainEqual(expect.objectContaining({
+        event_type:'accepted',related_entity_id:asked.body.request.id}));
+      const seat=accepted.body.booking.id as string;
+      await verificationPool.query(`UPDATE posted_route_offers SET departure_at=now(),
+        request_cutoff_at=now()-interval '60 minutes',acceptance_cutoff_at=now()-interval '30 minutes'
+        WHERE id=$1`,[prepared.body.offer.id]);
+      expect((await driver.call('post',`${path}/${prepared.body.offer.id}/depart`,
+        {boarded_ids:[seat]})).status).toBe(200);
+      expect((await driver.call('post',`${path}/allocations/${seat}/driver-journey`,
+        {travelled:true,completed:true})).status).toBe(200);
+      expect((await passenger.call('post',`${path}/allocations/${seat}/passenger-journey`,
+        {travelled:true,completed:true})).status).toBe(200);
+      expect((await passenger.call('post',`${path}/allocations/${seat}/payment-claim`,
+        {method:'cash'})).status).toBe(200);
+      const receipt=await driver.call('post',`${path}/allocations/${seat}/receipt`,{});
+      expect(receipt.status,JSON.stringify(receipt.body)).toBe(200);
+    }finally{
+      setManagedAuthEnabledForTests(null);setAuthProviderForTests(null);
+      await verificationPool.query(`UPDATE auth_cutover_state SET active_provider='legacy',
+        legacy_login_enabled=true,authorized_at=NULL,authorized_by=NULL`);
+    }
+  });
+  it('ticket 15 carries cancellation into a fresh cash seat and records receipt',async()=>{
+    const f=await bookingFixture(),cancelledPassenger=await participant();
+    const firstRequest=await f.ask(cancelledPassenger);
+    const firstSeat=(await f.call(f.driver.token,`${path}/requests/${firstRequest}/accept`,{}))
+      .body.booking.id as string;
+    const cancelled=await f.call(cancelledPassenger.token,
+      `${path}/allocations/${firstSeat}/cancel`,{reason:'Plans changed'});
+    expect(cancelled.status,JSON.stringify(cancelled.body)).toBe(200);
+    const cashPassenger=await participant(),freshRequest=await f.ask(cashPassenger);
+    const accepted=await f.call(f.driver.token,`${path}/requests/${freshRequest}/accept`,{});
+    expect(accepted.status,JSON.stringify(accepted.body)).toBe(200);
+    const cashSeat=accepted.body.booking.id as string;
+    await verificationPool.query(`UPDATE posted_route_offers SET departure_at=now(),
+      request_cutoff_at=now()-interval '60 minutes',acceptance_cutoff_at=now()-interval '30 minutes'
+      WHERE id=$1`,[f.offer]);
+    expect((await f.call(f.driver.token,`${path}/${f.offer}/depart`,
+      {boarded_ids:[cashSeat]})).status).toBe(200);
+    expect((await f.call(f.driver.token,`${path}/allocations/${cashSeat}/driver-journey`,
+      {travelled:true,completed:true})).status).toBe(200);
+    expect((await f.call(cashPassenger.token,`${path}/allocations/${cashSeat}/passenger-journey`,
+      {travelled:true,completed:true})).status).toBe(200);
+    expect((await f.call(cashPassenger.token,`${path}/allocations/${cashSeat}/payment-claim`,
+      {method:'cash'})).status).toBe(200);
+    const receipt=await f.call(f.driver.token,`${path}/allocations/${cashSeat}/receipt`,{});
+    expect(receipt.status,JSON.stringify(receipt.body)).toBe(200);
+    expect((await verificationPool.query(`SELECT count(*)::int AS n FROM posted_route_obligations
+      WHERE allocation_id=$1`,[firstSeat])).rows[0].n).toBe(0);
+    expect((await verificationPool.query(`SELECT amount_paise FROM posted_route_obligations
+      WHERE allocation_id=$1`,[cashSeat])).rows[0].amount_paise).toBe(704);
+  });
+  it('ticket 15 connects the authenticated route journey and preserves historical policy ownership',async()=>{
+    const f=await bookingFixture(),passenger=await participant();
+    const historicalOffer=(await verificationPool.query<{id:string}>(`INSERT INTO ride_offers
+      (driver_id,pickup_location,pickup_lat,pickup_lng,drop_location,drop_lat,drop_lng,date,time,
+       available_seats,price_per_seat_paise)
+      VALUES($1,'Historical origin',20.9,77.7,'Historical destination',20.8,77.8,
+        current_date-1,'09:00',1,2500) RETURNING id`,[f.driver.id])).rows[0].id;
+    const historicalBooking=(await verificationPool.query<{id:string}>(`INSERT INTO bookings
+      (ride_offer_id,created_by_user_id,passenger_id,driver_id,seats_booked,total_amount_paise,
+       pricing_snapshot,status,payment_state)
+      VALUES($1,$2,$2,$3,1,2500,'{"policy_version":"historical-pilot"}'::jsonb,
+        'completed','paid_escrow') RETURNING id`,[historicalOffer,passenger.id,f.driver.id])).rows[0].id;
+    await verificationPool.query(`INSERT INTO payment_orders
+      (booking_id,user_id,provider,provider_order_id,amount_paise,status,idempotency_key)
+      VALUES($1,$2,'razorpay',$3,2500,'paid',$4)`,
+      [historicalBooking,passenger.id,`synthetic-${randomUUID()}`,randomUUID()]);
+    await verificationPool.query(`INSERT INTO booking_settlements
+      (booking_id,payer_user_id,payee_user_id,ride_fare_paise,total_due_paise,
+       paid_amount_paise,preferred_payment_method,status)
+      VALUES($1,$2,$3,2500,2500,2500,'online','settled')`,
+      [historicalBooking,passenger.id,f.driver.id]);
+    const historicalSettlement=await request(f.app).get(`/v1/settlements/bookings/${historicalBooking}`)
+      .set('Authorization',`Bearer ${passenger.token}`);
+    expect(historicalSettlement.status).toBe(200);
+    expect(historicalSettlement.body.settlement.total_due_paise).toBe(2500);
+    const bearer=(token:string)=>({Authorization:`Bearer ${token}`});
+    expect((await request(f.app).get('/v1/adult-declaration').set(bearer(passenger.token))).body
+      .declaration).toMatchObject({kind:'self_declaration'});
+    expect((await request(f.app).get('/v1/driver-vehicle-declarations')
+      .set(bearer(f.driver.token))).status).toBe(200);
+    expect((await request(f.app).get(`${path}/${f.offer}`).set(bearer(f.driver.token))).status).toBe(200);
+    const quote=await request(f.app).post(`${path}/${f.offer}/quote`)
+      .set(bearer(f.driver.token)).send(f.selection);
+    expect(quote.status,JSON.stringify(quote.body)).toBe(200);
+    expect(quote.body.quote).toMatchObject({segment_meters:1005,rate_paise_per_km:700,
+      total_paise:704,additional_charges_paise:0});
+    const requestKey=randomUUID();
+    const ask=()=>f.call(passenger.token,`${path}/${f.offer}/requests`,f.selection,requestKey);
+    const requested=await ask();
+    expect(requested.status).toBe(201);
+    expect((await ask()).body.operation_id).toBe(requested.body.operation_id);
+    expect((await f.call(passenger.token,`${path}/${f.offer}/requests`,
+      {...f.selection,route_version:2},requestKey)).body.error.code)
+      .toBe('IDEMPOTENCY_PAYLOAD_MISMATCH');
+    const accept=await f.call(f.driver.token,`${path}/requests/${requested.body.request.id}/accept`,{});
+    expect(accept.status,JSON.stringify(accept.body)).toBe(200);
+    const seat=accept.body.booking.id as string;
+    expect(accept.body.booking.accepted_terms).toMatchObject({route_id:f.offer,route_version:1,
+      segment_meters:1005,total_paise:704,currency:'INR',
+      policy_version:'unrestricted-route-contribution-2026-09-28.1'});
+    const notices=await request(f.app).get('/v1/notifications/durable')
+      .set(bearer(passenger.token));
+    expect(notices.status).toBe(200);
+    expect(notices.body.notifications.length).toBeGreaterThan(0);
+    await verificationPool.query(`UPDATE posted_route_offers SET departure_at=now(),
+      request_cutoff_at=now()-interval '60 minutes',acceptance_cutoff_at=now()-interval '30 minutes'
+      WHERE id=$1`,[f.offer]);
+    expect((await f.call(f.driver.token,`${path}/${f.offer}/depart`,
+      {boarded_ids:[seat]})).status).toBe(200);
+    expect((await f.call(f.driver.token,`${path}/allocations/${seat}/driver-journey`,
+      {travelled:true,completed:true})).status).toBe(200);
+    expect((await verificationPool.query('SELECT count(*)::int AS n FROM posted_route_obligations WHERE allocation_id=$1',
+      [seat])).rows[0].n).toBe(0);
+    expect((await f.call(passenger.token,`${path}/allocations/${seat}/passenger-journey`,
+      {travelled:true,completed:true})).status).toBe(200);
+    const obligation=(await verificationPool.query(`SELECT amount_paise,currency,policy_version
+      FROM posted_route_obligations WHERE allocation_id=$1`,[seat])).rows[0];
+    expect(obligation).toMatchObject({amount_paise:704,currency:'INR',
+      policy_version:'unrestricted-route-contribution-2026-09-28.1'});
+    const claim=await f.call(passenger.token,`${path}/allocations/${seat}/payment-claim`,{method:'upi'});
+    expect(claim.status).toBe(200);
+    expect((await f.call(f.driver.token,`${path}/allocations/${seat}/dispute`,{})).status).toBe(200);
+    const operator=await seatRecoveryOperator();
+    try{
+      const review=await request(f.app).post(`${path}/allocations/${seat}/resolve-settlement`)
+        .set('Cookie',operator.cookie).set('Origin','http://localhost:3000')
+        .set('X-CSRF-Token',operator.csrf).set('Idempotency-Key',randomUUID())
+        .send({receipt_established:false,reason:'Synthetic review found no receipt evidence'});
+      expect(review.status,JSON.stringify(review.body)).toBe(200);
+      const outreach=await request(f.app).post('/v1/operator/urgent-outreach')
+        .set('Cookie',operator.cookie).set('Origin','http://localhost:3000')
+        .set('X-CSRF-Token',operator.csrf).set('Idempotency-Key',randomUUID())
+        .send({participantId:passenger.id,method:'email',occurredAt:new Date().toISOString(),
+          reason:'other_support',outcome:'contacted'});
+      expect(outreach.status,JSON.stringify(outreach.body)).toBe(200);
+    }finally{await clearSeatRecoveryOperator();}
+    expect((await verificationPool.query(`SELECT status,receipt_established FROM posted_route_settlement_reviews r
+      JOIN posted_route_obligations o ON o.id=r.obligation_id WHERE o.allocation_id=$1`,[seat])).rows[0])
+      .toMatchObject({status:'resolved',receipt_established:false});
+    expect((await verificationPool.query(`SELECT total_amount_paise,pricing_snapshot->>'policy_version' AS policy
+      FROM bookings WHERE id=$1`,[historicalBooking])).rows[0])
+      .toMatchObject({total_amount_paise:2500,policy:'historical-pilot'});
+    expect((await verificationPool.query('SELECT amount_paise,status FROM payment_orders WHERE booking_id=$1',
+      [historicalBooking])).rows[0]).toMatchObject({amount_paise:2500,status:'paid'});
+    expect((await verificationPool.query(`SELECT payer_user_id,payee_user_id,total_due_paise,status
+      FROM booking_settlements WHERE booking_id=$1`,[historicalBooking])).rows[0])
+      .toMatchObject({payer_user_id:passenger.id,payee_user_id:f.driver.id,
+        total_due_paise:2500,status:'settled'});
+    expect((await verificationPool.query('SELECT count(*)::int AS n FROM bookings')).rows[0].n).toBe(1);
+    expect((await verificationPool.query('SELECT count(*)::int AS n FROM payment_orders')).rows[0].n).toBe(1);
+  });
+  it('ticket 15 keeps excluded HTTP entry points closed for an authenticated participant',async()=>{
+    const app=createApp(),passenger=await participant();
+    const bearer={Authorization:`Bearer ${passenger.token}`};
+    for(const endpoint of ['/v1/bookings','/v1/payments/orders','/v1/payments/payouts',
+      '/v1/matching/recompute','/v1/chat/rooms','/v1/tracking/sessions',
+      '/v1/notifications/devices','/v1/rides/offers']){
+      const closed=await request(app).post(endpoint).set(bearer).send({});
+      expect(closed.body.error.code,endpoint).toBe('PILOT_SCOPE_DISABLED');
+    }
+    for(const [method,endpoint] of [['get','/v1/notifications/devices'],
+      ['delete',`/v1/notifications/devices/${randomUUID()}`]] as const){
+      const closed=await request(app)[method](endpoint).set(bearer);
+      expect(closed.body.error.code,endpoint).toBe('PILOT_SCOPE_DISABLED');
+    }
+  });
 });

@@ -23,15 +23,25 @@ const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql
   "0018_driver_car_approval.sql", "0019_ride_departures.sql", "0020_corridor_offers.sql",
   "0021_corridor_offer_recovery.sql", "0022_pilot_seat_requests.sql",
   "0023_pilot_seat_acceptance.sql", "0024_pilot_cancellations.sql",
-  "0025_pilot_departure.sql", "0026_revocation_holds_incidents.sql"];
+  "0025_pilot_departure.sql", "0026_revocation_holds_incidents.sql",
+  "0027_pilot_journeys.sql", "0028_journey_review_decisions.sql", "0029_direct_settlement.sql",
+  "0030_settlement_dispute_resolution.sql", "0031_reviewed_account_restrictions.sql",
+  "0032_stalled_work_outreach.sql", "0033_account_closure.sql", "0034_closure_recovery.sql",
+  "0035_adult_declarations.sql", "0036_driver_vehicle_declarations.sql",
+  "0037_posted_route_offers.sql", "0038_posted_route_seats.sql",
+  "0039_posted_route_seat_expiry.sql", "0040_posted_route_outcomes.sql",
+  "0041_posted_route_replacements.sql", "0042_posted_route_incidents.sql"];
 let directory: string;
 
 beforeAll(async () => {
   const cancellationsPresent = (await db.query<{present:boolean}>(
     "SELECT to_regclass('public.pilot_cancellation_operations') IS NOT NULL AS present")).rows[0].present;
+  const routeExpiryPresent=(await db.query<{present:boolean}>(
+    "SELECT EXISTS(SELECT 1 FROM pg_constraint WHERE conname='posted_route_seat_requests_status_check' AND pg_get_constraintdef(oid) LIKE '%expired%') AS present")).rows[0].present;
   for (const migration of migrations) {
     // Reapplying 0023 would narrow the status check after 0024 stored cancellations.
     if (cancellationsPresent && migration === "0023_pilot_seat_acceptance.sql") continue;
+    if (routeExpiryPresent && migration === "0038_posted_route_seats.sql") continue;
     await db.query(await readFile(resolve(import.meta.dirname, "../../db/migrations", migration), "utf8"));
   }
 });
