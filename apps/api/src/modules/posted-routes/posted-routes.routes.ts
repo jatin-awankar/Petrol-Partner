@@ -5,6 +5,7 @@ import {asyncHandler} from '../../shared/http/async-handler';
 import {AppError} from '../../shared/errors/app-error';
 import * as service from './posted-routes.service';
 import {postedRouteSeatService} from './seat-booking.service';
+import {postedRouteOutcomesService,type OutcomePayload} from './outcomes.service';
 export const postedRouteRouter=Router();
 postedRouteRouter.use(requireAuth);
 postedRouteRouter.use((_req,res,next)=>{res.set('Cache-Control','private, no-store');next();});
@@ -14,6 +15,31 @@ const input=z.strictObject({vehicle_id:z.uuid(),mode:z.enum(['bike','scooter','c
 const selection=z.strictObject({route_version:z.number().int().positive(),pickup:point,dropoff:point});
 function key(value:string|undefined){if(!value||value.length>128)
   throw new AppError(400,'Idempotency-Key required','IDEMPOTENCY_KEY_REQUIRED');return value;}
+const reason=z.strictObject({reason:z.string().trim().min(8).max(1000)});
+const boarding=z.strictObject({boarded_ids:z.array(z.uuid()).max(8)});
+const journey=z.strictObject({travelled:z.boolean(),completed:z.boolean()});
+const method=z.strictObject({method:z.enum(['cash','upi'])});
+const journeyDecision=reason.extend({outcome:z.enum(['travelled','not_travelled','interrupted'])});
+const settlementDecision=reason.extend({receipt_established:z.boolean()});
+function outcome(action:Parameters<typeof postedRouteOutcomesService.mutate>[2],schema:z.ZodType<OutcomePayload>){
+  return asyncHandler(async(req,res)=>res.json(await postedRouteOutcomesService.mutate(
+    req.user!.userId,key(req.get('Idempotency-Key')),action,z.uuid().parse(req.params.id),
+    schema.parse(req.body??{}))));
+}
+postedRouteRouter.get('/outcome-operations/:id',asyncHandler(async(req,res)=>res.json({operation:
+  await postedRouteOutcomesService.operation(req.user!.userId,z.uuid().parse(req.params.id))})));
+postedRouteRouter.post('/allocations/:id/cancel',outcome('passenger_cancel',z.strictObject({reason:z.string().max(1000).optional()})));
+postedRouteRouter.post('/:id/cancel',outcome('driver_cancel',reason));
+postedRouteRouter.post('/:id/hold',outcome('hold',reason));
+postedRouteRouter.post('/:id/release-hold',outcome('release_hold',reason));
+postedRouteRouter.post('/:id/depart',outcome('depart',boarding));
+postedRouteRouter.post('/allocations/:id/driver-journey',outcome('driver_journey',journey));
+postedRouteRouter.post('/allocations/:id/passenger-journey',outcome('passenger_journey',journey));
+postedRouteRouter.post('/allocations/:id/payment-claim',outcome('payment_claim',method));
+postedRouteRouter.post('/allocations/:id/receipt',outcome('receipt',z.strictObject({})));
+postedRouteRouter.post('/allocations/:id/dispute',outcome('dispute',z.strictObject({})));
+postedRouteRouter.post('/allocations/:id/resolve-journey',outcome('operator_journey',journeyDecision));
+postedRouteRouter.post('/allocations/:id/resolve-settlement',outcome('operator_settlement',settlementDecision));
 postedRouteRouter.get('/seat-operations/:id',asyncHandler(async(req,res)=>res.json({operation:
   await postedRouteSeatService.operation(req.user!.userId,z.uuid().parse(req.params.id))})));
 postedRouteRouter.get('/requests/:id',asyncHandler(async(req,res)=>res.json({request:

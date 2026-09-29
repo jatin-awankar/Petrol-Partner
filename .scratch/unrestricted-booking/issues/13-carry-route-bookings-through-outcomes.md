@@ -4,7 +4,7 @@
 
 **Blocked by:** 04 (Approve operating and support policy); 12 (Request and accept one priced seat).
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 - [ ] Material route or point changes cancel affected commitments and use an auditable replacement flow; holds, cancellations, departure, and boarding preserve whole-ride seat and overlap rules.
 - [ ] Reuse journey confirmation, obligation, cash/UPI claim, receipt, dispute, and operator resolution records; silence creates neither travel nor payment, and platform collection stays disabled.
