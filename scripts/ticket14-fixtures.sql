@@ -1,6 +1,7 @@
 -- Ticket 14: wholly synthetic historical rows. No deployed records or identifiers.
--- Fixture insertion bypasses live-use policy triggers; constraints and FKs remain checked.
-SET session_replication_role = replica;
+-- Open only this disposable fixture's pilot guard, then close it below. FKs remain enforced.
+UPDATE pilot_recovery_state SET mode='open', cause=NULL, started_at=NULL WHERE singleton=true;
+UPDATE pilot_pause_state SET paused=false;
 INSERT INTO users(id,email) VALUES
  ('00000000-0000-4000-8000-000000000001','synthetic-driver@example.test'),
  ('00000000-0000-4000-8000-000000000002','synthetic-passenger@example.test');
@@ -39,4 +40,5 @@ INSERT INTO booking_settlements(id,booking_id,payer_user_id,payee_user_id,ride_f
  VALUES ('60000000-0000-4000-8000-000000000001','40000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000002','00000000-0000-4000-8000-000000000001',12000,500,12500,12500,'online','settled');
 INSERT INTO settlement_events(settlement_id,booking_id,actor_user_id,event_type,next_status)
  VALUES ('60000000-0000-4000-8000-000000000001','40000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000001','synthetic-settled','settled');
-SET session_replication_role = origin;
+UPDATE pilot_pause_state SET paused=true;
+UPDATE pilot_recovery_state SET mode='restricted', cause='awaiting_reconciliation', started_at=now() WHERE singleton=true;
