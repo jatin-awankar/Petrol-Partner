@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type RequestHandler } from "express";
 import { AppError } from "../shared/errors/app-error";
 
 import { authRouter } from "./auth/auth.routes";
@@ -23,6 +23,8 @@ import { webhooksRouter } from "./webhooks/webhooks.routes";
 export const apiRouter = Router();
 const pilotDisabled = () => { throw new AppError(410,
   "This capability is unavailable in the corridor pilot", "PILOT_SCOPE_DISABLED"); };
+const legacyReadOnly: RequestHandler = (req, _res, next) =>
+  req.method === "GET" ? next() : pilotDisabled();
 
 apiRouter.use(healthRouter);
 apiRouter.use("/auth", authRouter);
@@ -30,8 +32,8 @@ apiRouter.use("/operator", operatorRouter);
 apiRouter.use("/profile", profileRouter);
 apiRouter.use("/rides", pilotDisabled);
 // Historical records remain available through their participant-scoped read handlers.
-apiRouter.use("/bookings", (req, _res, next) => req.method === "GET" ? next() : pilotDisabled());
-apiRouter.use("/settlements", (req, _res, next) => req.method === "GET" ? next() : pilotDisabled());
+apiRouter.use("/bookings", legacyReadOnly);
+apiRouter.use("/settlements", legacyReadOnly);
 apiRouter.use("/matching", pilotDisabled);
 apiRouter.use("/pricing", pilotDisabled);
 apiRouter.use("/chat", pilotDisabled);

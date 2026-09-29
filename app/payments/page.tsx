@@ -3,9 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle } from "lucide-react";
-import { toast } from "sonner";
 
-import PaymentActionSheet from "@/components/payments/PaymentActionSheet";
 import PaymentBookingCard from "@/components/payments/PaymentBookingCard";
 import PaymentsFilterBar from "@/components/payments/PaymentsFilterBar";
 import {
@@ -18,11 +16,9 @@ import { Button } from "@/components/ui/button";
 import { useFetchBookings } from "@/hooks/bookings/useFetchBookings";
 import { useCurrentUser } from "@/hooks/auth/useCurrentUser";
 import {
-  confirmOfflineSettlement,
   getBookingPaymentStatus,
   getFinancialHoldStatus,
   getSettlementByBooking,
-  markSettlementPassengerPaid,
 } from "@/lib/api/backend";
 import {
   buildPaymentCardViewModel,
@@ -71,19 +67,10 @@ export default function PaymentsPage() {
   const [financialHold, setFinancialHold] = useState<FinancialHoldView | null>(
     null,
   );
-  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
   const [refreshingAll, setRefreshingAll] = useState(false);
   const [filter, setFilter] = useState<PaymentFilter>("all");
   const [query, setQuery] = useState("");
   const [sortBy, setSortBy] = useState<SortBy>("latest");
-  const [sheetState, setSheetState] = useState<{
-    type: "mark_paid" | "confirm_receipt" | null;
-    bookingId: string | null;
-  }>({
-    type: null,
-    bookingId: null,
-  });
-
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
       router.replace("/login");
@@ -193,50 +180,6 @@ export default function PaymentsPage() {
     }
   }, [completedBookings, refetch, refreshFinancialHold, refreshTransaction]);
 
-  const withAction = useCallback(
-    async (bookingId: string, action: () => Promise<void>) => {
-      setActionLoadingId(bookingId);
-
-      try {
-        await action();
-        await Promise.all([
-          refreshTransaction(bookingId),
-          refreshFinancialHold(),
-          refetch(),
-        ]);
-      } finally {
-        setActionLoadingId(null);
-      }
-    },
-    [refreshFinancialHold, refreshTransaction, refetch],
-  );
-
-  const handleMarkPaid = useCallback(
-    async (bookingId: string, method: "cash" | "upi") => {
-      await withAction(bookingId, async () => {
-        await markSettlementPassengerPaid(bookingId, {
-          payment_method: method,
-          note: `Marked ${method.toUpperCase()} payment by passenger`,
-        });
-        toast.success(`Marked ${method.toUpperCase()} payment.`);
-      });
-    },
-    [withAction],
-  );
-
-  const handleConfirmReceipt = useCallback(
-    async (bookingId: string, method: "cash" | "upi") => {
-      await withAction(bookingId, async () => {
-        await confirmOfflineSettlement(bookingId, {
-          payment_method: method,
-          note: `Confirmed ${method.toUpperCase()} receipt by ride owner`,
-        });
-        toast.success(`${method.toUpperCase()} receipt confirmed.`);
-      });
-    },
-    [withAction],
-  );
-
   const paymentCards = useMemo<PaymentCardViewModel[]>(
     () =>
       completedBookings.map((booking) =>
@@ -269,32 +212,6 @@ export default function PaymentsPage() {
     () => buildPaymentSummary(paymentCards),
     [paymentCards],
   );
-
-  const handleApiError = useCallback((error: unknown) => {
-    const message =
-      error instanceof Error
-        ? error.message
-        : "Something went wrong. Please retry.";
-
-    if (message.includes("FINANCIAL_HOLD_ACTIVE")) {
-      toast.error(
-        "Financial hold is active. Clear dues before creating new payments.",
-      );
-      return;
-    }
-
-    if (message.includes("VERIFICATION") || message.includes("ELIGIBILITY")) {
-      toast.error("Verification or eligibility requirement is pending.");
-      return;
-    }
-
-    if (message.includes("cancelled")) {
-      toast.info("Payment was cancelled.");
-      return;
-    }
-
-    toast.error(message);
-  }, []);
 
   if (authLoading || bookingsLoading) {
     return (
@@ -370,27 +287,13 @@ export default function PaymentsPage() {
         ) : (
           <section className="space-y-4">
             {filteredAndSortedCards.map((card) => {
-              const cardLoading =
-                actionLoadingId === card.bookingId ||
-                transactions[card.bookingId]?.loading;
+              const cardLoading = transactions[card.bookingId]?.loading;
 
               return (
                 <PaymentBookingCard
                   key={card.bookingId}
                   card={card}
                   loading={Boolean(cardLoading)}
-                  onOpenMarkPaidSheet={() =>
-                    setSheetState({
-                      type: "mark_paid",
-                      bookingId: card.bookingId,
-                    })
-                  }
-                  onOpenConfirmReceiptSheet={() =>
-                    setSheetState({
-                      type: "confirm_receipt",
-                      bookingId: card.bookingId,
-                    })
-                  }
                   onRefresh={() => void refreshTransaction(card.bookingId)}
                 />
               );
@@ -398,63 +301,6 @@ export default function PaymentsPage() {
           </section>
         )}
 
-        <PaymentActionSheet
-          open={Boolean(sheetState.type && sheetState.bookingId)}
-          onOpenChange={(open) => {
-            if (!open) {
-              setSheetState({ type: null, bookingId: null });
-            }
-          }}
-          title={
-            sheetState.type === "confirm_receipt"
-              ? "Confirm Offline Receipt"
-              : "Mark Offline Payment"
-          }
-          description={
-            sheetState.type === "confirm_receipt"
-              ? "Select how payment was received by the ride owner."
-              : "Select how payment was completed offline by the passenger."
-          }
-          options={[
-            {
-              label: "Cash",
-              value: "cash",
-              description: "Pay or confirm using cash.",
-            },
-            {
-              label: "UPI",
-              value: "upi",
-              description: "Pay or confirm through UPI.",
-            },
-          ]}
-          confirmLabel={
-            sheetState.type === "confirm_receipt"
-              ? "Confirm Receipt"
-              : "Mark Paid"
-          }
-          loading={Boolean(
-            actionLoadingId && actionLoadingId === sheetState.bookingId,
-          )}
-          onConfirm={async (value) => {
-            const bookingId = sheetState.bookingId;
-
-            if (!bookingId || (value !== "cash" && value !== "upi")) {
-              return;
-            }
-
-            try {
-              if (sheetState.type === "confirm_receipt") {
-                await handleConfirmReceipt(bookingId, value);
-              } else {
-                await handleMarkPaid(bookingId, value);
-              }
-
-              setSheetState({ type: null, bookingId: null });
-            } catch (error) {
-              handleApiError(error);
-            }
-          }}
-        />
       </div>
     </div>
   );

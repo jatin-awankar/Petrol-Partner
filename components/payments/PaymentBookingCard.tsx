@@ -12,8 +12,6 @@ import PaymentStateBadge from "./PaymentStateBadge";
 type PaymentBookingCardProps = {
   card: PaymentCardViewModel;
   loading: boolean;
-  onOpenMarkPaidSheet: () => void;
-  onOpenConfirmReceiptSheet: () => void;
   onRefresh: () => void;
 };
 
@@ -25,8 +23,6 @@ function paymentMethodLabel(value: string | null) {
 export default function PaymentBookingCard({
   card,
   loading,
-  onOpenMarkPaidSheet,
-  onOpenConfirmReceiptSheet,
   onRefresh,
 }: PaymentBookingCardProps) {
   const [date, time] = card.scheduleLabel.split(" ");
@@ -84,18 +80,6 @@ export default function PaymentBookingCard({
         {card.canRetryVerification ? (
           <Button variant="outline" onClick={onRefresh} disabled={loading}>
             {loading ? "Checking..." : "Check Verification"}
-          </Button>
-        ) : null}
-
-        {card.canMarkOfflinePaid ? (
-          <Button variant="outline" onClick={onOpenMarkPaidSheet} disabled={loading}>
-            Mark Offline Paid
-          </Button>
-        ) : null}
-
-        {card.canConfirmOffline ? (
-          <Button variant="outline" onClick={onOpenConfirmReceiptSheet} disabled={loading}>
-            Confirm Receipt
           </Button>
         ) : null}
 
