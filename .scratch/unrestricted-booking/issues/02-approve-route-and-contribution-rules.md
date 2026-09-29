@@ -49,3 +49,7 @@ Once any request exists, a change to route geometry, origin, destination, schedu
 **Ticket 02 remains unresolved:** provider selection and its production mode, route-data retention, display, quota, and controlled no-payment-information rehearsal evidence are outstanding. The first acceptance criterion is incomplete; do not mark this ticket resolved until it is evidenced for the vehicle categories intended for launch. The technical route and contribution decisions above answer the remaining policy questions, subject to that provider gate.
 
 **Separate real-booking blocker:** Ticket 03 must document the cost basis and external permissibility of the proposed ₹5/km bike/scooter and ₹7/km per-car-passenger rates, including the possible ₹21/km aggregate for three car passengers and the broader operation. This policy does not settle those questions. Real bookings remain disabled pending that review and all other launch gates.
+
+## Comments
+
+- 2026-09-29: The project maintainer reported submitting a TomTom support case asking about production booking use, scooter coverage, route-result retention, display over Mapbox, and applicable restrictions. The case response and identifier have not been provided; no provider permission is inferred from submission.
