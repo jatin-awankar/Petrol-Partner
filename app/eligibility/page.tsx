@@ -64,6 +64,7 @@ export default function EligibilityPage() {
   if (!user) return <main className="p-8">Sign in to check eligibility. <Link href="/login">Sign in</Link></main>;
   return <main className="mx-auto max-w-2xl space-y-6 p-8">
     <h1 className="text-2xl font-semibold">Student eligibility</h1>
+    <p>For the broader route policy, <Link className="underline" href="/adult-declaration">record or view your adult self-declaration</Link>. No college enrollment or age document is required for that declaration.</p>
     <p>{evidenceMode === "real" ? "Upload a redacted enrollment document and age evidence for private operator review." : evidenceMode === "synthetic" ? "Real evidence intake is not open. This form is for fabricated pilot rehearsal documents only." : "Evidence intake is closed until private storage and deletion are verified."}</p>
     <p role="status">{message}</p>
     <section className="rounded border p-4" aria-label="Eligibility status">

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { randomUUID } from "node:crypto";
 import { signAccessToken } from "../shared/jwt/tokens";
+import {assertCurrentAdultDeclaration} from "../modules/adult-declaration/adult-declaration.service";
 import { corridorOffersService } from "../modules/rides/corridor-offers.service";
 import { SeatRequestsService, setSeatRequestClockForTests } from "../modules/rides/seat-requests.service";
 import { CancellationsService } from "../modules/rides/cancellations.service";
@@ -35,7 +36,7 @@ import { setBackupObjectProbeForTests } from "../modules/operator/backup-status"
 import { setStudentReviewAfterCommitHookForTests } from "../modules/verification/student-review.service";
 
 const verificationPool = new Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
-const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql", "0006_operator_allowlist.sql", "0007_operator_pause.sql", "0008_operator_intent_handoff.sql", "0009_durable_notifications.sql", "0010_email_retry_operations.sql", "0011_backup_attempts.sql", "0012_student_adult_review.sql", "0013_student_review_cycles.sql", "0014_student_review_operations.sql", "0015_student_evidence_access.sql", "0016_student_evidence_deletion_outcomes.sql", "0017_student_evidence_retry_schedule.sql", "0018_driver_car_approval.sql", "0019_ride_departures.sql", "0020_corridor_offers.sql", "0021_corridor_offer_recovery.sql", "0022_pilot_seat_requests.sql", "0023_pilot_seat_acceptance.sql", "0024_pilot_cancellations.sql", "0025_pilot_departure.sql", "0026_revocation_holds_incidents.sql", "0027_pilot_journeys.sql", "0028_journey_review_decisions.sql", "0029_direct_settlement.sql", "0030_settlement_dispute_resolution.sql", "0031_reviewed_account_restrictions.sql", "0032_stalled_work_outreach.sql", "0033_account_closure.sql", "0034_closure_recovery.sql"];
+const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql", "0006_operator_allowlist.sql", "0007_operator_pause.sql", "0008_operator_intent_handoff.sql", "0009_durable_notifications.sql", "0010_email_retry_operations.sql", "0011_backup_attempts.sql", "0012_student_adult_review.sql", "0013_student_review_cycles.sql", "0014_student_review_operations.sql", "0015_student_evidence_access.sql", "0016_student_evidence_deletion_outcomes.sql", "0017_student_evidence_retry_schedule.sql", "0018_driver_car_approval.sql", "0019_ride_departures.sql", "0020_corridor_offers.sql", "0021_corridor_offer_recovery.sql", "0022_pilot_seat_requests.sql", "0023_pilot_seat_acceptance.sql", "0024_pilot_cancellations.sql", "0025_pilot_departure.sql", "0026_revocation_holds_incidents.sql", "0027_pilot_journeys.sql", "0028_journey_review_decisions.sql", "0029_direct_settlement.sql", "0030_settlement_dispute_resolution.sql", "0031_reviewed_account_restrictions.sql", "0032_stalled_work_outreach.sql", "0033_account_closure.sql", "0034_closure_recovery.sql", "0035_adult_declarations.sql"];
 
 function fakeProvider(identity: ProviderIdentity): AuthProvider {
   const session = { accessToken: "provider-access", refreshToken: "provider-refresh", expiresIn: 900, identity };
@@ -4167,6 +4168,7 @@ describe("protected operator pause HTTP/PostgreSQL", () => {
     const { agent, csrf, cookie } = await operator();
     await chmod(receiptDirectory, 0o500);
     const result = await request(createApp()).post("/v1/operator/pause").set("Cookie", cookie).set("Origin", "http://localhost:3000").set("X-CSRF-Token", csrf).set("Idempotency-Key", "outage-1").send({ capability: "requests", paused: true, reason: "Recovery store outage" });
+    await chmod(receiptDirectory,0o700);
     expect(result.status).toBe(503);
     expect(result.body.error.code).toBe("OPERATION_PENDING");
     const id = result.body.error.details.operationId;
@@ -4347,5 +4349,236 @@ describe("corridor offer publication and discovery", () => {
         "PILOT_SUPPORT_WINDOW_START","PILOT_SUPPORT_WINDOW_END"]) delete process.env[name];
       await rm(directory,{recursive:true,force:true});
     }
+  });
+});
+
+describe('ticket 07 adult self-declaration',()=>{
+  let directory:string;
+  beforeEach(async()=>{
+    await verificationPool.query('TRUNCATE users CASCADE');
+    await verificationPool.query(`INSERT INTO pilot_recovery_state(singleton,mode) VALUES(true,'open')
+      ON CONFLICT(singleton) DO UPDATE SET mode='open',cause=NULL,started_at=NULL`);
+    directory=await mkdtemp(resolve(tmpdir(),'adult-declaration-'));
+    process.env.PILOT_RECEIPT_PATH=resolve(directory,'receipts');
+    process.env.PILOT_RECEIPT_SECRET='adult-declaration-independent-evidence-secret';
+  });
+  afterEach(async()=>{
+    delete process.env.PILOT_RECEIPT_PATH;delete process.env.PILOT_RECEIPT_SECRET;
+    await rm(directory,{recursive:true,force:true});
+  });
+  async function user(){
+    const email=`adult-${randomUUID()}@example.test`;
+    const id=(await verificationPool.query<{id:string}>(
+      'INSERT INTO users(email) VALUES($1) RETURNING id',[email])).rows[0].id;
+    return {id,token:signAccessToken({userId:id,email,role:'user'})};
+  }
+  async function adultOperator(){
+    const email=`adult-operator-${randomUUID()}@example.test`;
+    const subject=`adult-operator-${randomUUID()}`;
+    const id=(await verificationPool.query<{id:string}>(
+      `INSERT INTO users(email,role,email_verified_at) VALUES($1,'admin',now()) RETURNING id`,[email])).rows[0].id;
+    await verificationPool.query(`INSERT INTO user_profiles(user_id,full_name) VALUES($1,'Adult Recovery Operator')`,[id]);
+    await verificationPool.query(`INSERT INTO auth_identities(provider,provider_subject,user_id,provider_email)
+      VALUES('supabase',$1,$2,$3)`,[subject,id,email]);
+    await verificationPool.query(`INSERT INTO operator_allowlist(user_id,active,reason,reviewed_at)
+      VALUES($1,true,'ticket 07 recovery',now())`,[id]);
+    await verificationPool.query(`UPDATE auth_cutover_state SET active_provider='supabase',
+      legacy_login_enabled=false,authorized_at=now(),authorized_by='integration-test'`);
+    setManagedAuthEnabledForTests(true);
+    setAuthProviderForTests(fakeProvider({subject,email,emailVerified:true,assuranceLevel:'aal2',userMetadata:{}}));
+    const login=await request(createApp()).post('/v1/auth/login').send({email,password:'synthetic-password'});
+    expect(login.status).toBe(200);
+    return {cookie:login.headers['set-cookie'].map((item:string)=>item.split(';',1)[0]).join('; '),
+      csrf:login.headers['set-cookie'].find((item:string)=>item.startsWith('pp_csrf_token='))?.split(';',1)[0]?.split('=',2)[1] as string};
+  }
+  const version='unrestricted-declared-2026-09-28.1';
+  const path='/v1/adult-declaration';
+  const auth=(token:string)=>({Authorization:`Bearer ${token}`});
+  it('requires authentication, records an unverified declaration, and retries once',async()=>{
+    const app=createApp();const a=await user();
+    expect((await request(app).get(path)).status).toBe(401);
+    expect((await request(app).put(path).set(auth(a.token)).send({at_least_18:true,policy_version:version})).status).toBe(400);
+    expect((await request(app).get(path).set(auth(a.token))).body.declaration.state).toBe('missing');
+    const key=randomUUID();
+    const first=await request(app).put(path).set(auth(a.token)).set('Idempotency-Key',key)
+      .send({at_least_18:true,policy_version:version});
+    expect(first.status).toBe(200);
+    expect(first.body.declaration).toMatchObject({state:'current',kind:'self_declaration'});
+    const repeat=await request(app).put(path).set(auth(a.token)).set('Idempotency-Key',key)
+      .send({at_least_18:true,policy_version:version});
+    expect(repeat.status).toBe(200);
+    expect(repeat.body.operation_id).toBe(first.body.operation_id);
+    expect((await request(app).post(`${path}/withdraw`).set(auth(a.token)).set('Idempotency-Key',key)
+      .send({policy_version:version})).body.error.code).toBe('IDEMPOTENCY_PAYLOAD_MISMATCH');
+    const operations=await verificationPool.query(`SELECT count(*)::int AS n FROM adult_declaration_operations WHERE user_id=$1`,[a.id]);
+    expect(operations.rows[0].n).toBe(1);
+    const audits=await verificationPool.query(`SELECT count(*)::int AS n FROM audit_logs
+      WHERE actor_user_id=$1 AND action='adult_declaration_declare'`,[a.id]);
+    expect(audits.rows[0].n).toBe(1);
+  });
+  it('shows expired, withdrawn, restricted and historical PRMITR-only states',async()=>{
+    const app=createApp();const a=await user();
+    await verificationPool.query(`INSERT INTO student_verifications(user_id,provider,institution_name,status,adult_eligible,eligibility_ends_at)
+      VALUES($1,'manual_review','PRMITR','verified',true,now()+interval '1 year')`,[a.id]);
+    expect((await request(app).get(path).set(auth(a.token))).body.declaration.state).toBe('missing');
+    await request(app).put(path).set(auth(a.token)).set('Idempotency-Key',randomUUID())
+      .send({at_least_18:true,policy_version:version});
+    await verificationPool.query(`UPDATE adult_declarations SET declared_at=now()-interval '13 months',expires_at=now()-interval '1 month' WHERE user_id=$1`,[a.id]);
+    expect((await request(app).get(path).set(auth(a.token))).body.declaration.state).toBe('expired');
+    await request(app).put(path).set(auth(a.token)).set('Idempotency-Key',randomUUID())
+      .send({at_least_18:true,policy_version:version});
+    const withdrawal=await request(app).post(`${path}/withdraw`).set(auth(a.token))
+      .set('Idempotency-Key',randomUUID()).send({policy_version:version});
+    expect(withdrawal.body.declaration.state).toBe('withdrawn');
+    await verificationPool.query(`INSERT INTO pilot_account_restriction_operations
+      (operator_id,target_user_id,idempotency_key,payload_digest,action,scope,source_type,
+       source_id,reason,reviewed_evidence,state)
+      VALUES($1,$1,$2,$3,'restrict','all','incident',$4,'test','test','acknowledged')`,
+      [a.id,randomUUID(),'digest',randomUUID()]);
+    expect((await request(app).get(path).set(auth(a.token))).body.declaration.state).toBe('restricted');
+  });
+  it('uses the current policy, twelve calendar months, and isolates account state',async()=>{
+    const app=createApp();const a=await user();const b=await user();
+    const stale=await request(app).put(path).set(auth(a.token)).set('Idempotency-Key',randomUUID())
+      .send({at_least_18:true,policy_version:'historical-policy'});
+    expect(stale.body.error.code).toBe('POLICY_VERSION_STALE');
+    const first=await request(app).put(path).set(auth(a.token)).set('Idempotency-Key',randomUUID())
+      .send({at_least_18:true,policy_version:version});
+    expect(first.status).toBe(200);
+    const declared=new Date(first.body.declaration.declared_at);
+    const expected=new Date(declared);expected.setUTCFullYear(expected.getUTCFullYear()+1);
+    expect(new Date(first.body.declaration.expires_at).toISOString()).toBe(expected.toISOString());
+    expect((await request(app).get(path).set(auth(b.token))).body.declaration.state).toBe('missing');
+  });
+  it('serializes concurrent same-key retries on separate PostgreSQL connections',async()=>{
+    const app=createApp();const a=await user();const key=randomUUID();
+    const [one,two]=await Promise.all([1,2].map(()=>request(app).put(path).set(auth(a.token))
+      .set('Idempotency-Key',key).send({at_least_18:true,policy_version:version})));
+    expect(one.status).toBe(200);expect(two.status).toBe(200);
+    expect(one.body.operation_id).toBe(two.body.operation_id);
+    expect((await verificationPool.query(`SELECT count(*)::int AS n FROM adult_declaration_operations
+      WHERE user_id=$1`,[a.id])).rows[0].n).toBe(1);
+  });
+  it('server participation gate rejects missing, expired, withdrawn, restricted and disabled accounts',async()=>{
+    const app=createApp();const a=await user();
+    const check=async()=>{const client=await verificationPool.connect();try{
+      await client.query('BEGIN');await assertCurrentAdultDeclaration(client,a.id);await client.query('ROLLBACK');
+    }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}};
+    await expect(check()).rejects.toMatchObject({code:'ADULT_DECLARATION_REQUIRED'});
+    await request(app).put(path).set(auth(a.token)).set('Idempotency-Key',randomUUID())
+      .send({at_least_18:true,policy_version:version});
+    await expect(check()).resolves.toBeUndefined();
+    await verificationPool.query(`UPDATE adult_declarations SET declared_at=now()-interval '13 months',
+      expires_at=now()-interval '1 month' WHERE user_id=$1`,[a.id]);
+    await expect(check()).rejects.toMatchObject({code:'ADULT_DECLARATION_REQUIRED'});
+    await request(app).put(path).set(auth(a.token)).set('Idempotency-Key',randomUUID())
+      .send({at_least_18:true,policy_version:version});
+    await request(app).post(`${path}/withdraw`).set(auth(a.token)).set('Idempotency-Key',randomUUID())
+      .send({policy_version:version});
+    await expect(check()).rejects.toMatchObject({code:'ADULT_DECLARATION_REQUIRED'});
+    await request(app).put(path).set(auth(a.token)).set('Idempotency-Key',randomUUID())
+      .send({at_least_18:true,policy_version:version});
+    await verificationPool.query(`UPDATE users SET status='suspended' WHERE id=$1`,[a.id]);
+    await expect(check()).rejects.toMatchObject({code:'ACCOUNT_DISABLED'});
+    await verificationPool.query(`UPDATE users SET status='active' WHERE id=$1`,[a.id]);
+    await verificationPool.query(`INSERT INTO pilot_account_restriction_operations
+      (operator_id,target_user_id,idempotency_key,payload_digest,action,scope,source_type,
+       source_id,reason,reviewed_evidence,state)
+      VALUES($1,$1,$2,$3,'restrict','all','incident',$4,'test','test','acknowledged')`,
+      [a.id,randomUUID(),'digest',randomUUID()]);
+    await expect(check()).rejects.toMatchObject({code:'ACCOUNT_RESTRICTED'});
+  });
+  it('shows a suspended account as restricted even while its declaration is unexpired',async()=>{
+    const app=createApp();const a=await user();
+    const recorded=await request(app).put(path).set(auth(a.token)).set('Idempotency-Key',randomUUID())
+      .send({at_least_18:true,policy_version:version});
+    expect(recorded.status).toBe(200);
+    await verificationPool.query(`UPDATE users SET status='suspended' WHERE id=$1`,[a.id]);
+    const visible=await request(app).get(path).set(auth(a.token));
+    expect(visible.status).toBe(200);
+    expect(visible.body.declaration).toMatchObject({state:'restricted',restriction_source:'account_status'});
+  });
+  it('operator reconciliation restores an acknowledged declaration after an older database snapshot',async()=>{
+    const app=createApp();const a=await user();
+    const created=await request(app).put(path).set(auth(a.token)).set('Idempotency-Key',randomUUID())
+      .send({at_least_18:true,policy_version:version});
+    expect(created.status).toBe(200);
+    const id=created.body.operation_id;
+    const original=(await verificationPool.query<{declared_at:Date;expires_at:Date}>(
+      `SELECT declared_at,expires_at FROM adult_declarations WHERE user_id=$1`,[a.id])).rows[0];
+    await verificationPool.query(`DELETE FROM pilot_email_jobs WHERE event_id=$1`,[id]);
+    await verificationPool.query(`DELETE FROM pilot_notification_events WHERE id=$1`,[id]);
+    await verificationPool.query(`DELETE FROM audit_logs WHERE metadata->>'operationId'=$1`,[id]);
+    await verificationPool.query(`DELETE FROM adult_declarations WHERE user_id=$1`,[a.id]);
+    await verificationPool.query(`DELETE FROM adult_declaration_operations WHERE id=$1`,[id]);
+    const operator=await adultOperator();
+    const reconciled=await request(createApp()).post('/v1/operator/reconcile')
+      .set('Cookie',operator.cookie).set('Origin','http://localhost:3000')
+      .set('X-CSRF-Token',operator.csrf).send({});
+    expect(reconciled.status,JSON.stringify(reconciled.body)).toBe(200);
+    const restored=await verificationPool.query<{declared_at:Date;expires_at:Date;state:string}>(
+      `SELECT d.declared_at,d.expires_at,o.state FROM adult_declarations d
+       JOIN adult_declaration_operations o ON o.id=d.operation_id WHERE d.user_id=$1`,[a.id]);
+    expect(restored.rows[0]).toMatchObject({...original,state:'recovered'});
+  });
+  it('does not recover a withdrawal without its preceding declaration evidence',async()=>{
+    const app=createApp();const a=await user();
+    const declared=await request(app).put(path).set(auth(a.token)).set('Idempotency-Key',randomUUID())
+      .send({at_least_18:true,policy_version:version});
+    const withdrawn=await request(app).post(`${path}/withdraw`).set(auth(a.token))
+      .set('Idempotency-Key',randomUUID()).send({policy_version:version});
+    expect(withdrawn.status).toBe(200);
+    await rm(resolve(directory,'receipts.adult-declaration',`${declared.body.operation_id}.json`));
+    await verificationPool.query(`DELETE FROM pilot_email_jobs WHERE event_id IN($1,$2)`,
+      [declared.body.operation_id,withdrawn.body.operation_id]);
+    await verificationPool.query(`DELETE FROM pilot_notification_events WHERE id IN($1,$2)`,
+      [declared.body.operation_id,withdrawn.body.operation_id]);
+    await verificationPool.query(`DELETE FROM audit_logs WHERE metadata->>'operationId' IN($1,$2)`,
+      [declared.body.operation_id,withdrawn.body.operation_id]);
+    await verificationPool.query(`DELETE FROM adult_declarations WHERE user_id=$1`,[a.id]);
+    await verificationPool.query(`DELETE FROM adult_declaration_operations WHERE user_id=$1`,[a.id]);
+    const operator=await adultOperator();
+    const reconciled=await request(createApp()).post('/v1/operator/reconcile')
+      .set('Cookie',operator.cookie).set('Origin','http://localhost:3000')
+      .set('X-CSRF-Token',operator.csrf).send({});
+    expect(reconciled.status).toBe(409);
+    expect(reconciled.body.error.code).toBe('RECOVERY_INCOMPLETE');
+    expect((await verificationPool.query(`SELECT count(*)::int AS n FROM adult_declaration_operations
+      WHERE user_id=$1`,[a.id])).rows[0].n).toBe(0);
+  });
+  it('operator reconciliation resolves a committed declaration after receipt storage recovers',async()=>{
+    const app=createApp();const a=await user();
+    const key=randomUUID();
+    process.env.PILOT_RECEIPT_PATH=resolve(directory,'missing','receipts');
+    await chmod(directory,0o500);
+    const pending=await request(app).put(path).set(auth(a.token)).set('Idempotency-Key',key)
+      .send({at_least_18:true,policy_version:version});
+    await chmod(directory,0o700);
+    expect(pending.body.error.code).toBe('OPERATION_PENDING');
+    const id=pending.body.error.details.operationId;
+    const operator=await adultOperator();
+    const reconciled=await request(createApp()).post('/v1/operator/reconcile')
+      .set('Cookie',operator.cookie).set('Origin','http://localhost:3000')
+      .set('X-CSRF-Token',operator.csrf).send({});
+    expect(reconciled.status,JSON.stringify(reconciled.body)).toBe(200);
+    expect((await verificationPool.query(`SELECT state FROM adult_declaration_operations WHERE id=$1`,[id]))
+      .rows[0].state).toBe('recovered');
+    const reopened=await request(createApp()).post('/v1/operator/reopen')
+      .set('Cookie',operator.cookie).set('Origin','http://localhost:3000')
+      .set('X-CSRF-Token',operator.csrf).set('Idempotency-Key',randomUUID())
+      .send({reason:'Reviewed recovered adult declaration evidence'});
+    expect(reopened.status,JSON.stringify(reopened.body)).toBe(200);
+  });
+  it('does not acknowledge when independent recovery evidence fails',async()=>{
+    const app=createApp();const a=await user();
+    process.env.PILOT_RECEIPT_PATH=resolve(directory,'missing','receipts');
+    await chmod(directory,0o500);
+    const result=await request(app).put(path).set(auth(a.token)).set('Idempotency-Key',randomUUID())
+      .send({at_least_18:true,policy_version:version});
+    await chmod(directory,0o700);
+    expect(result.status).toBe(503);
+    expect(result.body.error.code).toBe('OPERATION_PENDING');
+    expect((await verificationPool.query(`SELECT mode FROM pilot_recovery_state WHERE singleton=true`)).rows[0].mode).toBe('restricted');
+    expect((await verificationPool.query(`SELECT state FROM adult_declaration_operations WHERE user_id=$1`,[a.id])).rows[0].state).toBe('committed');
   });
 });
