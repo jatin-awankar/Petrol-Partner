@@ -4691,6 +4691,9 @@ describe('ticket 08 driver and vehicle self-declarations',()=>{
       VALUES($1,$1,$2,$3,'restrict','driver','incident',$4,'test','test','acknowledged')`,
       [a.id,randomUUID(),'digest',randomUUID()]);
     await expect(check(1)).rejects.toMatchObject({code:'ACCOUNT_RESTRICTED'});
+    const restrictedRenewal=await request(app).put(`${path}/driver`).set(auth(a.token))
+      .set('Idempotency-Key',randomUUID()).send(driverBody());
+    expect(restrictedRenewal.body.error.code).toBe('ACCOUNT_RESTRICTED');
   });
   it('serializes revocation with the participation gate on separate connections',async()=>{
     const app=createApp();const a=await user();await adult(a);await driver(a);
@@ -4712,6 +4715,25 @@ describe('ticket 08 driver and vehicle self-declarations',()=>{
           .assertCurrentDriverVehicle(other,a.id,id,1)).rejects.toMatchObject({code:'VEHICLE_DECLARATION_REQUIRED'});
         await other.query('ROLLBACK');}finally{other.release();}
     }finally{client.release();}
+  });
+  it('serializes driver revocation with the participation gate on separate connections',async()=>{
+    const app=createApp();const a=await user();await adult(a);await driver(a);
+    const created=await request(app).post(`${path}/vehicles`).set(auth(a.token))
+      .set('Idempotency-Key',randomUUID()).send(vehicleBody('bike'));
+    const id=created.body.declaration.vehicles[0].id;
+    const gate=(await import('../modules/driver-vehicle-declaration/driver-vehicle-declaration.service'))
+      .assertCurrentDriverVehicle;
+    const first=await verificationPool.connect();
+    try{await first.query('BEGIN');await expect(gate(first,a.id,id,1)).resolves.toMatchObject({passengerCapacity:1});
+      const revoking=request(app).post(`${path}/driver/revoke`).set(auth(a.token))
+        .set('Idempotency-Key',randomUUID()).send({});
+      const pending=revoking.then(result=>result);
+      await first.query('COMMIT');
+      const revoked=await pending;expect(revoked.status,JSON.stringify(revoked.body)).toBe(200);
+      const second=await verificationPool.connect();try{await second.query('BEGIN');
+        await expect(gate(second,a.id,id,1)).rejects.toMatchObject({code:'DRIVER_DECLARATION_REQUIRED'});
+        await second.query('ROLLBACK');}finally{second.release();}
+    }finally{first.release();}
   });
   it('keeps retries idempotent and rejects a changed payload',async()=>{
     const app=createApp();const a=await user();await adult(a);await driver(a);

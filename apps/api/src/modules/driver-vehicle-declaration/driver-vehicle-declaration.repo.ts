@@ -90,6 +90,13 @@ export async function recover(db:PoolClient,item:Operation){await db.query(`INSE
     item.payload_digest,item.action,item.subject_id,item.snapshot,item.committed_at]);}
 export async function markRecovered(db:PoolClient,id:string){await db.query(`UPDATE unrestricted_declaration_operations
   SET state='recovered',acknowledged_at=COALESCE(acknowledged_at,now()) WHERE id=$1 AND state='committed'`,[id]);}
+export async function restoreNotificationReady(db:PoolClient,id:string){
+  await db.query(`UPDATE pilot_notification_events SET ready_at=now()
+    WHERE origin_type='driver_vehicle_declaration' AND operation_id=$1`,[id]);
+  await db.query(`UPDATE pilot_email_jobs SET status='exhausted',lease_until=NULL,
+    last_error='Suppressed after snapshot restore; delivery requires review',updated_at=now()
+    WHERE event_id=$1 AND status<>'sent'`,[id]);
+}
 export async function evidence(db:PoolClient,row:Operation){return (await db.query<{current:boolean;audit:boolean;notification:boolean}>(
   `SELECT EXISTS(SELECT 1 FROM ${row.action.startsWith('driver')?'unrestricted_driver_declarations':'unrestricted_vehicle_declarations'}
    WHERE ${row.action.startsWith('driver')?'user_id':'id'}=$1 AND operation_id=$2) AS current,

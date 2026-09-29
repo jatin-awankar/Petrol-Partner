@@ -26,6 +26,9 @@ const receipt=(row:repo.Operation):Receipt=>({operationId:row.id,actorUserId:row
   subjectId:row.subject_id,snapshot:row.snapshot,committedAt:row.committed_at.toISOString()});
 function futureDate(value:string){if(value<=new Date().toISOString().slice(0,10))
   throw new AppError(400,'Declared expiry must be in the future','DECLARATION_EXPIRED');}
+function renewalAfter(now:Date){return new Date(Date.UTC(now.getUTCFullYear()+1,
+  now.getUTCMonth(),now.getUTCDate(),now.getUTCHours(),now.getUTCMinutes(),
+  now.getUTCSeconds(),now.getUTCMilliseconds())).toISOString();}
 function state(row:Record<string,unknown>|null,restricted=false){
   if(restricted)return 'restricted';
   if(!row)return 'missing';
@@ -37,7 +40,7 @@ function state(row:Record<string,unknown>|null,restricted=false){
   return 'current';
 }
 function publicRow(row:Record<string,unknown>|null,restricted=false){return {kind:'self_declaration',
-  state:state(row,restricted),...(row??{})};}
+  state:state(row,restricted),declaration_state:state(row),restricted,...(row??{})};}
 export async function status(userId:string){const account=await repo.account(pool,userId);
   if(!account)throw new AppError(404,'Account not found','USER_NOT_FOUND');
   const restricted=account.status!=='active'||account.restricted;
@@ -103,8 +106,7 @@ export async function mutate(userId:string,key:string,action:repo.Action,subject
       const previous=await repo.driver(client,userId);
       if(previous?.revoked_at||previous?.false_declaration_at)
         throw new AppError(403,'Declaration requires operator review','DECLARATION_REVIEW_REQUIRED');
-      snapshot={...d,declared_at:now.toISOString(),renew_after:new Date(Date.UTC(now.getUTCFullYear()+1,
-        now.getUTCMonth(),now.getUTCDate(),now.getUTCHours(),now.getUTCMinutes(),now.getUTCSeconds(),now.getUTCMilliseconds())).toISOString()};
+      snapshot={...d,declared_at:now.toISOString(),renew_after:renewalAfter(now)};
     }else if(action==='vehicle_declare'){
       const v=input as VehicleInput;
       const driver=await repo.driver(client,userId);
@@ -115,8 +117,7 @@ export async function mutate(userId:string,key:string,action:repo.Action,subject
         current.registration_identifier!==v.registration_identifier))throw new AppError(403,'Vehicle ownership or identity differs','VEHICLE_NOT_OWNED');
       if(current?.revoked_at||current?.false_declaration_at)
         throw new AppError(403,'Declaration requires operator review','DECLARATION_REVIEW_REQUIRED');
-      snapshot={...v,declared_at:now.toISOString(),renew_after:new Date(Date.UTC(now.getUTCFullYear()+1,
-        now.getUTCMonth(),now.getUTCDate(),now.getUTCHours(),now.getUTCMinutes(),now.getUTCSeconds(),now.getUTCMilliseconds())).toISOString()};
+      snapshot={...v,declared_at:now.toISOString(),renew_after:renewalAfter(now)};
     }else if(action==='vehicle_revoke'){
       const current=await repo.lockVehicle(client,subjectId);
       if(!current||current.driver_user_id!==userId)throw new AppError(404,'Vehicle not found','VEHICLE_NOT_FOUND');
@@ -173,11 +174,7 @@ export const driverVehicleRecovery={receipts:()=>store().list(),pending:()=>repo
           await repo.apply(client,row);
       }
       await repo.markRecovered(client,row.id);await repo.restoreAudit(client,row);await notification(client,row);
-      await client.query(`UPDATE pilot_notification_events SET ready_at=now()
-        WHERE origin_type='driver_vehicle_declaration' AND operation_id=$1`,[row.id]);
-      await client.query(`UPDATE pilot_email_jobs SET status='exhausted',lease_until=NULL,
-        last_error='Suppressed after snapshot restore; delivery requires review',updated_at=now()
-        WHERE event_id=$1 AND status<>'sent'`,[row.id]);
+      await repo.restoreNotificationReady(client,row.id);
     });}
     return items.length;
   }};
