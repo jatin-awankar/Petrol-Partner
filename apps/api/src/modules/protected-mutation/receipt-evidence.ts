@@ -6,7 +6,7 @@ import { operatorQuery } from "../operator/operator.repo";
 import { SignedReceiptStore } from "../operator/receipt-store";
 import { inProtectedTransaction } from "./protocol";
 
-export function pilotReceiptStore<Receipt extends {operationId:string}>(name:"corridor-offer"|"seat-request"|"pilot-cancellation"|"pilot-departure"|"pilot-journey"|"journey-review-decision"|"pilot-direct-settlement"|"pilot-settlement-silence"|"pilot-settlement-case"|"student-revocation"|"revocation-case"|"account-restriction"|"urgent-outreach"|"account-closure"|"adult-declaration",message:string) {
+export function pilotReceiptStore<Receipt extends {operationId:string}>(name:"corridor-offer"|"seat-request"|"pilot-cancellation"|"pilot-departure"|"pilot-journey"|"journey-review-decision"|"pilot-direct-settlement"|"pilot-settlement-silence"|"pilot-settlement-case"|"student-revocation"|"revocation-case"|"account-restriction"|"urgent-outreach"|"account-closure"|"adult-declaration"|"driver-vehicle-declaration",message:string) {
   const unavailable = () => new AppError(503,message,"RECOVERY_UNAVAILABLE");
   const secret = process.env.PILOT_RECEIPT_SECRET ?? env.PILOT_RECEIPT_SECRET;
   if (!secret || secret.length < 32) throw unavailable();
