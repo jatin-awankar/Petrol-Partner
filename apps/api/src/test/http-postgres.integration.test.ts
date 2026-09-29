@@ -5502,6 +5502,7 @@ describe('ticket 10 isolated posted route preparation',()=>{
     expect(accepted.status).toBe(200);
     const cancelled=await f.call(f.driver.token,`${path}/${f.offer}/cancel`,{reason:'Route changed materially'});
     expect(cancelled.status,JSON.stringify(cancelled.body)).toBe(200);
+    await (await import('../modules/posted-routes/outcomes.service')).postedRouteOutcomesService.verifyEvidence();
     expect(cancelled.body.withdrawn_request_ids).toContain(bId);
     expect((await verificationPool.query('SELECT status FROM posted_route_offers WHERE id=$1',[f.offer])).rows[0].status)
       .toBe('cancelled');

@@ -88,13 +88,27 @@ export class PostedRouteOutcomesService{
     if(!audited||!expected||JSON.stringify(notified)!==JSON.stringify(expected))return false;
     const offer=await repo.offer(this.db,row.offer_id),seat=row.allocation_id?await repo.seat(this.db,row.allocation_id):null;
     if(!offer||row.allocation_id&&!seat)return false;
-    if(row.action==='driver_cancel'&&offer.status!=='cancelled')return false;
+    if(row.action==='driver_cancel'){
+      if(offer.status!=='cancelled')return false;
+      const cancelled=(row.result.cancelled_allocation_ids as string[]|undefined)??[];
+      const withdrawn=(row.result.withdrawn_request_ids as string[]|undefined)??[];
+      const seats=await repo.seats(this.db,row.offer_id);
+      if(seats.some(item=>['confirmed','held'].includes(item.status)))return false;
+      if(seats.some(item=>cancelled.includes(item.id)&&item.status!=='cancelled'))return false;
+      const requests=(await this.db.query<{id:string;status:string}>(
+        'SELECT id,status FROM posted_route_seat_requests WHERE offer_id=$1',[row.offer_id])).rows;
+      if(requests.some(item=>item.status==='pending'))return false;
+      if(requests.some(item=>withdrawn.includes(item.id)&&item.status!=='withdrawn'))return false;
+    }
     if(row.action==='passenger_cancel'&&seat?.status!=='cancelled')return false;
     if(row.action==='depart'){
       if(offer.status!=='departed')return false;
       const seats=await repo.seats(this.db,row.offer_id);
       const boarded=(row.result.boarded_ids as string[]|undefined)??[];
       const confirmed=(row.result.confirmed_ids as string[]|undefined)??[];
+      const currentConfirmed=seats.filter(item=>item.status==='confirmed').map(item=>item.id).sort();
+      if(JSON.stringify([...confirmed].sort())!==JSON.stringify(currentConfirmed)||
+        new Set(boarded).size!==boarded.length||boarded.some(id=>!confirmed.includes(id)))return false;
       if(seats.filter(item=>confirmed.includes(item.id)).some(item=>item.boarded!==boarded.includes(item.id)))
         return false;
     }
@@ -201,6 +215,8 @@ export class PostedRouteOutcomesService{
         if(!['prepared','held'].includes(offer.status))throw new AppError(409,'Ride cannot be cancelled','RIDE_INVALID');
         requireReason(payload.reason);
         await repo.setOfferStatus(client,offerId,'cancelled');
+        result.cancelled_allocation_ids=seats.filter(item=>['confirmed','held'].includes(item.status))
+          .map(item=>item.id).sort();
         for(const item of seats)if(['confirmed','held'].includes(item.status))
           await repo.setSeatStatus(client,item.id,'cancelled');
         const withdrawn=await repo.cancelRequests(client,offerId);
