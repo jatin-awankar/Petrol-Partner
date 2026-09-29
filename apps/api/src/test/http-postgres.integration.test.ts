@@ -36,7 +36,7 @@ import { setBackupObjectProbeForTests } from "../modules/operator/backup-status"
 import { setStudentReviewAfterCommitHookForTests } from "../modules/verification/student-review.service";
 
 const verificationPool = new Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
-const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql", "0006_operator_allowlist.sql", "0007_operator_pause.sql", "0008_operator_intent_handoff.sql", "0009_durable_notifications.sql", "0010_email_retry_operations.sql", "0011_backup_attempts.sql", "0012_student_adult_review.sql", "0013_student_review_cycles.sql", "0014_student_review_operations.sql", "0015_student_evidence_access.sql", "0016_student_evidence_deletion_outcomes.sql", "0017_student_evidence_retry_schedule.sql", "0018_driver_car_approval.sql", "0019_ride_departures.sql", "0020_corridor_offers.sql", "0021_corridor_offer_recovery.sql", "0022_pilot_seat_requests.sql", "0023_pilot_seat_acceptance.sql", "0024_pilot_cancellations.sql", "0025_pilot_departure.sql", "0026_revocation_holds_incidents.sql", "0027_pilot_journeys.sql", "0028_journey_review_decisions.sql", "0029_direct_settlement.sql", "0030_settlement_dispute_resolution.sql", "0031_reviewed_account_restrictions.sql", "0032_stalled_work_outreach.sql", "0033_account_closure.sql", "0034_closure_recovery.sql", "0035_adult_declarations.sql"];
+const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql", "0006_operator_allowlist.sql", "0007_operator_pause.sql", "0008_operator_intent_handoff.sql", "0009_durable_notifications.sql", "0010_email_retry_operations.sql", "0011_backup_attempts.sql", "0012_student_adult_review.sql", "0013_student_review_cycles.sql", "0014_student_review_operations.sql", "0015_student_evidence_access.sql", "0016_student_evidence_deletion_outcomes.sql", "0017_student_evidence_retry_schedule.sql", "0018_driver_car_approval.sql", "0019_ride_departures.sql", "0020_corridor_offers.sql", "0021_corridor_offer_recovery.sql", "0022_pilot_seat_requests.sql", "0023_pilot_seat_acceptance.sql", "0024_pilot_cancellations.sql", "0025_pilot_departure.sql", "0026_revocation_holds_incidents.sql", "0027_pilot_journeys.sql", "0028_journey_review_decisions.sql", "0029_direct_settlement.sql", "0030_settlement_dispute_resolution.sql", "0031_reviewed_account_restrictions.sql", "0032_stalled_work_outreach.sql", "0033_account_closure.sql", "0034_closure_recovery.sql", "0035_adult_declarations.sql", "0036_driver_vehicle_declarations.sql"];
 
 function fakeProvider(identity: ProviderIdentity): AuthProvider {
   const session = { accessToken: "provider-access", refreshToken: "provider-refresh", expiresIn: 900, identity };
@@ -4580,5 +4580,247 @@ describe('ticket 07 adult self-declaration',()=>{
     expect(result.body.error.code).toBe('OPERATION_PENDING');
     expect((await verificationPool.query(`SELECT mode FROM pilot_recovery_state WHERE singleton=true`)).rows[0].mode).toBe('restricted');
     expect((await verificationPool.query(`SELECT state FROM adult_declaration_operations WHERE user_id=$1`,[a.id])).rows[0].state).toBe('committed');
+  });
+});
+
+describe('ticket 08 driver and vehicle self-declarations',()=>{
+  const path='/v1/driver-vehicle-declarations';
+  const version='unrestricted-declared-2026-09-28.1';
+  const auth=(token:string)=>({Authorization:`Bearer ${token}`});
+  let directory:string;
+  beforeEach(async()=>{
+    await verificationPool.query('TRUNCATE users CASCADE');
+    await verificationPool.query(`INSERT INTO pilot_recovery_state(singleton,mode) VALUES(true,'open')
+      ON CONFLICT(singleton) DO UPDATE SET mode='open',cause=NULL,started_at=NULL`);
+    directory=await mkdtemp(resolve(tmpdir(),'driver-vehicle-declaration-'));
+    process.env.PILOT_RECEIPT_PATH=resolve(directory,'receipts');
+    process.env.PILOT_RECEIPT_SECRET='driver-vehicle-independent-evidence-secret';
+  });
+  afterEach(async()=>{delete process.env.PILOT_RECEIPT_PATH;delete process.env.PILOT_RECEIPT_SECRET;
+    await rm(directory,{recursive:true,force:true});});
+  async function user(){const email=`vehicle-${randomUUID()}@example.test`;
+    const id=(await verificationPool.query<{id:string}>(
+      'INSERT INTO users(email) VALUES($1) RETURNING id',[email])).rows[0].id;
+    return {id,token:signAccessToken({userId:id,email,role:'user'})};}
+  async function adult(a:{id:string;token:string}){return request(createApp()).put('/v1/adult-declaration')
+    .set(auth(a.token)).set('Idempotency-Key',randomUUID())
+    .send({at_least_18:true,policy_version:version});}
+  const future=(years=1)=>`${new Date().getUTCFullYear()+years}-12-31`;
+  const driverBody=()=>({licence_categories:['bike','scooter','car'],licence_expires_on:future(2),policy_version:version});
+  const vehicleBody=(category:'bike'|'scooter'|'car',capacity=1,belted:number|null=category==='car'?capacity:null)=>({
+    category,registration_identifier:`MH20-${randomUUID().slice(0,8)}`,registration_expires_on:future(2),
+    insurance_expires_on:future(2),permission_to_use:true,belted_passenger_seats:belted,
+    passenger_capacity:capacity,policy_version:version});
+  async function driver(a:{id:string;token:string}){return request(createApp()).put(`${path}/driver`)
+    .set(auth(a.token)).set('Idempotency-Key',randomUUID()).send(driverBody());}
+  it('requires an adult declaration and records no implied approval',async()=>{
+    const app=createApp();const a=await user();
+    expect((await request(app).get(path)).status).toBe(401);
+    const missing=await driver(a);
+    expect(missing.body.error.code).toBe('ADULT_DECLARATION_REQUIRED');
+    await adult(a);
+    const declared=await driver(a);
+    expect(declared.status,JSON.stringify(declared.body)).toBe(200);
+    expect(declared.body.declaration.driver).toMatchObject({kind:'self_declaration',state:'current'});
+    expect(JSON.stringify(declared.body)).not.toMatch(/approved|inspected|verified/i);
+    expect((await verificationPool.query(`SELECT count(*)::int AS n FROM driver_vehicle_approvals`)).rows[0].n).toBe(0);
+  });
+  it('rejects unsupported categories, expired documents and invalid capacity at HTTP and SQL boundaries',async()=>{
+    const app=createApp();const a=await user();await adult(a);await driver(a);
+    const bike=vehicleBody('bike',2,null);
+    expect((await request(app).post(`${path}/vehicles`).set(auth(a.token))
+      .set('Idempotency-Key',randomUUID()).send(bike)).body.error.code).toBe('CAPACITY_EXCEEDED');
+    expect((await request(app).post(`${path}/vehicles`).set(auth(a.token))
+      .set('Idempotency-Key',randomUUID()).send({...bike,category:'truck'})).status).toBe(400);
+    expect((await request(app).post(`${path}/vehicles`).set(auth(a.token))
+      .set('Idempotency-Key',randomUUID()).send({...bike,category:'car',
+        belted_passenger_seats:2,passenger_capacity:3})).body.error.code).toBe('CAPACITY_EXCEEDED');
+    expect((await request(app).post(`${path}/vehicles`).set(auth(a.token))
+      .set('Idempotency-Key',randomUUID()).send({...bike,passenger_capacity:1,
+        insurance_expires_on:'2020-01-01'})).body.error.code).toBe('DECLARATION_EXPIRED');
+    await expect(verificationPool.query(`INSERT INTO unrestricted_vehicle_declarations
+      (driver_user_id,category,registration_identifier,registration_expires_on,insurance_expires_on,
+       permission_to_use,belted_passenger_seats,passenger_capacity,policy_version,declared_at,renew_after,operation_id)
+      VALUES($1,'bike','INVALID',current_date+1,current_date+1,true,NULL,2,$2,now(),now()+interval '1 year',$3)`,
+      [a.id,version,randomUUID()])).rejects.toMatchObject({code:'23514'});
+    await expect(verificationPool.query(`INSERT INTO unrestricted_vehicle_declarations
+      (driver_user_id,category,registration_identifier,registration_expires_on,insurance_expires_on,
+       permission_to_use,belted_passenger_seats,passenger_capacity,policy_version,declared_at,renew_after,operation_id)
+      VALUES($1,'car','CAR-INVALID',current_date+1,current_date+1,true,2,3,$2,now(),now()+interval '1 year',$3)`,
+      [a.id,version,randomUUID()])).rejects.toMatchObject({code:'23514'});
+    const scooter=await request(app).post(`${path}/vehicles`).set(auth(a.token))
+      .set('Idempotency-Key',randomUUID()).send(vehicleBody('scooter'));
+    expect(scooter.status).toBe(200);
+    expect(scooter.body.declaration.vehicles[0]).toMatchObject({category:'scooter',passenger_capacity:1});
+  });
+  it('enforces ownership, licence category, restrictions, expiry and changed capacity',async()=>{
+    const app=createApp();const a=await user();const b=await user();await adult(a);await adult(b);
+    await driver(a);await driver(b);
+    const car=vehicleBody('car',3,3);const created=await request(app).post(`${path}/vehicles`)
+      .set(auth(a.token)).set('Idempotency-Key',randomUUID()).send(car);
+    expect(created.status,JSON.stringify(created.body)).toBe(200);
+    const id=created.body.declaration.vehicles[0].id;
+    const wrong=await request(app).put(`${path}/vehicles/${id}`).set(auth(b.token))
+      .set('Idempotency-Key',randomUUID()).send(car);
+    expect(wrong.body.error.code).toBe('VEHICLE_NOT_OWNED');
+    const check=async(seats:number)=>{const client=await verificationPool.connect();try{
+      await client.query('BEGIN');
+      const result=await (await import('../modules/driver-vehicle-declaration/driver-vehicle-declaration.service'))
+        .assertCurrentDriverVehicle(client,a.id,id,seats);
+      await client.query('ROLLBACK');return result;
+    }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}};
+    await expect(check(3)).resolves.toMatchObject({passengerCapacity:3});
+    const changed=await request(app).put(`${path}/vehicles/${id}`).set(auth(a.token))
+      .set('Idempotency-Key',randomUUID()).send({...car,passenger_capacity:2});
+    expect(changed.status,JSON.stringify(changed.body)).toBe(200);
+    await expect(check(3)).rejects.toMatchObject({code:'CAPACITY_EXCEEDED'});
+    await verificationPool.query(`UPDATE unrestricted_vehicle_declarations SET insurance_expires_on=current_date-1 WHERE id=$1`,[id]);
+    await expect(check(1)).rejects.toMatchObject({code:'VEHICLE_DECLARATION_REQUIRED'});
+    await verificationPool.query(`UPDATE unrestricted_vehicle_declarations SET insurance_expires_on=current_date+1 WHERE id=$1`,[id]);
+    await verificationPool.query(`UPDATE unrestricted_driver_declarations SET licence_expires_on=current_date-1
+      WHERE user_id=$1`,[a.id]);
+    await expect(check(1)).rejects.toMatchObject({code:'DRIVER_DECLARATION_REQUIRED'});
+    await verificationPool.query(`UPDATE unrestricted_driver_declarations SET licence_expires_on=current_date+1,
+      licence_categories=ARRAY['bike']::text[] WHERE user_id=$1`,[a.id]);
+    await expect(check(1)).rejects.toMatchObject({code:'LICENCE_CATEGORY_REQUIRED'});
+    await verificationPool.query(`UPDATE unrestricted_driver_declarations SET licence_categories=ARRAY['bike','car']::text[]
+      WHERE user_id=$1`,[a.id]);
+    await verificationPool.query(`INSERT INTO pilot_account_restriction_operations
+      (operator_id,target_user_id,idempotency_key,payload_digest,action,scope,source_type,
+       source_id,reason,reviewed_evidence,state)
+      VALUES($1,$1,$2,$3,'restrict','driver','incident',$4,'test','test','acknowledged')`,
+      [a.id,randomUUID(),'digest',randomUUID()]);
+    await expect(check(1)).rejects.toMatchObject({code:'ACCOUNT_RESTRICTED'});
+    const restrictedRenewal=await request(app).put(`${path}/driver`).set(auth(a.token))
+      .set('Idempotency-Key',randomUUID()).send(driverBody());
+    expect(restrictedRenewal.body.error.code).toBe('ACCOUNT_RESTRICTED');
+  });
+  it('serializes revocation with the participation gate on separate connections',async()=>{
+    const app=createApp();const a=await user();await adult(a);await driver(a);
+    const created=await request(app).post(`${path}/vehicles`).set(auth(a.token))
+      .set('Idempotency-Key',randomUUID()).send(vehicleBody('bike'));
+    const id=created.body.declaration.vehicles[0].id;
+    const client=await verificationPool.connect();
+    try{await client.query('BEGIN');await client.query('SELECT id FROM users WHERE id=$1 FOR UPDATE',[a.id]);
+      const revoking=request(app).post(`${path}/vehicles/${id}/revoke`).set(auth(a.token))
+        .set('Idempotency-Key',randomUUID()).send({});
+      const pending=revoking.then(result=>result);
+      const gate=(await import('../modules/driver-vehicle-declaration/driver-vehicle-declaration.service'))
+        .assertCurrentDriverVehicle(client,a.id,id,1);
+      await expect(gate).resolves.toMatchObject({passengerCapacity:1});
+      await client.query('COMMIT');
+      const revoked=await pending;expect(revoked.status,JSON.stringify(revoked.body)).toBe(200);
+      const other=await verificationPool.connect();try{await other.query('BEGIN');
+        await expect((await import('../modules/driver-vehicle-declaration/driver-vehicle-declaration.service'))
+          .assertCurrentDriverVehicle(other,a.id,id,1)).rejects.toMatchObject({code:'VEHICLE_DECLARATION_REQUIRED'});
+        await other.query('ROLLBACK');}finally{other.release();}
+    }finally{client.release();}
+  });
+  it('serializes driver revocation with the participation gate on separate connections',async()=>{
+    const app=createApp();const a=await user();await adult(a);await driver(a);
+    const created=await request(app).post(`${path}/vehicles`).set(auth(a.token))
+      .set('Idempotency-Key',randomUUID()).send(vehicleBody('bike'));
+    const id=created.body.declaration.vehicles[0].id;
+    const gate=(await import('../modules/driver-vehicle-declaration/driver-vehicle-declaration.service'))
+      .assertCurrentDriverVehicle;
+    const first=await verificationPool.connect();
+    try{await first.query('BEGIN');await expect(gate(first,a.id,id,1)).resolves.toMatchObject({passengerCapacity:1});
+      const revoking=request(app).post(`${path}/driver/revoke`).set(auth(a.token))
+        .set('Idempotency-Key',randomUUID()).send({});
+      const pending=revoking.then(result=>result);
+      await first.query('COMMIT');
+      const revoked=await pending;expect(revoked.status,JSON.stringify(revoked.body)).toBe(200);
+      const second=await verificationPool.connect();try{await second.query('BEGIN');
+        await expect(gate(second,a.id,id,1)).rejects.toMatchObject({code:'DRIVER_DECLARATION_REQUIRED'});
+        await second.query('ROLLBACK');}finally{second.release();}
+    }finally{first.release();}
+  });
+  it('keeps retries idempotent and rejects a changed payload',async()=>{
+    const app=createApp();const a=await user();await adult(a);await driver(a);
+    const body=vehicleBody('scooter');const key=randomUUID();
+    const send=(payload:object)=>request(app).post(`${path}/vehicles`).set(auth(a.token))
+      .set('Idempotency-Key',key).send(payload);
+    const first=await send(body);const retry=await send(body);
+    expect(first.status).toBe(200);expect(retry.status).toBe(200);
+    expect(retry.body.operation_id).toBe(first.body.operation_id);
+    expect((await send({...body,registration_identifier:'DIFFERENT'})).body.error.code)
+      .toBe('IDEMPOTENCY_PAYLOAD_MISMATCH');
+    expect((await verificationPool.query(`SELECT count(*)::int AS n FROM unrestricted_vehicle_declarations
+      WHERE driver_user_id=$1`,[a.id])).rows[0].n).toBe(1);
+  });
+  it('blocks known false declarations and does not let the owner restore a revoked record',async()=>{
+    const app=createApp();const a=await user();await adult(a);await driver(a);
+    const body=vehicleBody('car',2,2);
+    const created=await request(app).post(`${path}/vehicles`).set(auth(a.token))
+      .set('Idempotency-Key',randomUUID()).send(body);
+    const id=created.body.declaration.vehicles[0].id;
+    await verificationPool.query(`UPDATE unrestricted_vehicle_declarations
+      SET false_declaration_at=now() WHERE id=$1`,[id]);
+    const flagged=await request(app).put(`${path}/vehicles/${id}`).set(auth(a.token))
+      .set('Idempotency-Key',randomUUID()).send(body);
+    expect(flagged.body.error.code).toBe('DECLARATION_REVIEW_REQUIRED');
+    expect((await request(app).get(path).set(auth(a.token))).body.vehicles[0].state)
+      .toBe('false_declaration');
+    const revoked=await request(app).post(`${path}/vehicles/${id}/revoke`).set(auth(a.token))
+      .set('Idempotency-Key',randomUUID()).send({});
+    expect(revoked.status).toBe(200);
+    const restore=await request(app).put(`${path}/vehicles/${id}`).set(auth(a.token))
+      .set('Idempotency-Key',randomUUID()).send(body);
+    expect(restore.body.error.code).toBe('DECLARATION_REVIEW_REQUIRED');
+  });
+  it('blocks a driver with a known false declaration from renewing or registering a vehicle',async()=>{
+    const app=createApp();const a=await user();await adult(a);await driver(a);
+    await verificationPool.query(`UPDATE unrestricted_driver_declarations
+      SET false_declaration_at=now() WHERE user_id=$1`,[a.id]);
+    const visible=await request(app).get(path).set(auth(a.token));
+    expect(visible.status).toBe(200);
+    expect(visible.body.driver).toMatchObject({kind:'self_declaration',
+      declaration_state:'false_declaration'});
+    const renewal=await request(app).put(`${path}/driver`).set(auth(a.token))
+      .set('Idempotency-Key',randomUUID()).send(driverBody());
+    expect(renewal.status).toBe(403);
+    expect(renewal.body.error.code).toBe('DECLARATION_REVIEW_REQUIRED');
+    const registration=await request(app).post(`${path}/vehicles`).set(auth(a.token))
+      .set('Idempotency-Key',randomUUID()).send(vehicleBody('bike'));
+    expect(registration.status).toBe(403);
+    expect(registration.body.error.code).toBe('DRIVER_DECLARATION_REQUIRED');
+  });
+  it('holds acknowledgement when recovery evidence cannot be written',async()=>{
+    const app=createApp();const a=await user();await adult(a);
+    process.env.PILOT_RECEIPT_PATH=resolve(directory,'missing','receipts');
+    await chmod(directory,0o500);
+    const result=await request(app).put(`${path}/driver`).set(auth(a.token))
+      .set('Idempotency-Key',randomUUID()).send(driverBody());
+    await chmod(directory,0o700);
+    expect(result.status).toBe(503);
+    expect(result.body.error.code).toBe('OPERATION_PENDING');
+    expect((await verificationPool.query(`SELECT state FROM unrestricted_declaration_operations
+      WHERE actor_user_id=$1`,[a.id])).rows[0].state).toBe('committed');
+    expect((await verificationPool.query(`SELECT mode FROM pilot_recovery_state
+      WHERE singleton=true`)).rows[0].mode).toBe('restricted');
+  });
+  it('restores an acknowledged vehicle and audit from independent evidence',async()=>{
+    const app=createApp();const a=await user();await adult(a);await driver(a);
+    const created=await request(app).post(`${path}/vehicles`).set(auth(a.token))
+      .set('Idempotency-Key',randomUUID()).send(vehicleBody('bike'));
+    expect(created.status).toBe(200);
+    const operationId=created.body.operation_id;
+    const vehicleId=created.body.declaration.vehicles[0].id;
+    await verificationPool.query('DELETE FROM pilot_email_jobs WHERE event_id=$1',[operationId]);
+    await verificationPool.query('DELETE FROM pilot_notification_events WHERE id=$1',[operationId]);
+    await verificationPool.query(`DELETE FROM audit_logs WHERE metadata->>'operationId'=$1`,[operationId]);
+    await verificationPool.query('DELETE FROM unrestricted_vehicle_declarations WHERE id=$1',[vehicleId]);
+    await verificationPool.query('DELETE FROM unrestricted_declaration_operations WHERE id=$1',[operationId]);
+    const operator=(await verificationPool.query<{id:string}>(`INSERT INTO users(email,role,email_verified_at)
+      VALUES($1,'admin',now()) RETURNING id`,[`operator-${randomUUID()}@example.test`])).rows[0].id;
+    await verificationPool.query(`INSERT INTO operator_allowlist(user_id,active,reason,reviewed_at)
+      VALUES($1,true,'ticket 08 recovery test',now())`,[operator]);
+    const {driverVehicleRecovery}=await import('../modules/driver-vehicle-declaration/driver-vehicle-declaration.service');
+    await expect(driverVehicleRecovery.reconcileReceipts(operator)).resolves.toBeGreaterThan(0);
+    const restored=await verificationPool.query(`SELECT o.state,v.category FROM unrestricted_declaration_operations o
+      JOIN unrestricted_vehicle_declarations v ON v.operation_id=o.id WHERE o.id=$1`,[operationId]);
+    expect(restored.rows[0]).toMatchObject({state:'recovered',category:'bike'});
+    expect((await verificationPool.query(`SELECT count(*)::int AS n FROM audit_logs
+      WHERE metadata->>'operationId'=$1`,[operationId])).rows[0].n).toBe(1);
   });
 });
