@@ -7,7 +7,7 @@
 **Status:** claimed
 
 - [ ] Reuse the existing one-seat transaction, deadline, hold, idempotency, audit, durable-work, and independent acknowledgement patterns for the new policy.
-- [x] Revalidate current adult and driver–vehicle declarations and restrictions, route version and segment, price, capacity, and overlap at acceptance; freeze route identity/version, selected points, distance source/value, rate, rounding, policy version, currency, and paise total.
+- [ ] Revalidate current adult and driver–vehicle declarations and restrictions, route version and segment, price, capacity, and overlap at acceptance; freeze route identity/version, selected points, distance source/value, rate, rounding, policy version, currency, and paise total.
 - [x] Separate-connection PostgreSQL tests cover final-seat, conflicting commitment, revocation, pause, changed payload, failed audit/work insertion, and uncertain recovery outcomes.
 
 ## Implementation note
@@ -17,5 +17,6 @@ Ticket 12 adds separate posted-route request, allocation, and protected-operatio
 ### Remaining acceptance and launch blockers
 
 1. Existing-commitment hold, cancellation, departure, and journey transitions for these new allocations are not yet integrated. Ticket 13 owns the route-booking lifecycle; this ticket's first criterion remains open until the hold behavior is evidenced across those transitions.
-2. Ticket 02 still lacks an approved production routing and stopping-place source. Ticket 04's authoritative Maharashtra boundary and full support coverage remain open. The HTTP boundary therefore rejects every request and decision outside synthetic tests.
-3. Real route publication, passenger discovery, representative-copy migration rehearsal, provider-backed independent receipt durability, and launch approval remain open. No real trips or deployed migrations are enabled by this branch.
+2. A historical vehicle stores only a registration suffix, while the new declaration stores a full identifier with no verified identity mapping. Driver and passenger overlap with historical commitments is checked, but cross-policy *physical vehicle* overlap cannot be proved for different driver IDs from those fields alone. Resolve it during the representative-copy migration and identity reconciliation before the second criterion is closed. Same-registration new declarations are serialized and conflict checked.
+3. Ticket 02 still lacks an approved production routing and stopping-place source. Ticket 04's authoritative Maharashtra boundary and full support coverage remain open. The HTTP boundary therefore rejects every request and decision outside synthetic tests.
+4. Real route publication, passenger discovery, representative-copy migration rehearsal, provider-backed independent receipt durability, and launch approval remain open. No real trips or deployed migrations are enabled by this branch.

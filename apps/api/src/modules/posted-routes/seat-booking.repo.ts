@@ -31,6 +31,15 @@ export const request=async(db:PoolClient,id:string)=>(await db.query<SeatRequest
   'SELECT * FROM posted_route_seat_requests WHERE id=$1 FOR UPDATE',[id])).rows[0]??null;
 export const requestSnapshot=async(db:Db,id:string)=>(await db.query<SeatRequest>(
   'SELECT * FROM posted_route_seat_requests WHERE id=$1',[id])).rows[0]??null;
+export const owner=async(db:Db,id:string)=>(await db.query<{
+  driver_id:string;vehicle_declaration_id:string}>(
+  'SELECT driver_id,vehicle_declaration_id FROM posted_route_offers WHERE id=$1',[id])).rows[0]??null;
+export const allocationById=async(db:Db,id:string)=>(await db.query<Allocation>(
+  'SELECT * FROM posted_route_seat_allocations WHERE id=$1',[id])).rows[0]??null;
+export const pausedCapabilities=async(db:PoolClient,capabilities:string[])=>(await db.query<{
+  capability:string;paused:boolean}>(
+  'SELECT capability,paused FROM pilot_pause_state WHERE capability=ANY($1::text[]) FOR SHARE',
+  [capabilities])).rows;
 export async function insertRequest(db:PoolClient,offer:Offer,passenger:string,selection:Selection,terms:Record<string,unknown>){
   return (await db.query<SeatRequest>(`INSERT INTO posted_route_seat_requests
     (offer_id,passenger_id,driver_id,route_version,selection,proposed_terms,decision_deadline_at)
@@ -47,7 +56,10 @@ export async function overlapping(db:PoolClient,offer:Offer,passenger:string){
   const current=(await db.query(`SELECT 1 FROM posted_route_seat_allocations
     WHERE status IN ('confirmed','held') AND
       (passenger_id=$1 OR driver_id=$1 OR
-        (offer_id<>$6 AND (passenger_id=$2 OR driver_id=$2 OR vehicle_declaration_id=$3)))
+        (offer_id<>$6 AND (passenger_id=$2 OR driver_id=$2 OR vehicle_declaration_id IN
+          (SELECT other.id FROM unrestricted_vehicle_declarations other
+           JOIN unrestricted_vehicle_declarations chosen ON chosen.id=$3
+           WHERE lower(other.registration_identifier)=lower(chosen.registration_identifier)))))
       AND departure_at<$5 AND commitment_until>$4 LIMIT 1`,
     [passenger,offer.driver_id,offer.vehicle_declaration_id,offer.departure_at,offer.commitment_until,offer.id])).rowCount;
   const legacy=(await db.query(`SELECT 1 FROM ride_offers o
@@ -121,4 +133,25 @@ export async function restore(db:PoolClient,item:{operationId:string;actorId:str
     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'recovered',$10,now()) ON CONFLICT(id) DO NOTHING`,
     [item.operationId,item.actorId,item.key,item.digest,item.requestId,item.action,item.result,
       item.requestSnapshot,item.allocationSnapshot,item.createdAt]);
+}
+export async function markRecovered(db:PoolClient,id:string){await db.query(
+  "UPDATE posted_route_seat_operations SET state='recovered',acknowledged_at=now() WHERE id=$1 AND state='committed'",[id]);}
+export async function restoreAudit(db:PoolClient,row:Operation){
+  await db.query(`INSERT INTO audit_logs(actor_user_id,action,entity_type,entity_id,metadata)
+    SELECT $1,$2,'posted_route_seat_request',$3,jsonb_build_object('operationId',$4::text,'routeId',$5::text)
+    WHERE NOT EXISTS(SELECT 1 FROM audit_logs WHERE metadata->>'operationId'=$4)`,
+    [row.actor_id,`posted_route_seat_${row.action}`,row.request_id,row.id,row.request_snapshot.offer_id]);
+  for(const withdrawn of (row.result.withdrawn_requests as SeatRequest[]|undefined)??[])
+    await db.query(`INSERT INTO audit_logs(actor_user_id,action,entity_type,entity_id,metadata)
+      SELECT $1,'posted_route_seat_withdrawn','posted_route_seat_request',$2,
+        jsonb_build_object('operationId',$3::text,'routeId',$4::text)
+      WHERE NOT EXISTS(SELECT 1 FROM audit_logs WHERE metadata->>'operationId'=$3 AND entity_id=$2)`,
+      [row.actor_id,withdrawn.id,row.id,withdrawn.offer_id]);
+}
+export async function restoreNotificationState(db:PoolClient,id:string){
+  await db.query("UPDATE pilot_notification_events SET ready_at=now() WHERE origin_type='posted_route_seat' AND operation_id=$1",[id]);
+  await db.query(`UPDATE pilot_email_jobs SET status='exhausted',lease_until=NULL,
+    last_error='Suppressed after snapshot restore; delivery requires review',updated_at=now()
+    WHERE event_id IN (SELECT id FROM pilot_notification_events WHERE origin_type='posted_route_seat' AND operation_id=$1)
+    AND status<>'sent'`,[id]);
 }

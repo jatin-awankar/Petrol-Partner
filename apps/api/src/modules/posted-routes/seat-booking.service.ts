@@ -12,9 +12,10 @@ import {assertCurrentOperator} from '../operator/operator.authorization';
 import {pauseService} from '../operator/pause.service';
 import {pilotReceiptStore,restrictProtectedWrites} from '../protected-mutation/receipt-evidence';
 import {inProtectedTransaction} from '../protected-mutation/protocol';
-import {lockCommitmentActors} from '../rides/commitment.repo';
+import {lockCommitmentActors,lockVehicleRegistration} from '../rides/commitment.repo';
 import {quoteSegment} from './segment-quote';
 import {ROUTE_POLICY_VERSION,ROUTE_OPERATING_POLICY_VERSION} from './policy';
+import {registration} from './posted-routes.repo';
 import * as repo from './seat-booking.repo';
 
 type Action='requested'|'accepted'|'rejected';
@@ -66,9 +67,8 @@ function routeTerms(row:repo.Offer,selection:repo.Selection){
 }
 async function assertPause(client:PoolClient,action:Action){
   const capabilities=action==='requested'?['booking','requests']:['booking','acceptance'];
-  const state=await client.query<{capability:string;paused:boolean}>(
-    'SELECT capability,paused FROM pilot_pause_state WHERE capability=ANY($1::text[]) FOR SHARE',[capabilities]);
-  if(state.rows.length!==2||state.rows.some(row=>row.paused))
+  const state=await repo.pausedCapabilities(client,capabilities);
+  if(state.length!==2||state.some(row=>row.paused))
     throw new AppError(503,'Booking activity paused','PILOT_PAUSED');
 }
 async function notice(client:PoolClient,row:repo.Operation){
@@ -112,8 +112,7 @@ export class PostedRouteSeatService{
         const row=rows.find(value=>value.id===item.operationId);
         if(!row||JSON.stringify(receipt(row))!==JSON.stringify(item))throw new Error('Seat receipt conflicts');
         if(item.allocationSnapshot){
-          const allocation=(await this.db.query<repo.Allocation>(
-            'SELECT * FROM posted_route_seat_allocations WHERE id=$1',[item.allocationSnapshot.id])).rows[0];
+          const allocation=await repo.allocationById(this.db,item.allocationSnapshot.id);
           if(!allocation||!sameTerms(allocation as unknown as Record<string,unknown>,
             item.allocationSnapshot as unknown as Record<string,unknown>))
             throw new Error('Seat allocation missing or changed');
@@ -152,9 +151,7 @@ export class PostedRouteSeatService{
       }
       // The same actor locks serialize declarations, route decisions, and competing acceptances.
       const initial=action==='requested'?null:await repo.requestSnapshot(client,id);
-      const preliminary=await client.query<{driver_id:string;vehicle_declaration_id:string}>(
-        'SELECT driver_id,vehicle_declaration_id FROM posted_route_offers WHERE id=$1',[routeId]);
-      const owner=preliminary.rows[0];
+      const owner=await repo.owner(client,routeId);
       if(!owner)throw new AppError(404,'Route not found','ROUTE_NOT_FOUND');
       await lockCommitmentActors(client,owner.driver_id,owner.vehicle_declaration_id,
         [action==='requested'?actor:initial!.passenger_id]);
@@ -169,6 +166,9 @@ export class PostedRouteSeatService{
         await assertCurrentAdultDeclaration(client,actor);
         await assertNoAccountRestriction(client,actor,'passenger');
         await assertCurrentDriverVehicle(client,offer.driver_id,offer.vehicle_declaration_id,offer.capacity);
+        const vehicleRegistration=await registration(client,offer.vehicle_declaration_id);
+        if(!vehicleRegistration)throw new AppError(404,'Vehicle not found','VEHICLE_NOT_FOUND');
+        await lockVehicleRegistration(client,vehicleRegistration);
         await assertNoAccountRestriction(client,offer.driver_id,'driver');
         const terms=await routeTerms(offer,selection);
         if(await repo.overlapping(client,offer,actor))throw new AppError(409,'Overlapping commitment','COMMITMENT_CONFLICT');
@@ -182,6 +182,9 @@ export class PostedRouteSeatService{
         if(request.status!=='pending'||request.decision_deadline_at<=new Date()||offer.acceptance_cutoff_at<=new Date())
           throw new AppError(409,'Request deadline passed','REQUEST_NOT_PENDING');
         await assertCurrentDriverVehicle(client,actor,offer.vehicle_declaration_id,offer.capacity);
+        const vehicleRegistration=await registration(client,offer.vehicle_declaration_id);
+        if(!vehicleRegistration)throw new AppError(404,'Vehicle not found','VEHICLE_NOT_FOUND');
+        await lockVehicleRegistration(client,vehicleRegistration);
         await assertNoAccountRestriction(client,actor,'driver');
         if(action==='accepted'){
           await assertCurrentAdultDeclaration(client,request.passenger_id);
@@ -239,29 +242,15 @@ export class PostedRouteSeatService{
         if(!row||JSON.stringify(receipt(row))!==JSON.stringify(item))
           throw new AppError(409,'Seat receipt conflicts','RECOVERY_CONFLICT');
         if(item.allocationSnapshot){
-          const currentAllocation=(await client.query<repo.Allocation>(
-            'SELECT * FROM posted_route_seat_allocations WHERE id=$1',[item.allocationSnapshot.id])).rows[0];
+          const currentAllocation=await repo.allocationById(client,item.allocationSnapshot.id);
           if(!currentAllocation||!sameTerms(currentAllocation as unknown as Record<string,unknown>,
             item.allocationSnapshot as unknown as Record<string,unknown>))
             throw new AppError(409,'Seat allocation conflicts','RECOVERY_CONFLICT');
         }
-        await client.query("UPDATE posted_route_seat_operations SET state='recovered',acknowledged_at=now() WHERE id=$1 AND state='committed'",[row.id]);
-        await client.query(`INSERT INTO audit_logs(actor_user_id,action,entity_type,entity_id,metadata)
-          SELECT $1,$2,'posted_route_seat_request',$3,jsonb_build_object('operationId',$4::text,'routeId',$5::text)
-          WHERE NOT EXISTS(SELECT 1 FROM audit_logs WHERE metadata->>'operationId'=$4)`,
-          [row.actor_id,`posted_route_seat_${row.action}`,row.request_id,row.id,row.request_snapshot.offer_id]);
-        for(const withdrawn of (row.result.withdrawn_requests as repo.SeatRequest[]|undefined)??[])
-          await client.query(`INSERT INTO audit_logs(actor_user_id,action,entity_type,entity_id,metadata)
-            SELECT $1,'posted_route_seat_withdrawn','posted_route_seat_request',$2,
-              jsonb_build_object('operationId',$3::text,'routeId',$4::text)
-            WHERE NOT EXISTS(SELECT 1 FROM audit_logs WHERE metadata->>'operationId'=$3 AND entity_id=$2)`,
-            [row.actor_id,withdrawn.id,row.id,withdrawn.offer_id]);
+        await repo.markRecovered(client,row.id);
+        await repo.restoreAudit(client,row);
         await notice(client,row);
-        await client.query("UPDATE pilot_notification_events SET ready_at=now() WHERE origin_type='posted_route_seat' AND operation_id=$1",[row.id]);
-        await client.query(`UPDATE pilot_email_jobs SET status='exhausted',lease_until=NULL,
-          last_error='Suppressed after snapshot restore; delivery requires review',updated_at=now()
-          WHERE event_id IN (SELECT id FROM pilot_notification_events WHERE origin_type='posted_route_seat' AND operation_id=$1)
-          AND status<>'sent'`,[row.id]);
+        await repo.restoreNotificationState(client,row.id);
       });
       latest.set(item.requestId,item.requestSnapshot);
       for(const withdrawn of (item.result.withdrawn_requests as repo.SeatRequest[]|undefined)??[])

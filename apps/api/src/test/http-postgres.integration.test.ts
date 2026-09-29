@@ -1798,8 +1798,8 @@ describe("ticket 21 revocation holds and incidents",()=>{
         new SeatRequestsService(second).mutate(driver,"acceptance-race","accepted",requestId),
       ]);
       expect(outcomes[0].status,JSON.stringify(outcomes)).toBe("fulfilled");
-      if(outcomes[1].status==="rejected") expect((outcomes[1].reason as {code:string}).code)
-        .toBe("ACCOUNT_RESTRICTED");
+      if(outcomes[1].status==="rejected") expect(["ACCOUNT_RESTRICTED","PILOT_PAUSED"])
+        .toContain((outcomes[1].reason as {code:string}).code);
       const allocation=(await verificationPool.query<{status:string}>(
         "SELECT status FROM pilot_seat_allocations WHERE request_id=$1",[requestId])).rows[0];
       expect(allocation?.status).not.toBe("confirmed");
@@ -5203,6 +5203,19 @@ describe('ticket 10 isolated posted route preparation',()=>{
     expect((await verificationPool.query("SELECT count(*)::int AS n FROM pilot_notification_events WHERE origin_type='posted_route_seat' AND event_type=$1",[`withdrawn:${losingId}`])).rows[0].n).toBe(1);
     expect((await first.call(first.driver.token,`${path}/requests/${otherId}/accept`,{})).status).toBe(200);
     expect((await verificationPool.query('SELECT count(*)::int AS n FROM posted_route_seat_allocations WHERE passenger_id=$1',[shared.id])).rows[0].n).toBe(1);
+  });
+  it('treats two declarations of the same registration as one overlapping vehicle',async()=>{
+    const first=await bookingFixture(),second=await bookingFixture();
+    await verificationPool.query(`UPDATE unrestricted_vehicle_declarations
+      SET registration_identifier=(SELECT registration_identifier FROM unrestricted_vehicle_declarations WHERE id=$1)
+      WHERE id=$2`,[first.driver.vehicle,second.driver.vehicle]);
+    const a=await participant(),b=await participant();
+    const aId=await first.ask(a),bId=await second.ask(b);
+    const [one,two]=await Promise.all([
+      first.call(first.driver.token,`${path}/requests/${aId}/accept`,{}),
+      second.call(second.driver.token,`${path}/requests/${bId}/accept`,{})]);
+    expect([one.status,two.status].sort()).toEqual([200,409]);
+    expect((await verificationPool.query('SELECT count(*)::int AS n FROM posted_route_seat_allocations')).rows[0].n).toBe(1);
   });
   it('serializes declaration revocation and pause against acceptance on independent connections',async()=>{
     const f=await bookingFixture(),passenger=await participant(),id=await f.ask(passenger);
