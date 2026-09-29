@@ -22,7 +22,7 @@ notificationsRouter.get("/_status", (_req, res) => {
 
 notificationsRouter.use(requireAuth);
 notificationsRouter.get("/durable", asyncHandler(async (req, res) => {
-  res.json({ notifications: await recipientNotifications(req.user!.userId) });
+  res.set("Cache-Control", "private, no-store").json({ notifications: await recipientNotifications(req.user!.userId) });
 }));
 
 notificationsRouter.get("/", asyncHandler(notificationsController.listNotifications));

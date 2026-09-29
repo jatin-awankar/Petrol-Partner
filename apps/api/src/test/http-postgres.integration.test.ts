@@ -3859,6 +3859,7 @@ describe("protected operator pause HTTP/PostgreSQL", () => {
     const jobId = (await verificationPool.query<{ id: string }>("SELECT id FROM pilot_email_jobs LIMIT 1")).rows[0].id;
     await verificationPool.query("UPDATE pilot_email_jobs SET status = 'exhausted', attempts = 5, last_error = 'secret provider response' WHERE id = $1", [jobId]);
     const delivery = await second.agent.get("/v1/operator/notifications/delivery");
+    expect(delivery.headers["cache-control"]).toContain("no-store");
     expect(JSON.stringify(delivery.body)).not.toContain("secret provider response");
     expect(delivery.body.jobs[0]).toMatchObject({
       origin_type: "operator_pause", event_type: "operator_pause_changed",
@@ -4399,6 +4400,42 @@ describe('ticket 07 adult self-declaration',()=>{
   const version='unrestricted-declared-2026-09-28.1';
   const path='/v1/adult-declaration';
   const auth=(token:string)=>({Authorization:`Bearer ${token}`});
+  it('keeps a committed unrestricted declaration notice private and supports coded delivery-failure outreach',async()=>{
+    const app=createApp();const participant=await user();const other=await user();
+    const recorded=await request(app).put(path).set(auth(participant.token))
+      .set('Idempotency-Key',randomUUID()).send({at_least_18:true,policy_version:version});
+    expect(recorded.status).toBe(200);
+    const own=await request(app).get('/v1/notifications/durable').set(auth(participant.token));
+    expect(own.headers['cache-control']).toContain('no-store');
+    const unrelated=await request(app).get('/v1/notifications/durable').set(auth(other.token));
+    expect(own.body.notifications).toEqual([expect.objectContaining({
+      event_type:'adult_declaration_declare',related_entity_id:participant.id})]);
+    expect(own.body.notifications[0].recipient_id).toBeUndefined();
+    expect(unrelated.body.notifications).toEqual([]);
+    const onDuty=await adultOperator();
+    const queue=await request(createApp()).get('/v1/operator/notifications/delivery')
+      .set('Cookie',onDuty.cookie);
+    expect(queue.status).toBe(200);
+    expect(queue.headers['cache-control']).toContain('no-store');
+    const job=queue.body.jobs.find((item:{operation_id:string})=>item.operation_id===recorded.body.operation_id);
+    expect(job).toMatchObject({origin_type:'adult_declaration',recipient_id:participant.id});
+    expect(job.body).toBeUndefined();
+    await verificationPool.query(`UPDATE pilot_email_jobs SET status='exhausted',attempts=5,
+      last_error='synthetic provider token' WHERE id=$1`,[job.id]);
+    const failed=await request(createApp()).get('/v1/operator/notifications/delivery').set('Cookie',onDuty.cookie);
+    expect(JSON.stringify(failed.body)).not.toContain('synthetic provider token');
+    const outreach=await request(createApp()).post('/v1/operator/urgent-outreach')
+      .set('Cookie',onDuty.cookie).set('Origin','http://localhost:3000')
+      .set('X-CSRF-Token',onDuty.csrf).set('Idempotency-Key',randomUUID())
+      .send({participantId:participant.id,method:'phone',occurredAt:new Date().toISOString(),
+        reason:'delivery_failure',outcome:'no_answer'});
+    expect(outreach.status,JSON.stringify(outreach.body)).toBe(200);
+    const history=await request(createApp()).get('/v1/operator/urgent-outreach').set('Cookie',onDuty.cookie);
+    expect(history.body.records).toEqual([expect.objectContaining({
+      participant_id:participant.id,reason:'delivery_failure',outcome:'no_answer'})]);
+    expect((await verificationPool.query('SELECT state FROM adult_declaration_operations WHERE id=$1',
+      [recorded.body.operation_id])).rows[0].state).toBe('acknowledged');
+  });
   it('requires authentication, records an unverified declaration, and retries once',async()=>{
     const app=createApp();const a=await user();
     expect((await request(app).get(path)).status).toBe(401);

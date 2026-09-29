@@ -90,7 +90,9 @@ operatorRouter.post("/urgent-outreach",asyncHandler(async(req,res)=>{
   if(!key||key.length>128) throw new AppError(400,"Idempotency-Key is required","IDEMPOTENCY_KEY_REQUIRED");
   res.set("Cache-Control","private, no-store").json(await recordUrgentOutreach(req.user!.userId,key,outreachInput.parse(req.body)));
 }));
-operatorRouter.get("/notifications/delivery", asyncHandler(async (_req, res) => { res.json(await deliveryStatus()); }));
+operatorRouter.get("/notifications/delivery", asyncHandler(async (_req, res) => {
+  res.set("Cache-Control", "private, no-store").json(await deliveryStatus());
+}));
 operatorRouter.get("/cancellation-reviews", asyncHandler(async (req,res) => {
   res.json({cases:await cancellationsService.openReviews(req.user!.userId)});
 }));
