@@ -10,13 +10,9 @@ export const bookingsRouter = Router();
 bookingsRouter.get("/_status", (_req, res) => {
   res.json({
     module: "bookings",
-    status: "active",
+    status: "historical-read-only",
     capabilities: [
-      "create bookings against ride offers or ride requests",
       "participant-scoped booking reads",
-      "owner-gated confirmations",
-      "append-only booking status events",
-      "best-effort booking expiry queue publishing",
     ],
   });
 });

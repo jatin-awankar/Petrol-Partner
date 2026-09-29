@@ -6,6 +6,8 @@
 
 **Status:** resolved
 
+**Status update (2026-09-29):** Remains resolved. Ticket 06's follow-up review did not change the deployed baseline, migration plan, or the requirement to reconfirm them before schema migration.
+
 - [x] Inventory deployed users and identity mappings, approvals, vehicles, offers, bookings, contribution and settlement records, and historical platform-payment orders against the actual migration history.
 - [x] Specify additive policy-version and route-segment storage, old/new read behavior, constraints, deployment sequence, and representative-copy rehearsal criteria.
 - [x] Preserve original identities, ownership, terms, amounts, and payment history in the plan; no deployed data was reset, reinterpreted, or migrated.

@@ -26,9 +26,6 @@ export type PaymentCardViewModel = {
   isDriver: boolean;
   dueAt: string | null;
   statusHint: string;
-  canPayOnline: boolean;
-  canMarkOfflinePaid: boolean;
-  canConfirmOffline: boolean;
   canRefresh: boolean;
   canRetryVerification: boolean;
   isActionRequired: boolean;
@@ -153,11 +150,6 @@ export function buildPaymentCardViewModel(input: {
       dueAt,
       paymentAttemptCount,
     }),
-    canPayOnline:
-      isPassenger && (settlementStatus === "due" || settlementStatus === "overdue"),
-    canMarkOfflinePaid:
-      isPassenger && (settlementStatus === "due" || settlementStatus === "overdue"),
-    canConfirmOffline: isDriver && settlementStatus === "passenger_marked_paid",
     canRefresh: true,
     canRetryVerification:
       isPassenger &&
