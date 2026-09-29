@@ -4768,6 +4768,23 @@ describe('ticket 08 driver and vehicle self-declarations',()=>{
       .set('Idempotency-Key',randomUUID()).send(body);
     expect(restore.body.error.code).toBe('DECLARATION_REVIEW_REQUIRED');
   });
+  it('blocks a driver with a known false declaration from renewing or registering a vehicle',async()=>{
+    const app=createApp();const a=await user();await adult(a);await driver(a);
+    await verificationPool.query(`UPDATE unrestricted_driver_declarations
+      SET false_declaration_at=now() WHERE user_id=$1`,[a.id]);
+    const visible=await request(app).get(path).set(auth(a.token));
+    expect(visible.status).toBe(200);
+    expect(visible.body.driver).toMatchObject({kind:'self_declaration',
+      declaration_state:'false_declaration'});
+    const renewal=await request(app).put(`${path}/driver`).set(auth(a.token))
+      .set('Idempotency-Key',randomUUID()).send(driverBody());
+    expect(renewal.status).toBe(403);
+    expect(renewal.body.error.code).toBe('DECLARATION_REVIEW_REQUIRED');
+    const registration=await request(app).post(`${path}/vehicles`).set(auth(a.token))
+      .set('Idempotency-Key',randomUUID()).send(vehicleBody('bike'));
+    expect(registration.status).toBe(403);
+    expect(registration.body.error.code).toBe('DRIVER_DECLARATION_REQUIRED');
+  });
   it('holds acknowledgement when recovery evidence cannot be written',async()=>{
     const app=createApp();const a=await user();await adult(a);
     process.env.PILOT_RECEIPT_PATH=resolve(directory,'missing','receipts');

@@ -15,3 +15,7 @@
 Added separate driver and per-vehicle self-declaration records and authenticated API endpoints. The current-declaration gate checks the adult declaration, account restrictions, document expiries, category and declared capacity under transaction locks. Audit, durable notification work, independent acknowledgement receipts and operator recovery are recorded for each mutation. Historical PRMITR approvals are untouched. Real bookings remain disabled.
 
 Verification: focused ticket 08 HTTP/PostgreSQL tests, full `npm test`, typecheck, lint (excluding the unrelated untracked `.worktrees/` directory), migration tests, and API/worker builds passed. The aggregate web build could not fetch the existing Poppins font from Google Fonts in this environment; web build completion is unverified.
+
+## Review follow-up
+
+The code review found that the known-false driver declaration path lacked an HTTP/PostgreSQL test. The added test now confirms that the account holder sees the false-declaration state and cannot renew the driver declaration or register a vehicle. The existing server behavior passed without a production-code change. Ticket status remains resolved.
