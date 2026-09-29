@@ -1,4 +1,5 @@
 import { adultDeclarationRecovery } from "../adult-declaration/adult-declaration.service";
+import {postedRouteRecovery} from "../posted-routes/posted-routes.service";
 import {driverVehicleRecovery} from "../driver-vehicle-declaration/driver-vehicle-declaration.service";
 import { UrgentOutreachService } from "./urgent-outreach.service";
 import { createHash } from "node:crypto";
@@ -123,6 +124,8 @@ function recoverySlices(database: Pool): RecoverySlice[] {
       digestOrder: 15, pendingOrder: 12, pendingMessage: "Adult declaration recovery is incomplete" },
     { name: "driverVehicleDeclarations", service: driverVehicleRecovery, verifyOrder: 18, reconcileOrder: 18,
       digestOrder: 16, pendingOrder: 13, pendingMessage: "Driver vehicle declaration recovery is incomplete" },
+    { name: "postedRoutes", service: postedRouteRecovery, verifyOrder: 19, reconcileOrder: 19,
+      digestOrder: 17, pendingOrder: 14, pendingMessage: "Posted route recovery is incomplete" },
   ];
 }
 

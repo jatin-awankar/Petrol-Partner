@@ -36,7 +36,7 @@ import { setBackupObjectProbeForTests } from "../modules/operator/backup-status"
 import { setStudentReviewAfterCommitHookForTests } from "../modules/verification/student-review.service";
 
 const verificationPool = new Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
-const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql", "0006_operator_allowlist.sql", "0007_operator_pause.sql", "0008_operator_intent_handoff.sql", "0009_durable_notifications.sql", "0010_email_retry_operations.sql", "0011_backup_attempts.sql", "0012_student_adult_review.sql", "0013_student_review_cycles.sql", "0014_student_review_operations.sql", "0015_student_evidence_access.sql", "0016_student_evidence_deletion_outcomes.sql", "0017_student_evidence_retry_schedule.sql", "0018_driver_car_approval.sql", "0019_ride_departures.sql", "0020_corridor_offers.sql", "0021_corridor_offer_recovery.sql", "0022_pilot_seat_requests.sql", "0023_pilot_seat_acceptance.sql", "0024_pilot_cancellations.sql", "0025_pilot_departure.sql", "0026_revocation_holds_incidents.sql", "0027_pilot_journeys.sql", "0028_journey_review_decisions.sql", "0029_direct_settlement.sql", "0030_settlement_dispute_resolution.sql", "0031_reviewed_account_restrictions.sql", "0032_stalled_work_outreach.sql", "0033_account_closure.sql", "0034_closure_recovery.sql", "0035_adult_declarations.sql", "0036_driver_vehicle_declarations.sql"];
+const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql", "0006_operator_allowlist.sql", "0007_operator_pause.sql", "0008_operator_intent_handoff.sql", "0009_durable_notifications.sql", "0010_email_retry_operations.sql", "0011_backup_attempts.sql", "0012_student_adult_review.sql", "0013_student_review_cycles.sql", "0014_student_review_operations.sql", "0015_student_evidence_access.sql", "0016_student_evidence_deletion_outcomes.sql", "0017_student_evidence_retry_schedule.sql", "0018_driver_car_approval.sql", "0019_ride_departures.sql", "0020_corridor_offers.sql", "0021_corridor_offer_recovery.sql", "0022_pilot_seat_requests.sql", "0023_pilot_seat_acceptance.sql", "0024_pilot_cancellations.sql", "0025_pilot_departure.sql", "0026_revocation_holds_incidents.sql", "0027_pilot_journeys.sql", "0028_journey_review_decisions.sql", "0029_direct_settlement.sql", "0030_settlement_dispute_resolution.sql", "0031_reviewed_account_restrictions.sql", "0032_stalled_work_outreach.sql", "0033_account_closure.sql", "0034_closure_recovery.sql", "0035_adult_declarations.sql", "0036_driver_vehicle_declarations.sql", "0037_posted_route_offers.sql"];
 
 function fakeProvider(identity: ProviderIdentity): AuthProvider {
   const session = { accessToken: "provider-access", refreshToken: "provider-refresh", expiresIn: 900, identity };
@@ -4864,5 +4864,146 @@ describe('ticket 08 driver and vehicle self-declarations',()=>{
     expect(restored.rows[0]).toMatchObject({state:'recovered',category:'bike'});
     expect((await verificationPool.query(`SELECT count(*)::int AS n FROM audit_logs
       WHERE metadata->>'operationId'=$1`,[operationId])).rows[0].n).toBe(1);
+  });
+});
+
+describe('ticket 10 isolated posted route preparation',()=>{
+  let directory:string;
+  const version='unrestricted-declared-2026-09-28.1';
+  const path='/v1/posted-routes';
+  const routeModule=()=>import('../modules/posted-routes/routing');
+  beforeEach(async()=>{
+    await verificationPool.query('TRUNCATE users CASCADE');
+    await verificationPool.query(`INSERT INTO pilot_recovery_state(singleton,mode) VALUES(true,'open')
+      ON CONFLICT(singleton) DO UPDATE SET mode='open',cause=NULL,started_at=NULL`);
+    directory=await mkdtemp(resolve(tmpdir(),'posted-route-'));
+    process.env.PILOT_RECEIPT_PATH=resolve(directory,'receipts');
+    process.env.PILOT_RECEIPT_SECRET='posted-route-independent-evidence-secret';
+    process.env.ROUTE_SUPPORT_WINDOW_START=new Date(Date.now()-3600000).toISOString();
+    process.env.ROUTE_SUPPORT_WINDOW_END=new Date(Date.now()+8*86400000).toISOString();
+    process.env.ROUTE_SUPPORT_WINDOW_APPROVED='true';
+  });
+  afterEach(async()=>{
+    (await routeModule()).setRoutingAdapterForTests(null);
+    for(const name of ['PILOT_RECEIPT_PATH','PILOT_RECEIPT_SECRET','ROUTE_SUPPORT_WINDOW_START','ROUTE_SUPPORT_WINDOW_END','ROUTE_SUPPORT_WINDOW_APPROVED'])delete process.env[name];
+    await rm(directory,{recursive:true,force:true});
+  });
+  async function participant(){
+    const email=`posted-${randomUUID()}@example.test`;
+    const id=(await verificationPool.query<{id:string}>('INSERT INTO users(email) VALUES($1) RETURNING id',[email])).rows[0].id;
+    const token=signAccessToken({userId:id,email,role:'user'});
+    const app=createApp(), auth={Authorization:`Bearer ${token}`};
+    const send=(method:'put'|'post',url:string,body:unknown)=>request(app)[method](url).set(auth)
+      .set('Idempotency-Key',randomUUID()).send(body);
+    expect((await send('put','/v1/adult-declaration',{at_least_18:true,policy_version:version})).status).toBe(200);
+    expect((await send('put','/v1/driver-vehicle-declarations/driver',{licence_categories:['car'],
+      licence_expires_on:'2030-12-31',policy_version:version})).status).toBe(200);
+    const vehicle=await send('post','/v1/driver-vehicle-declarations/vehicles',{category:'car',
+      registration_identifier:`MH-${randomUUID().slice(0,8)}`,registration_expires_on:'2030-12-31',
+      insurance_expires_on:'2030-12-31',permission_to_use:true,belted_passenger_seats:2,
+      passenger_capacity:2,policy_version:version});
+    expect(vehicle.status,JSON.stringify(vehicle.body)).toBe(200);
+    return {id,token,vehicle:vehicle.body.declaration.vehicles[0].id};
+  }
+  function departure(){const now=new Date();for(let d=1;d<=6;d++){
+    const candidate=new Date(now.getTime()+d*86400000);
+    const ist=new Date(candidate.toLocaleString('en-US',{timeZone:'Asia/Kolkata'}));
+    if(ist.getDay()>=1&&ist.getDay()<=5){
+      const day=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(candidate);
+      const [month,dd,year]=day.split('/');
+      const date=day.includes('/')?`${year}-${month}-${dd}`:day;
+      const scheduled=new Date(`${date}T10:00:00+05:30`);
+      if(scheduled.getTime()>now.getTime()+2*3600000)return scheduled.toISOString();
+    }}throw new Error('No weekday');}
+  it('rejects invalid provider answers and rolls back when notification work cannot be recorded',async()=>{
+    const a=await participant(),app=createApp();
+    const input={vehicle_id:a.vehicle,mode:'car',origin:[77.75,20.9],destination:[77.8,20.95],departure_at:departure(),capacity:2};
+    const send=()=>request(app).post(path).set('Authorization',`Bearer ${a.token}`)
+      .set('Idempotency-Key',randomUUID()).send(input);
+    const routing=await routeModule();
+    routing.setRoutingAdapterForTests({verify:async()=>{throw new Error('provider down');}});
+    expect((await send()).body.error.code).toBe('ROUTING_UNAVAILABLE');
+    routing.setRoutingAdapterForTests({verify:async()=>({source:'synthetic-test',mode:'bike',
+      geometry:{type:'LineString',coordinates:[input.origin,input.destination]},cumulativeMeters:[0,6000],distanceMeters:6000,durationSeconds:900})});
+    expect((await send()).body.error.code).toBe('ROUTE_INVALID');
+    routing.setRoutingAdapterForTests({verify:async()=>({source:'synthetic-test',mode:'car',
+      geometry:{type:'LineString',coordinates:[[0,0],input.destination]},cumulativeMeters:[0,6000],distanceMeters:6000,durationSeconds:900})});
+    expect((await send()).body.error.code).toBe('ROUTE_INVALID');
+    routing.setRoutingAdapterForTests({verify:async()=>({source:'synthetic-test',mode:'car',
+      geometry:{type:'LineString',coordinates:[input.origin,input.destination]},cumulativeMeters:[0,6000],distanceMeters:6000,durationSeconds:900})});
+    process.env.ROUTE_SUPPORT_WINDOW_END=new Date(new Date(input.departure_at).getTime()+5*60000).toISOString();
+    expect((await send()).body.error.code).toBe('SUPPORT_WINDOW_CLOSED');
+    process.env.ROUTE_SUPPORT_WINDOW_END=new Date(Date.now()+8*86400000).toISOString();
+    await verificationPool.query(`CREATE OR REPLACE FUNCTION ticket10_reject_notice() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN IF NEW.origin_type='posted_route' THEN RAISE EXCEPTION 'injected notice failure'; END IF; RETURN NEW; END $$`);
+    await verificationPool.query(`CREATE TRIGGER ticket10_reject_notice BEFORE INSERT ON pilot_notification_events
+      FOR EACH ROW EXECUTE FUNCTION ticket10_reject_notice()`);
+    try{expect((await send()).status).toBe(503);}finally{
+      await verificationPool.query('DROP TRIGGER ticket10_reject_notice ON pilot_notification_events');
+      await verificationPool.query('DROP FUNCTION ticket10_reject_notice()');}
+    expect((await verificationPool.query('SELECT count(*)::int AS n FROM posted_route_offers')).rows[0].n).toBe(0);
+    expect((await verificationPool.query('SELECT count(*)::int AS n FROM posted_route_operations')).rows[0].n).toBe(0);
+  });
+  it('serializes overlapping routes on separate database connections',async()=>{
+    const a=await participant(),app=createApp();
+    const input={vehicle_id:a.vehicle,mode:'car',origin:[77.75,20.9],destination:[77.8,20.95],departure_at:departure(),capacity:2};
+    (await routeModule()).setRoutingAdapterForTests({verify:async()=>({source:'synthetic-test',mode:'car',
+      geometry:{type:'LineString',coordinates:[input.origin,input.destination]},cumulativeMeters:[0,6000],distanceMeters:6000,durationSeconds:900})});
+    const send=()=>request(app).post(path).set('Authorization',`Bearer ${a.token}`)
+      .set('Idempotency-Key',randomUUID()).send(input);
+    const [one,two]=await Promise.all([send(),send()]);
+    expect([one.status,two.status].sort()).toEqual([201,409]);
+    expect((await verificationPool.query('SELECT count(*)::int AS n FROM posted_route_offers')).rows[0].n).toBe(1);
+  });
+  it('restores a prepared route, audit, and suppressed notice from independent receipt',async()=>{
+    const a=await participant(),app=createApp();
+    const input={vehicle_id:a.vehicle,mode:'car',origin:[77.75,20.9],destination:[77.8,20.95],departure_at:departure(),capacity:2};
+    (await routeModule()).setRoutingAdapterForTests({verify:async()=>({source:'synthetic-test',mode:'car',
+      geometry:{type:'LineString',coordinates:[input.origin,input.destination]},
+      cumulativeMeters:[0,6000],distanceMeters:6000,durationSeconds:900})});
+    const created=await request(app).post(path).set('Authorization',`Bearer ${a.token}`)
+      .set('Idempotency-Key',randomUUID()).send(input);
+    expect(created.status,JSON.stringify(created.body)).toBe(201);
+    const operationId=created.body.offer.operation_id,offerId=created.body.offer.id;
+    expect((await verificationPool.query('SELECT state FROM posted_route_operations WHERE id=$1',[operationId])).rows[0].state).toBe('acknowledged');
+    await verificationPool.query(`DELETE FROM pilot_email_jobs WHERE event_id IN
+      (SELECT id FROM pilot_notification_events WHERE origin_type='posted_route' AND operation_id=$1)`,[operationId]);
+    await verificationPool.query("DELETE FROM pilot_notification_events WHERE origin_type='posted_route' AND operation_id=$1",[operationId]);
+    await verificationPool.query("DELETE FROM audit_logs WHERE metadata->>'operationId'=$1",[operationId]);
+    await verificationPool.query('DELETE FROM posted_route_operations WHERE id=$1',[operationId]);
+    await verificationPool.query('DELETE FROM posted_route_offers WHERE id=$1',[offerId]);
+    const operator=(await verificationPool.query<{id:string}>(`INSERT INTO users(email,role,email_verified_at)
+      VALUES($1,'admin',now()) RETURNING id`,[`operator-${randomUUID()}@example.test`])).rows[0].id;
+    await verificationPool.query(`INSERT INTO operator_allowlist(user_id,active,reason,reviewed_at)
+      VALUES($1,true,'ticket 10 recovery test',now())`,[operator]);
+    const recovery=(await import('../modules/posted-routes/posted-routes.service')).postedRouteRecovery;
+    await expect(recovery.reconcileReceipts(operator)).resolves.toBeGreaterThan(0);
+    expect((await verificationPool.query('SELECT state FROM posted_route_operations WHERE id=$1',[operationId])).rows[0].state).toBe('recovered');
+    expect((await verificationPool.query('SELECT route_version,policy_version FROM posted_route_offers WHERE id=$1',[offerId])).rows[0])
+      .toMatchObject({route_version:1,policy_version:'unrestricted-route-contribution-2026-09-28.1'});
+    expect((await verificationPool.query("SELECT count(*)::int AS n FROM audit_logs WHERE metadata->>'operationId'=$1",[operationId])).rows[0].n).toBe(1);
+    expect((await verificationPool.query("SELECT count(*)::int AS n FROM pilot_email_jobs WHERE status='exhausted' AND event_id IN (SELECT id FROM pilot_notification_events WHERE origin_type='posted_route' AND operation_id=$1)",[operationId])).rows[0].n).toBe(1);
+  });
+  it('keeps preparation private, idempotent and distinct from corridor offers',async()=>{
+    const a=await participant(),b=await participant(),app=createApp();
+    const input={vehicle_id:a.vehicle,mode:'car',origin:[77.75,20.9],destination:[77.8,20.95],departure_at:departure(),capacity:2};
+    (await routeModule()).setRoutingAdapterForTests({verify:async()=>({source:'synthetic-test',mode:'car',
+      geometry:{type:'LineString',coordinates:[input.origin,input.destination]},cumulativeMeters:[0,6000],distanceMeters:6000,durationSeconds:900})});
+    const key=randomUUID();const publish=()=>request(app).post(path).set('Authorization',`Bearer ${a.token}`)
+      .set('Idempotency-Key',key).send(input);
+    const first=await publish();expect(first.status,JSON.stringify(first.body)).toBe(201);
+    const second=await publish();expect(second.body.offer.operation_id).toBe(first.body.offer.operation_id);
+    expect((await request(app).post(path).set('Authorization',`Bearer ${a.token}`).set('Idempotency-Key',key)
+      .send({...input,capacity:1})).body.error.code).toBe('IDEMPOTENCY_PAYLOAD_MISMATCH');
+    expect((await request(app).post(path).set('Authorization',`Bearer ${b.token}`)
+      .set('Idempotency-Key',randomUUID()).send({...input,vehicle_id:a.vehicle})).body.error.code).toBe('VEHICLE_NOT_FOUND');
+    expect((await request(app).post(path).set('Authorization',`Bearer ${a.token}`)
+      .set('Idempotency-Key',randomUUID()).send({...input,capacity:3})).body.error.code).toBe('CAPACITY_EXCEEDED');
+    const id=first.body.offer.id;
+    expect((await request(app).get(`${path}/${id}`).set('Authorization',`Bearer ${b.token}`)).status).toBe(404);
+    expect((await request(app).get(`${path}/${id}`).set('Authorization',`Bearer ${a.token}`)).status).toBe(200);
+    expect((await verificationPool.query('SELECT count(*)::int AS n FROM ride_offers')).rows[0].n).toBe(0);
+    expect((await verificationPool.query('SELECT count(*)::int AS n FROM audit_logs WHERE entity_id=$1',[id])).rows[0].n).toBe(1);
+    expect((await verificationPool.query("SELECT count(*)::int AS n FROM pilot_notification_events WHERE origin_type='posted_route'")).rows[0].n).toBe(1);
   });
 });

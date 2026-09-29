@@ -14,6 +14,7 @@ import { paymentsRouter } from "./payments/payments.routes";
 import { pricingRouter } from "./pricing/pricing.routes";
 import { profileRouter } from "./profile/profile.routes";
 import { ridesRouter } from "./rides/rides.routes";
+import { postedRouteRouter } from "./posted-routes/posted-routes.routes";
 import { corridorOffersRouter } from "./rides/corridor-offers.routes";
 import { seatRequestsRouter } from "./rides/seat-requests.routes";
 import { settlementsRouter } from "./settlements/settlements.routes";
@@ -49,6 +50,7 @@ apiRouter.use("/payments", (req, _res, next) => {
 });
 apiRouter.use("/rides", ridesRouter);
 apiRouter.use("/corridor-offers", corridorOffersRouter);
+apiRouter.use("/posted-routes", postedRouteRouter);
 apiRouter.use("/seat-requests", seatRequestsRouter);
 apiRouter.use("/bookings", bookingsRouter);
 apiRouter.use("/verification", verificationRouter);

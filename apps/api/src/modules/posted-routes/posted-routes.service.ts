@@ -1,0 +1,126 @@
+import {createHash} from 'node:crypto';
+import {pool} from '../../db/pool';
+import {AppError} from '../../shared/errors/app-error';
+import {inProtectedTransaction} from '../protected-mutation/protocol';
+import {pilotReceiptStore,restrictProtectedWrites} from '../protected-mutation/receipt-evidence';
+import {operatorQuery} from '../operator/operator.repo';
+import {assertCurrentOperator} from '../operator/operator.authorization';
+import {backupStatus} from '../operator/backup-status';
+import {recordDurableNotification} from '../notifications/contract.repo';
+import {assertCurrentDriverVehicle} from '../driver-vehicle-declaration/driver-vehicle-declaration.service';
+import {lockCommitmentActors} from '../rides/commitment.repo';
+import {verifyRoute,type Point} from './routing';
+import * as repo from './posted-routes.repo';
+import {ROUTE_POLICY_VERSION,ROUTE_OPERATING_POLICY_VERSION} from './policy';
+export type Input={vehicle_id:string;mode:'bike'|'scooter'|'car';origin:Point;destination:Point;departure_at:string;capacity:number};
+type Receipt={operationId:string;actorId:string;key:string;digest:string;offerId:string;result:Record<string,unknown>;snapshot:Record<string,unknown>;createdAt:string};
+const store=()=>pilotReceiptStore<Receipt>('posted-route','Posted route recovery evidence unavailable');
+const receipt=(row:repo.Operation):Receipt=>({operationId:row.id,actorId:row.actor_id,key:row.idempotency_key,digest:row.payload_digest,
+  offerId:row.offer_id,result:row.result,snapshot:row.offer_snapshot,createdAt:row.created_at.toISOString()});
+function schedule(departure:Date,now:Date,until?:Date){
+  if(!Number.isFinite(departure.getTime())||departure.getTime()<now.getTime()+2*3600000||departure.getTime()>now.getTime()+7*86400000)
+    throw new AppError(409,'Departure must be two hours to seven days ahead','DEPARTURE_INVALID');
+  const parts=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Kolkata',weekday:'short',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(departure);
+  const part=(name:string)=>parts.find(x=>x.type===name)?.value??'';
+  if(!['Mon','Tue','Wed','Thu','Fri'].includes(part('weekday'))||`${part('hour')}:${part('minute')}`<'09:00'||`${part('hour')}:${part('minute')}`>='18:00')
+    throw new AppError(409,'Departure outside proposed support hours','SUPPORT_WINDOW_CLOSED');
+  // Broader-area coverage must be explicitly provided, independent of the corridor window.
+  const start=process.env.ROUTE_SUPPORT_WINDOW_START,end=process.env.ROUTE_SUPPORT_WINDOW_END;
+  if(process.env.ROUTE_SUPPORT_WINDOW_APPROVED!=='true'||!start||!end||
+    !Number.isFinite(Date.parse(start))||!Number.isFinite(Date.parse(end)))
+    throw new AppError(503,'Route support coverage unapproved','SUPPORT_WINDOW_UNAVAILABLE');
+  if(now<new Date(start)||now>=new Date(end)||departure<new Date(start)||(until??departure)>=new Date(end))
+    throw new AppError(409,'Route support coverage closed','SUPPORT_WINDOW_CLOSED');
+}
+export async function verifyEvidence(retry?:{actor:string;key:string}){
+  try{
+    const backup=await backupStatus(pool);if(backup.required&&!backup.healthy)throw new Error('Backup unhealthy');
+    const evidenced=new Map((await store().list()).map(x=>[x.operationId,x]));
+    for(const item of evidenced.values()){const row=await repo.byId(pool,item.operationId);
+      if(!row||JSON.stringify(receipt(row))!==JSON.stringify(item))throw new Error('Receipt conflicts with database');}
+    for(const row of await repo.acknowledged(pool))if(JSON.stringify(evidenced.get(row.id))!==JSON.stringify(receipt(row)))throw new Error('Receipt missing');
+    if((await repo.pending(pool)).some(row=>!retry||row.actor_id!==retry.actor||row.idempotency_key!==retry.key))throw new Error('Operation pending');
+  }catch{await restrictProtectedWrites(pool,'posted_route_evidence_unavailable');throw new AppError(503,'Posted route recovery evidence unavailable','RECOVERY_UNAVAILABLE');}
+}
+export async function mine(actor:string){return repo.mine(pool,actor);}
+export async function read(actor:string,id:string){const row=await repo.owned(pool,actor,id);
+  if(!row)throw new AppError(404,'Posted route not found','ROUTE_NOT_FOUND');return row;}
+export async function operation(actor:string,id:string){const row=await repo.byId(pool,id);
+  if(!row||row.actor_id!==actor)throw new AppError(404,'Operation not found','OPERATION_NOT_FOUND');
+  return {operation_id:row.id,state:row.state,...row.result};}
+export async function prepare(actor:string,key:string,input:Input){
+  const digest=createHash('sha256').update(JSON.stringify(input)).digest('hex');
+  const existing=await repo.byKey(pool,actor,key);
+  if(existing&&existing.payload_digest!==digest)throw new AppError(409,'Idempotency payload mismatch','IDEMPOTENCY_PAYLOAD_MISMATCH');
+  await verifyEvidence({actor,key});
+  if(existing)return operation(actor,existing.id);
+  const departure=new Date(input.departure_at);schedule(departure,new Date());
+  const route=await verifyRoute({origin:input.origin,destination:input.destination,mode:input.mode});
+  const until=new Date(departure.getTime()+route.durationSeconds*1000+30*60000);
+  schedule(departure,new Date(),until);
+  const row=await inProtectedTransaction(pool,async client=>{
+    const recovery=await operatorQuery<{mode:string}>(client,'recoveryModeForUpdate');
+    await operatorQuery(client,'lockIdempotencyKey',[`posted-route:${actor}:${key}`]);
+    const prior=await repo.byKey(client,actor,key);
+    if(prior){if(prior.payload_digest!==digest)throw new AppError(409,'Idempotency payload mismatch','IDEMPOTENCY_PAYLOAD_MISMATCH');return prior;}
+    if(recovery.rows[0]?.mode!=='open')throw new AppError(503,'Protected writes restricted','RECOVERY_RESTRICTED');
+    store();
+    await lockCommitmentActors(client,actor,input.vehicle_id,[]);
+    const declaration=await assertCurrentDriverVehicle(client,actor,input.vehicle_id,input.capacity);
+    if(declaration.category!==input.mode)throw new AppError(400,'Routing mode differs from declared vehicle','ROUTE_MODE_INVALID');
+    schedule(departure,new Date(),until);
+    if(await repo.conflict(client,actor,input.vehicle_id,departure,until))throw new AppError(409,'Overlapping commitment','COMMITMENT_CONFLICT');
+    const saved=await repo.save(client,{driver:actor,vehicle:input.vehicle_id,route,departure,until,capacity:input.capacity,policy:ROUTE_POLICY_VERSION});
+    const snapshot=await repo.snapshot(client,saved.id);
+    const result={id:saved.id,route_version:1,policy_version:ROUTE_POLICY_VERSION,operating_policy_version:ROUTE_OPERATING_POLICY_VERSION,status:'prepared',real_bookings_enabled:false};
+    const created=await repo.insertOperation(client,{actor,key,digest,offerId:saved.id,result,snapshot});
+    await repo.audit(client,created);
+    await recordDurableNotification(client,{originType:'posted_route',operationId:created.id,recipientId:actor,
+      eventType:'prepared',relatedEntityType:'posted_route_offer',relatedEntityId:saved.id,
+      title:'Route prepared',body:'Your draft route is available to you. It is not open for bookings.'});
+    return created;
+  });
+  if(row.state!=='committed')return operation(actor,row.id);
+  try{
+    await store().append(receipt(row));
+    await inProtectedTransaction(pool,async client=>{const backup=await backupStatus(client);
+      if(backup.required&&!backup.healthy)throw new Error('Backup unhealthy');
+      await repo.acknowledge(client,row.id);});
+  }catch{await restrictProtectedWrites(pool,'posted_route_evidence_pending');
+    throw new AppError(503,'Route committed; acknowledgement pending','OPERATION_PENDING',{operationId:row.id});}
+  return {operation_id:row.id,state:'acknowledged',...row.result};
+}
+
+export const postedRouteRecovery={verifyEvidence,receipts:()=>store().list(),pending:()=>repo.pending(pool),
+  async reconcileReceipts(operatorId:string){
+    const items=(await store().list()).sort((a,b)=>a.createdAt.localeCompare(b.createdAt));
+    for(const item of items)await inProtectedTransaction(pool,async client=>{
+      await assertCurrentOperator(client,operatorId);
+      const previous=await repo.byId(client,item.operationId);
+      if(previous&&JSON.stringify(receipt(previous))!==JSON.stringify(item))
+        throw new AppError(409,'Route receipt conflicts with database','RECOVERY_CONFLICT');
+      const live=await repo.owned(client,item.actorId,item.offerId);
+      if(live&&JSON.stringify(await repo.snapshot(client,item.offerId))!==JSON.stringify(item.snapshot))
+        throw new AppError(409,'Route snapshot conflicts with receipt','RECOVERY_CONFLICT');
+      await repo.restore(client,item);
+      const row=await repo.byId(client,item.operationId);
+      if(!row||JSON.stringify(receipt(row))!==JSON.stringify(item))
+        throw new AppError(409,'Route receipt cannot be restored','RECOVERY_CONFLICT');
+      await repo.restoreAudit(client,row);
+      await recordDurableNotification(client,{originType:'posted_route',operationId:row.id,recipientId:row.actor_id,
+        eventType:'prepared',relatedEntityType:'posted_route_offer',relatedEntityId:row.offer_id,
+        title:'Route prepared',body:'Your draft route is available to you. It is not open for bookings.'});
+      await repo.acknowledge(client,row.id);
+      await repo.suppressRestoredNotification(client,row.id);
+    });
+    for(const row of await repo.pending(pool)){
+      await inProtectedTransaction(pool,async client=>{
+        await assertCurrentOperator(client,operatorId);
+        if(!await repo.pendingStateMatches(client,row))
+          throw new AppError(409,'Route pending state incomplete','RECOVERY_INCOMPLETE');
+      });
+      await store().append(receipt(row));
+      await inProtectedTransaction(pool,async client=>{await assertCurrentOperator(client,operatorId);await repo.acknowledge(client,row.id);});
+    }
+    return items.length;
+  }};
