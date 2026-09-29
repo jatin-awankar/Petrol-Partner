@@ -54,7 +54,7 @@ export async function operatorDeliveryStatus(database: Database = pool) {
       `SELECT j.id, j.event_id, j.status, j.attempts, j.due_at, j.lease_until,
               j.last_attempt_at, j.sent_at, j.created_at, j.updated_at,
               CASE WHEN j.last_error IS NULL THEN NULL ELSE 'Email delivery failed; provider details redacted' END AS last_error,
-              e.operation_id, e.recipient_id,
+              e.operation_id, e.recipient_id, e.origin_type, e.event_type, e.related_entity_type, e.related_entity_id,
               (SELECT count(*)::int FROM pilot_email_attempts a WHERE a.job_id = j.id) AS attempt_count,
               COALESCE((SELECT json_agg(json_build_object('attempt', a.attempt, 'started_at', a.started_at,
                 'finished_at', a.finished_at, 'outcome', a.outcome) ORDER BY a.id)

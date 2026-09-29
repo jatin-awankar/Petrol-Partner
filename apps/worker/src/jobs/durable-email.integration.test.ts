@@ -35,7 +35,7 @@ async function seed(state: "committed" | "acknowledged" = "acknowledged") {
 }
 
 describe("durable email PostgreSQL worker", () => {
-  it("delivers a ready event from another lifecycle origin without a pause operation", async () => {
+  it("keeps a synthetic unrestricted booking notice private until ready and retries after event commit", async () => {
     const user = await database.query<{ id: string }>("INSERT INTO users (email) VALUES ('future@example.test') RETURNING id");
     const eventId = crypto.randomUUID();
     const operationId = crypto.randomUUID();
@@ -43,17 +43,23 @@ describe("durable email PostgreSQL worker", () => {
     try {
       await client.query("BEGIN");
       await recordDurableNotification(client, {
-        originType: "ride_acceptance", operationId, recipientId: user.rows[0].id,
-        eventType: "seat_accepted", relatedEntityType: "ride_offer", relatedEntityId: crypto.randomUUID(),
-        title: "Seat accepted", body: "Your request was accepted.", eventId,
+        originType: "unrestricted_booking", operationId, recipientId: user.rows[0].id,
+        eventType: "seat_accepted", relatedEntityType: "route_booking", relatedEntityId: crypto.randomUUID(),
+        title: "Seat accepted", body: "Your route booking was accepted.", eventId,
       });
       await client.query("COMMIT");
     } finally { client.release(); }
     const sent: EmailMessage[] = [];
     expect(await processDueEmail(database, { async send(message) { sent.push(message); } })).toBe(false);
     await markDurableNotificationReady(database, eventId);
+    expect(await processDueEmail(database, { async send(message) { sent.push(message); throw new Error("synthetic provider failure"); } })).toBe(true);
+    const job = (await database.query("SELECT status, attempts FROM pilot_email_jobs WHERE event_id=$1", [eventId])).rows[0];
+    expect(job).toEqual({status:"pending",attempts:1});
+    await database.query("UPDATE pilot_email_jobs SET due_at=now() WHERE event_id=$1", [eventId]);
     expect(await processDueEmail(database, { async send(message) { sent.push(message); } })).toBe(true);
+    expect(sent).toHaveLength(2);
     expect(sent[0]).toMatchObject({ eventId, to: "future@example.test", subject: "Seat accepted" });
+    expect((await database.query("SELECT count(*)::int AS n FROM pilot_notification_events WHERE operation_id=$1",[operationId])).rows[0].n).toBe(1);
   });
   it("waits for recovery evidence and retries a failed send without repeating the business action", async () => {
     await database.query("INSERT INTO pilot_recovery_state(singleton,mode) VALUES(true,'open') ON CONFLICT(singleton) DO UPDATE SET mode='open',cause=NULL");
