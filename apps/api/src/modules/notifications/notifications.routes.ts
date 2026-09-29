@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { AppError } from "../../shared/errors/app-error";
 
 import { requireAuth } from "../../middleware/auth";
 import { asyncHandler } from "../../shared/http/async-handler";
@@ -30,6 +31,5 @@ notificationsRouter.post("/read-all", asyncHandler(notificationsController.markA
 notificationsRouter.post("/:id/read", asyncHandler(notificationsController.markRead));
 notificationsRouter.get("/preferences", asyncHandler(notificationsController.getPreferences));
 notificationsRouter.put("/preferences", asyncHandler(notificationsController.updatePreferences));
-notificationsRouter.get("/devices", asyncHandler(notificationsController.listDevices));
-notificationsRouter.post("/devices", asyncHandler(notificationsController.registerDevice));
-notificationsRouter.delete("/devices/:id", asyncHandler(notificationsController.revokeDevice));
+notificationsRouter.use("/devices", (_req, _res, next) => next(new AppError(410,
+  "Push notifications are unavailable", "PILOT_SCOPE_DISABLED")));
