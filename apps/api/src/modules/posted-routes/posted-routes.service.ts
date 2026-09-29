@@ -12,6 +12,7 @@ import {lockCommitmentActors} from '../rides/commitment.repo';
 import {verifyRoute,type Point} from './routing';
 import * as repo from './posted-routes.repo';
 import {ROUTE_POLICY_VERSION,ROUTE_OPERATING_POLICY_VERSION} from './policy';
+import {quoteSegment} from './segment-quote';
 export type Input={vehicle_id:string;mode:'bike'|'scooter'|'car';origin:Point;destination:Point;departure_at:string;capacity:number};
 type Receipt={operationId:string;actorId:string;key:string;digest:string;offerId:string;result:Record<string,unknown>;snapshot:Record<string,unknown>;createdAt:string};
 const store=()=>pilotReceiptStore<Receipt>('posted-route','Posted route recovery evidence unavailable');
@@ -45,6 +46,20 @@ export async function verifyEvidence(retry?:{actor:string;key:string}){
 export async function mine(actor:string){return repo.mine(pool,actor);}
 export async function read(actor:string,id:string){const row=await repo.owned(pool,actor,id);
   if(!row)throw new AppError(404,'Posted route not found','ROUTE_NOT_FOUND');return row;}
+export async function quote(actor:string,id:string,version:number,pickup:Point,dropoff:Point){
+  // Prepared routes are driver-private. Production cannot expose a passenger quote yet.
+  if(process.env.NODE_ENV!=='test')throw new AppError(503,'Route quotes are not available','ROUTE_QUOTES_DISABLED');
+  const row=await repo.ownedForQuote(pool,actor,id);
+  if(!row)throw new AppError(404,'Posted route not found','ROUTE_NOT_FOUND');
+  if(row.status!=='prepared')throw new AppError(409,'Route is unavailable','ROUTE_UNAVAILABLE');
+  if(row.route_version!==version)throw new AppError(409,'Route version changed','ROUTE_VERSION_STALE');
+  if(row.routing_source!=='synthetic-test')throw new AppError(503,'Route cannot be verified','SEGMENT_UNVERIFIABLE');
+  const result=await quoteSegment({source:row.routing_source,mode:row.routing_mode,geometry:row.geometry,
+    cumulativeMeters:row.cumulative_meters,distanceMeters:row.distance_meters,durationSeconds:row.duration_seconds},
+    {pickup,dropoff});
+  return {route_id:row.id,route_version:row.route_version,policy_version:row.policy_version,
+    distance_source:'saved_posted_route',...result,real_bookings_enabled:false};
+}
 export async function operation(actor:string,id:string){const row=await repo.byId(pool,id);
   if(!row||row.actor_id!==actor)throw new AppError(404,'Operation not found','OPERATION_NOT_FOUND');
   return {operation_id:row.id,state:row.state,...row.result};}

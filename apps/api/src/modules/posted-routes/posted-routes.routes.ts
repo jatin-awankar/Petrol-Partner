@@ -13,6 +13,10 @@ const input=z.strictObject({vehicle_id:z.uuid(),mode:z.enum(['bike','scooter','c
 postedRouteRouter.get('/mine',asyncHandler(async(req,res)=>res.json({offers:await service.mine(req.user!.userId)})));
 postedRouteRouter.get('/operations/:id',asyncHandler(async(req,res)=>res.json({operation:await service.operation(req.user!.userId,z.uuid().parse(req.params.id))})));
 postedRouteRouter.get('/:id',asyncHandler(async(req,res)=>res.json({offer:await service.read(req.user!.userId,z.uuid().parse(req.params.id))})));
+postedRouteRouter.post('/:id/quote',asyncHandler(async(req,res)=>{
+  const selection=z.strictObject({route_version:z.number().int().positive(),pickup:point,dropoff:point}).parse(req.body);
+  res.json({quote:await service.quote(req.user!.userId,z.uuid().parse(req.params.id),selection.route_version,selection.pickup,selection.dropoff)});
+}));
 postedRouteRouter.post('/',asyncHandler(async(req,res)=>{const key=req.get('Idempotency-Key');
   if(!key||key.length>128)throw new AppError(400,'Idempotency-Key required','IDEMPOTENCY_KEY_REQUIRED');
   res.status(201).json({offer:await service.prepare(req.user!.userId,key,input.parse(req.body))});}));
