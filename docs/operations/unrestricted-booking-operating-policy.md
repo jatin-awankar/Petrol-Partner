@@ -4,7 +4,7 @@
 - **Decision date:** 2026-09-29
 - **Status:** Proposed for implementation; not approved for live operation. Real bookings remain disabled.
 - **Policy approver:** Jatin Awankar.
-- **Proposed primary on-duty operator:** Jatin Awankar. No backup or active-trip escalation operator is appointed.
+- **Sole proposed on-duty operator:** Jatin Awankar during published hours and until active trips end. No backup or active-trip escalation operator is appointed.
 
 This records the maintainer's confirmed operating decisions for the first route-booking release. It does not establish that the support, provider, privacy, recovery, external-review, or launch gates have passed. The [replacement specification](../../.scratch/unrestricted-booking/spec.md) and [ticket 02 route record](../../.scratch/unrestricted-booking/issues/02-approve-route-and-contribution-rules.md) define the product and route terms; ticket 02's fuller decision record is currently on its separate branch and its provider gate remains open.
 
@@ -25,7 +25,7 @@ This records the maintainer's confirmed operating decisions for the first route-
 
 ## Support contact and outage fallback
 
-Jatin Awankar nominated `jatinawankar23@gmail.com` as the primary public support inbox and `supportpp@gmail.com` as the fallback inbox on 2026-09-29. Control, monitoring, and receipt/acknowledgement have not yet been rehearsed, and both inboxes use the same email provider and sole operator; the fallback is therefore not proven independently reachable. Neither inbox is approved for publication yet. `support@pp.com` is uncontrolled and must not be published. Before real bookings, record coverage, test timestamps and acknowledgements, and an approved active-trip escalation path. Ticket 09 owns publication and operational notice verification. Jatin Awankar confirmed there is no backup human. New bookings pause whenever he cannot provide coverage; this restriction does not make an already-active trip's escalation gap acceptable.
+Jatin Awankar nominated `jatinawankar23@gmail.com` as the primary public support inbox and `supportpp@gmail.com` as the fallback inbox on 2026-09-29. He reports receiving and personally acknowledging a test in **both** inboxes at approximately 15:00 IST on 2026-09-29; this is maintainer-attested evidence, not independently observed message-delivery telemetry. He will monitor during published hours and until every active trip has an explicit outcome, not 24/7. Both inboxes use Gmail and the same sole operator, so the fallback is not proven reachable during a Gmail or operator failure. `support@pp.com` is uncontrolled and must not be published. Before real bookings, establish an approved active-trip escalation path and rehearse missed-contact behavior. Ticket 09 owns publication and operational notice verification. Jatin Awankar confirmed there is no backup human. New bookings pause whenever he cannot provide coverage; this restriction does not make an already-active trip's escalation gap acceptable.
 
 API, routing, notification, or support-contact failure pauses new requests and acceptances. Preserve accepted route segments, contributions, and other frozen terms; do not reprice, create off-system bookings, or treat failed delivery as participant receipt. Use the existing server pause and restricted recovery controls. Authorized urgent outreach during a primary outage uses the individually signed offline record described in [independent notification watch and urgent outreach](stalled-work-and-urgent-outreach.md). Reconcile it with the database, audit history, notification work, and acknowledged-action evidence before an authorized operator explicitly reopens writes. The deployed independent monitor, paging route, fallback credential custody, and provider behavior still require launch evidence.
 
@@ -40,7 +40,7 @@ The PRMITR fixed corridor, its six proposed stop pairs and landmarks, verified-s
 ## Open decisions and launch dependencies
 
 1. Jatin Awankar approves an authoritative versioned Maharashtra boundary and endpoint/route-crossing rules and resolves the explicit conflict with ticket 02's earlier unrestricted-start rule.
-2. Both nominated inboxes are tested for receipt and acknowledgement; a separately reachable fallback and active-trip escalation path are established despite the sole-operator constraint; and realistic response targets are rehearsed and published.
+2. The maintainer-attested inbox test is supplemented by a separately reachable fallback and active-trip escalation path despite the sole-operator constraint; realistic response targets and missed-contact behavior are rehearsed and published.
 3. Ticket 02's routing-provider, vehicle-mode, display, durable route-data retention, quota, and fail-closed rehearsal gate passes; ticket 03's external operation, insurance, and rate review is recorded.
 4. The deployed-data and provider inventory yields a detailed retention and deletion schedule, including historical payment records, recovery receipts, backups, and incident holds, with a tested restoration-safe deletion process.
 5. Ticket 09 publishes and verifies notices and support; the broader implementation, PostgreSQL concurrency checks, representative-copy migration, staging, outage/restore/reconciliation rehearsals, and ticket 18's explicit launch decision pass. Until then, real bookings remain disabled.
