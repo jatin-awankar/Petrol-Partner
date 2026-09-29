@@ -39,6 +39,18 @@ function canonical(value:unknown):unknown{
 }
 const sameTerms=(a:Record<string,unknown>,b:Record<string,unknown>)=>
   JSON.stringify(canonical(a))===JSON.stringify(canonical(b));
+function sameRequestState(current:repo.SeatRequest,expected:repo.SeatRequest){
+  if(sameTerms(current as unknown as Record<string,unknown>,expected as unknown as Record<string,unknown>))return true;
+  if(expected.status!=='pending'||current.status!=='expired'||!current.decided_at||
+    new Date(current.decided_at).getTime()!==new Date(expected.decision_deadline_at).getTime())return false;
+  return sameTerms({...current,status:'pending',decided_at:null},
+    expected as unknown as Record<string,unknown>);
+}
+async function matchesRecoveredRequest(db:Pool,current:repo.SeatRequest,expected:repo.SeatRequest){
+  if(!sameRequestState(current,expected))return false;
+  if(expected.status==='pending'&&current.status==='expired')return repo.expiryEvidence(db,current.id);
+  return true;
+}
 const visible=(row:repo.Operation)=>({operation_id:row.id,state:row.state,...row.result});
 
 function assertSyntheticBoundary(){
@@ -71,6 +83,13 @@ async function assertPause(client:PoolClient,action:Action){
   if(state.length!==2||state.some(row=>row.paused))
     throw new AppError(503,'Booking activity paused','PILOT_PAUSED');
 }
+async function assertCurrentRouteDriver(client:PoolClient,offer:repo.Offer){
+  await assertCurrentDriverVehicle(client,offer.driver_id,offer.vehicle_declaration_id,offer.capacity);
+  const vehicleRegistration=await registration(client,offer.vehicle_declaration_id);
+  if(!vehicleRegistration)throw new AppError(404,'Vehicle not found','VEHICLE_NOT_FOUND');
+  await lockVehicleRegistration(client,vehicleRegistration);
+  await assertNoAccountRestriction(client,offer.driver_id,'driver');
+}
 async function notice(client:PoolClient,row:repo.Operation){
   const recipient=row.action==='requested'?row.request_snapshot.driver_id:row.request_snapshot.passenger_id;
   await recordDurableNotification(client,{eventId:row.id,originType:'posted_route_seat',operationId:row.id,
@@ -93,6 +112,15 @@ async function notice(client:PoolClient,row:repo.Operation){
 
 export class PostedRouteSeatService{
   constructor(private readonly db:Pool=pool){}
+  async request(actor:string,id:string){assertSyntheticBoundary();
+    const row=await repo.requestSnapshot(this.db,id);
+    if(!row||![row.passenger_id,row.driver_id].includes(actor))
+      throw new AppError(404,'Request not found','REQUEST_NOT_FOUND');
+    const recovery=await operatorQuery<{mode:string}>(this.db,'recoveryMode');
+    if(recovery.rows[0]?.mode!=='open'||await repo.pendingForRequest(this.db,id))
+      throw new AppError(503,'Seat request state awaits recovery','OPERATION_PENDING');
+    return {...row,status:row.status==='pending'&&row.decision_deadline_at<=new Date()?'expired':row.status};
+  }
   async receipts(){return store().list();}
   async pending(){return repo.pending(this.db);}
   async verifyEvidence(retry?:{actorId:string;key:string}){
@@ -165,11 +193,7 @@ export class PostedRouteSeatService{
         if(offer.request_cutoff_at<=new Date())throw new AppError(409,'Request deadline passed','REQUEST_WINDOW_CLOSED');
         await assertCurrentAdultDeclaration(client,actor);
         await assertNoAccountRestriction(client,actor,'passenger');
-        await assertCurrentDriverVehicle(client,offer.driver_id,offer.vehicle_declaration_id,offer.capacity);
-        const vehicleRegistration=await registration(client,offer.vehicle_declaration_id);
-        if(!vehicleRegistration)throw new AppError(404,'Vehicle not found','VEHICLE_NOT_FOUND');
-        await lockVehicleRegistration(client,vehicleRegistration);
-        await assertNoAccountRestriction(client,offer.driver_id,'driver');
+        await assertCurrentRouteDriver(client,offer);
         const terms=await routeTerms(offer,selection);
         if(await repo.overlapping(client,offer,actor))throw new AppError(409,'Overlapping commitment','COMMITMENT_CONFLICT');
         try{request=await repo.insertRequest(client,offer,actor,selection,
@@ -181,11 +205,7 @@ export class PostedRouteSeatService{
         if(request.driver_id!==actor||offer.driver_id!==actor)throw new AppError(403,'Driver only','FORBIDDEN');
         if(request.status!=='pending'||request.decision_deadline_at<=new Date()||offer.acceptance_cutoff_at<=new Date())
           throw new AppError(409,'Request deadline passed','REQUEST_NOT_PENDING');
-        await assertCurrentDriverVehicle(client,actor,offer.vehicle_declaration_id,offer.capacity);
-        const vehicleRegistration=await registration(client,offer.vehicle_declaration_id);
-        if(!vehicleRegistration)throw new AppError(404,'Vehicle not found','VEHICLE_NOT_FOUND');
-        await lockVehicleRegistration(client,vehicleRegistration);
-        await assertNoAccountRestriction(client,actor,'driver');
+        await assertCurrentRouteDriver(client,offer);
         if(action==='accepted'){
           await assertCurrentAdultDeclaration(client,request.passenger_id);
           await assertNoAccountRestriction(client,request.passenger_id,'passenger');
@@ -226,7 +246,26 @@ export class PostedRouteSeatService{
     const items=await store().list();
     for(const row of await this.pending()){
       if(!items.some(item=>item.operationId===row.id)){
-        const item=receipt(row);await store().append(item);items.push(item);
+        const item=receipt(row);
+        if(item.digest!==digest(item.action,item.action==='requested'?item.requestSnapshot.offer_id:item.requestId,
+          item.action==='requested'?item.requestSnapshot.selection:undefined))
+          throw new AppError(409,'Receipt payload conflicts','RECOVERY_CONFLICT');
+        const currentRequest=await repo.requestSnapshot(this.db,row.request_id);
+        if(!currentRequest||!await matchesRecoveredRequest(this.db,currentRequest,row.request_snapshot))
+          throw new AppError(409,'Seat request conflicts','RECOVERY_CONFLICT');
+        if(row.allocation_snapshot){
+          const currentAllocation=await repo.allocationById(this.db,row.allocation_snapshot.id);
+          if(!currentAllocation||!sameTerms(currentAllocation as unknown as Record<string,unknown>,
+            row.allocation_snapshot as unknown as Record<string,unknown>))
+            throw new AppError(409,'Seat allocation conflicts','RECOVERY_CONFLICT');
+        }
+        for(const withdrawn of (row.result.withdrawn_requests as repo.SeatRequest[]|undefined)??[]){
+          const current=await repo.requestSnapshot(this.db,withdrawn.id);
+          if(!current||!sameTerms(current as unknown as Record<string,unknown>,
+            withdrawn as unknown as Record<string,unknown>))
+            throw new AppError(409,'Withdrawn request conflicts','RECOVERY_CONFLICT');
+        }
+        await store().append(item);items.push(item);
       }
     }
     items.sort((a,b)=>a.createdAt.localeCompare(b.createdAt)||a.operationId.localeCompare(b.operationId));
@@ -258,8 +297,7 @@ export class PostedRouteSeatService{
     }
     for(const [id,expected] of latest){
       const current=await repo.requestSnapshot(this.db,id);
-      if(!current||!sameTerms(current as unknown as Record<string,unknown>,
-        expected as unknown as Record<string,unknown>))
+      if(!current||!await matchesRecoveredRequest(this.db,current,expected))
         throw new AppError(409,'Seat request conflicts','RECOVERY_CONFLICT');
     }
     return items.length;

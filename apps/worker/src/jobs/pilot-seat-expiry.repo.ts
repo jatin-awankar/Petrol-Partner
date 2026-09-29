@@ -23,3 +23,28 @@ export async function notifyExpiry(db:PoolClient,requestId:string,recipientId:st
   await db.query(`INSERT INTO pilot_email_jobs(event_id,recipient_id)
     VALUES($1,$2) ON CONFLICT (event_id) DO NOTHING`,[event.rows[0].id,recipientId]);
 }
+
+export async function duePostedRouteRequests(db:PoolClient,at:Date) {
+  return (await db.query<DueSeatRequest>(`SELECT id,passenger_id,driver_id FROM posted_route_seat_requests
+    WHERE status='pending' AND decision_deadline_at<=$1
+      AND EXISTS(SELECT 1 FROM posted_route_seat_operations o WHERE o.request_id=posted_route_seat_requests.id
+        AND o.action='requested' AND o.state IN ('acknowledged','recovered'))
+    ORDER BY decision_deadline_at LIMIT 500 FOR UPDATE SKIP LOCKED`,[at])).rows;
+}
+export async function expirePostedRouteRequest(db:PoolClient,row:DueSeatRequest){
+  await db.query(`UPDATE posted_route_seat_requests SET status='expired',decided_at=decision_deadline_at
+    WHERE id=$1 AND status='pending'`,[row.id]);
+  await db.query(`INSERT INTO audit_logs(action,entity_type,entity_id,metadata)
+    VALUES('posted_route_seat_expired','posted_route_seat_request',$1,
+      jsonb_build_object('reason','decision_deadline'))`,[row.id]);
+  for(const recipientId of [row.passenger_id,row.driver_id]){
+    const event=await db.query<{id:string}>(`INSERT INTO pilot_notification_events
+      (id,origin_type,operation_id,recipient_id,event_type,related_entity_type,related_entity_id,title,body,ready_at)
+      VALUES(md5($1::text || ':' || $2::text)::uuid,'posted_route_seat_expiry',$1::uuid,$2::uuid,
+        'expired','posted_route_seat_request',$1::uuid,'Seat request expired',
+        'The unanswered seat request expired at the driver decision cutoff.',now()) RETURNING id`,
+      [row.id,recipientId]);
+    await db.query('INSERT INTO pilot_email_jobs(event_id,recipient_id) VALUES($1,$2)',
+      [event.rows[0].id,recipientId]);
+  }
+}

@@ -25,12 +25,24 @@ export const byId=async(db:Db,id:string)=>(await db.query<Operation>(
 export const allOperations=async(db:Db)=>(await db.query<Operation>('SELECT * FROM posted_route_seat_operations')).rows;
 export const pending=async(db:Db)=>(await db.query<Operation>(
   "SELECT * FROM posted_route_seat_operations WHERE state='committed'")).rows;
+export const pendingForRequest=async(db:Db,id:string)=>(await db.query(
+  "SELECT 1 FROM posted_route_seat_operations WHERE request_id=$1 AND state='committed' LIMIT 1",[id])).rowCount!==0;
 export const offer=async(db:PoolClient,id:string)=>(await db.query<Offer>(
   'SELECT * FROM posted_route_offers WHERE id=$1 FOR UPDATE',[id])).rows[0]??null;
 export const request=async(db:PoolClient,id:string)=>(await db.query<SeatRequest>(
   'SELECT * FROM posted_route_seat_requests WHERE id=$1 FOR UPDATE',[id])).rows[0]??null;
 export const requestSnapshot=async(db:Db,id:string)=>(await db.query<SeatRequest>(
   'SELECT * FROM posted_route_seat_requests WHERE id=$1',[id])).rows[0]??null;
+export async function expiryEvidence(db:Db,id:string){
+  const row=(await db.query<{audited:boolean;recipients:number}>(`SELECT
+    EXISTS(SELECT 1 FROM audit_logs WHERE action='posted_route_seat_expired'
+      AND entity_type='posted_route_seat_request' AND entity_id=$1) AS audited,
+    (SELECT count(DISTINCT e.recipient_id)::int FROM pilot_notification_events e
+      JOIN pilot_email_jobs j ON j.event_id=e.id
+      WHERE e.origin_type='posted_route_seat_expiry' AND e.related_entity_id=$1::uuid
+        AND e.event_type='expired' AND e.ready_at IS NOT NULL) AS recipients`,[id])).rows[0];
+  return row.audited&&row.recipients===2;
+}
 export const owner=async(db:Db,id:string)=>(await db.query<{
   driver_id:string;vehicle_declaration_id:string}>(
   'SELECT driver_id,vehicle_declaration_id FROM posted_route_offers WHERE id=$1',[id])).rows[0]??null;
@@ -63,14 +75,19 @@ export async function overlapping(db:PoolClient,offer:Offer,passenger:string){
       AND departure_at<$5 AND commitment_until>$4 LIMIT 1`,
     [passenger,offer.driver_id,offer.vehicle_declaration_id,offer.departure_at,offer.commitment_until,offer.id])).rowCount;
   const legacy=(await db.query(`SELECT 1 FROM ride_offers o
+    LEFT JOIN vehicles v ON v.id=o.vehicle_id
     LEFT JOIN pilot_seat_allocations a ON a.offer_id=o.id AND a.status IN ('confirmed','held')
     LEFT JOIN bookings b ON b.ride_offer_id=o.id AND b.status='confirmed'
     WHERE o.status IN ('active','held','departed') AND
       (o.driver_id=$1 OR o.driver_id=$2 OR a.passenger_id=$1 OR a.passenger_id=$2
-       OR b.passenger_id=$1 OR b.passenger_id=$2)
+       OR b.passenger_id=$1 OR b.passenger_id=$2 OR
+       lower(v.registration_number_last4)=(SELECT right(regexp_replace(
+         lower(registration_identifier),'[^a-z0-9]','','g'),4)
+         FROM unrestricted_vehicle_declarations WHERE id=$5))
       AND (o.date+o.time) AT TIME ZONE 'Asia/Kolkata'<$4
       AND COALESCE(o.pilot_commitment_until,((o.date+o.time) AT TIME ZONE 'Asia/Kolkata')+interval '2 hours')>$3
-    LIMIT 1`,[passenger,offer.driver_id,offer.departure_at,offer.commitment_until])).rowCount;
+    LIMIT 1`,[passenger,offer.driver_id,offer.departure_at,offer.commitment_until,
+      offer.vehicle_declaration_id])).rowCount;
   const offered=(await db.query(`SELECT 1 FROM posted_route_offers WHERE id<>$3 AND status='prepared'
     AND driver_id=$1 AND departure_at<$4 AND commitment_until>$2 LIMIT 1`,
     [passenger,offer.departure_at,offer.id,offer.commitment_until])).rowCount;

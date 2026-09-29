@@ -16,6 +16,8 @@ function key(value:string|undefined){if(!value||value.length>128)
   throw new AppError(400,'Idempotency-Key required','IDEMPOTENCY_KEY_REQUIRED');return value;}
 postedRouteRouter.get('/seat-operations/:id',asyncHandler(async(req,res)=>res.json({operation:
   await postedRouteSeatService.operation(req.user!.userId,z.uuid().parse(req.params.id))})));
+postedRouteRouter.get('/requests/:id',asyncHandler(async(req,res)=>res.json({request:
+  await postedRouteSeatService.request(req.user!.userId,z.uuid().parse(req.params.id))})));
 postedRouteRouter.post('/:id/requests',asyncHandler(async(req,res)=>res.status(201).json(
   await postedRouteSeatService.mutate(req.user!.userId,key(req.get('Idempotency-Key')),
     'requested',z.uuid().parse(req.params.id),selection.parse(req.body)))));

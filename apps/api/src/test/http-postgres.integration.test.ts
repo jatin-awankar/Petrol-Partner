@@ -36,7 +36,7 @@ import { setBackupObjectProbeForTests } from "../modules/operator/backup-status"
 import { setStudentReviewAfterCommitHookForTests } from "../modules/verification/student-review.service";
 
 const verificationPool = new Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
-const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql", "0006_operator_allowlist.sql", "0007_operator_pause.sql", "0008_operator_intent_handoff.sql", "0009_durable_notifications.sql", "0010_email_retry_operations.sql", "0011_backup_attempts.sql", "0012_student_adult_review.sql", "0013_student_review_cycles.sql", "0014_student_review_operations.sql", "0015_student_evidence_access.sql", "0016_student_evidence_deletion_outcomes.sql", "0017_student_evidence_retry_schedule.sql", "0018_driver_car_approval.sql", "0019_ride_departures.sql", "0020_corridor_offers.sql", "0021_corridor_offer_recovery.sql", "0022_pilot_seat_requests.sql", "0023_pilot_seat_acceptance.sql", "0024_pilot_cancellations.sql", "0025_pilot_departure.sql", "0026_revocation_holds_incidents.sql", "0027_pilot_journeys.sql", "0028_journey_review_decisions.sql", "0029_direct_settlement.sql", "0030_settlement_dispute_resolution.sql", "0031_reviewed_account_restrictions.sql", "0032_stalled_work_outreach.sql", "0033_account_closure.sql", "0034_closure_recovery.sql", "0035_adult_declarations.sql", "0036_driver_vehicle_declarations.sql", "0037_posted_route_offers.sql", "0038_posted_route_seats.sql"];
+const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql", "0006_operator_allowlist.sql", "0007_operator_pause.sql", "0008_operator_intent_handoff.sql", "0009_durable_notifications.sql", "0010_email_retry_operations.sql", "0011_backup_attempts.sql", "0012_student_adult_review.sql", "0013_student_review_cycles.sql", "0014_student_review_operations.sql", "0015_student_evidence_access.sql", "0016_student_evidence_deletion_outcomes.sql", "0017_student_evidence_retry_schedule.sql", "0018_driver_car_approval.sql", "0019_ride_departures.sql", "0020_corridor_offers.sql", "0021_corridor_offer_recovery.sql", "0022_pilot_seat_requests.sql", "0023_pilot_seat_acceptance.sql", "0024_pilot_cancellations.sql", "0025_pilot_departure.sql", "0026_revocation_holds_incidents.sql", "0027_pilot_journeys.sql", "0028_journey_review_decisions.sql", "0029_direct_settlement.sql", "0030_settlement_dispute_resolution.sql", "0031_reviewed_account_restrictions.sql", "0032_stalled_work_outreach.sql", "0033_account_closure.sql", "0034_closure_recovery.sql", "0035_adult_declarations.sql", "0036_driver_vehicle_declarations.sql", "0037_posted_route_offers.sql", "0038_posted_route_seats.sql", "0039_posted_route_seat_expiry.sql"];
 
 function fakeProvider(identity: ProviderIdentity): AuthProvider {
   const session = { accessToken: "provider-access", refreshToken: "provider-refresh", expiresIn: 900, identity };
@@ -55,9 +55,12 @@ function fakeProvider(identity: ProviderIdentity): AuthProvider {
 beforeAll(async () => {
   const cancellationsPresent=(await verificationPool.query<{present:boolean}>(
     "SELECT to_regclass('public.pilot_cancellation_operations') IS NOT NULL AS present")).rows[0].present;
+  const routeExpiryPresent=(await verificationPool.query<{present:boolean}>(
+    "SELECT EXISTS(SELECT 1 FROM pg_constraint WHERE conname='posted_route_seat_requests_status_check' AND pg_get_constraintdef(oid) LIKE '%expired%') AS present")).rows[0].present;
   for (const migration of migrations) {
     // Reapplying 0023 would narrow the status check after 0024 has stored cancellations.
     if (cancellationsPresent && migration === "0023_pilot_seat_acceptance.sql") continue;
+    if (routeExpiryPresent && migration === "0038_posted_route_seats.sql") continue;
     const sql = await readFile(resolve(import.meta.dirname, "../db/migrations", migration), "utf8");
     await verificationPool.query(sql);
   }
@@ -5148,6 +5151,86 @@ describe('ticket 10 isolated posted route preparation',()=>{
     };
     return {driver,app,offer,selection,call,ask};
   }
+  async function seatRecoveryOperator(){
+    const email=`operator-${randomUUID()}@example.test`,subject=randomUUID();
+    const operator=(await verificationPool.query<{id:string}>(
+      "INSERT INTO users(email,role,email_verified_at) VALUES($1,'admin',now()) RETURNING id",[email])).rows[0].id;
+    await verificationPool.query("INSERT INTO user_profiles(user_id,full_name) VALUES($1,'Seat Recovery Operator')",[operator]);
+    await verificationPool.query(`INSERT INTO operator_allowlist(user_id,active,reason,reviewed_at)
+      VALUES($1,true,'synthetic recovery review',now())`,[operator]);
+    await verificationPool.query(`INSERT INTO auth_identities(provider,provider_subject,user_id,provider_email)
+      VALUES('supabase',$1,$2,$3)`,[subject,operator,email]);
+    await verificationPool.query(`UPDATE auth_cutover_state SET active_provider='supabase',
+      legacy_login_enabled=false,authorized_at=now(),authorized_by='integration-test'`);
+    setManagedAuthEnabledForTests(true);
+    setAuthProviderForTests(fakeProvider({subject,email,emailVerified:true,assuranceLevel:'aal2',userMetadata:{}}));
+    const login=await request(createApp()).post('/v1/auth/login').send({email,password:'synthetic-password'});
+    expect(login.status).toBe(200);
+    const cookies=login.headers['set-cookie'] as string[];
+    return {cookie:cookies.map(item=>item.split(';',1)[0]).join('; '),
+      csrf:cookies.find(item=>item.startsWith('pp_csrf_token='))!.split(';',1)[0].split('=',2)[1]};
+  }
+  async function clearSeatRecoveryOperator(){
+    setManagedAuthEnabledForTests(null);setAuthProviderForTests(null);
+    await verificationPool.query(`UPDATE auth_cutover_state SET active_provider='legacy',
+      legacy_login_enabled=true,authorized_at=NULL,authorized_by=NULL`);
+  }
+  it('shows an unanswered request as expired at its deadline even before a worker sweep',async()=>{
+    const f=await bookingFixture(),passenger=await participant(),id=await f.ask(passenger);
+    await verificationPool.query("UPDATE posted_route_seat_requests SET decision_deadline_at=now()-interval '1 second' WHERE id=$1",[id]);
+    const visible=await request(f.app).get(`${path}/requests/${id}`)
+      .set('Authorization',`Bearer ${passenger.token}`);
+    expect(visible.status).toBe(200);
+    expect(visible.body.request.status).toBe('expired');
+    expect((await f.call(f.driver.token,`${path}/requests/${id}/accept`,{})).status).toBe(409);
+  });
+  it('persists expired route requests with audit and notification work in a repeatable worker sweep',async()=>{
+    const f=await bookingFixture(),passenger=await participant(),id=await f.ask(passenger);
+    await verificationPool.query("UPDATE posted_route_seat_requests SET decision_deadline_at=now()-interval '1 second' WHERE id=$1",[id]);
+    expect((await expirePilotSeatRequests(verificationPool)).expired).toBe(1);
+    expect((await verificationPool.query('SELECT status FROM posted_route_seat_requests WHERE id=$1',[id])).rows[0].status)
+      .toBe('expired');
+    expect((await verificationPool.query<{n:number}>(`SELECT count(*)::int AS n FROM audit_logs
+      WHERE action='posted_route_seat_expired' AND entity_id=$1`,[id])).rows[0].n).toBe(1);
+    expect((await verificationPool.query<{n:number}>(`SELECT count(*)::int AS n FROM pilot_email_jobs j
+      JOIN pilot_notification_events e ON e.id=j.event_id
+      WHERE e.origin_type='posted_route_seat_expiry' AND e.related_entity_id=$1`,[id])).rows[0].n).toBe(2);
+    expect((await expirePilotSeatRequests(verificationPool)).expired).toBe(0);
+  });
+  it('keeps expiry notices pending while the original request acknowledgement is uncertain',async()=>{
+    const f=await bookingFixture(),passenger=await participant(),id=await f.ask(passenger);
+    await verificationPool.query("UPDATE posted_route_seat_requests SET decision_deadline_at=now()-interval '1 second' WHERE id=$1",[id]);
+    await verificationPool.query("UPDATE posted_route_seat_operations SET state='committed' WHERE request_id=$1",[id]);
+    expect((await expirePilotSeatRequests(verificationPool)).expired).toBe(0);
+    expect((await verificationPool.query('SELECT status FROM posted_route_seat_requests WHERE id=$1',[id])).rows[0].status)
+      .toBe('pending');
+  });
+  it('reconciles acknowledged request evidence after its deterministic expiry',async()=>{
+    const f=await bookingFixture(),passenger=await participant(),id=await f.ask(passenger);
+    const deadline=(await verificationPool.query<{decision_deadline_at:Date}>(
+      'SELECT decision_deadline_at FROM posted_route_seat_requests WHERE id=$1',[id])).rows[0].decision_deadline_at;
+    await expirePilotSeatRequests(verificationPool,new Date(deadline.getTime()+1000));
+    const operator=await seatRecoveryOperator();
+    try{
+      const reconciled=await request(f.app).post('/v1/operator/reconcile')
+        .set('Cookie',operator.cookie).set('Origin','http://localhost:3000')
+        .set('X-CSRF-Token',operator.csrf).send({});
+      expect(reconciled.status,JSON.stringify(reconciled.body)).toBe(200);
+    }finally{await clearSeatRecoveryOperator();}
+  });
+  it('rejects an expired request without its atomic expiry audit and notices',async()=>{
+    const f=await bookingFixture(),passenger=await participant(),id=await f.ask(passenger);
+    await verificationPool.query(`UPDATE posted_route_seat_requests
+      SET status='expired',decided_at=decision_deadline_at WHERE id=$1`,[id]);
+    const operator=await seatRecoveryOperator();
+    try{
+      const reconciled=await request(f.app).post('/v1/operator/reconcile')
+        .set('Cookie',operator.cookie).set('Origin','http://localhost:3000')
+        .set('X-CSRF-Token',operator.csrf).send({});
+      expect(reconciled.status).toBe(409);
+      expect(reconciled.body.error.code).toBe('RECOVERY_CONFLICT');
+    }finally{await clearSeatRecoveryOperator();}
+  });
   it('keeps a request pending and freezes a freshly computed whole-ride segment on acceptance',async()=>{
     const f=await bookingFixture(),passenger=await participant(),id=await f.ask(passenger);
     expect((await verificationPool.query('SELECT count(*)::int AS n FROM posted_route_seat_allocations')).rows[0].n).toBe(0);
@@ -5216,6 +5299,26 @@ describe('ticket 10 isolated posted route preparation',()=>{
       second.call(second.driver.token,`${path}/requests/${bId}/accept`,{})]);
     expect([one.status,two.status].sort()).toEqual([200,409]);
     expect((await verificationPool.query('SELECT count(*)::int AS n FROM posted_route_seat_allocations')).rows[0].n).toBe(1);
+  });
+  it('blocks a new request when an overlapping legacy offer has the same registration suffix',async()=>{
+    const f=await bookingFixture(),passenger=await participant(),legacyDriver=await participant();
+    const registration=(await verificationPool.query<{registration_identifier:string}>(
+      'SELECT registration_identifier FROM unrestricted_vehicle_declarations WHERE id=$1',
+      [f.driver.vehicle])).rows[0].registration_identifier;
+    const suffix=registration.slice(-4);
+    const vehicle=(await verificationPool.query<{id:string}>(`INSERT INTO vehicles
+      (owner_user_id,vehicle_type,registration_number_last4,seat_capacity)
+      VALUES($1,'car',$2,2) RETURNING id`,[legacyDriver.id,suffix])).rows[0].id;
+    const timing=(await verificationPool.query<{departure_at:Date;commitment_until:Date}>(
+      'SELECT departure_at,commitment_until FROM posted_route_offers WHERE id=$1',[f.offer])).rows[0];
+    await verificationPool.query(`INSERT INTO ride_offers(driver_id,vehicle_id,pickup_location,pickup_lat,pickup_lng,
+      drop_location,drop_lat,drop_lng,date,time,available_seats,price_per_seat_paise,pilot_commitment_until)
+      VALUES($1,$2,'Legacy origin',20.9,77.75,'Legacy destination',20.9,77.76,
+        ($3::timestamptz AT TIME ZONE 'Asia/Kolkata')::date,
+        ($3::timestamptz AT TIME ZONE 'Asia/Kolkata')::time,1,2500,$4)`,
+      [legacyDriver.id,vehicle,timing.departure_at,timing.commitment_until]);
+    const asked=await f.call(passenger.token,`${path}/${f.offer}/requests`,f.selection);
+    expect(asked.body.error.code).toBe('COMMITMENT_CONFLICT');
   });
   it('serializes declaration revocation and pause against acceptance on independent connections',async()=>{
     const f=await bookingFixture(),passenger=await participant(),id=await f.ask(passenger);
@@ -5303,6 +5406,9 @@ describe('ticket 10 isolated posted route preparation',()=>{
         .set('Authorization',`Bearer ${f.driver.token}`);
       expect(status.body.operation).toEqual({operation_id:uncertain.body.error.details.operationId,
         state:'pending_unknown'});
+      const requestView=await request(f.app).get(`${path}/requests/${id}`)
+        .set('Authorization',`Bearer ${passenger.token}`);
+      expect(requestView.body.error.code).toBe('OPERATION_PENDING');
       expect((await verificationPool.query('SELECT status FROM posted_route_seat_requests WHERE id=$1',[id])).rows[0].status).toBe('accepted');
       expect((await verificationPool.query("SELECT mode FROM pilot_recovery_state WHERE singleton=true")).rows[0].mode).toBe('restricted');
     }finally{await chmod(receiptDirectory,0o700);}
@@ -5328,6 +5434,42 @@ describe('ticket 10 isolated posted route preparation',()=>{
     expect((await verificationPool.query('SELECT status FROM posted_route_seat_requests WHERE id=$1',[id])).rows[0].status).toBe('accepted');
     expect((await verificationPool.query('SELECT id FROM posted_route_seat_allocations WHERE id=$1',[allocationId])).rows[0].id).toBe(allocationId);
     expect((await verificationPool.query("SELECT count(*)::int AS n FROM audit_logs WHERE metadata->>'operationId'=$1",[operationId])).rows[0].n).toBe(1);
+  });
+  it('does not publish recovery evidence for a committed request whose stored state conflicts',async()=>{
+    const f=await bookingFixture(),passenger=await participant();
+    const id=await f.ask(passenger);
+    const operation=(await verificationPool.query<{id:string}>(
+      "SELECT id FROM posted_route_seat_operations WHERE request_id=$1",[id])).rows[0].id;
+    const receiptPath=resolve(directory,'receipts.posted-route-seat',`${operation}.json`);
+    await rm(receiptPath);
+    await verificationPool.query("UPDATE posted_route_seat_operations SET state='committed' WHERE id=$1",[operation]);
+    await verificationPool.query("UPDATE posted_route_seat_requests SET proposed_terms='{}'::jsonb WHERE id=$1",[id]);
+    const operator=await seatRecoveryOperator();
+    try{
+      const reconciled=await request(f.app).post('/v1/operator/reconcile')
+        .set('Cookie',operator.cookie)
+        .set('Origin','http://localhost:3000')
+        .set('X-CSRF-Token',operator.csrf)
+        .send({});
+      expect(reconciled.status).toBe(409);
+      await expect(readFile(receiptPath)).rejects.toMatchObject({code:'ENOENT'});
+    }finally{await clearSeatRecoveryOperator();}
+  });
+  it('does not publish recovery evidence for a committed operation with a conflicting digest',async()=>{
+    const f=await bookingFixture(),passenger=await participant(),id=await f.ask(passenger);
+    const operation=(await verificationPool.query<{id:string}>(
+      'SELECT id FROM posted_route_seat_operations WHERE request_id=$1',[id])).rows[0].id;
+    const receiptPath=resolve(directory,'receipts.posted-route-seat',`${operation}.json`);
+    await rm(receiptPath);
+    await verificationPool.query("UPDATE posted_route_seat_operations SET state='committed',payload_digest='bad' WHERE id=$1",[operation]);
+    const operator=await seatRecoveryOperator();
+    try{
+      const reconciled=await request(f.app).post('/v1/operator/reconcile')
+        .set('Cookie',operator.cookie).set('Origin','http://localhost:3000')
+        .set('X-CSRF-Token',operator.csrf).send({});
+      expect(reconciled.status).toBe(409);
+      await expect(readFile(receiptPath)).rejects.toMatchObject({code:'ENOENT'});
+    }finally{await clearSeatRecoveryOperator();}
   });
   it('keeps request and acceptance endpoints disabled outside synthetic tests',async()=>{
     const f=await bookingFixture(),passenger=await participant();

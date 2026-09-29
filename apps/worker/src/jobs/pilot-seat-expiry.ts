@@ -1,9 +1,9 @@
 import type { Pool } from "pg";
-import { dueRequests, notifyExpiry, recordExpiry } from "./pilot-seat-expiry.repo";
+import { dueRequests, notifyExpiry, recordExpiry, duePostedRouteRequests, expirePostedRouteRequest } from "./pilot-seat-expiry.repo";
 
 // Expiry is a time-based fact. The sweep records its audit and recipient work;
 // it never reserves or releases offer capacity.
-export async function expirePilotSeatRequests(database:Pool) {
+export async function expirePilotSeatRequests(database:Pool, at:Date=new Date()) {
   const client = await database.connect();
   try {
     await client.query("BEGIN");
@@ -13,8 +13,10 @@ export async function expirePilotSeatRequests(database:Pool) {
       for (const recipientId of [row.passenger_id,row.driver_id])
         await notifyExpiry(client,row.id,recipientId);
     }
+    const postedRouteDue=await duePostedRouteRequests(client,at);
+    for(const row of postedRouteDue)await expirePostedRouteRequest(client,row);
     await client.query("COMMIT");
-    return {expired:due.length};
+    return {expired:due.length+postedRouteDue.length};
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;
