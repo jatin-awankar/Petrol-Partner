@@ -1,6 +1,7 @@
 import { Router, type RequestHandler } from "express";
 import { AppError } from "../shared/errors/app-error";
 
+import { adultDeclarationRouter } from "./adult-declaration/adult-declaration.routes";
 import { authRouter } from "./auth/auth.routes";
 import { bookingsRouter } from "./bookings/bookings.routes";
 import { chatRouter } from "./chat/chat.routes";
@@ -28,6 +29,7 @@ const legacyReadOnly: RequestHandler = (req, _res, next) =>
 
 apiRouter.use(healthRouter);
 apiRouter.use("/auth", authRouter);
+apiRouter.use("/adult-declaration", adultDeclarationRouter);
 apiRouter.use("/operator", operatorRouter);
 apiRouter.use("/profile", profileRouter);
 apiRouter.use("/rides", pilotDisabled);
