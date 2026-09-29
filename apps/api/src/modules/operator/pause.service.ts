@@ -1,3 +1,4 @@
+import { adultDeclarationRecovery } from "../adult-declaration/adult-declaration.service";
 import { UrgentOutreachService } from "./urgent-outreach.service";
 import { createHash } from "node:crypto";
 import type { Pool } from "pg";
@@ -117,6 +118,8 @@ function recoverySlices(database: Pool): RecoverySlice[] {
     { name: "urgentOutreach", service: new UrgentOutreachService(database), verifyOrder: 15, reconcileOrder: 15, digestOrder: 14, pendingOrder: 10, pendingMessage: "Urgent outreach recovery is incomplete" },
     { name: "accountClosure", service: accountClosureService, verifyOrder: 16, reconcileOrder: 16,
       pendingOrder: 11, pendingMessage: "Account closure recovery is incomplete" },
+    { name: "adultDeclarations", service: adultDeclarationRecovery, verifyOrder: 17, reconcileOrder: 17,
+      digestOrder: 15, pendingOrder: 12, pendingMessage: "Adult declaration recovery is incomplete" },
   ];
 }
 

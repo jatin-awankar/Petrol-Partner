@@ -23,7 +23,7 @@ export async function renewalExpiry(db:PoolClient,declaredAt:Date){
 }
 export async function status(userId:string,db:Db=pool){
   return (await db.query<{policy_version:string|null;declared_at:Date|null;expires_at:Date|null;
-    withdrawn_at:Date|null;restricted:boolean}>(`SELECT d.policy_version,d.declared_at,d.expires_at,d.withdrawn_at,
+    withdrawn_at:Date|null;restricted:boolean;account_status:string}>(`SELECT d.policy_version,d.declared_at,d.expires_at,d.withdrawn_at,u.status AS account_status,
       ${activeRestrictionSql('u.id',"'passenger'")} OR ${activeRestrictionSql('u.id',"'driver'")} AS restricted
       FROM users u LEFT JOIN adult_declarations d ON d.user_id=u.id WHERE u.id=$1`,[userId])).rows[0]??null;
 }
@@ -34,8 +34,9 @@ export async function apply(db:PoolClient,row:Operation){
     policy_version=EXCLUDED.policy_version,declared_at=EXCLUDED.declared_at,
     expires_at=EXCLUDED.expires_at,withdrawn_at=NULL,operation_id=EXCLUDED.operation_id`,
     [row.user_id,row.policy_version,row.declared_at,row.expires_at,row.id]);
-  else await db.query(`UPDATE adult_declarations SET withdrawn_at=$2,operation_id=$3 WHERE user_id=$1`,
-    [row.user_id,row.withdrawn_at,row.id]);
+  if(row.action==='declare') return true;
+  else return (await db.query(`UPDATE adult_declarations SET withdrawn_at=$2,operation_id=$3 WHERE user_id=$1`,
+    [row.user_id,row.withdrawn_at,row.id])).rowCount===1;
 }
 export async function audit(db:PoolClient,row:Operation){
   await db.query(`INSERT INTO audit_logs(actor_user_id,action,entity_type,entity_id,metadata)
@@ -53,3 +54,44 @@ export async function acknowledge(db:PoolClient,id:string){await db.query(`UPDAT
   SET state='acknowledged',acknowledged_at=now() WHERE id=$1 AND state='committed'`,[id]);
   await db.query(`UPDATE pilot_notification_events SET ready_at=now()
     WHERE origin_type='adult_declaration' AND operation_id=$1 AND ready_at IS NULL`,[id]);}
+
+export async function restoreOperation(db:PoolClient,item:{operationId:string;userId:string;
+  idempotencyKey:string;payloadDigest:string;action:'declare'|'withdraw';policyVersion:string;
+  declaredAt:string|null;expiresAt:string|null;withdrawnAt:string|null;committedAt:string}){
+  return (await db.query<Operation>(`INSERT INTO adult_declaration_operations
+    (id,user_id,idempotency_key,payload_digest,action,policy_version,declared_at,expires_at,
+      withdrawn_at,committed_at,state,acknowledged_at)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'recovered',now()) RETURNING *`,
+    [item.operationId,item.userId,item.idempotencyKey,item.payloadDigest,item.action,
+      item.policyVersion,item.declaredAt,item.expiresAt,item.withdrawnAt,item.committedAt])).rows[0];
+}
+export async function markRecovered(db:PoolClient,id:string){
+  await db.query(`UPDATE adult_declaration_operations SET state='recovered',
+    acknowledged_at=COALESCE(acknowledged_at,now()) WHERE id=$1 AND state='committed'`,[id]);
+}
+export async function restoreAudit(db:PoolClient,row:Operation){
+  await db.query(`INSERT INTO audit_logs(actor_user_id,action,entity_type,entity_id,metadata,created_at)
+    SELECT $1::uuid,$2,'adult_declaration',$1::uuid::text,
+      jsonb_build_object('operationId',$3::text,'policyVersion',$4::text),$5
+    WHERE NOT EXISTS(SELECT 1 FROM audit_logs WHERE action=$2 AND metadata->>'operationId'=$3)`,
+    [row.user_id,`adult_declaration_${row.action}`,row.id,row.policy_version,row.committed_at]);
+}
+export async function restoreNotificationReady(db:PoolClient,id:string){
+  await db.query(`UPDATE pilot_notification_events SET ready_at=now()
+    WHERE origin_type='adult_declaration' AND operation_id=$1 AND ready_at IS NULL`,[id]);
+  await db.query(`UPDATE pilot_email_jobs SET status='exhausted',lease_until=NULL,
+    last_error='Suppressed after snapshot restore; delivery outcome requires review',updated_at=now()
+    WHERE event_id IN(SELECT id FROM pilot_notification_events
+      WHERE origin_type='adult_declaration' AND operation_id=$1) AND status<>'sent'`,[id]);
+}
+
+export async function committedEvidence(db:PoolClient,row:Operation){
+  const evidence=await db.query<{current:boolean;audit:boolean;notification:boolean}>(
+    `SELECT EXISTS(SELECT 1 FROM adult_declarations WHERE user_id=$1 AND operation_id=$2) AS current,
+      EXISTS(SELECT 1 FROM audit_logs WHERE actor_user_id=$1 AND action=$3
+        AND metadata->>'operationId'=$2::text) AS audit,
+      EXISTS(SELECT 1 FROM pilot_notification_events WHERE origin_type='adult_declaration'
+        AND operation_id=$2 AND recipient_id=$1) AS notification`,
+    [row.user_id,row.id,`adult_declaration_${row.action}`]);
+  return evidence.rows[0];
+}

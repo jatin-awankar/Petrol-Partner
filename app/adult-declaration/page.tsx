@@ -6,7 +6,7 @@ import {apiRequest} from "@/lib/api/client";
 import {useCurrentUser} from "@/hooks/auth/useCurrentUser";
 
 type Declaration={state:"missing"|"current"|"expired"|"withdrawn"|"restricted";
-  kind:"self_declaration";policy_version:string|null;current_policy_version:string;
+  kind:"self_declaration";restriction_source:"account_status"|"travel_restriction"|null;policy_version:string|null;current_policy_version:string;
   declared_at:string|null;expires_at:string|null;withdrawn_at:string|null};
 export default function AdultDeclarationPage(){
   const {user,loading}=useCurrentUser();
@@ -42,7 +42,9 @@ export default function AdultDeclarationPage(){
       <h2 className="font-semibold">State: {declaration.state}</h2>
       {declaration.declared_at&&<p>Declared {new Date(declaration.declared_at).toLocaleString()}.</p>}
       {declaration.expires_at&&<p>Renew by {new Date(declaration.expires_at).toLocaleString()}.</p>}
-      {declaration.state==="restricted"&&<p>An account restriction blocks new travel actions. A declaration does not remove it.</p>}
+      {declaration.state==="restricted"&&<p>{declaration.restriction_source==="account_status"?
+        "Your account is inactive. A declaration does not restore travel access.":
+        "An account restriction blocks new travel actions. A declaration does not remove it."}</p>}
       <p>Policy: {declaration.current_policy_version}</p>
     </section>}
     <p role="status">{message}</p>

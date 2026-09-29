@@ -4372,6 +4372,25 @@ describe('ticket 07 adult self-declaration',()=>{
       'INSERT INTO users(email) VALUES($1) RETURNING id',[email])).rows[0].id;
     return {id,token:signAccessToken({userId:id,email,role:'user'})};
   }
+  async function adultOperator(){
+    const email=`adult-operator-${randomUUID()}@example.test`;
+    const subject=`adult-operator-${randomUUID()}`;
+    const id=(await verificationPool.query<{id:string}>(
+      `INSERT INTO users(email,role,email_verified_at) VALUES($1,'admin',now()) RETURNING id`,[email])).rows[0].id;
+    await verificationPool.query(`INSERT INTO user_profiles(user_id,full_name) VALUES($1,'Adult Recovery Operator')`,[id]);
+    await verificationPool.query(`INSERT INTO auth_identities(provider,provider_subject,user_id,provider_email)
+      VALUES('supabase',$1,$2,$3)`,[subject,id,email]);
+    await verificationPool.query(`INSERT INTO operator_allowlist(user_id,active,reason,reviewed_at)
+      VALUES($1,true,'ticket 07 recovery',now())`,[id]);
+    await verificationPool.query(`UPDATE auth_cutover_state SET active_provider='supabase',
+      legacy_login_enabled=false,authorized_at=now(),authorized_by='integration-test'`);
+    setManagedAuthEnabledForTests(true);
+    setAuthProviderForTests(fakeProvider({subject,email,emailVerified:true,assuranceLevel:'aal2',userMetadata:{}}));
+    const login=await request(createApp()).post('/v1/auth/login').send({email,password:'synthetic-password'});
+    expect(login.status).toBe(200);
+    return {cookie:login.headers['set-cookie'].map((item:string)=>item.split(';',1)[0]).join('; '),
+      csrf:login.headers['set-cookie'].find((item:string)=>item.startsWith('pp_csrf_token='))?.split(';',1)[0]?.split('=',2)[1] as string};
+  }
   const version='unrestricted-declared-2026-09-28.1';
   const path='/v1/adult-declaration';
   const auth=(token:string)=>({Authorization:`Bearer ${token}`});
@@ -4468,6 +4487,87 @@ describe('ticket 07 adult self-declaration',()=>{
       VALUES($1,$1,$2,$3,'restrict','all','incident',$4,'test','test','acknowledged')`,
       [a.id,randomUUID(),'digest',randomUUID()]);
     await expect(check()).rejects.toMatchObject({code:'ACCOUNT_RESTRICTED'});
+  });
+  it('shows a suspended account as restricted even while its declaration is unexpired',async()=>{
+    const app=createApp();const a=await user();
+    const recorded=await request(app).put(path).set(auth(a.token)).set('Idempotency-Key',randomUUID())
+      .send({at_least_18:true,policy_version:version});
+    expect(recorded.status).toBe(200);
+    await verificationPool.query(`UPDATE users SET status='suspended' WHERE id=$1`,[a.id]);
+    const visible=await request(app).get(path).set(auth(a.token));
+    expect(visible.status).toBe(200);
+    expect(visible.body.declaration).toMatchObject({state:'restricted',restriction_source:'account_status'});
+  });
+  it('operator reconciliation restores an acknowledged declaration after an older database snapshot',async()=>{
+    const app=createApp();const a=await user();
+    const created=await request(app).put(path).set(auth(a.token)).set('Idempotency-Key',randomUUID())
+      .send({at_least_18:true,policy_version:version});
+    expect(created.status).toBe(200);
+    const id=created.body.operation_id;
+    const original=(await verificationPool.query<{declared_at:Date;expires_at:Date}>(
+      `SELECT declared_at,expires_at FROM adult_declarations WHERE user_id=$1`,[a.id])).rows[0];
+    await verificationPool.query(`DELETE FROM pilot_email_jobs WHERE event_id=$1`,[id]);
+    await verificationPool.query(`DELETE FROM pilot_notification_events WHERE id=$1`,[id]);
+    await verificationPool.query(`DELETE FROM audit_logs WHERE metadata->>'operationId'=$1`,[id]);
+    await verificationPool.query(`DELETE FROM adult_declarations WHERE user_id=$1`,[a.id]);
+    await verificationPool.query(`DELETE FROM adult_declaration_operations WHERE id=$1`,[id]);
+    const operator=await adultOperator();
+    const reconciled=await request(createApp()).post('/v1/operator/reconcile')
+      .set('Cookie',operator.cookie).set('Origin','http://localhost:3000')
+      .set('X-CSRF-Token',operator.csrf).send({});
+    expect(reconciled.status,JSON.stringify(reconciled.body)).toBe(200);
+    const restored=await verificationPool.query<{declared_at:Date;expires_at:Date;state:string}>(
+      `SELECT d.declared_at,d.expires_at,o.state FROM adult_declarations d
+       JOIN adult_declaration_operations o ON o.id=d.operation_id WHERE d.user_id=$1`,[a.id]);
+    expect(restored.rows[0]).toMatchObject({...original,state:'recovered'});
+  });
+  it('does not recover a withdrawal without its preceding declaration evidence',async()=>{
+    const app=createApp();const a=await user();
+    const declared=await request(app).put(path).set(auth(a.token)).set('Idempotency-Key',randomUUID())
+      .send({at_least_18:true,policy_version:version});
+    const withdrawn=await request(app).post(`${path}/withdraw`).set(auth(a.token))
+      .set('Idempotency-Key',randomUUID()).send({policy_version:version});
+    expect(withdrawn.status).toBe(200);
+    await rm(resolve(directory,'receipts.adult-declaration',`${declared.body.operation_id}.json`));
+    await verificationPool.query(`DELETE FROM pilot_email_jobs WHERE event_id IN($1,$2)`,
+      [declared.body.operation_id,withdrawn.body.operation_id]);
+    await verificationPool.query(`DELETE FROM pilot_notification_events WHERE id IN($1,$2)`,
+      [declared.body.operation_id,withdrawn.body.operation_id]);
+    await verificationPool.query(`DELETE FROM audit_logs WHERE metadata->>'operationId' IN($1,$2)`,
+      [declared.body.operation_id,withdrawn.body.operation_id]);
+    await verificationPool.query(`DELETE FROM adult_declarations WHERE user_id=$1`,[a.id]);
+    await verificationPool.query(`DELETE FROM adult_declaration_operations WHERE user_id=$1`,[a.id]);
+    const operator=await adultOperator();
+    const reconciled=await request(createApp()).post('/v1/operator/reconcile')
+      .set('Cookie',operator.cookie).set('Origin','http://localhost:3000')
+      .set('X-CSRF-Token',operator.csrf).send({});
+    expect(reconciled.status).toBe(409);
+    expect(reconciled.body.error.code).toBe('RECOVERY_INCOMPLETE');
+    expect((await verificationPool.query(`SELECT count(*)::int AS n FROM adult_declaration_operations
+      WHERE user_id=$1`,[a.id])).rows[0].n).toBe(0);
+  });
+  it('operator reconciliation resolves a committed declaration after receipt storage recovers',async()=>{
+    const app=createApp();const a=await user();
+    const key=randomUUID();
+    process.env.PILOT_RECEIPT_PATH=resolve(directory,'missing','receipts');
+    await chmod(directory,0o500);
+    const pending=await request(app).put(path).set(auth(a.token)).set('Idempotency-Key',key)
+      .send({at_least_18:true,policy_version:version});
+    await chmod(directory,0o700);
+    expect(pending.body.error.code).toBe('OPERATION_PENDING');
+    const id=pending.body.error.details.operationId;
+    const operator=await adultOperator();
+    const reconciled=await request(createApp()).post('/v1/operator/reconcile')
+      .set('Cookie',operator.cookie).set('Origin','http://localhost:3000')
+      .set('X-CSRF-Token',operator.csrf).send({});
+    expect(reconciled.status,JSON.stringify(reconciled.body)).toBe(200);
+    expect((await verificationPool.query(`SELECT state FROM adult_declaration_operations WHERE id=$1`,[id]))
+      .rows[0].state).toBe('recovered');
+    const reopened=await request(createApp()).post('/v1/operator/reopen')
+      .set('Cookie',operator.cookie).set('Origin','http://localhost:3000')
+      .set('X-CSRF-Token',operator.csrf).set('Idempotency-Key',randomUUID())
+      .send({reason:'Reviewed recovered adult declaration evidence'});
+    expect(reopened.status,JSON.stringify(reopened.body)).toBe(200);
   });
   it('does not acknowledge when independent recovery evidence fails',async()=>{
     const app=createApp();const a=await user();
