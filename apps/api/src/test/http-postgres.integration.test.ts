@@ -5637,11 +5637,29 @@ describe('ticket 10 isolated posted route preparation',()=>{
       f.call(f.driver.token,`${path}/${f.offer}/cancel`,{reason:'Driver cannot travel'}),
       f.call(f.driver.token,`${path}/requests/${id}/accept`,{})]);
     expect(cancel.status,JSON.stringify(cancel.body)).toBe(200);
-    expect([200,409]).toContain(accept.status);
+    expect([200,409,503]).toContain(accept.status);
+    if(accept.status===503){
+      expect(accept.body.error.code).toBe('PILOT_PAUSED');
+      const retried=await f.call(f.driver.token,`${path}/requests/${id}/accept`,{});
+      expect(retried.status,JSON.stringify(retried.body)).toBe(409);
+    }
     const state=(await verificationPool.query('SELECT status FROM posted_route_offers WHERE id=$1',[f.offer])).rows[0].status;
     expect(state).toBe('cancelled');
     expect((await verificationPool.query(`SELECT count(*)::int AS n FROM posted_route_seat_allocations
       WHERE offer_id=$1 AND status IN ('confirmed','held')`,[f.offer])).rows[0].n).toBe(0);
+  });
+  it('allows an audited driver cancellation while new bookings are paused',async()=>{
+    const f=await bookingFixture(),passenger=await participant(),id=await f.ask(passenger);
+    const accepted=await f.call(f.driver.token,`${path}/requests/${id}/accept`,{});
+    expect(accepted.status).toBe(200);
+    await verificationPool.query("UPDATE pilot_pause_state SET paused=true WHERE capability='booking'");
+    const cancelled=await f.call(f.driver.token,`${path}/${f.offer}/cancel`,
+      {reason:'Driver cannot safely travel'});
+    expect(cancelled.status,JSON.stringify(cancelled.body)).toBe(200);
+    expect((await verificationPool.query('SELECT status FROM posted_route_offers WHERE id=$1',[f.offer])).rows[0].status)
+      .toBe('cancelled');
+    expect((await verificationPool.query('SELECT status FROM posted_route_seat_allocations WHERE id=$1',
+      [accepted.body.booking.id])).rows[0].status).toBe('cancelled');
   });
   it('serializes departure and passenger cancellation on distinct live PostgreSQL connections',async()=>{
     const f=await bookingFixture(),passenger=await participant(),id=await f.ask(passenger);

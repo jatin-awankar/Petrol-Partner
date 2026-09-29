@@ -151,6 +151,11 @@ export class PostedRouteOutcomesService{
     return row.state==='committed'||recovery.rows[0]?.mode!=='open'
       ?{operation_id:id,state:'pending_unknown'}:visible(row);}
   async verifyEvidence(retry?:{actor:string;key:string}){
+    const guard=await repo.acquireMutationGuard(this.db);
+    try{await this.verifyEvidenceUnlocked(retry);}
+    finally{await repo.releaseMutationGuard(guard);}
+  }
+  private async verifyEvidenceUnlocked(retry?:{actor:string;key:string}){
     try{const backup=await backupStatus(this.db);
       if(backup.required&&!backup.healthy)throw new Error('Backup unhealthy');
       const evidence=new Map((await store().list()).map(item=>[item.operationId,item]));
@@ -170,6 +175,9 @@ export class PostedRouteOutcomesService{
       throw new AppError(503,'Route outcome recovery evidence unavailable','RECOVERY_UNAVAILABLE');}
   }
   async mutate(actor:string,key:string,action:repo.Action,id:string,payload:OutcomePayload={}){
+    boundary();
+    if(!['driver_cancel','passenger_cancel','incident_report'].includes(action))
+      await pauseService.assertAvailable('booking');
     const guard=await repo.acquireMutationGuard(this.db);
     try{return await this.mutateLocked(actor,key,action,id,payload);}
     finally{await repo.releaseMutationGuard(guard);}
@@ -178,9 +186,8 @@ export class PostedRouteOutcomesService{
     boundary();const hash=digest(action,id,payload),prior=await repo.byKey(this.db,actor,key);
     if(prior&&prior.payload_digest!==hash)
       throw new AppError(409,'Idempotency payload mismatch','IDEMPOTENCY_PAYLOAD_MISMATCH');
-    await this.verifyEvidence({actor,key});
+    await this.verifyEvidenceUnlocked({actor,key});
     if(prior)return this.operation(actor,prior.id);
-    await pauseService.assertAvailable('booking');
     const operation=await inProtectedTransaction(this.db,async client=>{
       const recovery=await operatorQuery<{mode:string}>(client,'recoveryModeForUpdate');
       await operatorQuery(client,'lockIdempotencyKey',[`posted-route-outcome:${actor}:${key}`]);
