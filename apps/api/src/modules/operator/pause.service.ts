@@ -1,5 +1,6 @@
 import { adultDeclarationRecovery } from "../adult-declaration/adult-declaration.service";
 import {postedRouteRecovery} from "../posted-routes/posted-routes.service";
+import {postedRouteSeatRecovery} from "../posted-routes/seat-booking.service";
 import {driverVehicleRecovery} from "../driver-vehicle-declaration/driver-vehicle-declaration.service";
 import { UrgentOutreachService } from "./urgent-outreach.service";
 import { createHash } from "node:crypto";
@@ -126,6 +127,8 @@ function recoverySlices(database: Pool): RecoverySlice[] {
       digestOrder: 16, pendingOrder: 13, pendingMessage: "Driver vehicle declaration recovery is incomplete" },
     { name: "postedRoutes", service: postedRouteRecovery, verifyOrder: 19, reconcileOrder: 19,
       digestOrder: 17, pendingOrder: 14, pendingMessage: "Posted route recovery is incomplete" },
+    { name: "postedRouteSeats", service: postedRouteSeatRecovery, verifyOrder: 20, reconcileOrder: 20,
+      pendingOrder: 15, pendingMessage: "Posted route seat recovery is incomplete" },
   ];
 }
 

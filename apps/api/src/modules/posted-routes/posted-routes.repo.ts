@@ -19,7 +19,13 @@ export async function conflict(db:PoolClient,driver:string,vehicle:string,depart
   const legacy=(await db.query(`SELECT 1 FROM ride_offers WHERE status IN ('active','held','departed') AND driver_id=$1
     AND (date+time) AT TIME ZONE 'Asia/Kolkata'<$3::timestamptz
     AND COALESCE(pilot_commitment_until,((date+time) AT TIME ZONE 'Asia/Kolkata')+interval '2 hours')>$2::timestamptz LIMIT 1`,[driver,departure,until])).rowCount;
-  return Boolean(route||legacy);
+  const accepted=(await db.query(`SELECT 1 FROM posted_route_seat_allocations
+    WHERE passenger_id=$1 AND status IN ('confirmed','held')
+      AND departure_at<$3 AND commitment_until>$2 LIMIT 1`,[driver,departure,until])).rowCount;
+  const legacyPassenger=(await db.query(`SELECT 1 FROM pilot_seat_allocations
+    WHERE passenger_id=$1 AND status IN ('confirmed','held')
+      AND departure_at<$3 AND commitment_until>$2 LIMIT 1`,[driver,departure,until])).rowCount;
+  return Boolean(route||legacy||accepted||legacyPassenger);
 }
 export async function save(db:PoolClient,input:{driver:string;vehicle:string;route:VerifiedRoute;departure:Date;until:Date;capacity:number;policy:string}){
   return (await db.query<{id:string}>(`INSERT INTO posted_route_offers(driver_id,vehicle_declaration_id,policy_version,operating_policy_version,routing_source,routing_mode,
