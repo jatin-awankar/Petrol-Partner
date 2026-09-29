@@ -5627,6 +5627,41 @@ describe('ticket 10 isolated posted route preparation',()=>{
     expect((await verificationPool.query('SELECT mode FROM pilot_recovery_state WHERE singleton=true')).rows[0].mode)
       .toBe('restricted');
   });
+  it('keeps a disputed UPI claim open until an authorized operator decides receipt',async()=>{
+    const f=await bookingFixture(),passenger=await participant(),id=await f.ask(passenger);
+    const accepted=await f.call(f.driver.token,`${path}/requests/${id}/accept`,{});
+    const seat=accepted.body.booking.id as string;
+    await verificationPool.query(`UPDATE posted_route_offers SET departure_at=now(),
+      request_cutoff_at=now()-interval '60 minutes',acceptance_cutoff_at=now()-interval '30 minutes'
+      WHERE id=$1`,[f.offer]);
+    expect((await f.call(f.driver.token,`${path}/${f.offer}/depart`,{boarded_ids:[seat]})).status).toBe(200);
+    expect((await f.call(f.driver.token,`${path}/allocations/${seat}/driver-journey`,
+      {travelled:true,completed:true})).status).toBe(200);
+    expect((await f.call(passenger.token,`${path}/allocations/${seat}/passenger-journey`,
+      {travelled:true,completed:true})).status).toBe(200);
+    expect((await f.call(passenger.token,`${path}/allocations/${seat}/payment-claim`,
+      {method:'upi'})).status).toBe(200);
+    expect((await f.call(f.driver.token,`${path}/allocations/${seat}/dispute`,{})).status).toBe(200);
+    const review=await verificationPool.query<{status:string;receipt_established:boolean|null}>(`
+      SELECT status,receipt_established FROM posted_route_settlement_reviews r
+      JOIN posted_route_obligations o ON o.id=r.obligation_id WHERE o.allocation_id=$1`,[seat]);
+    expect(review.rows[0]).toMatchObject({status:'open',receipt_established:null});
+    expect((await f.call(f.driver.token,`${path}/allocations/${seat}/receipt`,{})).body.error.code)
+      .toBe('RECEIPT_EXISTS');
+    const operator=await seatRecoveryOperator();
+    try{
+      const decision=()=>request(f.app).post(`${path}/allocations/${seat}/resolve-settlement`)
+        .set('Cookie',operator.cookie).set('Origin','http://localhost:3000')
+        .set('X-CSRF-Token',operator.csrf).set('Idempotency-Key',randomUUID())
+        .send({receipt_established:false,reason:'No recipient evidence of receipt'});
+      const resolved=await decision();
+      expect(resolved.status,JSON.stringify(resolved.body)).toBe(200);
+      expect((await decision()).body.error.code).toBe('REVIEW_REQUIRED');
+      expect((await verificationPool.query(`SELECT status,receipt_established FROM posted_route_settlement_reviews r
+        JOIN posted_route_obligations o ON o.id=r.obligation_id WHERE o.allocation_id=$1`,[seat])).rows[0])
+        .toMatchObject({status:'resolved',receipt_established:false});
+    }finally{await clearSeatRecoveryOperator();}
+  });
   it('serializes driver cancellation against seat acceptance using separate PostgreSQL connections',async()=>{
     const f=await bookingFixture(),passenger=await participant(),id=await f.ask(passenger);
     const [a,b]=await Promise.all([pool.connect(),pool.connect()]);
