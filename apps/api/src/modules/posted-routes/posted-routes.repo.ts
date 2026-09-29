@@ -9,6 +9,10 @@ export const pending=async(db:Db)=>(await db.query<Operation>("SELECT * FROM pos
 export const acknowledged=async(db:Db)=>(await db.query<Operation>("SELECT * FROM posted_route_operations WHERE state IN ('acknowledged','recovered')")).rows;
 export const mine=async(db:Db,driver:string)=>(await db.query('SELECT * FROM posted_route_offers WHERE driver_id=$1 ORDER BY created_at DESC',[driver])).rows;
 export const owned=async(db:Db,driver:string,id:string)=>(await db.query('SELECT * FROM posted_route_offers WHERE driver_id=$1 AND id=$2',[driver,id])).rows[0]??null;
+export type QuoteRoute={id:string;route_version:number;policy_version:string;routing_source:string;routing_mode:'bike'|'scooter'|'car';geometry:{type:'LineString';coordinates:[number,number][]};cumulative_meters:number[];distance_meters:number;duration_seconds:number;status:string};
+export const ownedForQuote=async(db:Db,driver:string,id:string)=>(await db.query<QuoteRoute>(
+  'SELECT id,route_version,policy_version,routing_source,routing_mode,geometry,cumulative_meters,distance_meters,duration_seconds,status FROM posted_route_offers WHERE driver_id=$1 AND id=$2',
+  [driver,id])).rows[0]??null;
 export async function conflict(db:PoolClient,driver:string,vehicle:string,departure:Date,until:Date){
   const route=(await db.query(`SELECT 1 FROM posted_route_offers WHERE status='prepared' AND (driver_id=$1 OR vehicle_declaration_id=$2)
     AND departure_at<$4::timestamptz AND commitment_until>$3::timestamptz LIMIT 1`,[driver,vehicle,departure,until])).rowCount;
