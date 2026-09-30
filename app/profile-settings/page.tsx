@@ -1,11 +1,13 @@
 "use client";
 
 import React, { useState, useCallback, useMemo } from "react";
+import Link from "next/link";
 import dynamic from "next/dynamic";
 import { Suspense } from "react";
 import { toast } from "sonner";
 import { useProfileData } from "@/hooks/profile/useProfileData";
 import { useUserProfile } from "@/hooks/auth/useUserProfile";
+import { useCurrentUser } from "@/hooks/auth/useCurrentUser";
 import { createVehicleRecord, updateVehicleRecord } from "@/lib/api/backend";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -890,4 +892,13 @@ const ProfileAccountSettings = () => {
   );
 };
 
-export default ProfileAccountSettings;
+export default function ProfileSettingsPage() {
+  const { user, loading } = useCurrentUser();
+  if (loading) return <ProfileSettingsPageSkeleton />;
+  if (!user) return <main className="page min-h-screen space-y-4 py-10">
+    <h1 className="text-2xl font-semibold">Sign in to view account settings</h1>
+    <p>Your account, declarations, and historical records are private.</p>
+    <Link href="/login" className="inline-flex min-h-11 items-center rounded-md border px-4 underline">Sign in</Link>
+  </main>;
+  return <ProfileAccountSettings />;
+}
