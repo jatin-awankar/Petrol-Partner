@@ -36,7 +36,7 @@ export default function ParticipantShell() {
         <Link href="/notifications" onClick={() => setOpen(false)}><Bell size={18}/>Notifications</Link>
         <Link href="/profile-settings" onClick={() => setOpen(false)}><CircleUserRound size={18}/>Account settings</Link>
         <Link href="/adult-declaration" onClick={() => setOpen(false)}><ShieldCheck size={18}/>Adult declaration</Link>
-        <Link href="/eligibility" onClick={() => setOpen(false)}><Archive size={18}/>Historical pilot records</Link><Link href="/direct-settlements" onClick={() => setOpen(false)}><ReceiptText size={18}/>Contribution records</Link>
+        <Link href="/eligibility" onClick={() => setOpen(false)}><Archive size={18}/>Historical pilot eligibility</Link><Link href="/search-rides" onClick={() => setOpen(false)}><Route size={18}/>Historical ride offers</Link><Link href="/post-a-ride" onClick={() => setOpen(false)}><Route size={18}/>Historical ride posting</Link><Link href="/direct-settlements" onClick={() => setOpen(false)}><ReceiptText size={18}/>Contribution records</Link>
         <button onClick={() => void signOut()}><LogOut size={18}/>Sign out</button>
       </nav>}
     </header>
