@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Bell, CircleUserRound, Compass, House, Menu, Route, ReceiptText, X, LogOut, ShieldCheck, Archive } from "lucide-react";
 import { useCurrentUser } from "@/hooks/auth/useCurrentUser";
 
@@ -19,6 +19,15 @@ export default function ParticipantShell() {
   const router = useRouter();
   const { user, loading, logout } = useCurrentUser();
   const [open, setOpen] = useState(false);
+  useEffect(() => setOpen(false), [pathname]);
+  useEffect(() => {
+    if (!open) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [open]);
   if (loading || !user || pathname === "/" || pathname.startsWith("/operator") || ["/login", "/register", "/recover", "/auth/callback"].some(path => pathname.startsWith(path))) return null;
   const current = destinations.find(item => item.href === pathname);
   async function signOut() { await logout(); router.push("/login"); router.refresh(); }
@@ -40,6 +49,6 @@ export default function ParticipantShell() {
         <button onClick={() => void signOut()}><LogOut size={18}/>Sign out</button>
       </nav>}
     </header>
-    <nav className="participant-bottom-nav" aria-label="Participant quick navigation">{destinations.filter(item => item.label !== "Contributions").map(({label,href,icon:Icon}) => <Link key={label} href={href} aria-current={current?.label === label ? "page" : undefined}><Icon size={20}/><span>{label}</span></Link>)}</nav>
+    <nav className="participant-bottom-nav" aria-label="Participant quick navigation">{destinations.filter(item => item.label !== "Contributions").map(({label,href,icon:Icon,available}) => <Link key={label} href={href} onClick={() => setOpen(false)} aria-current={current?.label === label ? "page" : undefined}><Icon size={20}/><span>{label}</span>{!available && <span className="nav-gate">Later</span>}</Link>)}</nav>
   </>;
 }
