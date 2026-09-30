@@ -6,11 +6,13 @@ import ParticipantShell from '../../../../components/ParticipantShell';
 vi.mock('next/navigation',()=>({usePathname:vi.fn(()=>'/dashboard'),useRouter:()=>({push:vi.fn(),refresh:vi.fn()})}));
 vi.mock('@/hooks/auth/useCurrentUser',()=>({useCurrentUser:()=>({user:{id:'person'},loading:false,logout:vi.fn()})}));
 afterEach(()=>{cleanup();vi.mocked(usePathname).mockReturnValue('/dashboard');});
-it('keeps historical ride records reachable from the participant menu',()=>{
+it('keeps historical records reachable without linking to legacy ride actions',()=>{
   render(<ParticipantShell/>);
   fireEvent.click(screen.getByRole('button',{name:'Open menu'}));
-  expect(screen.getByRole('link',{name:/Historical ride offers/}).getAttribute('href')).toBe('/search-rides');
-  expect(screen.getByRole('link',{name:/Historical ride posting/}).getAttribute('href')).toBe('/post-a-ride');
+  const menu=within(screen.getByRole('navigation',{name:'Participant menu'}));
+  expect(menu.getByRole('link',{name:/Historical pilot eligibility/}).getAttribute('href')).toBe('/eligibility');
+  expect(menu.getByRole('link',{name:/Contribution records/}).getAttribute('href')).toBe('/direct-settlements');
+  expect(menu.queryAllByRole('link',{name:/Historical ride offers|Historical ride posting/})).toHaveLength(0);
 });
 
 it('labels launch-gated destinations in the phone navigation',()=>{
@@ -35,9 +37,11 @@ it('closes the account menu when a phone navigation destination is chosen',()=>{
 it('closes the account menu with Escape',()=>{
   render(<ParticipantShell/>);
   fireEvent.click(screen.getByRole('button',{name:'Open menu'}));
-  expect(screen.getByRole('navigation',{name:'Participant menu'})).not.toBeNull();
+  const menu=within(screen.getByRole('navigation',{name:'Participant menu'}));
+  menu.getByRole('link',{name:'Account settings'}).focus();
   fireEvent.keyDown(document,{key:'Escape'});
   expect(screen.queryByRole('navigation',{name:'Participant menu'})).toBeNull();
+  expect(document.activeElement).toBe(screen.getByRole('button',{name:'Open menu'}));
 });
 
 it('closes the account menu when the current page changes',()=>{
