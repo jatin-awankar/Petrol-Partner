@@ -14,15 +14,16 @@ type Status = { driver: RecordState; vehicles: RecordState[] };
 type Adult = { state: string; current_policy_version: string };
 type DeclarationOperation =
   | { kind: "driver" | "vehicle-add"; body: object }
-  | { kind: "driver-revoke"; body?: never }
-  | { kind: "vehicle-renew" | "vehicle-revoke"; id: string; body?: object };
+  | { kind: "driver-revoke" }
+  | { kind: "vehicle-renew"; id: string; body: object }
+  | { kind: "vehicle-revoke"; id: string };
 
 function requestFor(operation: DeclarationOperation) {
   switch (operation.kind) {
     case "driver": return { action: operation.kind, path: "/v1/driver-vehicle-declarations/driver", method: "PUT" as const, body: operation.body };
     case "driver-revoke": return { action: operation.kind, path: "/v1/driver-vehicle-declarations/driver/revoke", method: "POST" as const, body: {} };
     case "vehicle-add": return { action: operation.kind, path: "/v1/driver-vehicle-declarations/vehicles", method: "POST" as const, body: operation.body };
-    case "vehicle-renew": return { action: `${operation.kind}:${operation.id}`, path: `/v1/driver-vehicle-declarations/vehicles/${operation.id}`, method: "PUT" as const, body: operation.body ?? {} };
+    case "vehicle-renew": return { action: `${operation.kind}:${operation.id}`, path: `/v1/driver-vehicle-declarations/vehicles/${operation.id}`, method: "PUT" as const, body: operation.body };
     case "vehicle-revoke": return { action: `${operation.kind}:${operation.id}`, path: `/v1/driver-vehicle-declarations/vehicles/${operation.id}/revoke`, method: "POST" as const, body: {} };
   }
 }
