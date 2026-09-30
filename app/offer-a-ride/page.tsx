@@ -1,0 +1,2 @@
+import PrelaunchPage from "@/components/PrelaunchPage";
+export default function OfferRidePage(){return <PrelaunchPage eyebrow="DRIVE / PRELAUNCH" title="Offer a ride" status="Launch gated" stateTitle="Live offers are not open" action={{href:"/dashboard",label:"Back to Home"}}>Route preparation exists, but publishing an offer and accepting seats remain unavailable. Driver and vehicle declarations will be surfaced in the later driver journey.</PrelaunchPage>;}

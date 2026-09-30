@@ -1,0 +1,2 @@
+import PrelaunchPage from "@/components/PrelaunchPage";
+export default function TripsPage(){return <PrelaunchPage eyebrow="JOURNEYS / PRELAUNCH" title="Trips" status="No live bookings" stateTitle="Your trips will live here" action={{href:"/direct-settlements",label:"View historical contribution records"}}>Real bookings are disabled. Historical pilot trip records will receive their own clear view in the later trips stage.</PrelaunchPage>;}

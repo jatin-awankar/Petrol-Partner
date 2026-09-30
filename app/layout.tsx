@@ -1,22 +1,14 @@
 import type { Metadata } from "next";
-import { Poppins } from "next/font/google";
 import "./globals.css";
 import React from "react";
-import AuthenticatedNavbars from "@/components/AuthenticatedNavbars";
+import ParticipantShell from "@/components/ParticipantShell";
+import OperatorShell from "@/components/OperatorShell";
 import ClientProviders from "./providers/ClientProviders";
 import { Analytics } from "@vercel/analytics/next";
 
-const poppins = Poppins({
-  subsets: ["latin"],
-  weight: ["100", "200", "300", "400", "500", "600", "700", "800", "900"],
-  style: ["normal", "italic"],
-  display: "swap",
-  variable: "--font-poppins",
-});
-
 export const metadata: Metadata = {
   title: "Petrol Partner",
-  description: "College-centric ride sharing platform",
+  description: "Driver-posted route sharing, preparing for launch.",
 };
 
 export default function RootLayout({
@@ -25,11 +17,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" suppressHydrationWarning className={`${poppins.variable}`}>
+    <html lang="en" suppressHydrationWarning>
       <body className="min-h-screen bg-background text-foreground font-sans antialiased">
         <ClientProviders>
-          <AuthenticatedNavbars />
-          <main className="min-h-screen">{children}</main>
+          <ParticipantShell />
+          <OperatorShell />
+          <main id="main-content" className="min-h-screen" tabIndex={-1}>{children}</main>
           <Analytics />
         </ClientProviders>
       </body>

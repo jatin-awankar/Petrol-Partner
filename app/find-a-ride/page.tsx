@@ -1,0 +1,2 @@
+import PrelaunchPage from "@/components/PrelaunchPage";
+export default function FindRidePage(){return <PrelaunchPage eyebrow="DISCOVER / PRELAUNCH" title="Find a ride" status="Launch gated" stateTitle="No public routes to browse" action={{href:"/dashboard",label:"Back to Home"}}>Public posted-route discovery and real booking are not available yet. A driver&apos;s prepared route stays private.</PrelaunchPage>;}

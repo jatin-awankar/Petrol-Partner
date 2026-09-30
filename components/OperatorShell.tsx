@@ -1,0 +1,4 @@
+"use client";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+export default function OperatorShell() { const path=usePathname(); if (!path.startsWith("/operator")) return null; return <header className="operator-shell"><div><Link href="/operator" className="operator-brand">PETROL PARTNER <span>/ OPERATIONS</span></Link><nav aria-label="Operator workspace"><Link href="/operator" aria-current={path==="/operator"?"page":undefined}>Console</Link><Link href="/operator/restrictions" aria-current={path==="/operator/restrictions"?"page":undefined}>Restrictions</Link><Link href="/operator/settlement-reviews" aria-current={path==="/operator/settlement-reviews"?"page":undefined}>Settlement reviews</Link></nav><Link href="/dashboard">Participant Home</Link></div></header>; }
