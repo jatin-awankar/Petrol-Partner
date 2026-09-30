@@ -1,0 +1,66 @@
+# Petrol Partner frontend redesign
+
+Status: approved direction; staged design and implementation plan
+
+Updated: 2026-09-30
+
+## Product contract for new UI work
+
+The approved direction is open, driver-posted route sharing rather than the former PRMITR fixed corridor. A person can create an account with verified email ownership or Google sign-in. A participant declares that they are at least 18. A driver declares a category-appropriate licence, current registration and insurance, and permission to use a bike, scooter, or car. These are **self-declarations**, not independently verified documents or endorsements. Existing corridor approvals do not automatically grant eligibility under the new policy.
+
+The driver owns a posted route. A passenger chooses ordered pickup and drop-off points **on that route**, with no detour, and requests one seat for themself. A request is pending until the driver accepts it. The server verifies the saved route segment and gives a proposed contribution of ₹5/km per bike or scooter passenger or ₹7/km per car passenger. The amount has no additional charges; acceptance freezes the route terms, policy version, currency, and integer-paise amount. The rates and activity remain subject to external review before real use. Participants pay each other directly in cash or by UPI. The platform records an obligation, payment claim, receipt or dispute, and any review decision separately; it does not collect or pay out money.
+
+**Real bookings are disabled.** Current production code permits a driver to prepare a private route, but posted-route quotes and seat mutations are test-only. There is no public posted-route discovery endpoint or production passenger quote flow. The accepted landing page is the visual reference, and its copy now describes the broader direction and prelaunch state. `docs/pilot-spec.md` remains the contract for historical fixed-corridor policy versions and records. The detailed approved new-direction specification and issue states live locally at `.scratch/unrestricted-booking/`; this tracked document carries the product and UI decisions needed by a fresh task or worktree. If those sources disagree, inspect the relevant code and specifications before changing protected behavior.
+
+## What exists now
+
+- Public: `/` landing, `/login`, `/register`, `/recover`, `/recover/password`, `/auth/callback`. The registration and auth layouts still contain student and instant-ride claims; stage 3 owns their correction.
+- Participant: `/dashboard` currently redirects to `/search-rides` although navigation calls it Home. `/search-rides`, `/search-rides/[id]`, and `/post-a-ride` use the historical fixed-corridor offer and request APIs. `/eligibility` is historical student evidence review; `/adult-declaration` is the new self-declaration view. `/profile-settings`, `/direct-settlements`, `/payments`, `/journey-reviews/[id]`, and `/messages-chat` mix current, historical, and disabled flows.
+- Operator: `/operator`, `/operator/restrictions`, and `/operator/settlement-reviews` expose existing pilot queues. New route incidents and outcomes have server routes but do not yet have a coherent operator UI.
+- Existing API seams: `/v1/auth`, `/v1/adult-declaration`, `/v1/driver-vehicle-declarations`, `/v1/posted-routes`, `/v1/corridor-offers`, `/v1/seat-requests`, `/v1/direct-settlements`, `/v1/notifications`, `/v1/operator`, and `/v1/profile`. Keep the historical corridor API and data distinguishable from the new route policy. The generic `/v1/rides`, matching, pricing, chat, tracking, payment writes, and webhooks are disabled at the API boundary; historical booking and settlement reads remain available.
+- Posted-route API boundary: `POST /v1/posted-routes` prepares a driver-private route and responds with `status: prepared` and `real_bookings_enabled: false`. `GET /mine` and `GET /:id` are owner-scoped. `POST /:id/quote` returns `ROUTE_QUOTES_DISABLED` outside tests. Posted-route request/accept/reject and outcome mutations return `ROUTE_BOOKINGS_DISABLED` outside tests. Do not depict a prepared route as a published, discoverable offer.
+- Existing Next.js, Tailwind v4, shadcn/Radix, and Lucide setup is enough to begin. Add shared components as actual journeys need them.
+
+## Proposed navigation
+
+This is the target information architecture, not a claim that all destinations work today. Preserve a visible distinction between available account actions, historical records, and launch-gated ride actions.
+
+- Public header: How it works, Right now, What is later, Sign in; Create an account remains the primary action.
+- Participant primary navigation: **Home** (readiness, next commitment, next action), **Find a ride** (route discovery when available), **Offer a ride** (driver preparation and later live offers), **Trips** (requests, commitments, and journey outcomes). Keep **Contributions** directly reachable from Trips and navigation until journey testing shows a clearer placement.
+- Participant account menu: Account and declarations, Notifications, Historical records, Help and support when a monitored contact exists, Sign out. Never publish `support@pp.com` as a working contact.
+- Operator workspace: separate shell with queues for eligibility and restrictions, route and incident review, journey and settlement review, notification delivery, pause and recovery, and audit history. Access remains server-authorized.
+- Disabled capabilities such as chat, live tracking, platform collection, payouts, automatic matching, and push notifications may have explanatory copy where useful; they must not have working calls to disabled endpoints.
+
+## Screen and state map
+
+Every task screen should answer: **What happened? What can I do? Who acts next? By when?** Also provide loading, empty, error, restricted, retry, and uncertain-result states. Treat a lost response to a protected mutation as unknown until its recorded operation is checked.
+
+1. **Public and access** — landing shows product direction and current availability; sign in, register, recovery, and callback distinguish account creation, verified email, signed-in state, and ride eligibility. Registration never promises an immediate trip.
+2. **Readiness and account** — Home and account screens distinguish missing/current/expired/withdrawn adult declaration, missing/current/expired/revoked driver or vehicle declaration, account restriction, booking gate, and historical corridor approval. Show the next step without labelling declarations “verified.”
+3. **Route discovery and detail** — no posted routes available, matching route list, route details and version, chosen ordered points, server quote with segment distance and total, quote unavailable or stale, eligibility restriction, and booking disabled. A route prepared by its driver remains private. Public discovery and quote need server work and launch approval.
+4. **Seat request** — confirm one passenger and quoted terms; pending, accepted, rejected, expired, withdrawn, cancelled, held, and operation-outcome-unknown states. A pending request is not a confirmed seat. Seat request and acceptance are currently synthetic-test-only.
+5. **Driver route management** — missing vehicle declaration, route input, verification failure, prepared private route, publication unavailable, published offer when authorized, incoming requests, accept/reject deadline, full capacity, cancellation, replacement, and unknown-operation recovery. The current API implements preparation, not public publication.
+6. **Trips and journey** — upcoming and past commitments, passenger/driver role, hold, departure, boarding, cancellation, incident, each person's journey statement, agreement, disagreement, silence leading to review, and operator outcome. Time passing never invents travel.
+7. **Contributions** — frozen amount and due time, direct cash or UPI claim, awaiting driver response, receipt, dispute, overdue, and operator review. A passenger claim alone is never “paid” or “settled.” Historical platform-payment records stay identified as historical.
+8. **Operator** — authorized/unauthorized, queue empty and actionable, evidence detail, reason and impact before decision, pending or unknown decision, durable notification failures, paused or recovery-restricted service, reconciliation, and audited resolution.
+
+## Eight delivery stages
+
+Each stage is one reviewable branch and pull request. Finish and review it before starting the next; split a stage further if the diff becomes hard to review. Use synthetic accounts and fixtures for gated flows, and keep real action controls closed until the API and launch decision permit them.
+
+1. **Product story and map (this stage).** Track this plan, reconcile the historical pilot scope note, correct landing copy, and inventory routes, API gates, navigation, and states. Complete when a reviewer can identify current versus intended behavior from the document and landing page without a false live-booking or verification claim.
+2. **Shared foundation and shell.** Derive restrained product tokens from the approved landing design; build participant navigation, status and money patterns, forms, feedback, and empty/error/restricted states. Resolve the Home redirect and label mismatch. Complete when the shell works with keyboard navigation and at mobile, tablet, and desktop widths.
+3. **Account and readiness.** Redesign access, recovery, declarations, restrictions, and account settings around the next eligible action. Remove college-only claims from new-policy paths while preserving historical evidence views. Complete when account status and ride eligibility cannot be confused.
+4. **Find and request.** Design discovery, route detail, ordered points, server quote, one-seat request, and request status. Identify and implement the required server read seam in its own reviewed slice if needed. Keep production booking actions gated. Complete when synthetic passenger flows and all gated states are accurate.
+5. **Offer and manage.** Design driver vehicle choice, route preparation, publication state, terms, requests, decisions, cancellation and replacement, and uncertain operations. Complete when the distinction between prepared and published is unmistakable.
+6. **Trips and contributions.** Bring commitments, journey statements, incidents, direct payment claims, receipts, disputes, and historical records into clear participant journeys. Complete when each actor sees their own next action and no claim is presented as a settled payment.
+7. **Operator workspace.** Organize queues, evidence, reasoned decisions, notifications, pause/recovery, and audit visibility in a distinct operator shell. Complete when an operator can judge the impact of each existing action and recover an uncertain result.
+8. **Cross-page QA and release review.** Walk every available, unavailable, pending, restricted, failure, retry, and unknown-result path for each role. Check responsive layout, keyboard focus, labels, contrast, copy, navigation, API gates, and historical records. Complete when screenshots, affected checks, and remaining launch blockers are recorded for review.
+
+## Review and launch rules
+
+- Before each stage, inspect Git state and the nearest source, API route, service, repository, migrations, and tests affected by that stage. Follow `AGENTS.md` and preserve user work and existing data.
+- Review real screenshots at phone, tablet, and desktop widths. Check keyboard access, focus, labels, contrast, touch targets, and horizontal overflow. Run the repository checks affected by the slice and report what was not verified.
+- Protected actions require server authorization, database invariants, idempotency, audit, and recovery evidence. A client-only preview cannot establish these. Unknown results require operation lookup, not a success toast.
+- Real bookings need external review of the unrestricted activity and proposed rates, an approved operating and support policy, a monitored support contact, a rehearsed forward migration on representative data, integrated PostgreSQL and staging checks, outage/restore rehearsal, and an explicit owner go/no-go decision. The local unrestricted-booking tickets 03, 04, 09, 14–18 track this evidence. The landing page and frontend redesign do not satisfy these gates.
+- Keep passenger ride listings on the legacy generic API, automatic matching, Razorpay collection, payouts, chat, live tracking, and push notifications disabled at both the UI and API boundaries until separately approved.
