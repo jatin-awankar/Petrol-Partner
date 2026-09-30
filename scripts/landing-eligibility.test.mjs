@@ -47,14 +47,16 @@ after(async () => {
   }
 });
 
-test("public landing page identifies the eligible PRMITR student cohort", async () => {
-  const pilotSection = html.match(/<section\b[^>]*\bid="pilot"[^>]*>([\s\S]*?)<\/section>/)?.[1];
-  assert.ok(pilotSection, "expected the public pilot section");
-  assert.match(pilotSection, /PRMITR students/i);
+test("public landing page describes adult declarations and the closed booking gate", () => {
+  const statusSection = html.match(/<section\b[^>]*\bid="status"[^>]*>([\s\S]*?)<\/section>/)?.[1];
+  assert.ok(statusSection, "expected the public status section");
+  assert.match(statusSection, /Adults can declare their eligibility/i);
+  assert.match(statusSection, /requesting seats are waiting on launch approval/i);
 });
 
-test("public landing page description identifies the eligible PRMITR student cohort", () => {
+test("public landing page description identifies route sharing as prelaunch", () => {
   const descriptionTag = html.match(/<meta\b[^>]*\bname="description"[^>]*>/)?.[0];
   assert.ok(descriptionTag, "expected the public description metadata");
-  assert.match(descriptionTag, /PRMITR students/i);
+  assert.match(descriptionTag, /driver-posted route sharing/i);
+  assert.match(descriptionTag, /real ride bookings are not live/i);
 });
