@@ -10,6 +10,7 @@ import { createVehicleRecord, updateVehicleRecord } from "@/lib/api/backend";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ProfileSettingsPageSkeleton } from "@/components/profile/ProfileSkeletons";
+import AccountReadiness from "@/components/profile/AccountReadiness";
 import {
   ShieldCheck,
   TriangleAlert,
@@ -700,11 +701,7 @@ const ProfileAccountSettings = () => {
               isPhotoUploading={isPhotoUploading}
             />
 
-            <section className="rounded-xl border border-primary/20 bg-card p-5" aria-label="Account readiness">
-              <h2 className="text-xl font-semibold">What can you do next?</h2>
-              <p className="mt-2 text-sm text-muted-foreground">Review your account details and self-declarations. Profile information and historical corridor approval do not grant eligibility under the new route policy. Real bookings remain closed.</p>
-              <div className="mt-4 flex flex-wrap gap-3"><a className="inline-flex min-h-11 items-center rounded-md border px-4 underline" href="/adult-declaration">Adult declaration</a><a className="inline-flex min-h-11 items-center rounded-md border px-4 underline" href="/driver-vehicle-declarations">Driver and vehicle declarations</a><a className="inline-flex min-h-11 items-center rounded-md border px-4 underline" href="/eligibility">Historical corridor evidence</a></div>
-            </section>
+            <AccountReadiness />
             <section className="grid grid-cols-2 gap-3 md:grid-cols-4" aria-label="Historical pilot account summary">
               <article className="rounded-xl border border-primary/20 bg-gradient-to-br from-primary/20 via-card/95 to-card px-4 py-3 shadow-card">
                 <div className="flex items-center justify-between">
