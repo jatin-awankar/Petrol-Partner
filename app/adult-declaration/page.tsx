@@ -14,11 +14,16 @@ export default function AdultDeclarationPage(){
   const [accepted,setAccepted]=useState(false);
   const [busy,setBusy]=useState(false);
   const [message,setMessage]=useState("");
+  const [fetching,setFetching]=useState(true);
+  const [loadError,setLoadError]=useState(false);
   const pendingKey=useRef<{action:"declare"|"withdraw";key:string}|null>(null);
   const refresh=useCallback(async()=>{
-    setDeclaration((await apiRequest<{declaration:Declaration}>("/v1/adult-declaration")).declaration);
+    setFetching(true);setLoadError(false);
+    try{setDeclaration((await apiRequest<{declaration:Declaration}>("/v1/adult-declaration")).declaration);}
+    catch(error){setLoadError(true);setMessage(error instanceof Error?error.message:"Unable to load declaration");}
+    finally{setFetching(false);}
   },[]);
-  useEffect(()=>{if(user)void refresh().catch(error=>setMessage(error instanceof Error?error.message:"Unable to load declaration"));},[user,refresh]);
+  useEffect(()=>{if(user)void refresh();},[user,refresh]);
   async function change(action:"declare"|"withdraw"){
     if(!declaration)return;
     setBusy(true);setMessage("");
@@ -30,7 +35,7 @@ export default function AdultDeclarationPage(){
         body:JSON.stringify(action==="declare"?{at_least_18:true,policy_version:declaration.current_policy_version}:
           {policy_version:declaration.current_policy_version})});
       pendingKey.current=null;setAccepted(false);await refresh();
-    }catch(error){setMessage(error instanceof Error?error.message:"Unable to update declaration");}
+    }catch(error){setMessage(`${error instanceof Error?error.message:"The result is unavailable."} Check your current status before retrying; the same operation key will be used.`);}
     finally{setBusy(false);}
   }
   if(loading)return <main className="p-8">Checking account…</main>;
@@ -47,13 +52,15 @@ export default function AdultDeclarationPage(){
         "An account restriction blocks new travel actions. A declaration does not remove it."}</p>}
       <p>Policy: {declaration.current_policy_version}</p>
     </section>}
-    <p role="status">{message}</p>
+    {fetching&&<p role="status">Loading declaration status…</p>}
+    {loadError&&<div role="alert" className="rounded border p-4">{message} <button className="min-h-11 rounded border px-4" onClick={()=>void refresh()}>Try again</button></div>}
+    {!loadError&&<p role="status">{message}</p>}
     {declaration&&<div className="space-y-3">
       <label className="flex gap-2"><input type="checkbox" checked={accepted} onChange={event=>setAccepted(event.target.checked)}/>
         I declare that I am at least 18 under the current policy.</label>
-      <button className="rounded bg-black px-4 py-2 text-white disabled:opacity-50" disabled={busy||!accepted}
+      <button className="min-h-11 rounded bg-black px-4 py-2 text-white disabled:opacity-50" disabled={busy||!accepted}
         onClick={()=>void change("declare")}>{declaration.state==="current"?"Reconfirm declaration":"Record declaration"}</button>
-      {declaration.declared_at&&!declaration.withdrawn_at&&<button className="ml-3 rounded border px-4 py-2" disabled={busy}
+      {declaration.declared_at&&!declaration.withdrawn_at&&<button className="ml-3 min-h-11 rounded border px-4 py-2" disabled={busy}
         onClick={()=>void change("withdraw")}>Withdraw declaration</button>}
     </div>}
   </main>;

@@ -20,9 +20,9 @@ export default function LoginPage() {
 
   return (
     <AuthSplitLayout
-      badge="Student Ride Access"
-      title="Welcome back to your campus ride network"
-      description="Sign in to manage ride offers, booking requests, and post-trip settlements with one secure account."
+      badge="Your account"
+      title="Welcome back to Petrol Partner"
+      description="Sign in to see your account readiness and the actions available now. Real bookings remain closed during launch checks."
       footer={
         <div className="space-y-2">
         <p>

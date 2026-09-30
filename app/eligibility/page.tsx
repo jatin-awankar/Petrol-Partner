@@ -63,7 +63,8 @@ export default function EligibilityPage() {
   if (loading) return <main className="p-8">Checking account…</main>;
   if (!user) return <main className="p-8">Sign in to check eligibility. <Link href="/login">Sign in</Link></main>;
   return <main className="mx-auto max-w-2xl space-y-6 p-8">
-    <h1 className="text-2xl font-semibold">Student eligibility</h1>
+    <h1 className="text-2xl font-semibold">Historical corridor evidence and restrictions</h1>
+    <p>Student and driver approvals shown here belong to the former fixed-corridor pilot. They do not grant eligibility under the new route policy, and real bookings remain disabled.</p>
     <p>For the broader route policy, <Link className="underline" href="/adult-declaration">record or view your adult self-declaration</Link>. No college enrollment or age document is required for that declaration.</p>
     <p>{evidenceMode === "real" ? "Upload a redacted enrollment document and age evidence for private operator review." : evidenceMode === "synthetic" ? "Real evidence intake is not open. This form is for fabricated pilot rehearsal documents only." : "Evidence intake is closed until private storage and deletion are verified."}</p>
     <p role="status">{message}</p>
@@ -74,7 +75,7 @@ export default function EligibilityPage() {
       {review?.metadata?.reviewReason && <p>Reason: {review.metadata.reviewReason}</p>}
       {review?.status === "verified" && <p>Separate driver and car approvals are still required before offering rides.</p>}
     </section>
-    <section className="space-y-2 rounded border p-4" aria-label="Travel restrictions">
+    <section id="travel-restrictions" className="space-y-2 rounded border p-4" aria-label="Travel restrictions">
       <h2 className="font-semibold">Travel restrictions</h2>
       {restrictions.length?restrictions.map(item=><p key={item.id}>
         {item.action==='restrict'?(restrictions.some(next=>next.reverses_id===item.id)?

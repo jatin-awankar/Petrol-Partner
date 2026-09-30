@@ -2,7 +2,6 @@ import React, { useMemo, useRef } from "react";
 import { Camera, Edit, Loader2, Star } from "lucide-react";
 
 import AppImage from "../AppImage";
-import VerificationBadge from "../ui/VerificationBadge";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 
@@ -104,18 +103,8 @@ const ProfileHeader: React.FC<ProfileHeaderProps> = ({
               <h1 className="max-w-full truncate text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
                 {user.name}
               </h1>
-              <VerificationBadge
-                isVerified={user.isCollegeVerified}
-                verificationType="identity"
-                size={18}
-              />
-              {user.isDriverVerified ? (
-                <VerificationBadge
-                  isVerified
-                  verificationType="driver"
-                  size={18}
-                />
-              ) : null}
+              {user.isCollegeVerified && <Badge variant="outline">Historical corridor student approval</Badge>}
+              {user.isDriverVerified && <Badge variant="outline">Historical corridor driver approval</Badge>}
             </div>
             <p className="truncate text-sm text-muted-foreground">
               {user.email}

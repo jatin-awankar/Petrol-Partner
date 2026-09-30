@@ -196,11 +196,11 @@ const VehicleInfoSection: React.FC<VehicleInfoSectionProps> = ({
           <div className="text-left">
             <h3 className="font-medium text-foreground">Vehicles</h3>
             <p className="text-xs text-muted-foreground">
-              Approved vehicles are required to publish ride offers.
+              These profile vehicles are historical records. New vehicle statements are managed separately.
             </p>
           </div>
           <Badge variant="secondary">{displayedVehicles.length}</Badge>
-          <Badge variant="outline">{approvedCount > 0 ? "Offer ready" : "Needs approval"}</Badge>
+          <Badge variant="outline">{approvedCount > 0 ? "Historical approval recorded" : "No historical approval"}</Badge>
         </div>
         <Icon name={isExpanded ? "ChevronUp" : "ChevronDown"} size={20} className="text-muted-foreground" />
       </button>
@@ -221,7 +221,7 @@ const VehicleInfoSection: React.FC<VehicleInfoSectionProps> = ({
             <div className="rounded-xl border border-dashed border-border p-6 text-center">
               <Icon name="CarFront" size={26} className="mx-auto text-muted-foreground" />
               <p className="mt-2 text-sm font-medium text-foreground">No vehicles added yet</p>
-              <p className="text-xs text-muted-foreground">Add your primary vehicle so you can offer rides.</p>
+              <p className="text-xs text-muted-foreground">New-policy driver and vehicle statements are managed in Account and declarations.</p>
             </div>
           ) : null}
 
@@ -243,7 +243,7 @@ const VehicleInfoSection: React.FC<VehicleInfoSectionProps> = ({
                       {[vehicle.make, vehicle.model, vehicle.year].filter(Boolean).join(" ")}
                     </h4>
                     <Badge variant={vehicle.isVerified ? "secondary" : "outline"}>
-                      {vehicle.isVerified ? "Approved" : "Under Review"}
+                      {vehicle.isVerified ? "Historical approval" : "No historical approval"}
                     </Badge>
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground sm:text-sm">
