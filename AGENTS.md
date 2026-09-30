@@ -1,6 +1,6 @@
 # Petrol Partner agent guide
 
-Petrol Partner is preparing a supervised pilot for 20–30 verified adult students on one fixed college corridor. Preserve the existing modular Next.js, Express, and PostgreSQL foundation while moving it toward the approved pilot architecture.
+Petrol Partner's approved new direction is broader, driver-posted route sharing with adult and driver–vehicle self-declarations. Real bookings remain disabled pending launch evidence and an explicit decision. The former fixed-college-corridor pilot is historical policy and data. Preserve the existing modular Next.js, Express, and PostgreSQL foundation. For product copy, navigation, and screen-state work, read [`docs/frontend-redesign.md`](docs/frontend-redesign.md); for historical pilot invariants, read [`docs/pilot-spec.md`](docs/pilot-spec.md).
 
 ## Before changing code
 
