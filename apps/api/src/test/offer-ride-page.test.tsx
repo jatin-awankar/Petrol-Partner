@@ -33,3 +33,34 @@ it('explains deadlines and recovery for decision and cancellation states',()=>{
   expect(screen.getByText(/same idempotency key/i)).not.toBeNull();
   expect(screen.queryByRole('button',{name:/accept|reject|cancel|replace/i})).toBeNull();
 });
+
+it('shows a selected declared vehicle and its sample route, departure and capacity',()=>{
+  render(<OfferRidePage/>);
+  fireEvent.change(screen.getByRole('combobox',{name:'Preview driver state'}),{target:{value:'input'}});
+  fireEvent.change(screen.getByRole('combobox',{name:'Sample declared vehicle'}),{target:{value:'car'}});
+  expect(screen.getByText(/sample declared car · 3 belted passenger seats · self-declared, not verified/i)).not.toBeNull();
+  expect(screen.getByText(/sample origin → sample destination/i)).not.toBeNull();
+  expect(screen.getByDisplayValue('Sample travel day · 17:00 IST')).not.toBeNull();
+  expect(screen.getByDisplayValue('3 whole-ride passenger seats')).not.toBeNull();
+});
+
+it('lets the driver inspect a synthetic pending request and its quoted route terms',()=>{
+  render(<OfferRidePage/>);
+  fireEvent.change(screen.getByRole('combobox',{name:'Preview driver state'}),{target:{value:'pending'}});
+  expect(screen.getByRole('heading',{name:'Sample incoming request'})).not.toBeNull();
+  expect(screen.getByText(/route version 1 · sample origin → sample midpoint → sample destination/i)).not.toBeNull();
+  expect(screen.getByText(/pickup sample origin · drop-off sample destination/i)).not.toBeNull();
+  expect(screen.getByText(/4 km saved-route segment · ₹5\/km · INR 2,000 paise/i)).not.toBeNull();
+  expect(screen.getByText(/one seat requested · pending, no capacity allocated/i)).not.toBeNull();
+  expect(screen.getByText(/requests close 16:00 IST · decide by 16:30 IST/i)).not.toBeNull();
+  expect(screen.queryByRole('button',{name:/accept request|reject request/i})).toBeNull();
+});
+
+it('keeps the synthetic request terms aligned with the selected declared car',()=>{
+  render(<OfferRidePage/>);
+  fireEvent.change(screen.getByRole('combobox',{name:'Preview driver state'}),{target:{value:'input'}});
+  fireEvent.change(screen.getByRole('combobox',{name:'Sample declared vehicle'}),{target:{value:'car'}});
+  fireEvent.change(screen.getByRole('combobox',{name:'Preview driver state'}),{target:{value:'pending'}});
+  expect(screen.getByText(/4 km saved-route segment · ₹7\/km · INR 2,800 paise/i)).not.toBeNull();
+  expect(screen.getByText(/sample declared car · 3 whole-ride passenger seats/i)).not.toBeNull();
+});
