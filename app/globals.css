@@ -365,6 +365,29 @@
 .participant-placeholder { min-height: calc(100vh - 76px); padding: clamp(24px,5vw,72px); background: var(--product-paper); color: var(--product-ink); }
 .participant-placeholder > span:first-child { font: 800 10px ui-monospace,monospace; letter-spacing: .1em; }
 .participant-placeholder h1 { margin: 18px 0; font: 900 clamp(44px,7vw,88px)/.9 Arial,sans-serif; letter-spacing: -.08em; }
+.find-page { min-height: 100vh; padding: clamp(24px,4vw,64px); padding-bottom: 110px; background: var(--product-paper); color: var(--product-ink); }
+.find-heading { display: flex; justify-content: space-between; align-items: start; gap: 24px; max-width: 1280px; margin: auto; }
+.find-eyebrow,.find-example-label { font: 800 11px ui-monospace,monospace; letter-spacing: .08em; text-transform: uppercase; }
+.find-heading h1 { margin: 16px 0; font: 900 clamp(48px,7vw,94px)/.9 Arial,sans-serif; letter-spacing: -.075em; }
+.find-heading p,.find-lede { max-width: 620px; font-size: 15px; line-height: 1.6; }
+.find-steps { display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); max-width: 1280px; margin: 34px auto 0; border: 1px solid var(--product-ink); }
+.find-steps span { display: flex; align-items: center; gap: 12px; min-height: 58px; padding: 12px; border-right: 1px solid var(--product-ink); font-size: 12px; font-weight: 800; }
+.find-steps span:last-child { border-right: 0; } .find-steps span[aria-current] { background: var(--product-lime); }
+.find-steps b { font: 800 11px ui-monospace,monospace; color: #536359; }
+.find-layout { display: grid; grid-template-columns: minmax(0,1.7fr) minmax(260px,1fr); gap: 22px; max-width: 1280px; margin: 24px auto 0; }
+.find-layout > .product-state,.find-example,.find-side { border: 1px solid var(--product-ink); background: #fffdf7; }
+.find-example,.find-side { padding: clamp(20px,3vw,38px); }
+.find-example h2 { max-width: 660px; margin: 26px 0 12px; font: 900 clamp(28px,3vw,44px)/1.05 Arial,sans-serif; letter-spacing: -.045em; }
+.find-example-label { display: inline-block; padding: 8px 10px; background: var(--product-orange); color: var(--product-ink); }
+.find-route { margin: 26px 0; border-left: 3px solid var(--product-green); } .find-route div { position: relative; display: flex; justify-content: space-between; gap: 12px; margin-left: 16px; padding: 0 0 24px; font-size: 14px; } .find-route div:before { content: ''; position: absolute; left: -24px; top: 3px; width: 13px; height: 13px; border-radius: 50%; background: var(--product-orange); border: 2px solid var(--product-green); } .find-route span,.find-meta { color: #52645a; font-size: 12px; }
+.find-fields { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; margin: 24px 0; } .find-fields label { display: grid; gap: 8px; font-weight: 800; font-size: 13px; } .find-fields select { width: 100%; min-height: 48px; padding: 10px; border: 1px solid var(--product-ink); background: white; color: var(--product-ink); }
+.find-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; } .find-alert { color: #923e2f; font-weight: 800; }
+.find-terms { display: grid; margin: 25px 0; border-top: 1px solid var(--product-ink); } .find-terms span { display: flex; justify-content: space-between; gap: 20px; padding: 13px 0; border-bottom: 1px solid #c9d0c5; font-size: 13px; }
+.find-example .product-state { margin: 20px 0; padding: 16px; min-height: 110px; background: #fff4ed; }
+.find-side h2,.find-availability h2 { font: 900 24px Arial,sans-serif; letter-spacing: -.04em; } .find-side ol { margin: 22px 0 0; padding-left: 20px; } .find-side li { padding: 0 0 18px 4px; font-size: 14px; line-height: 1.5; } .find-side dt { margin-top: 18px; font-weight: 900; font-size: 13px; } .find-side dd { margin: 4px 0 0; color: #46564c; font-size: 12px; line-height: 1.5; } .find-side a { display: inline-flex; align-items: center; min-height: 44px; margin-top: 20px; font-weight: 800; text-decoration: underline; }
+.find-availability { max-width: 1280px; margin: 56px auto 0; } .find-availability > div { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 12px; margin-top: 18px; } .find-availability article { padding: 18px; border: 1px solid var(--product-ink); } .find-availability h3 { font-weight: 900; } .find-availability p { margin-top: 8px; font-size: 12px; line-height: 1.55; }
+@media(max-width:900px) { .find-steps { grid-template-columns: repeat(5,minmax(0,1fr)); } .find-steps span { display: grid; gap: 4px; } .find-layout { grid-template-columns: minmax(0,1fr); } .find-availability > div { grid-template-columns: repeat(2,minmax(0,1fr)); } }
+@media(max-width:600px) { .find-heading { display: block; } .find-heading .product-status { margin-top: 18px; } .find-steps { overflow-x: auto; grid-template-columns: repeat(5,minmax(112px,1fr)); } .find-steps span { min-height: 62px; } .find-layout > .product-state { min-height: 0; } .find-fields,.find-availability > div { grid-template-columns: minmax(0,1fr); } .find-terms span { display: grid; gap: 3px; } .find-route div { display: grid; gap: 3px; } }
 .participant-placeholder .product-state { max-width: 720px; margin-top: 40px; }
 .operator-shell { background: #182420; color: #f5f1e7; border-bottom: 4px solid #ec794f; }
 .operator-shell > div { max-width: 1440px; min-height: 70px; margin: auto; padding: 12px clamp(20px,4vw,64px); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px; }
