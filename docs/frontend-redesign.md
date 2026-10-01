@@ -57,6 +57,10 @@ Each stage is one reviewable branch and pull request. Finish and review it befor
 7. **Operator workspace.** Organize queues, evidence, reasoned decisions, notifications, pause/recovery, and audit visibility in a distinct operator shell. Complete when an operator can judge the impact of each existing action and recover an uncertain result.
 8. **Cross-page QA and release review.** Walk every available, unavailable, pending, restricted, failure, retry, and unknown-result path for each role. Check responsive layout, keyboard focus, labels, contrast, copy, navigation, API gates, and historical records. Complete when screenshots, affected checks, and remaining launch blockers are recorded for review.
 
+### Stage 4 read seam and launch dependency
+
+The Find page currently uses a labelled synthetic route and request walkthrough. It makes no passenger route, quote, or booking call. A production passenger read needs a separate reviewed API slice for published-route discovery and detail, followed by a passenger-authorized quote for a selected segment. The current `GET /v1/posted-routes/mine` and `GET /v1/posted-routes/:id` are driver-owner reads; `POST /v1/posted-routes/:id/quote` is test-only. Do not repurpose an owner read or expose prepared routes to passengers. Publication, route and stopping-place verification, operating coverage, deployed-data reconciliation, and the explicit launch decision remain the blockers tracked in unrestricted-booking tickets 02, 04, 05, 10, 11, 12, and 18. The synthetic walkthrough is the completed stage 4 frontend state design, not a live passenger flow.
+
 ## Review and launch rules
 
 - Before each stage, inspect Git state and the nearest source, API route, service, repository, migrations, and tests affected by that stage. Follow `AGENTS.md` and preserve user work and existing data.

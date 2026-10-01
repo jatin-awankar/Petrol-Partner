@@ -5,6 +5,11 @@ import FindRidePage from '../../../../app/find-a-ride/page';
 
 afterEach(cleanup);
 
+it('keeps a single main landmark inside the participant layout',()=>{
+  render(<main><FindRidePage/></main>);
+  expect(screen.getAllByRole('main')).toHaveLength(1);
+});
+
 it('starts with a truthful gated discovery state and no live offer or booking control',()=>{
   render(<FindRidePage/>);
   expect(screen.getByRole('heading',{name:'Find a ride'})).not.toBeNull();
@@ -46,12 +51,56 @@ it('previews quoted terms and a pending one-seat request without sending a real 
   fireEvent.click(screen.getByRole('button',{name:'See quote state'}));
   fireEvent.click(screen.getByRole('button',{name:'Preview sample quote'}));
   expect(screen.getByText('4 km · sample segment')).not.toBeNull();
-  expect(screen.getByText('₹20 · INR · sample only')).not.toBeNull();
+  expect(screen.getByText('Saved posted route · sample only')).not.toBeNull();
+  expect(screen.getByText('Nearest paise, half up · sample only')).not.toBeNull();
+  expect(screen.getByText('₹20 · INR · 2,000 paise · sample only')).not.toBeNull();
+  expect(screen.getByText('₹0 · 0 paise · sample only')).not.toBeNull();
   fireEvent.click(screen.getByRole('button',{name:'Review one-seat request'}));
   expect(screen.getByText(/one passenger.*₹20/i)).not.toBeNull();
   fireEvent.click(screen.getByRole('button',{name:'Preview pending request'}));
   expect(screen.getByRole('heading',{name:'Pending · sample'})).not.toBeNull();
   expect(screen.getByText(/No real request was sent\. A pending request awaits the driver's decision; your seat is not confirmed\./i)).not.toBeNull();
+});
+
+it('shows when the sample route closes requests and when the driver must decide',()=>{
+  render(<FindRidePage/>);
+  fireEvent.click(screen.getByRole('button',{name:'Explore synthetic example'}));
+  expect(screen.getByText(/Sample travel day · departure 17:00 IST/)).not.toBeNull();
+  expect(screen.getByText(/Requests close 16:00 IST/)).not.toBeNull();
+  fireEvent.click(screen.getByRole('button',{name:'Choose pickup and drop-off'}));
+  fireEvent.click(screen.getByRole('button',{name:'See quote state'}));
+  fireEvent.click(screen.getByRole('button',{name:'Preview sample quote'}));
+  fireEvent.click(screen.getByRole('button',{name:'Review one-seat request'}));
+  fireEvent.click(screen.getByRole('button',{name:'Preview pending request'}));
+  expect(screen.getByText(/Driver decides by 16:30 IST on the sample travel day/)).not.toBeNull();
+});
+
+it('repeats the illustrative quote terms before a sample one-seat request',()=>{
+  render(<FindRidePage/>);
+  fireEvent.click(screen.getByRole('button',{name:'Explore synthetic example'}));
+  fireEvent.click(screen.getByRole('button',{name:'Choose pickup and drop-off'}));
+  fireEvent.click(screen.getByRole('button',{name:'See quote state'}));
+  fireEvent.click(screen.getByRole('button',{name:'Preview sample quote'}));
+  fireEvent.click(screen.getByRole('button',{name:'Review one-seat request'}));
+  expect(screen.getByText('1 · sample only')).not.toBeNull();
+  expect(screen.getByText('₹20 · INR · 2,000 paise · sample only')).not.toBeNull();
+  expect(screen.getByText('Nearest paise, half up · sample only')).not.toBeNull();
+  expect(screen.getByRole('heading',{name:'No request was sent'})).not.toBeNull();
+});
+
+it('clears an old sample request outcome when a new quote preview starts',()=>{
+  render(<FindRidePage/>);
+  fireEvent.click(screen.getByRole('button',{name:'Explore synthetic example'}));
+  fireEvent.click(screen.getByRole('button',{name:'Choose pickup and drop-off'}));
+  fireEvent.click(screen.getByRole('button',{name:'See quote state'}));
+  fireEvent.click(screen.getByRole('button',{name:'Preview sample quote'}));
+  fireEvent.click(screen.getByRole('button',{name:'Review one-seat request'}));
+  fireEvent.click(screen.getByRole('button',{name:'Preview pending request'}));
+  fireEvent.change(screen.getByRole('combobox',{name:'Preview request outcome'}),{target:{value:'Accepted'}});
+  fireEvent.click(screen.getByRole('button',{name:'Back to quote state'}));
+  fireEvent.click(screen.getByRole('button',{name:'Preview sample quote'}));
+  fireEvent.click(screen.getByRole('button',{name:'Review one-seat request'}));
+  expect(screen.getByRole('heading',{name:'No request was sent'})).not.toBeNull();
 });
 
 it('shows a matching route and a failed discovery as distinct synthetic states',()=>{
@@ -63,6 +112,15 @@ it('shows a matching route and a failed discovery as distinct synthetic states',
   fireEvent.click(screen.getByRole('button',{name:'Preview discovery failure'}));
   expect(screen.getByRole('heading',{name:'Discovery failed · sample'})).not.toBeNull();
   expect(screen.getByRole('button',{name:'Retry sample discovery'})).not.toBeNull();
+});
+
+it('keeps discovery previews with route detail rather than later request steps',()=>{
+  render(<FindRidePage/>);
+  fireEvent.click(screen.getByRole('button',{name:'Explore synthetic example'}));
+  expect(screen.getByRole('button',{name:'Preview discovery loading'})).not.toBeNull();
+  fireEvent.click(screen.getByRole('button',{name:'Choose pickup and drop-off'}));
+  expect(screen.queryByRole('button',{name:'Preview discovery loading'})).toBeNull();
+  expect(screen.queryByRole('heading',{name:'Discovery failed · sample'})).toBeNull();
 });
 
 it('previews a loading discovery state separately from the empty production state',()=>{
@@ -83,7 +141,7 @@ it('previews stale quote and account restriction as blocked states',()=>{
   fireEvent.click(screen.getByRole('button',{name:'Preview stale quote'}));
   expect(screen.getByRole('heading',{name:'Quote expired · sample'})).not.toBeNull();
   expect(screen.queryByRole('button',{name:'Review one-seat request'})).toBeNull();
-  expect(screen.queryByText('₹20 · INR · sample only')).toBeNull();
+  expect(screen.queryByText('₹20 · INR · 2,000 paise · sample only')).toBeNull();
   fireEvent.click(screen.getByRole('button',{name:'Preview account restriction'}));
   expect(screen.getByRole('heading',{name:'Request restricted · sample'})).not.toBeNull();
   expect(screen.queryByRole('button',{name:'Review one-seat request'})).toBeNull();
@@ -113,5 +171,5 @@ it('keeps sample terms aligned with the selected ordered segment',()=>{
   fireEvent.click(screen.getByRole('button',{name:'See quote state'}));
   fireEvent.click(screen.getByRole('button',{name:'Preview sample quote'}));
   expect(screen.getByText('2 km · sample segment')).not.toBeNull();
-  expect(screen.getByText('₹10 · INR · sample only')).not.toBeNull();
+  expect(screen.getByText('₹10 · INR · 1,000 paise · sample only')).not.toBeNull();
 });
