@@ -127,6 +127,8 @@ const PersonalInfoSection: React.FC<PersonalInfoSectionProps> = ({
   return (
     <section className="rounded-2xl border border-border/70 bg-card/90 shadow-card">
       <button
+        type="button"
+        aria-expanded={isExpanded}
         onClick={onToggle}
         className="flex w-full items-center justify-between px-4 py-4 transition-colors hover:bg-muted/40"
       >
@@ -141,6 +143,7 @@ const PersonalInfoSection: React.FC<PersonalInfoSectionProps> = ({
       </button>
 
       <div
+        hidden={!isExpanded}
         className={`overflow-hidden transition-[max-height,opacity] duration-300 ${
           isExpanded ? "max-h-[2800px] opacity-100" : "max-h-0 opacity-0"
         }`}

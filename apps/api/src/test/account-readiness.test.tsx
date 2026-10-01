@@ -27,3 +27,24 @@ it('does not describe a revoked driver declaration as ready',async()=>{
   expect(screen.getByText(/needs account review before driver actions/i)).not.toBeNull();
   expect(screen.queryByText(/Your declarations are recorded/i)).toBeNull();
 });
+
+it('shows driver preparation as optional for an adult passenger',async()=>{
+  apiRequest.mockImplementation(async(path:string)=>path==='/v1/adult-declaration'
+    ? {declaration:{state:'current',restriction_source:null}}
+    : {driver:{state:'missing',restricted:false},vehicles:[]});
+  render(<AccountReadiness/>);
+  expect(await screen.findByText('Adult declaration: current')).not.toBeNull();
+  expect(screen.getByText(/No driver declaration is needed to request a seat/i)).not.toBeNull();
+  expect(screen.getByRole('link',{name:/optional.*driver declaration/i})).not.toBeNull();
+});
+
+it('does not block a separate current vehicle because another record was revoked',async()=>{
+  apiRequest.mockImplementation(async(path:string)=>path==='/v1/adult-declaration'
+    ? {declaration:{state:'current',restriction_source:null}}
+    : {driver:{state:'current',restricted:false},vehicles:[
+      {state:'revoked',category:'car'},{state:'current',category:'bike'}]});
+  render(<AccountReadiness/>);
+  expect(await screen.findByText(/Vehicle declarations: car revoked, bike current/i)).not.toBeNull();
+  expect(screen.getByText(/The revoked car declaration cannot be used/i)).not.toBeNull();
+  expect(screen.queryByText(/needs account review before driver actions/i)).toBeNull();
+});

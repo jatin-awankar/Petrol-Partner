@@ -46,6 +46,27 @@ export default function DriverVehicleDeclarationsPage() {
   const [permission, setPermission] = useState(false);
   const [renewingVehicle, setRenewingVehicle] = useState<string | null>(null);
   const pending = useRef<{ action: string; key: string; path: string; method: "PUT" | "POST"; body: string } | null>(null);
+  const pendingStorageKey = user ? `pp-declaration-pending:driver-vehicle:${user.id}` : null;
+  function clearPending() {
+    pending.current = null;
+    if (pendingStorageKey) sessionStorage.removeItem(pendingStorageKey);
+  }
+  async function checkPendingOperation() {
+    if (!pending.current) return "absent" as const;
+    const lookup = await apiRequest<{operation:{state:string}|null}>(`/v1/driver-vehicle-declarations/operations/${encodeURIComponent(pending.current.key)}`);
+    if (lookup.operation?.state === "acknowledged" || lookup.operation?.state === "recovered") {
+      clearPending();
+      await refresh();
+      setMessage("Earlier declaration was recorded. Check the current state before making another change.");
+      return "resolved" as const;
+    }
+    if (lookup.operation) {
+      setMessage("That declaration is committed but still awaiting recovery acknowledgement. Check again later.");
+      return "pending" as const;
+    }
+    setMessage("No committed operation was found. You can retry the original declaration using its saved key.");
+    return "absent" as const;
+  }
   const refresh = useCallback(async () => {
     setLoading(true); setError("");
     try {
@@ -57,7 +78,23 @@ export default function DriverVehicleDeclarationsPage() {
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Account state unavailable."); }
     finally { setLoading(false); }
   }, []);
-  useEffect(() => { if (user) void refresh(); }, [user, refresh]);
+  useEffect(() => {
+    if (!user) return;
+    const stored = sessionStorage.getItem(`pp-declaration-pending:driver-vehicle:${user.id}`);
+    if (stored) {
+      try {
+        const operation=JSON.parse(stored);
+        if (typeof operation.key!=="string"||typeof operation.action!=="string"||
+          typeof operation.body!=="string"||typeof operation.path!=="string"||
+          !operation.path.startsWith("/v1/driver-vehicle-declarations/")||
+          !["PUT","POST"].includes(operation.method)) throw new Error("Invalid saved operation");
+        pending.current=operation;
+        setMessage("An earlier declaration has an uncertain result. Check its result before trying another action.");
+      }
+      catch { sessionStorage.removeItem(`pp-declaration-pending:driver-vehicle:${user.id}`); }
+    }
+    void refresh();
+  }, [user, refresh]);
   async function mutate(command: DeclarationOperation) {
     const {action,path,method,body}=requestFor(command);
     setBusy(true); setMessage("");
@@ -66,14 +103,33 @@ export default function DriverVehicleDeclarationsPage() {
         setMessage("Finish checking the previous declaration result before starting another action.");
         return;
       }
-      if (!pending.current) pending.current = { action, key: crypto.randomUUID(), path, method, body: JSON.stringify(body) };
+      if (pending.current) {
+        let result:Awaited<ReturnType<typeof checkPendingOperation>>;
+        try { result=await checkPendingOperation(); }
+        catch (reason) {
+          setMessage(`${reason instanceof Error ? reason.message : "Unable to check the operation result."} The earlier result is still uncertain; try checking again.`);
+          return;
+        }
+        if(result!=="absent") return;
+      }
+      if (!pending.current) {
+        pending.current = { action, key: crypto.randomUUID(), path, method, body: JSON.stringify(body) };
+        if (pendingStorageKey) sessionStorage.setItem(pendingStorageKey, JSON.stringify(pending.current));
+      }
       const operation = pending.current;
       await apiRequest(operation.path, { method: operation.method, headers: { "Idempotency-Key": operation.key }, body: operation.body });
-      pending.current = null;
+      clearPending();
       await refresh();
-      setMessage("Declaration recorded. This is your statement; Petrol Partner has not verified the documents.");
+      setMessage(command.kind.endsWith("revoke")
+        ? `${command.kind === "driver-revoke" ? "Driver" : "Vehicle"} declaration revoked. New driver actions may require account review.`
+        : "Declaration recorded. This is your statement; Petrol Partner has not verified the documents.");
     } catch (reason) {
-      setMessage(`${reason instanceof Error ? reason.message : "The result is unavailable."} Check the current status before retrying; the same operation key will be used.`);
+      const response = reason as {status?:number;code?:string};
+      const rejected = typeof response?.status === "number" && response.status < 500 && response.code !== "OPERATION_PENDING";
+      if (rejected) clearPending();
+      setMessage(rejected
+        ? `${reason instanceof Error ? reason.message : "Declaration rejected."} Update the details and submit again.`
+        : `${reason instanceof Error ? reason.message : "The result is unavailable."} Check the current status before retrying; the same operation key will be used.`);
     } finally { setBusy(false); }
   }
   const version = adult?.current_policy_version;
@@ -110,6 +166,10 @@ export default function DriverVehicleDeclarationsPage() {
       </form>}
     </>}
     {message && <p role="status" className="rounded-xl border p-4">{message}</p>}
+    {pending.current && <Button type="button" variant="outline" className="min-h-11" disabled={busy}
+      onClick={async()=>{setBusy(true);try{await checkPendingOperation();}
+        catch(reason){setMessage(reason instanceof Error?reason.message:"Unable to check the operation result.");}
+        finally{setBusy(false);}}}>Check earlier result</Button>}
     <p className="text-sm">Historical corridor approval is separate and does not grant eligibility under the new route policy. <Link href="/eligibility" className="underline">View historical status</Link></p>
   </main>;
 }

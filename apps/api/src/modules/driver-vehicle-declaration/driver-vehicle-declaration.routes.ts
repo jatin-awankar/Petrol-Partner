@@ -21,6 +21,8 @@ function key(req:{get:(name:string)=>string|undefined}){const value=req.get('Ide
   if(!value||value.length>128)throw new AppError(400,'Idempotency-Key is required','IDEMPOTENCY_KEY_REQUIRED');
   return value;}
 driverVehicleDeclarationRouter.get('/',asyncHandler(async(req,res)=>res.json(await service.status(req.user!.userId))));
+driverVehicleDeclarationRouter.get('/operations/:key',asyncHandler(async(req,res)=>res.json({
+  operation:await service.getOperation(req.user!.userId,z.string().min(1).max(128).parse(req.params.key))})));
 driverVehicleDeclarationRouter.put('/driver',asyncHandler(async(req,res)=>res.json(await service.mutate(
   req.user!.userId,key(req),'driver_declare',req.user!.userId,driver.parse(req.body)))));
 driverVehicleDeclarationRouter.post('/driver/revoke',asyncHandler(async(req,res)=>res.json(await service.mutate(

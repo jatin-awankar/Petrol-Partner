@@ -46,6 +46,10 @@ export async function status(userId:string){const account=await repo.account(poo
   const restricted=account.status!=='active'||account.restricted;
   return {driver:publicRow(await repo.driver(pool,userId),restricted),
     vehicles:(await repo.vehicles(pool,userId)).map(row=>publicRow(row,restricted))};}
+export async function getOperation(userId:string,key:string){
+  const row=await repo.byKey(pool,userId,key);
+  return row?{operation_id:row.id,action:row.action,state:row.state}:null;
+}
 export async function assertCurrentDriverVehicle(client:PoolClient,userId:string,vehicleId:string,seats:number){
   await assertCurrentAdultDeclaration(client,userId);
   const account=await repo.account(client,userId);

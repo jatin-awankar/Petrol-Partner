@@ -1,5 +1,5 @@
-import React, { useMemo, useRef } from "react";
-import { Camera, Edit, Loader2, Star } from "lucide-react";
+import React, { useRef } from "react";
+import { Camera, Edit, Loader2 } from "lucide-react";
 
 import AppImage from "../AppImage";
 import { Badge } from "../ui/badge";
@@ -30,21 +30,6 @@ const ProfileHeader: React.FC<ProfileHeaderProps> = ({
   isPhotoUploading = false,
 }) => {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-
-  const completion = useMemo(() => {
-    if (!user) return 0;
-
-    const checks = [
-      Boolean(user.name),
-      Boolean(user.email),
-      Boolean(user.college),
-      Boolean(user.isCollegeVerified),
-      Boolean(user.isDriverVerified),
-    ];
-
-    const done = checks.filter(Boolean).length;
-    return Math.round((done / checks.length) * 100);
-  }, [user]);
 
   if (!user) {
     return (
@@ -110,23 +95,8 @@ const ProfileHeader: React.FC<ProfileHeaderProps> = ({
               {user.email}
             </p>
             <p className="truncate text-sm text-muted-foreground">
-              {user.college ?? "College not provided"}
+              {user.college ? `Historical college: ${user.college}` : "College affiliation is optional"}
             </p>
-            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-              <div className="flex items-center gap-1 rounded-full bg-warning/15 px-2.5 py-1 text-xs text-foreground sm:px-3 sm:text-sm">
-                <Star className="size-3.5 fill-warning text-warning" />
-                <span>{Number(user.rating ?? 0).toFixed(1)}</span>
-              </div>
-              <Badge variant="outline" className="text-[11px] sm:text-xs">
-                {user.totalRides ?? 0} rides completed
-              </Badge>
-              <Badge
-                variant={completion >= 80 ? "secondary" : "outline"}
-                className="text-[11px] sm:text-xs"
-              >
-                Profile completion {completion}%
-              </Badge>
-            </div>
           </div>
         </div>
 

@@ -40,6 +40,10 @@ export async function getStatus(userId:string){
     current_policy_version:POLICY_VERSION,declared_at:row.declared_at,expires_at:row.expires_at,
     withdrawn_at:row.withdrawn_at};
 }
+export async function getOperation(userId:string,key:string){
+  const row=await repo.byKey(pool,userId,key);
+  return row?{operation_id:row.id,action:row.action,state:row.state}:null;
+}
 export async function assertCurrentAdultDeclaration(client:PoolClient,userId:string){
   if(!await repo.lockAccount(client,userId))
     throw new AppError(403,'Account is not active','ACCOUNT_DISABLED');

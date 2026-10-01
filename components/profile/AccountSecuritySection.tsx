@@ -49,6 +49,8 @@ const AccountSecuritySection: React.FC<AccountSecuritySectionProps> = ({
   return (
     <section className="rounded-2xl border border-border/70 bg-card/90 shadow-card">
       <button
+        type="button"
+        aria-expanded={isExpanded}
         onClick={onToggle}
         className="flex w-full items-center justify-between px-4 py-3.5 transition-colors hover:bg-muted/40 sm:px-5 sm:py-4"
       >
@@ -66,6 +68,7 @@ const AccountSecuritySection: React.FC<AccountSecuritySectionProps> = ({
       </button>
 
       <div
+        hidden={!isExpanded}
         className={`overflow-hidden transition-[max-height,opacity] duration-300 ${
           isExpanded ? "max-h-[2600px] opacity-100" : "max-h-0 opacity-0"
         }`}

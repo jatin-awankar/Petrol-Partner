@@ -188,6 +188,8 @@ const VehicleInfoSection: React.FC<VehicleInfoSectionProps> = ({
   return (
     <section className="rounded-2xl border border-border/70 bg-card/90 shadow-card">
       <button
+        type="button"
+        aria-expanded={isExpanded}
         onClick={onToggle}
         className="flex w-full items-center justify-between px-4 py-3.5 transition-colors hover:bg-muted/40 sm:px-5 sm:py-4"
       >
@@ -206,6 +208,7 @@ const VehicleInfoSection: React.FC<VehicleInfoSectionProps> = ({
       </button>
 
       <div
+        hidden={!isExpanded}
         className={`overflow-hidden transition-[max-height,opacity] duration-300 ${
           isExpanded ? "max-h-[3200px] opacity-100" : "max-h-0 opacity-0"
         }`}
@@ -260,7 +263,7 @@ const VehicleInfoSection: React.FC<VehicleInfoSectionProps> = ({
                       <Edit className="size-4" />
                     </Button>
                   ) : null}
-                  <Button
+                  {onDeleteVehicle && <Button
                     type="button"
                     variant="ghost"
                     size="icon"
@@ -268,7 +271,7 @@ const VehicleInfoSection: React.FC<VehicleInfoSectionProps> = ({
                     title="Vehicle delete will be available after moderation safeguards are added."
                   >
                     <Trash2 className="size-4 text-muted-foreground" />
-                  </Button>
+                  </Button>}
                 </div>
               </div>
             </article>
@@ -434,12 +437,12 @@ const VehicleInfoSection: React.FC<VehicleInfoSectionProps> = ({
                 </Button>
               </div>
             </div>
-          ) : (
+          ) : onAddVehicle ? (
             <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => setShowForm(true)}>
               <Plus className="size-4" />
               Add Vehicle
             </Button>
-          )}
+          ) : <p className="text-sm text-muted-foreground">This is a read-only historical record. <a href="/driver-vehicle-declarations" className="underline">Manage new-policy declarations</a>.</p>}
 
           {onDeleteVehicle ? (
             <p className="text-xs text-muted-foreground">

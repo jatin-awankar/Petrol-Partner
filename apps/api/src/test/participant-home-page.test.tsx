@@ -22,8 +22,9 @@ it('explains an account restriction before offering a next action',async()=>{
   expect(await screen.findByText(/account is inactive/i)).not.toBeNull();
 });
 
-it('directs a current adult with no driver declaration to the driver declaration journey',async()=>{
+it('offers driver setup as an optional next step for a current adult',async()=>{
   apiRequest.mockImplementation(async(path:string)=>path.includes('driver-vehicle')?{driver:{state:'missing',restricted:false},vehicles:[]}:{declaration:{state:'current',kind:'self_declaration',restriction_source:null}});
   render(await DashboardPage());
-  expect(await screen.findByRole('link',{name:/record driver declaration/i})).not.toBeNull();
+  expect(await screen.findByRole('link',{name:/optional.*record driver declaration/i})).not.toBeNull();
+  expect(screen.getByText(/Passengers do not need a driver declaration/i)).not.toBeNull();
 });

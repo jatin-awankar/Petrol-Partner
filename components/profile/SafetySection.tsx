@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Icon from "../AppIcon";
 import { Button } from "../ui/button";
-import { Checkbox } from "../ui/checkbox";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Badge } from "../ui/badge";
@@ -39,12 +38,7 @@ export interface SafetySectionProps {
   maxTrustedContacts?: number;
 }
 
-const DEFAULT_SETTINGS: SafetySettingsData = {
-  autoShareRideDetails: true,
-  enableLocationTracking: true,
-  requireDriverVerification: true,
-  safetyCheckIns: true,
-};
+const DEFAULT_SETTINGS: SafetySettingsData = {};
 
 const emptyContact = { name: "", phone: "", relationship: "", email: "" };
 
@@ -74,10 +68,6 @@ const SafetySection: React.FC<SafetySectionProps> = ({
     () => trustedContacts.length < maxTrustedContacts,
     [trustedContacts.length, maxTrustedContacts],
   );
-
-  const setToggle = useCallback((key: keyof SafetySettingsData, next: boolean) => {
-    setSettings((prev) => ({ ...prev, [key]: next }));
-  }, []);
 
   const addContact = useCallback(() => {
     setFormError(null);
@@ -131,6 +121,8 @@ const SafetySection: React.FC<SafetySectionProps> = ({
   return (
     <section className="rounded-2xl border border-border/70 bg-card/90 shadow-card">
       <button
+        type="button"
+        aria-expanded={isExpanded}
         onClick={onToggle}
         className="flex w-full items-center justify-between px-4 py-3.5 transition-colors hover:bg-muted/40 sm:px-5 sm:py-4"
       >
@@ -138,13 +130,14 @@ const SafetySection: React.FC<SafetySectionProps> = ({
           <Icon name="Shield" size={20} className="text-primary" />
           <div className="text-left">
             <h3 className="font-medium text-foreground">Safety</h3>
-            <p className="text-xs text-muted-foreground">Trusted contacts and trip-protection settings.</p>
+            <p className="text-xs text-muted-foreground">Keep contact details for your own reference. Automatic trip sharing is unavailable.</p>
           </div>
           <Badge variant="outline">{trustedContacts.length} contacts</Badge>
         </div>
         <Icon name={isExpanded ? "ChevronUp" : "ChevronDown"} size={20} className="text-muted-foreground" />
       </button>
       <div
+        hidden={!isExpanded}
         className={`overflow-hidden transition-[max-height,opacity] duration-300 ${
           isExpanded ? "max-h-[2800px] opacity-100" : "max-h-0 opacity-0"
         }`}
@@ -171,7 +164,7 @@ const SafetySection: React.FC<SafetySectionProps> = ({
             <div className="mt-3 space-y-2">
               {trustedContacts.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
-                  Add at least one trusted contact to strengthen safety during intercity trips.
+                  No trusted contacts saved yet. Automatic alerts and trip sharing are unavailable.
                 </p>
               ) : (
                 trustedContacts.map((contact) => (
@@ -246,37 +239,7 @@ const SafetySection: React.FC<SafetySectionProps> = ({
             )}
           </div>
 
-          <div className="rounded-xl border border-border/70 bg-muted/20 p-3">
-            <h4 className="text-sm font-semibold text-foreground">Trip Safety Controls</h4>
-            <div className="mt-3 space-y-2">
-              {[
-                ["autoShareRideDetails", "Auto-share trip details with trusted contacts"],
-                ["enableLocationTracking", "Enable location tracking during active rides"],
-                ["requireDriverVerification", "Match only with verified drivers for offers"],
-                ["safetyCheckIns", "Enable periodic safety check-ins on longer rides"],
-              ].map(([key, label]) => (
-                <label key={key} className="flex items-center gap-2 text-sm">
-                  <Checkbox checked={Boolean(settings[key])} onCheckedChange={(checked) => setToggle(key as keyof SafetySettingsData, checked === true)} />
-                  <span className="text-foreground">{label}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-border/70 bg-muted/20 p-3">
-            <h4 className="text-sm font-semibold text-foreground">Emergency Tools</h4>
-            <p className="mt-1 text-xs text-muted-foreground">
-              In-app SOS and emergency call automation are being integrated with live trip state.
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <Button variant="outline" disabled title="Coming soon: in-ride SOS flow.">
-                Test SOS
-              </Button>
-              <Button variant="outline" disabled title="Coming soon: one-tap trusted contact ping.">
-                Test Location Share
-              </Button>
-            </div>
-          </div>
+          <p className="rounded-xl border border-border/70 bg-muted/20 p-3 text-sm text-muted-foreground">Saving a contact does not notify them. Location tracking, automatic sharing, check-ins, and SOS actions are not active.</p>
 
           {onSave ? (
             <div className="sticky bottom-2 z-10 rounded-xl border border-border/60 bg-card/95 px-3 py-3 backdrop-blur">
@@ -289,7 +252,7 @@ const SafetySection: React.FC<SafetySectionProps> = ({
                 ) : (
                   <>
                     <Save className="size-4" />
-                    Save Safety
+                    Save trusted contacts
                   </>
                 )}
               </Button>

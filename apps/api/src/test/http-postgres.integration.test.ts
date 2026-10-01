@@ -4461,6 +4461,17 @@ describe('ticket 07 adult self-declaration',()=>{
       WHERE actor_user_id=$1 AND action='adult_declaration_declare'`,[a.id]);
     expect(audits.rows[0].n).toBe(1);
   });
+  it('lets only the owner look up an adult declaration operation by its retry key',async()=>{
+    const app=createApp();const owner=await user();const other=await user();const key=randomUUID();
+    const recorded=await request(app).put(path).set(auth(owner.token)).set('Idempotency-Key',key)
+      .send({at_least_18:true,policy_version:version});
+    expect(recorded.status).toBe(200);
+    const lookup=`${path}/operations/${key}`;
+    expect((await request(app).get(lookup)).status).toBe(401);
+    expect((await request(app).get(lookup).set(auth(other.token))).body.operation).toBeNull();
+    expect((await request(app).get(lookup).set(auth(owner.token))).body.operation).toEqual({
+      operation_id:recorded.body.operation_id,action:'declare',state:'acknowledged'});
+  });
   it('shows expired, withdrawn, restricted and historical PRMITR-only states',async()=>{
     const app=createApp();const a=await user();
     await verificationPool.query(`INSERT INTO student_verifications(user_id,provider,institution_name,status,adult_eligible,eligibility_ends_at)
@@ -4792,6 +4803,17 @@ describe('ticket 08 driver and vehicle self-declarations',()=>{
       .toBe('IDEMPOTENCY_PAYLOAD_MISMATCH');
     expect((await verificationPool.query(`SELECT count(*)::int AS n FROM unrestricted_vehicle_declarations
       WHERE driver_user_id=$1`,[a.id])).rows[0].n).toBe(1);
+  });
+  it('lets only the owner look up a driver or vehicle declaration operation',async()=>{
+    const app=createApp();const owner=await user();const other=await user();await adult(owner);
+    const key=randomUUID();const recorded=await request(app).put(`${path}/driver`).set(auth(owner.token))
+      .set('Idempotency-Key',key).send(driverBody());
+    expect(recorded.status).toBe(200);
+    const lookup=`${path}/operations/${key}`;
+    expect((await request(app).get(lookup)).status).toBe(401);
+    expect((await request(app).get(lookup).set(auth(other.token))).body.operation).toBeNull();
+    expect((await request(app).get(lookup).set(auth(owner.token))).body.operation).toEqual({
+      operation_id:recorded.body.operation_id,action:'driver_declare',state:'acknowledged'});
   });
   it('blocks known false declarations and does not let the owner restore a revoked record',async()=>{
     const app=createApp();const a=await user();await adult(a);await driver(a);
