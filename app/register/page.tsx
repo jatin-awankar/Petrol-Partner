@@ -17,7 +17,6 @@ export default function RegisterPage() {
     full_name: "",
     email: "",
     password: "",
-    college_name: "",
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -44,7 +43,6 @@ export default function RegisterPage() {
         email: formData.email,
         password: formData.password,
         fullName: formData.full_name,
-        college: formData.college_name || undefined,
       });
 
       if (user) {
@@ -66,9 +64,9 @@ export default function RegisterPage() {
 
   return (
     <AuthSplitLayout
-      badge="Campus Onboarding"
-      title="Create your ride-sharing account"
-      description="Join a verified student community and start offering or requesting trips in minutes."
+      badge="Your account"
+      title="Create a Petrol Partner account"
+      description="Confirm email ownership, then review your declarations and account readiness. Ride bookings are not available yet."
       footer={
         <p>
           Already have an account?{" "}
@@ -84,7 +82,7 @@ export default function RegisterPage() {
       {verificationSent ? (
         <div className="mx-auto w-full max-w-md space-y-4">
           <h1 className="text-2xl font-semibold">Check your email</h1>
-          <p className="text-sm text-muted-foreground">Follow the verification link before signing in. Registration does not grant ride or operator eligibility.</p>
+          <p className="text-sm text-muted-foreground">Follow the verification link to confirm email ownership. Account creation and email confirmation do not grant ride eligibility. You can review declarations after signing in; real bookings remain closed.</p>
           <Link className="font-medium text-primary hover:underline" href="/login">Return to sign in</Link>
         </div>
       ) : <form
@@ -96,12 +94,12 @@ export default function RegisterPage() {
             Register
           </h1>
           <p className="text-sm text-muted-foreground">
-            Use your student details to access ride posting and booking.
+            Anyone can create an account. Email ownership, self-declarations, and ride eligibility are separate steps.
           </p>
         </div>
 
         {error ? (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
             {error}
           </div>
         ) : null}
@@ -127,7 +125,7 @@ export default function RegisterPage() {
             id="register-email"
             type="email"
             name="email"
-            placeholder="you@college.edu"
+            placeholder="you@example.com"
             value={formData.email}
             onChange={handleChange}
             disabled={loading}
@@ -151,23 +149,10 @@ export default function RegisterPage() {
           />
         </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="register-college">College (optional)</Label>
-          <Input
-            id="register-college"
-            type="text"
-            name="college_name"
-            placeholder="College or university name"
-            value={formData.college_name}
-            onChange={handleChange}
-            disabled={loading}
-          />
-        </div>
-
         <Button
           type="submit"
           disabled={loading}
-          className="h-10 w-full rounded-md"
+          className="min-h-11 w-full rounded-md"
         >
           {loading ? "Creating account..." : "Create Account"}
         </Button>

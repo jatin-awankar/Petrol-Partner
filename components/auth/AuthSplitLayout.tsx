@@ -12,20 +12,20 @@ interface AuthSplitLayoutProps {
 const platformHighlights = [
   {
     id: "verified",
-    title: "Verified student network",
-    description: "Student-first access with trust and identity checks.",
+    title: "Your account first",
+    description: "Confirm email ownership, then review your next account step.",
     icon: ShieldCheck,
   },
   {
     id: "match",
-    title: "Route-matched trips",
-    description: "Offer or request rides with intelligent route alignment.",
+    title: "Driver-posted routes",
+    description: "Route discovery and seat requests will open after launch checks.",
     icon: MapPin,
   },
   {
     id: "settlement",
-    title: "Post-trip settlement flow",
-    description: "Clear payment lifecycle with booking-level traceability.",
+    title: "Direct contributions",
+    description: "Participants will pay each other directly when real trips are approved.",
     icon: Clock3,
   },
 ];
@@ -75,7 +75,7 @@ export default function AuthSplitLayout({
 
         <section className="rounded-2xl border border-border/80 bg-card/95 p-5 shadow-card backdrop-blur md:p-8">
           {children}
-          <div className="mt-6 border-t border-border/80 pt-4 text-sm text-muted-foreground">
+          <div className="mt-6 border-t border-border/80 pt-4 text-sm text-muted-foreground [&_a]:inline-flex [&_a]:min-h-11 [&_a]:items-center">
             {footer}
           </div>
         </section>

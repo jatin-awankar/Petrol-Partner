@@ -14,7 +14,6 @@ import {
   type BackendProfileSecurity,
 } from "@/lib/api/backend";
 import { useUserProfile } from "@/hooks/auth/useUserProfile";
-import { useFetchBookings } from "@/hooks/bookings/useFetchBookings";
 
 interface Vehicle {
   id: string;
@@ -164,12 +163,6 @@ export const useProfileData = () => {
     error: vehiclesError,
     refetch: refetchVehicles,
   } = useUserVehicles();
-  const {
-    bookingsData,
-    loading: bookingsLoading,
-    error: bookingsError,
-    refetch: refetchBookings,
-  } = useFetchBookings(50);
 
   const [preferences, setPreferences] = useState<BackendProfilePreferences>(DEFAULT_PREFERENCES);
   const [safetySettings, setSafetySettings] = useState<BackendProfileSafety>(DEFAULT_SAFETY);
@@ -282,8 +275,8 @@ export const useProfileData = () => {
     });
   }, []);
 
-  const loading = userLoading || vehiclesLoading || bookingsLoading || profileDomainLoading;
-  const error = userError || vehiclesError || bookingsError || profileDomainError;
+  const loading = userLoading || vehiclesLoading || profileDomainLoading;
+  const error = userError || vehiclesError || profileDomainError;
 
   const user = useMemo(() => {
     const transformed = transformUserProfile(userProfile, driverEligibilityStatus);
@@ -292,16 +285,12 @@ export const useProfileData = () => {
       return null;
     }
 
-    return {
-      ...transformed,
-      totalRides: bookingsData?.pagination?.total ?? bookingsData?.bookings?.length ?? 0,
-    };
-  }, [userProfile, driverEligibilityStatus, bookingsData]);
+    return transformed;
+  }, [userProfile, driverEligibilityStatus]);
 
   return {
     user,
     vehicles,
-    bookings: bookingsData?.bookings || [],
     preferences,
     safetySettings,
     securitySettings,
@@ -312,7 +301,6 @@ export const useProfileData = () => {
     refetch: {
       user: fetchProfile,
       vehicles: refetchVehicles,
-      bookings: refetchBookings,
       profileDomains: fetchProfileDomains,
     },
   };

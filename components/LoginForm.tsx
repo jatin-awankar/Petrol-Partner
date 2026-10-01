@@ -46,12 +46,12 @@ export default function LoginForm() {
           Sign in
         </h1>
         <p className="text-sm text-muted-foreground">
-          Continue with your registered student account.
+          Continue to your account and readiness steps. Signing in does not make you eligible to book.
         </p>
       </div>
 
       {errorMsg && (
-        <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <div role="alert" className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
           {errorMsg}
         </div>
       )}
@@ -62,7 +62,7 @@ export default function LoginForm() {
           <Input
             id="login-email"
             type="email"
-            placeholder="you@college.edu"
+          placeholder="you@example.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             disabled={loading}
@@ -85,7 +85,7 @@ export default function LoginForm() {
           />
         </div>
 
-        <Button type="submit" disabled={loading} className="h-10 w-full rounded-md">
+        <Button type="submit" disabled={loading} className="min-h-11 w-full rounded-md">
           {loading ? "Signing in..." : "Sign In"}
         </Button>
 
@@ -103,7 +103,7 @@ export default function LoginForm() {
           }
           variant="outline"
           disabled={loading}
-          className="h-10 w-full rounded-md"
+          className="min-h-11 w-full rounded-md"
         >
           Sign in with Google
         </Button>
@@ -111,7 +111,7 @@ export default function LoginForm() {
 
       <p className="mt-6 text-center text-sm text-muted-foreground">
         Don&apos;t have an account?{" "}
-        <Link href="/register" className="font-medium text-primary hover:underline">
+        <Link href="/register" className="inline-flex min-h-11 items-center font-medium text-primary hover:underline">
           Create one
         </Link>
       </p>

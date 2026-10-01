@@ -3,7 +3,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import Icon from "../AppIcon";
 import { Button } from "../ui/button";
-import { Checkbox } from "../ui/checkbox";
 import { Label } from "../ui/label";
 import {
   Select,
@@ -88,19 +87,6 @@ const PreferencesSection: React.FC<PreferencesSectionProps> = ({
     setForm((prev) => ({ ...prev, [key]: value }));
   }, []);
 
-  const setNested = useCallback(
-    (section: "notifications" | "privacy" | "autoAccept", key: string, checked: boolean) => {
-      setForm((prev) => ({
-        ...prev,
-        [section]: {
-          ...(prev[section] ?? {}),
-          [key]: checked,
-        },
-      }));
-    },
-    [],
-  );
-
   const handleSave = useCallback(async () => {
     if (!onSave) return;
     setIsSaving(true);
@@ -121,6 +107,8 @@ const PreferencesSection: React.FC<PreferencesSectionProps> = ({
   return (
     <section className="rounded-2xl border border-border/70 bg-card/90 shadow-card">
       <button
+        type="button"
+        aria-expanded={isExpanded}
         onClick={onToggle}
         className="flex w-full items-center justify-between px-4 py-4 transition-colors hover:bg-muted/40"
       >
@@ -129,7 +117,7 @@ const PreferencesSection: React.FC<PreferencesSectionProps> = ({
           <div className="text-left">
             <h3 className="font-medium text-foreground">Preferences</h3>
             <p className="text-xs text-muted-foreground">
-              Tune ride comfort, visibility, and notification behavior.
+              Save your music, smoking, and conversation preferences for future routes.
             </p>
           </div>
         </div>
@@ -137,6 +125,7 @@ const PreferencesSection: React.FC<PreferencesSectionProps> = ({
       </button>
 
       <div
+        hidden={!isExpanded}
         className={`overflow-hidden transition-[max-height,opacity] duration-300 ${
           isExpanded ? "max-h-[2600px] opacity-100" : "max-h-0 opacity-0"
         }`}
@@ -207,56 +196,7 @@ const PreferencesSection: React.FC<PreferencesSectionProps> = ({
             </div>
           </div>
 
-          <div className="grid gap-3 md:grid-cols-2">
-            <div className="rounded-xl border border-border/70 bg-muted/20 p-3">
-              <h4 className="text-sm font-semibold text-foreground">Notifications</h4>
-              <div className="mt-2 space-y-2">
-                {[
-                  ["rideMatches", "Ride matches"],
-                  ["messages", "Messages"],
-                  ["payments", "Payments"],
-                  ["promotions", "Product updates"],
-                ].map(([key, label]) => (
-                  <label key={key} className="flex items-center gap-2 text-sm">
-                    <Checkbox
-                      checked={Boolean(form.notifications?.[key])}
-                      onCheckedChange={(checked) =>
-                        setNested("notifications", key, checked === true)
-                      }
-                    />
-                    <span className="text-foreground">{label}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            <div className="rounded-xl border border-border/70 bg-muted/20 p-3">
-              <h4 className="text-sm font-semibold text-foreground">Privacy & Matching</h4>
-              <div className="mt-2 space-y-2">
-                {[
-                  ["showProfile", "Show profile to verified students"],
-                  ["shareRideHistory", "Use ride history for match quality"],
-                  ["shareLocation", "Share live location during active rides"],
-                  ["highRatedUsers", "Auto-accept highly rated riders"],
-                  ["sameCollege", "Auto-accept same-college riders"],
-                ].map(([key, label]) => {
-                  const section = key === "highRatedUsers" || key === "sameCollege"
-                    ? "autoAccept"
-                    : "privacy";
-                  const source = section === "autoAccept" ? form.autoAccept : form.privacy;
-                  return (
-                    <label key={key} className="flex items-center gap-2 text-sm">
-                      <Checkbox
-                        checked={Boolean(source?.[key])}
-                        onCheckedChange={(checked) => setNested(section, key, checked === true)}
-                      />
-                      <span className="text-foreground">{label}</span>
-                    </label>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
+          <p className="rounded-xl border border-border/70 bg-muted/20 p-3 text-sm text-muted-foreground">Ride matching, chat, payments, live location, and automatic acceptance are unavailable during launch checks. Earlier stored choices for those features have no effect.</p>
 
           {onSave ? (
             <div className="sticky bottom-2 z-10 rounded-xl border border-border/60 bg-card/95 px-3 py-3 backdrop-blur">

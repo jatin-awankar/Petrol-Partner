@@ -8,6 +8,8 @@ export const adultDeclarationRouter=Router();
 adultDeclarationRouter.use(requireAuth);
 adultDeclarationRouter.use((_req,res,next)=>{res.set('Cache-Control','private, no-store');next();});
 adultDeclarationRouter.get('/',asyncHandler(async(req,res)=>res.json({declaration:await service.getStatus(req.user!.userId)})));
+adultDeclarationRouter.get('/operations/:key',asyncHandler(async(req,res)=>res.json({
+  operation:await service.getOperation(req.user!.userId,z.string().min(1).max(128).parse(req.params.key))})));
 function key(value:string|undefined){if(!value||value.length>128)throw new AppError(400,
   'Idempotency-Key is required','IDEMPOTENCY_KEY_REQUIRED');return value;}
 adultDeclarationRouter.put('/',asyncHandler(async(req,res)=>{
