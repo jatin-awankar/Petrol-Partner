@@ -2056,9 +2056,9 @@ describe("pilot departure and boarding",()=>{
         (driver_user_id,vehicle_id,permission_category,status,review_after)
         VALUES($1,$2,'owner','approved','2099-12-30')`,[driver.id,car]);
       const departure=new Date(Date.now()+3*24*60*60_000);
+      departure.setUTCHours(5,0,0,0);
       while(new Intl.DateTimeFormat("en-GB",{timeZone:"Asia/Kolkata",weekday:"short"}).format(departure)==="Sun")
         departure.setUTCDate(departure.getUTCDate()+1);
-      departure.setUTCHours(5,0,0,0);
       const publish=await request(createApp()).post("/v1/corridor-offers")
         .set("Authorization",`Bearer ${driver.token}`).set("Idempotency-Key",randomUUID())
         .send({vehicle_id:car,origin_code:"university",destination_code:"prmitr",
@@ -2254,9 +2254,9 @@ describe("pilot cancellation and replacement", () => {
         (driver_user_id,vehicle_id,permission_category,status,review_after)
         VALUES($1,$2,'owner','approved','2099-12-30')`,[driver.id,car]);
       const departure=new Date(Date.now()+3*24*60*60_000);
+      departure.setUTCHours(5,0,0,0);
       while (new Intl.DateTimeFormat("en-GB",{timeZone:"Asia/Kolkata",weekday:"short"}).format(departure)==="Sun")
         departure.setUTCDate(departure.getUTCDate()+1);
-      departure.setUTCHours(5,0,0,0);
       const input={vehicle_id:car,origin_code:"university",destination_code:"prmitr",
         departure_at:departure.toISOString(),capacity:2};
       const publish=(key:string,body:typeof input & {replaces_offer_id?:string}=input) =>
@@ -2503,9 +2503,9 @@ describe("pilot seat requests through HTTP and PostgreSQL", () => {
         (driver_user_id,vehicle_id,permission_category,status,review_after)
         VALUES($1,$2,'owner','approved','2099-12-30')`,[driver.id,car]);
       const departure=new Date(Date.now()+2*86_400_000);
+      departure.setUTCHours(5,0,0,0);
       while(new Intl.DateTimeFormat("en-GB",{timeZone:"Asia/Kolkata",weekday:"short"}).format(departure)==="Sun")
         departure.setUTCDate(departure.getUTCDate()+1);
-      departure.setUTCHours(5,0,0,0);
       const app=createApp();
       const offer=await request(app).post("/v1/corridor-offers")
         .set("Authorization",`Bearer ${driver.token}`).set("Idempotency-Key",randomUUID())
@@ -2594,9 +2594,9 @@ describe("pilot seat requests through HTTP and PostgreSQL", () => {
         (driver_user_id,vehicle_id,permission_category,status,review_after)
         VALUES($1,$2,'owner','approved','2099-12-30')`,[otherDriver.id,otherCar]);
       const departure = new Date(Date.now()+2*24*60*60_000);
+      departure.setUTCHours(5,0,0,0);
       while (new Intl.DateTimeFormat("en-GB",{timeZone:"Asia/Kolkata",weekday:"short"}).format(departure) === "Sun")
         departure.setUTCDate(departure.getUTCDate()+1);
-      departure.setUTCHours(5,0,0,0);
       const offer = await request(createApp()).post("/v1/corridor-offers")
         .set("Authorization",`Bearer ${driver.token}`).set("Idempotency-Key","accept-offer")
         .send({vehicle_id:car,origin_code:"university",destination_code:"prmitr",
@@ -2943,11 +2943,11 @@ describe("pilot seat requests through HTTP and PostgreSQL", () => {
         (driver_user_id,vehicle_id,permission_category,status,review_after)
         VALUES($1,$2,'owner','approved','2099-12-30')`,[driver.id,car]);
       const departure = new Date(Date.now()+2*24*60*60_000);
+      departure.setUTCHours(5,0,0,0);
       for (let n=0;n<7;n++) {
         if (new Intl.DateTimeFormat("en-GB",{timeZone:"Asia/Kolkata",weekday:"short"}).format(departure) !== "Sun") break;
         departure.setUTCDate(departure.getUTCDate()+1);
       }
-      departure.setUTCHours(5,0,0,0);
       const offerBody = {vehicle_id:car,origin_code:"university",destination_code:"prmitr",
         departure_at:departure.toISOString(),capacity:2};
       const published = await request(createApp()).post("/v1/corridor-offers")
@@ -4225,12 +4225,12 @@ describe("corridor offer publication and discovery", () => {
         VALUES($1,$2,'owner','approved','2099-12-30')`,[driver.id,car]);
       const departure = new Date();
       departure.setUTCDate(departure.getUTCDate()+2);
+      departure.setUTCHours(5,0,0,0); // 10:30 in the corridor timezone
       for (let n=0;n<7;n++) {
         const day = new Intl.DateTimeFormat("en-GB",{timeZone:"Asia/Kolkata",weekday:"short"}).format(departure);
         if (day !== "Sun") break;
         departure.setUTCDate(departure.getUTCDate()+1);
       }
-      departure.setUTCHours(5,0,0,0); // 10:30 in the corridor timezone
       const input = {vehicle_id:car,origin_code:"university",destination_code:"prmitr",
         departure_at:departure.toISOString(),capacity:2};
       const publish = (key:string,body=input) => request(createApp()).post("/v1/corridor-offers")
