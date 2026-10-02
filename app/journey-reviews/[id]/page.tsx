@@ -22,7 +22,7 @@ export default function JourneyReviewDetail(){
     }catch(e){const message=e instanceof Error?e.message:"Unable to load review";
       setError(message);setPhase(/restricted|forbidden|unauthorized/i.test(message)?"restricted":"error");}},[id]);
   useEffect(()=>{void refresh();},[refresh]);
-  return <main id="main-content" className="journey-page">
+  return <div className="journey-page">
     <header className="journey-head"><div><span className="journey-kicker">HISTORICAL FIXED CORRIDOR / REVIEW</span><h1>Journey review</h1><p>Each person&apos;s statement and the operator outcome remain separate records.</p></div><Link href="/trips">← Back to Trips</Link></header>
     <div className="journey-section-head"><div><span>OWNER-SCOPED CASE READ</span><h2>Recorded outcome</h2></div><button type="button" onClick={()=>void refresh()} disabled={phase==="loading"}>Retry read</button></div>
     {phase==="loading"&&<p role="status" className="journey-message">Loading journey review…</p>}
@@ -41,5 +41,5 @@ export default function JourneyReviewDetail(){
         <Link href="/direct-settlements">Open Contributions →</Link>
       </section>
     </div>}
-  </main>;
+  </div>;
 }

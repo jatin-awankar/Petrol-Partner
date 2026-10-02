@@ -117,7 +117,7 @@ export default function SearchRidesPage() {
       if (!result.offers.length) setMessage("No offers for this stop pair yet.");
     } catch(error) {setMessage(error instanceof Error ? error.message : "Could not load offers");}
   }
-  return <main className="mx-auto max-w-3xl space-y-6 p-6">
+  return <div className="mx-auto max-w-3xl space-y-6 p-6">
     <Link className="underline" href="/direct-settlements">View direct contribution settlements</Link>
     <h1 className="text-3xl font-semibold">Discover corridor offers</h1>
     <p>See departure, contribution, and whole ride capacity before requesting a seat.</p>
@@ -168,5 +168,5 @@ export default function SearchRidesPage() {
           {" "}No contribution is due before journey confirmation.</span>
       </li>)}</ul>
     </section>
-  </main>;
+  </div>;
 }

@@ -28,9 +28,9 @@ export default function EligibilityPage(){
     finally{setLoading(false);}
   },[]);
   useEffect(()=>{if(user)void refresh();},[user,refresh]);
-  if(authLoading)return <main className="mx-auto max-w-2xl p-8" role="status">Checking account…</main>;
-  if(!user)return <main className="mx-auto max-w-2xl p-8">Sign in to view your records. <Link href="/login" className="underline">Sign in</Link></main>;
-  return <main className="mx-auto max-w-2xl space-y-6 px-4 py-8 sm:px-8">
+  if(authLoading)return <div className="mx-auto max-w-2xl p-8" role="status">Checking account…</div>;
+  if(!user)return <div className="mx-auto max-w-2xl p-8">Sign in to view your records. <Link href="/login" className="underline">Sign in</Link></div>;
+  return <div className="mx-auto max-w-2xl space-y-6 px-4 py-8 sm:px-8">
     <Link href="/dashboard" className="inline-flex min-h-11 items-center underline">← Home</Link>
     <div><h1 className="text-3xl font-semibold">Historical corridor records</h1>
       <p className="mt-2 text-muted-foreground">This page preserves records from the former corridor pilot. Student, driver, and car approvals shown here do not grant eligibility under the new route policy. Real bookings remain disabled.</p></div>
@@ -51,5 +51,5 @@ export default function EligibilityPage(){
         </p>):<p>No travel restrictions recorded.</p>}
       </section>
     </>}
-  </main>;
+  </div>;
 }

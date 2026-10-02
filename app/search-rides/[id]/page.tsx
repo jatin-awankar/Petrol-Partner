@@ -436,7 +436,7 @@ const RideDetailsPage = () => {
   if (error || !rideData) {
     return (
       <div className="min-h-screen pb-16 md:pb-0 bg-gradient-hero">
-        <main className="page mx-auto">
+        <div className="page mx-auto">
           <div className="flex flex-col items-center justify-center min-h-[60vh] text-center rounded-3xl border border-border/70 bg-card/90 p-6">
             <p className="text-destructive font-semibold text-lg mb-4">
               {error || "Ride not found"}
@@ -445,14 +445,14 @@ const RideDetailsPage = () => {
               <ArrowLeft className="mr-2" /> Go Back
             </Button>
           </div>
-        </main>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="min-h-screen mb-28 md:mb-auto bg-gradient-hero">
-      <main className="page mx-auto space-y-5 md:space-y-6">
+      <div className="page mx-auto space-y-5 md:space-y-6">
         <section className="rounded-3xl border border-primary/20 p-4 md:p-6 bg-card/95 shadow-card">
           <div className="flex items-start justify-between gap-3">
             <div>
@@ -545,7 +545,7 @@ const RideDetailsPage = () => {
             />
           </aside>
         </motion.div>
-      </main>
+      </div>
 
       <div className="fixed inset-x-0 bottom-15 z-40 border-t border-border/70 bg-card/95 backdrop-blur md:hidden">
         <div className="page mx-auto py-3 flex items-center justify-between gap-3">

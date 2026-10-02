@@ -134,9 +134,9 @@ export default function DriverVehicleDeclarationsPage() {
   }
   const version = adult?.current_policy_version;
   const canDeclare = adult?.state === "current" && !!version && !status?.driver.state.includes("restricted");
-  if (authLoading) return <main className="mx-auto max-w-3xl p-6" role="status">Checking account…</main>;
-  if (!user) return <main className="mx-auto max-w-3xl p-6">Sign in to manage declarations. <Link href="/login">Sign in</Link></main>;
-  return <main className="mx-auto max-w-3xl space-y-7 px-4 py-8 sm:px-8">
+  if (authLoading) return <div className="mx-auto max-w-3xl p-6" role="status">Checking account…</div>;
+  if (!user) return <div className="mx-auto max-w-3xl p-6">Sign in to manage declarations. <Link href="/login">Sign in</Link></div>;
+  return <div className="mx-auto max-w-3xl space-y-7 px-4 py-8 sm:px-8">
     <div><Link href="/dashboard" className="underline">← Home</Link><h1 className="mt-4 text-3xl font-semibold">Driver and vehicle declarations</h1>
       <p className="mt-2 text-muted-foreground">What can you do next? Record your own licence and vehicle statements. Petrol Partner does not inspect or independently verify these documents. Real offers and bookings remain unavailable.</p></div>
     {loading ? <p role="status">Loading declaration status…</p> : error ? <div role="alert" className="rounded-xl border p-4">{error} <Button type="button" variant="outline" onClick={() => void refresh()}>Try again</Button></div> : <>
@@ -171,5 +171,5 @@ export default function DriverVehicleDeclarationsPage() {
         catch(reason){setMessage(reason instanceof Error?reason.message:"Unable to check the operation result.");}
         finally{setBusy(false);}}}>Check earlier result</Button>}
     <p className="text-sm">Historical corridor approval is separate and does not grant eligibility under the new route policy. <Link href="/eligibility" className="underline">View historical status</Link></p>
-  </main>;
+  </div>;
 }

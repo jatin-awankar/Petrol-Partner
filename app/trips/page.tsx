@@ -44,7 +44,7 @@ export default function TripsPage(){
   useEffect(()=>{if(isAuthenticated)void refresh();},[isAuthenticated,refresh]);
   const upcoming=trips.filter(t=>t.status!=="cancelled"&&t.trip_state!=="cancelled"&&!t.driver_recorded_at&&!t.passenger_recorded_at);
   const past=trips.filter(t=>!upcoming.includes(t));
-  return <main id="main-content" className="journey-page">
+  return <div className="journey-page">
     <header className="journey-head"><div><span className="journey-kicker">JOURNEYS / PARTICIPANT</span><h1>Trips</h1><p>Follow commitments and each person&apos;s account of a journey. Time alone never proves travel.</p></div><StatusTag tone="restricted">Real bookings disabled</StatusTag></header>
     <div className="journey-alert"><strong>Current availability</strong><p>New route bookings are closed. The cards below are read-only historical fixed-corridor records. The journey guide is synthetic and sends no action.</p><Link href="/direct-settlements">Open Contributions →</Link></div>
     <section className="journey-section" aria-labelledby="recent-title"><div className="journey-section-head"><div><span>OWNER-SCOPED HISTORICAL READ</span><h2 id="recent-title">Recorded commitments</h2></div><button type="button" onClick={()=>void refresh()} disabled={phase==="loading"}>Retry read</button></div>
@@ -61,7 +61,7 @@ export default function TripsPage(){
       onSelect={key=>setSelected(key as GuideState)}
       link={{href:"/direct-settlements",label:"View Contributions →"}}/>
     <footer className="journey-foot"><Link href="/payments">Historical platform-payment records →</Link><p>Prior platform-payment records are read-only history. Petrol Partner does not collect or transfer new contributions.</p></footer>
-  </main>;
+  </div>;
 }
 function TripCard({trip,review,userId}:{trip:Trip;review?:Review;userId:string}){
   const statement=trip.driver_recorded_at&&trip.passenger_recorded_at?"Both statements recorded":trip.driver_recorded_at?"Driver statement recorded; passenger response needed":trip.passenger_recorded_at?"Passenger statement recorded; driver account needed":"No journey statements recorded";

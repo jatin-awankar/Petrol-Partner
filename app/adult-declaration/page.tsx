@@ -71,9 +71,9 @@ export default function AdultDeclarationPage(){
     }
     finally{setBusy(false);}
   }
-  if(loading)return <main className="p-8">Checking account…</main>;
-  if(!user)return <main className="p-8">Sign in to view your adult declaration. <Link href="/login">Sign in</Link></main>;
-  return <main className="mx-auto max-w-2xl space-y-5 p-8">
+  if(loading)return <div className="p-8">Checking account…</div>;
+  if(!user)return <div className="p-8">Sign in to view your adult declaration. <Link href="/login">Sign in</Link></div>;
+  return <div className="mx-auto max-w-2xl space-y-5 p-8">
     <h1 className="text-2xl font-semibold">Adult self-declaration</h1>
     <p>This is your statement that you are at least 18. Petrol Partner has not independently verified your age. College affiliation and identity documents are not required for this declaration.</p>
     {declaration&&<section className="space-y-2 rounded border p-4" aria-label="Adult declaration state">
@@ -100,5 +100,5 @@ export default function AdultDeclarationPage(){
       {declaration.declared_at&&!declaration.withdrawn_at&&<button className="ml-3 min-h-11 rounded border px-4 py-2" disabled={busy}
         onClick={()=>void change("withdraw")}>Withdraw declaration</button>}
     </div>}
-  </main>;
+  </div>;
 }

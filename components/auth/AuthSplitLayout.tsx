@@ -49,7 +49,7 @@ export default function AuthSplitLayout({
           </div>
         </section>
 
-        <section className="hidden rounded-2xl border border-border/70 bg-card/75 p-8 shadow-soft backdrop-blur md:order-first md:block lg:p-10">
+        <section className="hidden rounded-2xl border border-border/70 bg-card/75 p-8 shadow-soft backdrop-blur lg:order-first lg:block lg:p-10">
           <span className="inline-flex rounded-full border border-primary/25 bg-primary/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-primary">
             {badge}
           </span>

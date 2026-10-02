@@ -18,6 +18,11 @@ const booking={id:"allocation",driver_id:"driver",passenger_id:"passenger",depar
   destination_code:"prmitr",boarded:null,driver_recorded_at:null,passenger_recorded_at:null,
   obligation_paise:null,obligation_due_at:null,journey_review_reason:null};
 describe("Trips rendered state",()=>{
+  it("uses the root main landmark and its unique skip target",()=>{
+    const {container}=render(<main id="main-content"><TripsPage/></main>);
+    expect(screen.getAllByRole("main")).toHaveLength(1);
+    expect(container.querySelectorAll("#main-content")).toHaveLength(1);
+  });
   it("shows the recorded role and frozen terms without inventing travel after departure",async()=>{
     fixture.bookings=[booking];render(<TripsPage/>);
     expect(await screen.findByText(/HISTORICAL FIXED CORRIDOR · PASSENGER/)).not.toBeNull();
