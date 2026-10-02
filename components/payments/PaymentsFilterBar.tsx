@@ -31,23 +31,25 @@ export default function PaymentsFilterBar({
     <section className="space-y-3 rounded-2xl border border-border/70 bg-card/80 p-4 shadow-card">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <Tabs value={filter} onValueChange={(value) => onFilterChange(value as PaymentFilter)}>
-          <TabsList className="w-full md:w-auto">
-            <TabsTrigger className="text-xs md:text-sm" value="all">
-              All
-            </TabsTrigger>
-            <TabsTrigger className="text-xs md:text-sm" value="action_required">
-              Action Required
-            </TabsTrigger>
-            <TabsTrigger className="text-xs md:text-sm" value="in_verification">
-              In Verification
-            </TabsTrigger>
-            <TabsTrigger className="text-xs md:text-sm" value="settled">
-              Settled
-            </TabsTrigger>
-            <TabsTrigger className="text-xs md:text-sm" value="failed">
-              Failed
-            </TabsTrigger>
-          </TabsList>
+          <div className="max-w-full overflow-x-auto pb-1">
+            <TabsList className="w-full md:w-auto">
+              <TabsTrigger className="text-xs md:text-sm" value="all">
+                All
+              </TabsTrigger>
+              <TabsTrigger className="text-xs md:text-sm" value="action_required">
+                Action Required
+              </TabsTrigger>
+              <TabsTrigger className="text-xs md:text-sm" value="in_verification">
+                In Verification
+              </TabsTrigger>
+              <TabsTrigger className="text-xs md:text-sm" value="settled">
+                Settled
+              </TabsTrigger>
+              <TabsTrigger className="text-xs md:text-sm" value="failed">
+                Failed
+              </TabsTrigger>
+            </TabsList>
+          </div>
         </Tabs>
 
         <Button
