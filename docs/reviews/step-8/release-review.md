@@ -46,7 +46,7 @@ These need a **separate reviewed API slice**, following a deployed-schema/user i
 - `npm run lint`: **passed**, zero errors and nine existing warnings. `npm run typecheck`: **passed** for root, API, and worker. `npm run build:all` with local process access: **passed** for Next.js, API, worker, and shared types. `git diff --check`: **passed**.
 - `npm run check` did **not** complete. The first attempt was stopped when ESLint entered preserved untracked `.worktrees/` generated files; `eslint.config.mjs` now ignores that directory. The restart reached root tests and was stopped after a localhost landing test could not bind in the default sandbox. Its Docker runtime test also failed because the expected Node image was unavailable. The landing test passed separately with loopback access. A direct attempt to include the PostgreSQL browser integration test was denied by sandbox networking (`EPERM 127.0.0.1:55432`); no database test setup or migration was attempted. PostgreSQL integration and full CI remain unverified here.
 
-No migration, deployment, payment, email, or real booking action was performed.
+During the initial frontend QA checks above, no migration, deployment, payment, email, or real booking action was performed. The later migrations on a newly created isolated synthetic database are recorded in the preview sign-in incident below; the existing Render database was not migrated.
 
 ## Review-finding follow-up (2026-10-02)
 
