@@ -24,13 +24,16 @@ afterEach(()=>{cleanup();state.actor='passenger';state.calls=[];state.item.claim
 describe('direct settlement browser journey',()=>{
   it('keeps a passenger claim pending until the driver records receipt',async()=>{
     const view=render(<Page/>);
-    fireEvent.click(await screen.findByRole('button',{name:'Report UPI paid'}));
+    expect(await screen.findByText(/INR 2,500 paise/)).not.toBeNull();
+    expect(screen.getByText(/A passenger claim is a report, not proof of receipt/)).not.toBeNull();
+    fireEvent.click(await screen.findByRole('button',{name:'Report UPI sent'}));
     expect(await screen.findByText(/driver must confirm receipt before this is settled/i)).not.toBeNull();
     expect(screen.getByText(/claim pending/i)).not.toBeNull();
+    expect(screen.getByText(/Awaiting driver receipt unless shown below/)).not.toBeNull();
     expect(state.calls[0].key).toBeTruthy();
     state.actor='driver';view.unmount();render(<Page/>);
     fireEvent.click(await screen.findByRole('button',{name:'Confirm receipt'}));
-    await waitFor(()=>expect(screen.getByText(/settled/i)).not.toBeNull());
+    await waitFor(()=>expect(screen.getByText('settled',{exact:true})).not.toBeNull());
     expect(state.calls.map(x=>x.path)).toEqual([
       '/v1/direct-settlements/obligation/claim','/v1/direct-settlements/obligation/confirm']);
   });
@@ -48,5 +51,13 @@ describe('direct settlement browser journey',()=>{
       await act(async()=>{vi.advanceTimersByTime(60_000);});
       expect(screen.queryByRole('button',{name:'Confirm receipt'})).toBeNull();
     }finally{vi.useRealTimers();}
+  });
+  it('keeps overdue and operator-review examples synthetic and separate from receipt',async()=>{
+    render(<Page/>);
+    fireEvent.change(screen.getByLabelText('Contribution state'),{target:{value:'overdue'}});
+    expect(screen.getByText(/Time does not create a claim or receipt/)).not.toBeNull();
+    fireEvent.change(screen.getByLabelText('Contribution state'),{target:{value:'review'}});
+    expect(screen.getByText(/Silence does not establish receipt/)).not.toBeNull();
+    expect(state.calls).toHaveLength(0);
   });
 });

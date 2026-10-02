@@ -10,7 +10,7 @@ const destinations = [
   { label: "Home", href: "/dashboard", icon: House, available: true },
   { label: "Find a ride", href: "/find-a-ride", icon: Compass, available: false },
   { label: "Offer a ride", href: "/offer-a-ride", icon: Route, available: false },
-  { label: "Trips", href: "/trips", icon: Route, available: false },
+  { label: "Trips", href: "/trips", icon: Route, available: true },
   { label: "Contributions", href: "/direct-settlements", icon: ReceiptText, available: true },
 ] as const;
 

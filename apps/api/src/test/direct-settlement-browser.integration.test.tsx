@@ -115,7 +115,7 @@ describe('direct settlement browser to HTTP to PostgreSQL',()=>{
   it('leaves a UPI claim unpaid until the driver confirms receipt',async()=>{
     const {ids,obligation}=await fixture();
     const passenger=render(<Page/>);
-    fireEvent.click(await screen.findByRole('button',{name:'Report UPI paid'}));
+    fireEvent.click(await screen.findByRole('button',{name:'Report UPI sent'}));
     expect(await screen.findByText(/driver must confirm receipt before this is settled/i)).not.toBeNull();
     expect((await db.query(`SELECT kind FROM pilot_settlement_operations
       WHERE obligation_id=$1`,[obligation])).rows).toEqual([{kind:'claim'}]);

@@ -234,13 +234,13 @@ export default function PaymentsPage() {
       <div className="page space-y-5">
         <section className="space-y-2">
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-            Payments Hub
+            Historical platform-payment records
           </h1>
           <p className="text-sm text-muted-foreground">
-            Manage post-trip settlements with live status, verification
-            progress, and overdue control.
+            Read-only records from the former platform-payment flow. New contributions are handled directly between participants.
           </p>
         </section>
+        <a href="/direct-settlements" className="inline-block underline">Open direct Contributions →</a>
 
         <PaymentsSummaryStrip summary={summary} hold={financialHold} />
 

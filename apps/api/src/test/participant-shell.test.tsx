@@ -20,7 +20,7 @@ it('labels launch-gated destinations in the phone navigation',()=>{
   const navigation=within(screen.getByRole('navigation',{name:'Participant quick navigation'}));
   expect(navigation.getByRole('link',{name:/Find a ride.*Later/i})).not.toBeNull();
   expect(navigation.getByRole('link',{name:/Offer a ride.*Later/i})).not.toBeNull();
-  expect(navigation.getByRole('link',{name:/Trips.*Later/i})).not.toBeNull();
+  expect(navigation.getByRole('link',{name:'Trips'}).getAttribute('href')).toBe('/trips');
 });
 
 it('closes the account menu when a phone navigation destination is chosen',()=>{
