@@ -22,6 +22,7 @@ authRouter.post("/recovery", authRateLimit, asyncHandler(authController.requestR
 authRouter.post("/password", authRateLimit, asyncHandler(authController.updatePassword));
 authRouter.get("/me", requireAuth, asyncHandler(authController.me));
 authRouter.get("/mfa/factors", requireAuth, asyncHandler(authController.mfaFactors));
+authRouter.get("/mfa/history", requireAuth, asyncHandler(authController.mfaHistory));
 authRouter.post("/mfa/enroll", authRateLimit, requireAuth, asyncHandler(authController.enrollMfa));
 authRouter.post("/mfa/challenge", authRateLimit, requireAuth, asyncHandler(authController.challengeMfa));
 authRouter.post("/mfa/verify", authRateLimit, requireAuth, asyncHandler(authController.verifyMfa));

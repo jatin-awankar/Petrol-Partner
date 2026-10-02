@@ -8,7 +8,7 @@ import { useCurrentUser } from "@/hooks/auth/useCurrentUser";
 import { apiRequest, ApiError } from "@/lib/api/client";
 
 type Factor = { id: string; friendlyName: string | null };
-type FactorsResponse = { factors: Factor[]; assuranceLevel: string | null };
+type FactorsResponse = { factors: Factor[]; pendingFactors: Factor[]; assuranceLevel: string | null };
 type Enrollment = { factorId: string; secret: string; uri: string; qrCode: string };
 
 export default function OperatorMfaPage() {
@@ -20,6 +20,7 @@ export default function OperatorMfaPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [ready, setReady] = useState(false);
+  const [confirmReplacement, setConfirmReplacement] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const codeInput = useRef<HTMLInputElement>(null);
 
@@ -30,7 +31,7 @@ export default function OperatorMfaPage() {
       .then((result) => {
         if (!active) return;
         setFactors(result);
-        setSelectedFactor(result.factors[0]?.id ?? "");
+        setSelectedFactor(result.factors[0]?.id ?? result.pendingFactors[0]?.id ?? "");
         setReady(result.assuranceLevel === "aal2");
       })
       .catch((cause) => {
@@ -46,17 +47,27 @@ export default function OperatorMfaPage() {
     if (enrollment) codeInput.current?.focus();
   }, [enrollment]);
 
-  async function startSetup() {
+  async function startSetup(replacePendingFactorId?: string) {
     setBusy(true);
     setError("");
     try {
-      const next = await apiRequest<Enrollment>("/v1/auth/mfa/enroll", { method: "POST", body: "{}" });
+      const next = await apiRequest<Enrollment>("/v1/auth/mfa/enroll", {
+        method: "POST", body: JSON.stringify(replacePendingFactorId ? { replacePendingFactorId } : {}),
+      });
       setEnrollment(next);
       setSelectedFactor(next.factorId);
+      setConfirmReplacement(false);
     } catch (cause) {
-      setError(cause instanceof ApiError && cause.code === "AUTH_RATE_LIMITED"
-        ? "Too many attempts. Wait a little before trying again."
-        : "Could not start authenticator setup. Check your connection and try again.");
+      if (cause instanceof ApiError && (cause.code === "MFA_SETUP_PENDING" || cause.code === "MFA_SETUP_CHANGED")) {
+        setRetryCount((count) => count + 1);
+      }
+      setError(cause instanceof ApiError && cause.code === "MFA_SETUP_PENDING"
+        ? "Your unfinished setup is still available. Enter its code, or explicitly replace it if you lost the QR code."
+        : cause instanceof ApiError && cause.code === "MFA_SETUP_CHANGED"
+          ? "Authenticator setup changed. Review the current factor before trying again."
+          : cause instanceof ApiError && cause.code === "AUTH_RATE_LIMITED"
+            ? "Too many attempts. Wait a little before trying again."
+            : "Could not start authenticator setup. Check your connection and try again.");
     } finally {
       setBusy(false);
     }
@@ -112,10 +123,21 @@ export default function OperatorMfaPage() {
         <Link href="/operator">Continue to operator workspace</Link></div> : !factors ?
         error ? <button type="button" onClick={() => { setError(""); setRetryCount((count) => count + 1); }}>Retry status</button> :
         <p role="status">Loading authenticator status…</p> : <>
-          {!enrollment && factors.factors.length === 0 && <div className="operator-case">
+          {!enrollment && factors.factors.length === 0 && factors.pendingFactors.length === 0 && <div className="operator-case">
             <h3>Connect an authenticator</h3>
-            <p>Keep the app open for the next step. The setup secret appears here only until you leave this page. Starting again replaces an unfinished setup.</p>
+            <p>Keep the app open for the next step. The setup secret appears here only until you leave this page.</p>
             <button type="button" disabled={busy} onClick={() => void startSetup()}>Set up authenticator</button>
+          </div>}
+          {!enrollment && factors.pendingFactors.length > 0 && <div className="operator-case">
+            <h3>Unfinished authenticator setup</h3>
+            <p>If you already scanned the QR code, enter the current code below to finish setup. This factor remains available after a retry.</p>
+            {!confirmReplacement ? <button type="button" disabled={busy}
+              onClick={() => setConfirmReplacement(true)}>Replace unfinished setup</button> : <>
+              <p role="alert">If you replace this setup, the old authenticator code will stop working.</p>
+              <button type="button" disabled={busy}
+                onClick={() => void startSetup(factors.pendingFactors[0].id)}>Discard unfinished setup and create a new secret</button>
+              <button type="button" disabled={busy} onClick={() => setConfirmReplacement(false)}>Keep current setup</button>
+            </>}
           </div>}
           {enrollment && <div className="operator-case">
             <h3>Scan, then confirm</h3>
@@ -132,7 +154,7 @@ export default function OperatorMfaPage() {
                 {factor.friendlyName || "Authenticator"}</option>)}
             </select>
           </div>}
-          {(enrollment || factors.factors.length > 0) && <form aria-label="Verify authenticator" onSubmit={(event) => void verify(event)} className="operator-case">
+          {(enrollment || factors.factors.length > 0 || factors.pendingFactors.length > 0) && <form aria-label="Verify authenticator" onSubmit={(event) => void verify(event)} className="operator-case">
             <label htmlFor="operator-mfa-code">Six-digit authenticator code</label><br />
             <input ref={codeInput} id="operator-mfa-code" name="code" type="text" inputMode="numeric"
               autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required value={code}

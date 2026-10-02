@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import AuthSplitLayout from "@/components/auth/AuthSplitLayout";
 import LoginForm from "@/components/LoginForm";
 import { useCurrentUser } from "@/hooks/auth/useCurrentUser";
+import { postLoginDestination } from "@/lib/post-login-destination";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -14,7 +15,7 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (!loading && isAuthenticated) {
-      router.replace(user?.role === "admin" ? "/operator/mfa" : "/dashboard");
+      router.replace(postLoginDestination(user?.role));
     }
   }, [isAuthenticated, loading, router, user?.role]);
 

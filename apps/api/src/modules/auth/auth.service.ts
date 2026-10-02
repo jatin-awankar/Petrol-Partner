@@ -24,6 +24,9 @@ import {
   isLegacyAuthAuthorized,
   revokeRefreshToken,
   isOperatorAllowlisted,
+  recordOperatorMfaAudit,
+  operatorMfaAuditHistory,
+  observeOperatorMfaFactors,
   type UserRecord,
 } from "./auth.repo";
 import { getAuthProvider, isManagedAuthEnabled, type ProviderIdentity, type ProviderSession } from "./auth-provider";
@@ -424,10 +427,16 @@ export async function operatorMfaFactors(user: NonNullable<Express.Request["user
   const token = await assertOperatorMfaSession(user, accessToken);
   const provider = getAuthProvider();
   if (!provider.listTotpFactors) throw new AppError(503, "MFA provider is unavailable", "AUTH_ASSURANCE_UNAVAILABLE");
-  return { factors: await provider.listTotpFactors(token), assuranceLevel: user.assuranceLevel ?? null };
+  const [factors, pendingFactors] = await Promise.all([
+    provider.listTotpFactors(token),
+    provider.listPendingTotpFactors?.(token) ?? Promise.resolve([]),
+  ]);
+  await withTransaction((client) => observeOperatorMfaFactors(client, user.userId,
+    factors.map((factor) => factor.id), pendingFactors.map((factor) => factor.id)));
+  return { factors, pendingFactors, assuranceLevel: user.assuranceLevel ?? null };
 }
 
-export async function enrollOperatorTotp(user: NonNullable<Express.Request["user"]>, accessToken?: string) {
+export async function enrollOperatorTotp(user: NonNullable<Express.Request["user"]>, accessToken?: string, replacePendingFactorId?: string) {
   const token = await assertOperatorMfaSession(user, accessToken);
   const provider = getAuthProvider();
   if (!provider.enrollTotp) throw new AppError(503, "MFA provider is unavailable", "AUTH_ASSURANCE_UNAVAILABLE");
@@ -437,7 +446,37 @@ export async function enrollOperatorTotp(user: NonNullable<Express.Request["user
       throw new AppError(403, "Verify an existing factor before adding another", "MFA_REQUIRED");
     }
   }
-  return provider.enrollTotp(token);
+  const pendingFactors = await provider.listPendingTotpFactors?.(token) ?? [];
+  if (pendingFactors.length && !replacePendingFactorId) {
+    throw new AppError(409, "An unfinished authenticator setup already exists", "MFA_SETUP_PENDING", { factorId: pendingFactors[0].id });
+  }
+  if (replacePendingFactorId && !pendingFactors.some((factor) => factor.id === replacePendingFactorId)) {
+    throw new AppError(409, "Authenticator setup changed; refresh its status", "MFA_SETUP_CHANGED");
+  }
+  const removePendingTotp = provider.removePendingTotp;
+  if (replacePendingFactorId && !removePendingTotp) {
+    throw new AppError(503, "MFA provider is unavailable", "AUTH_ASSURANCE_UNAVAILABLE");
+  }
+  const operationId = randomUUID();
+  const metadata: Record<string, string> = { operationId };
+  if (replacePendingFactorId) metadata.replacedFactorId = replacePendingFactorId;
+  await recordOperatorMfaAudit(user.userId, replacePendingFactorId
+    ? "operator_mfa_replacement_requested" : "operator_mfa_enrollment_requested", metadata);
+  if (replacePendingFactorId) {
+    await removePendingTotp!(token, replacePendingFactorId);
+    await recordOperatorMfaAudit(user.userId, "operator_mfa_factor_discarded",
+      { ...metadata, factorId: replacePendingFactorId });
+  }
+  const enrollment = await provider.enrollTotp(token);
+  await recordOperatorMfaAudit(user.userId, replacePendingFactorId
+    ? "operator_mfa_factor_replaced" : "operator_mfa_factor_enrolled",
+  { ...metadata, factorId: enrollment.factorId });
+  return enrollment;
+}
+
+export async function operatorMfaHistory(user: NonNullable<Express.Request["user"]>, accessToken?: string) {
+  await assertOperatorMfaSession(user, accessToken);
+  return { events: await operatorMfaAuditHistory(user.userId) };
 }
 
 export async function challengeOperatorTotp(user: NonNullable<Express.Request["user"]>, factorId: string, accessToken?: string) {
@@ -462,5 +501,6 @@ export async function verifyOperatorTotp(user: NonNullable<Express.Request["user
   if (result.user.id !== user.userId) {
     throw new AppError(503, "MFA verification changed the application account", "AUTH_ASSURANCE_UNAVAILABLE");
   }
+  await recordOperatorMfaAudit(user.userId, "operator_mfa_factor_verified", { factorId: input.factorId });
   return result;
 }

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { ApiError } from "@/lib/api/client";
+import { postLoginDestination } from "@/lib/post-login-destination";
 import { useCurrentUser } from "@/hooks/auth/useCurrentUser";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,7 +26,7 @@ export default function LoginForm() {
 
     try {
       const user = await login({ email, password });
-      router.push(user.role === "admin" ? "/operator/mfa" : "/dashboard");
+      router.push(postLoginDestination(user.role));
       router.refresh();
     } catch (error) {
       setErrorMsg(

@@ -3,26 +3,44 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import OperatorMfaPage from "../../../../app/operator/mfa/page";
 
-const state = vi.hoisted(() => ({ calls: [] as string[], existingFactor: false, refreshes: 0 }));
+const state = vi.hoisted(() => ({ calls: [] as string[], existingFactor: false, pendingFactor: false,
+  enrollBody: "", enrollConflict: false, refreshes: 0 }));
 vi.mock("@/hooks/auth/useCurrentUser", () => ({
   useCurrentUser: () => ({ user: { id: "operator", role: "admin" }, loading: false,
     refreshUser: async () => { state.refreshes += 1; } }),
 }));
-vi.mock("@/lib/api/client", () => ({
-  apiRequest: async (path: string) => {
+vi.mock("@/lib/api/client", () => {
+  class ApiError extends Error {
+    code: string;
+    constructor(code: string) { super(code); this.code = code; }
+  }
+  return { ApiError,
+  apiRequest: async (path: string, options?: { body?: string }) => {
     state.calls.push(path);
     if (path === "/v1/auth/mfa/factors") return { factors: state.existingFactor
-      ? [{ id: "df4ecc30-e46e-4bd5-b8c1-a403cbda9a07", friendlyName: "Work authenticator" }] : [], assuranceLevel: "aal1" };
-    if (path === "/v1/auth/mfa/enroll") return {
+      ? [{ id: "df4ecc30-e46e-4bd5-b8c1-a403cbda9a07", friendlyName: "Work authenticator" }] : [],
+    pendingFactors: state.pendingFactor
+      ? [{ id: "4385e583-a2c9-4294-af3a-a420b165a319", friendlyName: "Unfinished setup" }] : [],
+    assuranceLevel: "aal1" };
+    if (path === "/v1/auth/mfa/enroll") {
+      state.enrollBody = options?.body ?? "";
+      if (state.enrollConflict) {
+        state.pendingFactor = true;
+        throw new ApiError("MFA_SETUP_PENDING");
+      }
+      return {
       factorId: "df4ecc30-e46e-4bd5-b8c1-a403cbda9a07", secret: "SYNTHETICSECRET",
       uri: "otpauth://totp/Petrol%20Partner?secret=SYNTHETICSECRET", qrCode: "<svg/>" };
+    }
     if (path === "/v1/auth/mfa/challenge") return { challengeId: "b01e9b8c-55bd-4de3-b9b4-b3a6a4c67591" };
     if (path === "/v1/auth/mfa/verify") return { assuranceLevel: "aal2" };
     throw new Error(`Unexpected request: ${path}`);
   },
-}));
+  };
+});
 
-afterEach(() => { cleanup(); state.calls = []; state.existingFactor = false; state.refreshes = 0; sessionStorage.clear(); });
+afterEach(() => { cleanup(); state.calls = []; state.existingFactor = false; state.pendingFactor = false;
+  state.enrollBody = ""; state.enrollConflict = false; state.refreshes = 0; sessionStorage.clear(); });
 
 it("lets an operator begin TOTP setup and reach a labeled keyboard entry field", async () => {
   render(<OperatorMfaPage />);
@@ -49,4 +67,37 @@ it("lets an operator submit an existing factor code with Enter and continue", as
   ]);
   expect(state.refreshes).toBe(1);
   expect(screen.queryByText("SYNTHETICSECRET")).toBeNull();
+});
+
+it("lets an operator finish an already scanned pending factor without replacing it", async () => {
+  state.pendingFactor = true;
+  render(<OperatorMfaPage />);
+  expect(await screen.findByText("Unfinished authenticator setup")).not.toBeNull();
+  expect(screen.queryByRole("button", { name: "Set up authenticator" })).toBeNull();
+  const code = screen.getByRole("textbox", { name: "Six-digit authenticator code" });
+  fireEvent.change(code, { target: { value: "123456" } });
+  fireEvent.keyDown(code, { key: "Enter", code: "Enter" });
+  expect(await screen.findByRole("link", { name: "Continue to operator workspace" })).not.toBeNull();
+  expect(state.calls).toEqual([
+    "/v1/auth/mfa/factors", "/v1/auth/mfa/challenge", "/v1/auth/mfa/verify",
+  ]);
+});
+
+it("asks before replacing an unfinished factor whose secret was lost", async () => {
+  state.pendingFactor = true;
+  render(<OperatorMfaPage />);
+  fireEvent.click(await screen.findByRole("button", { name: "Replace unfinished setup" }));
+  expect(screen.getByText(/the old authenticator code will stop working/i)).not.toBeNull();
+  expect(state.calls).toEqual(["/v1/auth/mfa/factors"]);
+  fireEvent.click(screen.getByRole("button", { name: "Discard unfinished setup and create a new secret" }));
+  expect(await screen.findByRole("img", { name: "Authenticator setup QR code" })).not.toBeNull();
+  expect(JSON.parse(state.enrollBody)).toEqual({ replacePendingFactorId: "4385e583-a2c9-4294-af3a-a420b165a319" });
+});
+
+it("explains that an unfinished setup survived an uncertain response", async () => {
+  state.enrollConflict = true;
+  render(<OperatorMfaPage />);
+  fireEvent.click(await screen.findByRole("button", { name: "Set up authenticator" }));
+  expect(await screen.findByText("Unfinished authenticator setup")).not.toBeNull();
+  expect(screen.getByText(/your unfinished setup is still available/i)).not.toBeNull();
 });
