@@ -234,13 +234,13 @@ export default function PaymentsPage() {
       <div className="page space-y-5">
         <section className="space-y-2">
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-            Payments Hub
+            Historical platform-payment records
           </h1>
           <p className="text-sm text-muted-foreground">
-            Manage post-trip settlements with live status, verification
-            progress, and overdue control.
+            Read-only records from the former platform-payment flow. New contributions are handled directly between participants.
           </p>
         </section>
+        <a href="/direct-settlements" className="inline-block underline">Open direct Contributions →</a>
 
         <PaymentsSummaryStrip summary={summary} hold={financialHold} />
 
@@ -249,8 +249,7 @@ export default function PaymentsPage() {
             <div className="flex items-start gap-2">
               <AlertTriangle className="mt-0.5 size-4" />
               <p className="text-sm">
-                Financial hold is active due to overdue dues. Settle pending
-                payments to restore full platform access.
+                A historical financial hold is recorded. Review the related records and any operator decision. This read-only screen cannot clear the hold.
               </p>
             </div>
           </section>

@@ -29,7 +29,7 @@ vi.mock("@/hooks/bookings/useFetchBookings", () => ({
   }),
 }));
 vi.mock("@/lib/api/backend", () => ({
-  getFinancialHoldStatus: async () => ({ has_financial_hold: false, total_outstanding_paise: 0 }),
+  getFinancialHoldStatus: async () => ({ has_financial_hold: true, total_outstanding_paise: 2500 }),
   getSettlementByBooking: async (id: string) => ({
     status: id === "old-passenger" ? "due" : "passenger_marked_paid",
     preferred_payment_method: "upi",
@@ -46,4 +46,6 @@ it("shows historical settlement status without legacy payment actions", async ()
   expect(screen.queryByRole("button", { name: "Mark Offline Paid" })).toBeNull();
   expect(screen.queryByRole("button", { name: "Confirm Receipt" })).toBeNull();
   expect(screen.queryByRole("button", { name: "Pay Online" })).toBeNull();
+  expect(screen.getByText(/historical financial hold/i)).not.toBeNull();
+  expect(screen.queryByText(/restore full platform access/i)).toBeNull();
 });
