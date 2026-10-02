@@ -41,7 +41,15 @@ export default function AuthSplitLayout({
   return (
     <div className="relative min-h-screen flex items-center overflow-hidden bg-gradient-hero px-4 py-10 md:px-8 md:py-14">
       <div className="mx-auto grid w-full max-w-6xl gap-6 lg:grid-cols-[1.05fr_0.95fr]">
-        <section className="hidden rounded-2xl border border-border/70 bg-card/75 p-8 shadow-soft backdrop-blur md:block lg:p-10">
+        <section className="rounded-2xl border border-border/80 bg-card/95 p-5 shadow-card backdrop-blur md:p-8">
+          <Link href="/" className="mb-5 inline-flex min-h-11 items-center text-sm font-medium text-primary underline underline-offset-4">← Petrol Partner home</Link>
+          {children}
+          <div className="mt-6 border-t border-border/80 pt-4 text-sm text-muted-foreground [&_a]:inline-flex [&_a]:min-h-11 [&_a]:items-center">
+            {footer}
+          </div>
+        </section>
+
+        <section className="hidden rounded-2xl border border-border/70 bg-card/75 p-8 shadow-soft backdrop-blur md:order-first md:block lg:p-10">
           <span className="inline-flex rounded-full border border-primary/25 bg-primary/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-primary">
             {badge}
           </span>
@@ -74,13 +82,6 @@ export default function AuthSplitLayout({
           </div>
         </section>
 
-        <section className="rounded-2xl border border-border/80 bg-card/95 p-5 shadow-card backdrop-blur md:p-8">
-          <Link href="/" className="mb-5 inline-flex min-h-11 items-center text-sm font-medium text-primary underline underline-offset-4">← Petrol Partner home</Link>
-          {children}
-          <div className="mt-6 border-t border-border/80 pt-4 text-sm text-muted-foreground [&_a]:inline-flex [&_a]:min-h-11 [&_a]:items-center">
-            {footer}
-          </div>
-        </section>
       </div>
     </div>
   );

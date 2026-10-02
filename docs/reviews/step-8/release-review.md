@@ -6,7 +6,7 @@
 
 PR #77 is `MERGED` into `main` at `2026-10-02T07:51:59Z`, with merge commit `ac9c5c4`, as confirmed by `gh pr view 77`. The local `main` and `origin/main` point to the same commit. The untracked `.worktrees/` directory and all existing data were left intact.
 
-**Recommendation:** review and merge this frontend QA slice after CI. Do **not** authorize real bookings or describe the redesigned journeys as live. Public discovery, passenger quotes, posted-route seat actions, route outcomes, payment collection, chat, tracking, and matching remain launch gated. The authenticated UI and the step 7 operator evidence gaps below still need separate server and staging proof.
+**Status: release review incomplete. Do not merge this QA stage yet.** CI alone cannot close the authenticated browser walkthrough or the staging-preview requirement. Use validated disposable participant accounts and an MFA-enabled operator account to walk the protected pages and outcomes listed below; then review the same release in a staging preview and record its URL, revision, date, viewport, keyboard path, and redacted screenshots. Reassess the merge recommendation only after that evidence and the affected checks are recorded. This does **not** authorize real bookings or describe the redesigned journeys as live. Public discovery, passenger quotes, posted-route seat actions, route outcomes, payment collection, chat, tracking, and matching remain launch gated. The step 7 operator evidence gaps below still need separate server and staging proof.
 
 ## Walkthrough and evidence
 
@@ -23,7 +23,7 @@ The [screenshots directory](screenshots/) contains the phone, tablet, and deskto
 
 ### Authenticated paths not exercised in a browser
 
-No disposable, browser-authenticated participant or MFA-enabled operator account was available in this checkout. Therefore the browser review could not enter Home readiness, declarations, account settings, notifications, Trips, Contributions, historical payments/reviews, or protected operator queues and decisions. Their states were rendered with synthetic mocked identities and API fixtures in `apps/api/src/test/*.test.tsx`; those tests verify frontend behavior but cannot establish live identity, PostgreSQL, recovery, or staging behavior. No existing personal account, database, or `.worktrees/` content was used as a fixture.
+No validated disposable, browser-authenticated participant or MFA-enabled operator account was available for this review. Therefore the browser review could not enter Home readiness, declarations, account settings, notifications, Trips, Contributions, historical payments/reviews, or protected operator queues and decisions. Their states were rendered with synthetic mocked identities and API fixtures in `apps/api/src/test/*.test.tsx`; those tests verify frontend behavior but cannot establish live identity, PostgreSQL, recovery, or staging behavior. No existing personal account, database, or `.worktrees/` content was used as a fixture. A deployed staging preview of this revision was also not available for review. These two walkthroughs remain required before this stage is complete.
 
 ## Server gates and step 7 assessment
 
@@ -47,3 +47,9 @@ These need a **separate reviewed API slice**, following a deployed-schema/user i
 - `npm run check` did **not** complete. The first attempt was stopped when ESLint entered preserved untracked `.worktrees/` generated files; `eslint.config.mjs` now ignores that directory. The restart reached root tests and was stopped after a localhost landing test could not bind in the default sandbox. Its Docker runtime test also failed because the expected Node image was unavailable. The landing test passed separately with loopback access. A direct attempt to include the PostgreSQL browser integration test was denied by sandbox networking (`EPERM 127.0.0.1:55432`); no database test setup or migration was attempted. PostgreSQL integration and full CI remain unverified here.
 
 No migration, deployment, payment, email, or real booking action was performed.
+
+## Review-finding follow-up (2026-10-02)
+
+The sign-in and registration layouts now place their page heading before promotional headings in reading order while keeping the desktop visual layout. Recovery, new-password, and callback pages now use the root layout's single main landmark. Each change was preceded by a failing rendered-page test; the affected tests pass after the change.
+
+The rendered-page suite passed (**131 tests across 22 files**), `npm run lint` passed with the same nine warnings, `npm run typecheck` passed, and the production `npm run build` passed with local process access. `git diff --check` passed. The first build attempt in the default sandbox failed because Turbopack could not create a process/bind a local port; the retry with local process access completed. These checks do not replace the outstanding authenticated browser walkthrough or staging preview, and this stage remains incomplete.
