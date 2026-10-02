@@ -19,12 +19,16 @@ export default function AccountRestrictionsPage(){
     params.get('scope')==='passenger'?'passenger':'all');
   const [reason,setReason]=useState(''),[evidence,setEvidence]=useState('');
   const [history,setHistory]=useState<Item[]>([]),[message,setMessage]=useState('');
+  const [historyStatus,setHistoryStatus]=useState<'loading'|'ready'|'error'>('loading');
   const [busy,setBusy]=useState(false);
   const [access,setAccess]=useState<'loading'|'ready'|'denied'|'error'>('loading');
   const refresh=useCallback(async(id:string)=>{
     if(!id) return;
-    setHistory((await apiRequest<{history:Item[]}>(
-      `/v1/operator/account-restrictions/${encodeURIComponent(id)}`)).history);
+    try{
+      setHistory((await apiRequest<{history:Item[]}>(
+        `/v1/operator/account-restrictions/${encodeURIComponent(id)}`)).history);
+      setHistoryStatus('ready');
+    }catch(error){setHistoryStatus('error');throw error;}
   },[]);
   useEffect(()=>{void apiRequest('/v1/operator/status').then(()=>setAccess('ready')).catch(error=>{
     setAccess(error instanceof ApiError&&(error.status===401||error.status===403)?'denied':'error');
@@ -82,7 +86,7 @@ export default function AccountRestrictionsPage(){
         `account-restrict:${target}:${sourceType}:${sourceId}:${scope}`)}>Record restriction</button>
     </section>
     <section className="operator-panel space-y-3"><h2 className="font-semibold">Decision history</h2>
-      <button onClick={()=>void refresh(target)} disabled={busy||!target}>Refresh history</button>
+      <button onClick={()=>void refresh(target).catch(e=>setMessage(String(e)))} disabled={busy||!target}>Refresh history</button>
       {history.map(item=><div key={item.id} className="operator-case space-y-2">
         <p>{item.action==='restrict'?(reversed.has(item.id)?'Reversed restriction':'Active restriction'):'Reversal'}
           {' '}· {item.scope} · {new Date(item.committed_at).toLocaleString()}</p>
@@ -93,7 +97,7 @@ export default function AccountRestrictionsPage(){
             reason:reason.trim(),reviewed_evidence:evidence.trim()},`account-reverse:${item.id}`)}>
           Reverse after review</button>}
       </div>)}
-      {!history.length&&<p>No restrictions recorded for this participant.</p>}
+      {!history.length&&<p>{!target?'Enter a participant ID to view restriction history.':historyStatus==='loading'?'Loading restriction history…':historyStatus==='error'?'Restriction history unavailable. Retry history.':'No restrictions recorded for this participant.'}</p>}
     </section>
   </main>;
 }

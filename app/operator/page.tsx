@@ -27,6 +27,7 @@ export default function OperatorPage() {
   const [cancellationReviews,setCancellationReviews] = useState<CancellationReview[]>([]);
   const [departureSignals,setDepartureSignals] = useState<DepartureSignal[]>([]);
   const [readErrors,setReadErrors] = useState<string[]>([]);
+  const [readsLoading,setReadsLoading]=useState(true);
   const [revocationCases,setRevocationCases] = useState<{holds:RevocationCase[];incidents:RevocationCase[]}>({holds:[],incidents:[]});
   const [studentToRevoke,setStudentToRevoke] = useState("");
   const [outreachParticipant,setOutreachParticipant] = useState("");
@@ -39,6 +40,7 @@ export default function OperatorPage() {
   const [evidenceRetention, setEvidenceRetention] = useState<{ overdue_count: number; failed_count: number; oldest_due_at: string | null } | null>(null);
   const [reason, setReason] = useState("");
   const [message, setMessage] = useState("");
+  const [pendingAction,setPendingAction]=useState<{label:string;id:string;path:string;storageKey:string}|null>(null);
   const [busy, setBusy] = useState(false);
   const [authorized, setAuthorized] = useState<boolean | null>(null);
   const refresh = useCallback(async () => {
@@ -57,6 +59,7 @@ export default function OperatorPage() {
       ["Evidence retention", async()=>setEvidenceRetention(await apiRequest<{overdue_count:number;failed_count:number;oldest_due_at:string|null}>("/v1/verification/admin/student-evidence-retention"))],
     ];
     const results = await Promise.allSettled(reads.map(([,run])=>run()));
+    setReadsLoading(false);
     if(results.some(result=>result.status==="rejected"&&result.reason instanceof ApiError&&
       (result.reason.status===401||result.reason.status===403))) {
       setAuthorized(false);
@@ -121,6 +124,29 @@ export default function OperatorPage() {
       setMessage(`${context ? `${context}. ` : ""}Decision ${operationId}: ${result.state}. Reconcile before reopening activity.`);
     } catch (error) { setMessage(`Unable to check ${operationId}: ${error instanceof Error ? error.message : "unknown error"}`); }
   }
+  async function checkActionStatus(){
+    if(!pendingAction)return;
+    try{
+      const result=await apiRequest<{operation:{state:string}}>(pendingAction.path);
+      if(result.operation.state==="acknowledged"||result.operation.state==="recovered"){
+        sessionStorage.removeItem(pendingAction.storageKey);
+        setMessage(`${pendingAction.label} ${pendingAction.id}: ${result.operation.state}.`);
+        setPendingAction(null);
+        await refresh();
+      }else setMessage(`${pendingAction.label} ${pendingAction.id} is still ${result.operation.state}. Keep the same decision key.`);
+    }catch(error){setMessage(`Could not check ${pendingAction.label.toLowerCase()} ${pendingAction.id}: ${error instanceof Error?error.message:"unknown error"}`);}
+  }
+  async function showActionResult(label:string,id:string,state:string,path:string,storageKey:string,successMessage:string){
+    if(state==="acknowledged"||state==="recovered"){
+      sessionStorage.removeItem(storageKey);
+      setPendingAction(null);
+      setMessage(successMessage);
+      await refresh();
+    }else{
+      setPendingAction({label,id,path,storageKey});
+      setMessage(`${label} ${id} is ${state}. Check the operation before retrying.`);
+    }
+  }
   async function recordOutreach() {
     setBusy(true);
     try {
@@ -154,16 +180,21 @@ export default function OperatorPage() {
       const result = await apiRequest<{ operation: { id: string; state: string } }>(`/v1/verification/admin/student/${userId}/review`, {
         method: "POST", headers: { "Idempotency-Key": key }, body: JSON.stringify({ outcome, adult_eligible: adultEligible, reason: reason.trim() }),
       });
-      if(result.operation.state === "acknowledged" || result.operation.state === "recovered") {
-        sessionStorage.removeItem(storageKey);
-        setMessage(`Student review ${outcome}: ${result.operation.state} (${result.operation.id}).`);
-        await refresh();
-      } else setMessage(`Student review ${result.operation.id} is ${result.operation.state}. Check the operation before retrying.`);
+      await showActionResult("Student review",result.operation.id,result.operation.state,
+        `/v1/verification/admin/student/review-operations/${result.operation.id}`,storageKey,
+        `Student review ${outcome}: ${result.operation.state} (${result.operation.id}).`);
     } catch (error) {
       let reference = key;
       try {
         const lookup = await apiRequest<{ operation: { id: string; state: string } }>(`/v1/verification/admin/student/review-operations/by-key/${encodeURIComponent(key)}`);
         reference = `${lookup.operation.id} (${lookup.operation.state})`;
+        if(lookup.operation.state==="acknowledged"||lookup.operation.state==="recovered"){
+          sessionStorage.removeItem(storageKey);
+          setPendingAction(null);
+          setMessage(`Student review ${lookup.operation.id}: ${lookup.operation.state}.`);
+          await refresh().catch(()=>undefined);
+          return;
+        }else setPendingAction({label:"Student review",id:lookup.operation.id,path:`/v1/verification/admin/student/review-operations/${lookup.operation.id}`,storageKey});
       } catch { /* The original key remains available for the next retry. */ }
       setMessage(`Review outcome uncertain. Reference ${reference}. Retry with the same reason to use the same decision key. ${error instanceof Error ? error.message : ""}`);
     }
@@ -181,12 +212,12 @@ export default function OperatorPage() {
       const result=await apiRequest<{operation:{operation_id:string;state:string}}>(
         `/v1/operator/students/${encodeURIComponent(studentToRevoke.trim())}/revoke`,{
           method:"POST",headers:{"Idempotency-Key":key},body:JSON.stringify({reason:reason.trim()})});
-      if(result.operation.state === "acknowledged" || result.operation.state === "recovered") {
-        sessionStorage.removeItem(storageKey);
-        setMessage(`Student revocation ${result.operation.operation_id}: ${result.operation.state}.`);
-        await refresh();
-      } else setMessage(`Student revocation ${result.operation.operation_id} is ${result.operation.state}. Check the operation before retrying.`);
+      await showActionResult("Student revocation",result.operation.operation_id,result.operation.state,
+        `/v1/operator/students/revocations/${result.operation.operation_id}`,storageKey,
+        `Student revocation ${result.operation.operation_id}: ${result.operation.state}.`);
     } catch(error) {
+      const operationId=error instanceof ApiError&&typeof error.details==="object"&&error.details!==null&&"operationId" in error.details?String(error.details.operationId):null;
+      if(operationId)setPendingAction({label:"Student revocation",id:operationId,path:`/v1/operator/students/revocations/${operationId}`,storageKey});
       setMessage(`Revocation outcome uncertain. Retry with the same student ID and reason. Key ${key}. ${error instanceof Error?error.message:""}`);
     } finally {setBusy(false);}
   }
@@ -204,12 +235,12 @@ export default function OperatorPage() {
       const result=await apiRequest<{operation:{operation_id:string;state:string}}>(
         `/v1/operator/revocation-cases/${type}/${item.id}/${action}`,{
           method:"POST",headers:{"Idempotency-Key":key},body:JSON.stringify(body)});
-      if(result.operation.state === "acknowledged" || result.operation.state === "recovered") {
-        sessionStorage.removeItem(storageKey);
-        setMessage(`Case action ${result.operation.operation_id}: ${result.operation.state}.`);
-        await refresh();
-      } else setMessage(`Case action ${result.operation.operation_id} is ${result.operation.state}. Check the operation before retrying.`);
+      await showActionResult("Case action",result.operation.operation_id,result.operation.state,
+        `/v1/operator/revocation-cases/operations/${result.operation.operation_id}`,storageKey,
+        `Case action ${result.operation.operation_id}: ${result.operation.state}.`);
     } catch(error) {
+      const operationId=error instanceof ApiError&&typeof error.details==="object"&&error.details!==null&&"operationId" in error.details?String(error.details.operationId):null;
+      if(operationId)setPendingAction({label:"Case action",id:operationId,path:`/v1/operator/revocation-cases/operations/${operationId}`,storageKey});
       setMessage(`Case action outcome uncertain. Retry the same action and reason. Key ${key}. ${error instanceof Error?error.message:""}`);
     } finally {setBusy(false);}
   }
@@ -237,10 +268,11 @@ export default function OperatorPage() {
       <p>Server-authorized queues. Real route bookings remain disabled. Historical fixed-corridor cases are marked below.</p></div>
       <span className="product-status product-status-restricted">Prelaunch</span></div>
     {message&&<p className="operator-notice" role="status">{message}</p>}
+    {pendingAction&&<button disabled={busy} onClick={()=>void checkActionStatus()}>Check {pendingAction.label.toLowerCase()} status</button>}
     {readErrors.length>0&&<div className="operator-notice operator-error" role="alert">Could not refresh: {readErrors.join(", ")}. Values in those queues may be stale. <button onClick={()=>void refresh()}>Retry reads</button></div>}
     <div className="operator-summary" aria-label="Queue summary">
-      <a href="#eligibility"><span>01 / ELIGIBILITY</span><strong>{studentReviews.length} student reviews</strong><small>Historical approvals and restrictions</small></a>
-      <a href="#routes"><span>02 / ROUTES</span><strong>{cancellationReviews.length+revocationCases.holds.length+revocationCases.incidents.length+departureSignals.length} cases</strong><small>Historical corridor · route read gated</small></a>
+      <a href="#eligibility"><span>01 / ELIGIBILITY</span><strong>{readsLoading ? "Loading" : readErrors.includes("Historical student reviews") ? "Unavailable" : `${studentReviews.length} student reviews`}</strong><small>Historical approvals and restrictions</small></a>
+      <a href="#routes"><span>02 / ROUTES</span><strong>{readsLoading ? "Loading" : ["Cancellation reviews","Departure reviews","Revocation cases"].some(name=>readErrors.includes(name)) ? "Unavailable" : `${cancellationReviews.length+revocationCases.holds.length+revocationCases.incidents.length+departureSignals.length} cases`}</strong><small>Historical corridor · route read gated</small></a>
       <a href="#journeys"><span>03 / OUTCOMES</span><strong>Review queues</strong><small>Journey and direct settlement</small></a>
       <a href="#delivery"><span>04 / DELIVERY</span><strong>{delivery?.health.exhausted ?? "—"} exhausted</strong><small>Delivery is not receipt</small></a>
       <a href="#recovery"><span>05 / RECOVERY</span><strong>{status?.recovery.mode ?? "Loading"}</strong><small>{pending.length} pending operations</small></a>
@@ -298,9 +330,9 @@ export default function OperatorPage() {
         <p>Requested by {item.actor_id} on {new Date(item.created_at).toLocaleString("en-IN",{timeZone:"Asia/Kolkata"})} IST.</p>
         {item.reason && <p>Reason: {item.reason}</p>}
         <p>Status: {item.status}. The ride and seat remain unchanged pending operator resolution.</p><p>Affected: actor {item.actor_id} and seat owner · proposed action: inspect case · deadline: no server deadline supplied · recorded outcome: none.</p>
-      </div>) : <p>No open cancellation review cases.</p>}
+      </div>) : <p>{readsLoading ? "Loading cancellation reviews…" : readErrors.includes("Cancellation reviews") ? "Cancellation reviews unavailable. Retry reads." : "No open cancellation review cases."}</p>}
     </section>
-    <section className="operator-panel"><h2>Departure review signals</h2>{departureSignals.length?departureSignals.map(item=><div className="operator-case" key={`${item.operation_id}:${item.allocation_id}`}><p>Ride {item.offer_id} · seat {item.allocation_id} · {item.signal_type}</p><p>Evidence: operation {item.operation_id} · signalled {new Date(item.created_at).toLocaleString()} · affected passenger: inspect the seat record. No outcome is recorded here.</p></div>):<p>No departure signals require review.</p>}</section>
+    <section className="operator-panel"><h2>Departure review signals</h2>{departureSignals.length?departureSignals.map(item=><div className="operator-case" key={`${item.operation_id}:${item.allocation_id}`}><p>Ride {item.offer_id} · seat {item.allocation_id} · {item.signal_type}</p><p>Evidence: operation {item.operation_id} · signalled {new Date(item.created_at).toLocaleString()} · affected passenger: inspect the seat record. No outcome is recorded here.</p></div>):<p>{readsLoading ? "Loading departure reviews…" : readErrors.includes("Departure reviews") ? "Departure reviews unavailable. Retry reads." : "No departure signals require review."}</p>}</section>
     <section id="eligibility" className="operator-panel space-y-3"><div className="operator-panel-head"><span>01 / ELIGIBILITY & RESTRICTIONS</span><h2>Historical student eligibility</h2><p>Existing corridor evidence review is historical policy. New-policy adults and drivers self-declare; this queue does not approve them.</p></div><h3 className="font-semibold">Eligibility revocation</h3>
       <Link href="/operator/restrictions">Open reviewed account restrictions →</Link>
       <p>Suspending a student holds future confirmed seats and opens urgent cases for active trips.</p>
@@ -319,7 +351,7 @@ export default function OperatorPage() {
           onClick={()=>actOnCase("hold",item,"outreach")}>Record participant outreach</button>
           <button disabled={busy||reason.trim().length<8} onClick={()=>actOnCase("hold",item,"resolve","cancelled")}>
             Resolve after cancellation</button></div>}
-      </div>):<p>No revocation holds recorded.</p>}
+      </div>):<p>{readsLoading ? "Loading revocation cases…" : readErrors.includes("Revocation cases") ? "Revocation cases unavailable. Retry reads." : "No revocation holds recorded."}</p>}
     </section>
     <section className="space-y-3"><h2 className="font-semibold">High priority active trip incidents</h2>
       {revocationCases.incidents.length?revocationCases.incidents.map(item=><div key={item.id} className="rounded border p-3">
@@ -335,7 +367,7 @@ export default function OperatorPage() {
             Close safety case</button>
           <button disabled={busy||reason.trim().length<8} onClick={()=>actOnCase("incident",item,"resolve","interrupted")}>
             Record interruption</button></div>}
-      </div>):<p>No revocation incidents recorded.</p>}
+      </div>):<p>{readsLoading ? "Loading revocation incidents…" : readErrors.includes("Revocation cases") ? "Revocation incidents unavailable. Retry reads." : "No revocation incidents recorded."}</p>}
     </section>
     <section className="space-y-3"><h2 className="font-semibold">Student reviews</h2>
       <p>{evidenceMode === "real" ? "Inspect the private enrollment and age evidence before deciding." : "Inspect fabricated evidence only. Real evidence intake remains closed pending provider verification."}</p>
@@ -346,7 +378,7 @@ export default function OperatorPage() {
         <div className="flex gap-3"><button className="underline" onClick={() => openEvidence(review.user_id, "enrollment")}>Enrollment evidence</button><button className="underline" onClick={() => openEvidence(review.user_id, "age")}>Age evidence</button></div>
         <label className="flex items-center gap-2"><input type="checkbox" checked={adultFindings[review.user_id] === true} onChange={(event) => setAdultFindings((findings) => ({ ...findings, [review.user_id]: event.target.checked }))} />Age evidence confirms this student is at least 18</label>
         <div className="flex gap-3"><button disabled={busy || adultFindings[review.user_id] !== true} onClick={() => reviewStudent(review.user_id, "verified")}>Approve adult student</button><button disabled={busy} onClick={() => reviewStudent(review.user_id, "rejected")}>Reject</button></div>
-      </div>) : <p>No pending student reviews.</p>}
+      </div>) : <p>{readsLoading ? "Loading student reviews…" : readErrors.includes("Historical student reviews") ? "Historical student reviews unavailable. Retry reads." : "No pending student reviews."}</p>}
     </section>
   </main>;
 }

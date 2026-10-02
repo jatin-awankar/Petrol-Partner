@@ -17,6 +17,7 @@ export default function SettlementReviewsPage(){
   const [confirmation,setConfirmation]=useState(''),[reviewSummary,setReviewSummary]=useState('');
   const [resolution,setResolution]=useState<'resolved'|'unresolved'>('unresolved');
   const [message,setMessage]=useState(''),[busy,setBusy]=useState(false);
+  const [pendingDecision,setPendingDecision]=useState<{id:string;storageKey:string}|null>(null);
   const [access,setAccess]=useState<'loading'|'ready'|'denied'|'error'>('loading');
   const refresh=useCallback(async()=>{
     setQueue((await apiRequest<{queue:QueueItem[]}>(
@@ -51,13 +52,27 @@ export default function SettlementReviewsPage(){
             reviewed_evidence_summary:received==='yes'&&basis==='reviewed_evidence'?
               reviewSummary.trim():null})});
       if(result.operation.state==='acknowledged'||result.operation.state==='recovered'){
-        sessionStorage.removeItem(storageKey);setMessage(`Decision ${result.operation.operation_id} recorded.`);
+        sessionStorage.removeItem(storageKey);setPendingDecision(null);setMessage(`Decision ${result.operation.operation_id} recorded.`);
         await refresh();await inspect(id);
-      }else setMessage(`Decision ${result.operation.operation_id} pending. Retry with the same key.`);
+      }else {setPendingDecision({id:result.operation.operation_id,storageKey});setMessage(`Decision ${result.operation.operation_id} pending. Retry with the same key.`);}
     }catch(error){if(error instanceof ApiError&&error.status<500&&error.code!=='OPERATION_PENDING')
       sessionStorage.removeItem(storageKey);
+      const details=error&&typeof error==='object'&&'details' in error?error.details:null;
+      const operationId=details&&typeof details==='object'&&'operationId' in details?String(details.operationId):null;
+      if(operationId)setPendingDecision({id:operationId,storageKey});
       setMessage(error instanceof Error?error.message:'Outcome uncertain. Retry with the same key.');
     }finally{setBusy(false);}
+  }
+  async function checkDecision(){
+    if(!pendingDecision)return;
+    try{
+      const result=await apiRequest<{operation:{state:string}}>(`/v1/operator/settlement-case-operations/${pendingDecision.id}`);
+      if(result.operation.state==='acknowledged'||result.operation.state==='recovered'){
+        sessionStorage.removeItem(pendingDecision.storageKey);setPendingDecision(null);
+        setMessage(`Decision ${pendingDecision.id}: ${result.operation.state}.`);
+        await refresh();if(id)await inspect(id);
+      }else setMessage(`Decision ${pendingDecision.id} is still ${result.operation.state}. Keep the same decision key.`);
+    }catch(error){setMessage(`Could not check decision ${pendingDecision.id}: ${error instanceof Error?error.message:'unknown error'}`);}
   }
   if(access==='loading')return <main id="main-content" className="operator-workspace" role="status">Loading settlement reviews…</main>;
   if(access==='denied')return <main id="main-content" className="operator-workspace" role="alert">Operator access requires current allowlist membership and MFA. {message}</main>;
@@ -67,11 +82,12 @@ export default function SettlementReviewsPage(){
     <p>Historical fixed-corridor cases. Record contribution, receipt, and case findings separately. Closing a case creates no payment or penalty.</p>
     {access==='error'&&<p role="alert">Queue unavailable. <button onClick={()=>void refresh()}>Retry load</button></p>}
     {message&&<p role="status">{message}</p>}
+    {pendingDecision&&<button onClick={()=>void checkDecision()}>Check settlement decision status</button>}
     <section className="operator-panel"><h2 className="font-semibold">Open disputes and unanswered claims</h2>
       {queue.map(item=><button key={item.obligation_id} className="block w-full rounded border p-3 text-left"
         onClick={()=>void inspect(item.obligation_id)}>{item.obligation_id} · {item.currency}
         {' '}{(item.amount_paise/100).toFixed(2)} · {item.reason??'unanswered for 24 hours'}</button>)}
-      {!queue.length&&<p>No open settlement cases.</p>}
+      {!queue.length&&<p>{access==='error'?'Settlement queue unavailable. Retry load.':'No open settlement cases.'}</p>}
     </section>
     {id&&detail&&<section className="operator-panel space-y-3">
       <h2 className="font-semibold">Case {id}</h2>
@@ -110,7 +126,14 @@ export default function SettlementReviewsPage(){
       {received==='yes'&&basis==='reviewed_evidence'&&<label className="block">What evidence was reviewed?
         <textarea className="block w-full rounded border p-2" value={reviewSummary}
           onChange={e=>setReviewSummary(e.target.value)} /></label>}
-      <button disabled={busy||reason.trim().length<8} onClick={()=>void decide()}>Record findings</button>
+      <div className="operator-case" aria-label="Decision impact preview">
+        <p>Affected: passenger {detail.participants?.passenger_id??'not supplied'}; driver {detail.participants?.driver_id??'not supplied'}. Actor: current operator.</p>
+        <p>Contribution owed: {owed==='yes'?'yes':owed==='no'?'no':'undetermined'}; receipt established: {received==='yes'?'yes':received==='no'?'no':'undetermined'}.</p>
+        <p>Case will be {resolution==='resolved'?'resolved':'kept actionable'} after a recorded decision. Resolution requires both findings; this action creates no payment or automatic restriction.</p>
+        <p>Reason and reviewed evidence are recorded with the findings. Existing claims and receipts remain in the case history.</p>
+      </div>
+      {resolution==='resolved'&&(owed==='unknown'||received==='unknown')&&<p>Select both contribution and receipt findings to resolve this case.</p>}
+      <button disabled={busy||reason.trim().length<8||(resolution==='resolved'&&(owed==='unknown'||received==='unknown'))} onClick={()=>void decide()}>Record findings</button>
     </section>}
   </main>;
 }
