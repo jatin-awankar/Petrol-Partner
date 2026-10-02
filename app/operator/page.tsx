@@ -17,6 +17,9 @@ type RevocationCase = {id:string;offer_id:string;allocation_id:string|null;subje
   subject_id:string;reason:string;created_at:string;resolved_at:string|null;resolution:string|null;
   driver_id:string;passenger_ids:string[];offer_status:string;allocation_status?:string|null};
 type DepartureSignal = {offer_id:string;operation_id:string;allocation_id:string;signal_type:string;created_at:string};
+type ControlAttempt={action:"pause"|"reopen";key:string;body:string;operationId:string|null};
+const controlAttemptStorage="operator:control-attempt";
+const pendingActionStorage="operator:pending-action";
 
 export default function OperatorPage() {
   const { user, loading } = useCurrentUser();
@@ -41,6 +44,7 @@ export default function OperatorPage() {
   const [reason, setReason] = useState("");
   const [message, setMessage] = useState("");
   const [pendingAction,setPendingAction]=useState<{label:string;id:string;path:string;storageKey:string}|null>(null);
+  const [controlAttempt,setControlAttempt]=useState<ControlAttempt|null>(null);
   const [busy, setBusy] = useState(false);
   const [authorized, setAuthorized] = useState<boolean | null>(null);
   const refresh = useCallback(async () => {
@@ -75,34 +79,82 @@ export default function OperatorPage() {
       setMessage(error instanceof Error ? error.message : "Unable to load operator status");
     });
   }, [user, refresh]);
+  useEffect(()=>{
+    for(const [storage,setter] of [[controlAttemptStorage,setControlAttempt],[pendingActionStorage,setPendingAction]] as const){
+      const saved=sessionStorage.getItem(storage);
+      if(saved)try{setter(JSON.parse(saved));}catch{sessionStorage.removeItem(storage);}
+    }
+  },[]);
+  function saveControlAttempt(next:ControlAttempt|null){
+    setControlAttempt(next);
+    if(next)sessionStorage.setItem(controlAttemptStorage,JSON.stringify(next));
+    else sessionStorage.removeItem(controlAttemptStorage);
+  }
+  function savePendingAction(next:typeof pendingAction){
+    setPendingAction(next);
+    if(next)sessionStorage.setItem(pendingActionStorage,JSON.stringify(next));
+    else sessionStorage.removeItem(pendingActionStorage);
+  }
+  async function checkControlStatus(next:ControlAttempt){
+    if(next.action!=="pause")return;
+    setBusy(true);
+    try{
+      const operation=await apiRequest<{id:string;state:string}>(next.operationId?
+        `/v1/operator/operations/${next.operationId}`:
+        `/v1/operator/operations/by-key/${encodeURIComponent(next.key)}`);
+      const updated={...next,operationId:operation.id};
+      if(operation.state==="acknowledged"||operation.state==="recovered"){
+        saveControlAttempt(null);
+        setMessage(`Decision ${operation.id}: ${operation.state}.`);
+        await refresh().catch(()=>setMessage(`Decision ${operation.id}: ${operation.state}. Queues could not refresh; retry the read.`));
+      }else{
+        saveControlAttempt(updated);
+        setMessage(`Decision ${operation.id} is ${operation.state}. Check again before another decision.`);
+      }
+    }catch(error){setMessage(`Could not confirm pause decision. Retry the same decision key if the lookup remains unavailable. ${error instanceof Error?error.message:""}`);}
+    finally{setBusy(false);}
+  }
+  async function sendControlAttempt(next:ControlAttempt){
+    setBusy(true);
+    try{
+      if(next.action==="pause"){
+        const result=await apiRequest<{id:string;state:string}>("/v1/operator/pause",{
+          method:"POST",headers:{"Idempotency-Key":next.key},body:next.body});
+        const updated={...next,operationId:result.id};
+        saveControlAttempt(updated);
+        setMessage(`Decision ${result.id} returned. Checking durable state.`);
+        await checkControlStatus(updated);
+      }else{
+        const result=await apiRequest<{operationId:string}>("/v1/operator/reopen",{
+          method:"POST",headers:{"Idempotency-Key":next.key},body:next.body});
+        saveControlAttempt(null);
+        setMessage(`Reopen decision ${result.operationId} recorded. Confirm the recovery mode below.`);
+        await refresh().catch(()=>setMessage(`Reopen decision ${result.operationId} recorded. Recovery view could not refresh; retry the read.`));
+      }
+    }catch(error){
+      const operationId=error instanceof ApiError&&typeof error.details==="object"&&error.details!==null&&"operationId" in error.details?String(error.details.operationId):null;
+      if(operationId)saveControlAttempt({...next,operationId});
+      else if(error instanceof ApiError&&error.status<500&&error.code!=="OPERATION_PENDING")saveControlAttempt(null);
+      setMessage(`${next.action==="pause"?"Pause":"Reopen"} outcome uncertain or rejected. Keep this decision key until the outcome is confirmed. ${error instanceof Error?error.message:""}`);
+    }finally{setBusy(false);}
+  }
   async function decide(capability: Capability, paused: boolean) {
     if (reason.trim().length < 8) { setMessage("Enter a reason of at least eight characters."); return; }
-    setBusy(true);
-    const key = crypto.randomUUID();
-    try {
-      const result = await apiRequest<{ id: string }>("/v1/operator/pause", {
-        method: "POST", headers: { "Idempotency-Key": key },
-        body: JSON.stringify({ capability, paused, reason: reason.trim() }),
-      });
-      setMessage(`Decision ${result.id} returned. Checking durable state.`);
-      await refresh();
-      const checked = await apiRequest<{state:string}>(`/v1/operator/operations/${result.id}`);
-      setMessage(`Decision ${result.id}: ${checked.state}. ${checked.state === "acknowledged" || checked.state === "recovered" ? "Recorded outcome confirmed." : "Outcome remains pending; do not submit a new decision."}`);
-    } catch (error) {
-      const operationId = error instanceof ApiError && typeof error.details === "object" && error.details !== null && "operationId" in error.details ? String(error.details.operationId) : null;
-      let reference = operationId ?? key;
-      try {
-        const lookup = await apiRequest<{ id: string }>(`/v1/operator/operations/by-key/${encodeURIComponent(key)}`);
-        reference = lookup.id;
-      } catch { /* The key remains the lookup reference after a lost response. */ }
-      setMessage(`Decision outcome uncertain. Reference ${reference}. Check status before retrying. ${error instanceof Error ? error.message : ""}`);
-      await refresh();
-    } finally { setBusy(false); }
+    if(controlAttempt)return;
+    const next:ControlAttempt={action:"pause",key:crypto.randomUUID(),operationId:null,
+      body:JSON.stringify({capability,paused,reason:reason.trim()})};
+    saveControlAttempt(next);void sendControlAttempt(next);
   }
   async function recovery(action: "reconcile" | "reopen") {
+    if(action==="reopen"){
+      if(controlAttempt||reason.trim().length<8)return;
+      const next:ControlAttempt={action:"reopen",key:crypto.randomUUID(),operationId:null,
+        body:JSON.stringify({reason:reason.trim()})};
+      saveControlAttempt(next);void sendControlAttempt(next);return;
+    }
     setBusy(true);
     try {
-      await apiRequest(`/v1/operator/${action}`, { method: "POST", headers: action === "reopen" ? { "Idempotency-Key": crypto.randomUUID() } : undefined, body: JSON.stringify({ reason: reason.trim() }) });
+      await apiRequest(`/v1/operator/${action}`, { method: "POST", body: JSON.stringify({ reason: reason.trim() }) });
       await refresh();
       setMessage(`${action} response received. Confirm the recovery mode and pending operations shown below before any further action.`);
     } catch (error) { setMessage(error instanceof Error ? error.message : "Recovery action failed"); }
@@ -131,19 +183,19 @@ export default function OperatorPage() {
       if(result.operation.state==="acknowledged"||result.operation.state==="recovered"){
         sessionStorage.removeItem(pendingAction.storageKey);
         setMessage(`${pendingAction.label} ${pendingAction.id}: ${result.operation.state}.`);
-        setPendingAction(null);
-        await refresh();
+        savePendingAction(null);
+        await refresh().catch(()=>setMessage(`${pendingAction.label} ${pendingAction.id}: ${result.operation.state}. Queues could not refresh; retry the read.`));
       }else setMessage(`${pendingAction.label} ${pendingAction.id} is still ${result.operation.state}. Keep the same decision key.`);
     }catch(error){setMessage(`Could not check ${pendingAction.label.toLowerCase()} ${pendingAction.id}: ${error instanceof Error?error.message:"unknown error"}`);}
   }
   async function showActionResult(label:string,id:string,state:string,path:string,storageKey:string,successMessage:string){
     if(state==="acknowledged"||state==="recovered"){
       sessionStorage.removeItem(storageKey);
-      setPendingAction(null);
+      savePendingAction(null);
       setMessage(successMessage);
-      await refresh();
+      await refresh().catch(()=>setMessage(`${successMessage} Queues could not refresh; retry the read.`));
     }else{
-      setPendingAction({label,id,path,storageKey});
+      savePendingAction({label,id,path,storageKey});
       setMessage(`${label} ${id} is ${state}. Check the operation before retrying.`);
     }
   }
@@ -190,11 +242,11 @@ export default function OperatorPage() {
         reference = `${lookup.operation.id} (${lookup.operation.state})`;
         if(lookup.operation.state==="acknowledged"||lookup.operation.state==="recovered"){
           sessionStorage.removeItem(storageKey);
-          setPendingAction(null);
+          savePendingAction(null);
           setMessage(`Student review ${lookup.operation.id}: ${lookup.operation.state}.`);
           await refresh().catch(()=>undefined);
           return;
-        }else setPendingAction({label:"Student review",id:lookup.operation.id,path:`/v1/verification/admin/student/review-operations/${lookup.operation.id}`,storageKey});
+        }else savePendingAction({label:"Student review",id:lookup.operation.id,path:`/v1/verification/admin/student/review-operations/${lookup.operation.id}`,storageKey});
       } catch { /* The original key remains available for the next retry. */ }
       setMessage(`Review outcome uncertain. Reference ${reference}. Retry with the same reason to use the same decision key. ${error instanceof Error ? error.message : ""}`);
     }
@@ -217,7 +269,7 @@ export default function OperatorPage() {
         `Student revocation ${result.operation.operation_id}: ${result.operation.state}.`);
     } catch(error) {
       const operationId=error instanceof ApiError&&typeof error.details==="object"&&error.details!==null&&"operationId" in error.details?String(error.details.operationId):null;
-      if(operationId)setPendingAction({label:"Student revocation",id:operationId,path:`/v1/operator/students/revocations/${operationId}`,storageKey});
+      if(operationId)savePendingAction({label:"Student revocation",id:operationId,path:`/v1/operator/students/revocations/${operationId}`,storageKey});
       setMessage(`Revocation outcome uncertain. Retry with the same student ID and reason. Key ${key}. ${error instanceof Error?error.message:""}`);
     } finally {setBusy(false);}
   }
@@ -240,7 +292,7 @@ export default function OperatorPage() {
         `Case action ${result.operation.operation_id}: ${result.operation.state}.`);
     } catch(error) {
       const operationId=error instanceof ApiError&&typeof error.details==="object"&&error.details!==null&&"operationId" in error.details?String(error.details.operationId):null;
-      if(operationId)setPendingAction({label:"Case action",id:operationId,path:`/v1/operator/revocation-cases/operations/${operationId}`,storageKey});
+      if(operationId)savePendingAction({label:"Case action",id:operationId,path:`/v1/operator/revocation-cases/operations/${operationId}`,storageKey});
       setMessage(`Case action outcome uncertain. Retry the same action and reason. Key ${key}. ${error instanceof Error?error.message:""}`);
     } finally {setBusy(false);}
   }
@@ -269,6 +321,11 @@ export default function OperatorPage() {
       <span className="product-status product-status-restricted">Prelaunch</span></div>
     {message&&<p className="operator-notice" role="status">{message}</p>}
     {pendingAction&&<button disabled={busy} onClick={()=>void checkActionStatus()}>Check {pendingAction.label.toLowerCase()} status</button>}
+    {controlAttempt&&<div className="operator-notice" role="status">
+      A {controlAttempt.action} decision needs a confirmed outcome. Keep its recorded key and payload.
+      {' '}{controlAttempt.action==="pause"&&<button disabled={busy} onClick={()=>void checkControlStatus(controlAttempt)}>Check pause decision status</button>}
+      {' '}<button disabled={busy} onClick={()=>void sendControlAttempt(controlAttempt)}>Retry same {controlAttempt.action} decision</button>
+    </div>}
     {readErrors.length>0&&<div className="operator-notice operator-error" role="alert">Could not refresh: {readErrors.join(", ")}. Values in those queues may be stale. <button onClick={()=>void refresh()}>Retry reads</button></div>}
     <div className="operator-summary" aria-label="Queue summary">
       <a href="#eligibility"><span>01 / ELIGIBILITY</span><strong>{readsLoading ? "Loading" : readErrors.includes("Historical student reviews") ? "Unavailable" : `${studentReviews.length} student reviews`}</strong><small>Historical approvals and restrictions</small></a>
@@ -282,7 +339,7 @@ export default function OperatorPage() {
       {status?.recovery.cause && <p>Cause: {status.recovery.cause}</p>}
       {status?.recovery.started_at && <p>Since: {new Date(status.recovery.started_at).toLocaleString()}</p>}
       <div className="mt-3 flex gap-3"><button disabled={busy} onClick={() => recovery("reconcile")}>Reconcile receipts</button>
-      <button disabled={busy || !status?.recovery.reconciled_at || reason.trim().length < 8} onClick={() => recovery("reopen")}>Manually reopen</button></div>
+      <button disabled={busy || !!controlAttempt || !status?.recovery.reconciled_at || reason.trim().length < 8} onClick={() => recovery("reopen")}>Manually reopen</button></div>
     </section>
     <section className="operator-panel"><h2 className="font-semibold">Database backup</h2>
       <p>Protection: {status?.backup.required ? "required" : "rehearsal only"} · {status?.backup.healthy ? "fresh" : "stale or unavailable"} · Maximum age: {status?.backup.maximumAgeMinutes ?? 50} minutes</p>
@@ -292,7 +349,7 @@ export default function OperatorPage() {
       {status?.backup.failedAttempts.map((attempt) => <p key={attempt.id}>Failed {new Date(attempt.started_at).toLocaleString()}: {attempt.error_code ?? "unknown"}</p>)}
     </section>
     <label className="block">Decision reason<input className="mt-1 block w-full rounded border p-2" value={reason} onChange={(event) => setReason(event.target.value)} maxLength={500} /></label>
-    <section className="operator-panel space-y-3"><h2 className="font-semibold">Pause controls</h2><p>Proposed action: pause or resume the named historical capability. Impact: server permission changes, but the booking launch gate remains closed.</p>{status?.capabilities.map((item) => <div key={item.capability} className="operator-case"><span>{item.capability}: {item.paused ? "paused" : "open"}{item.pending ? " (pending)" : ""}</span><div className="flex flex-wrap gap-3"><button disabled={busy || reason.trim().length < 8} onClick={() => decide(item.capability, true)}>Pause</button><button disabled={busy || reason.trim().length < 8} onClick={() => decide(item.capability, false)}>Resume</button></div></div>)}</section>
+    <section className="operator-panel space-y-3"><h2 className="font-semibold">Pause controls</h2><p>Proposed action: pause or resume the named historical capability. Impact: server permission changes, but the booking launch gate remains closed.</p>{status?.capabilities.map((item) => <div key={item.capability} className="operator-case"><span>{item.capability}: {item.paused ? "paused" : "open"}{item.pending ? " (pending)" : ""}</span><div className="flex flex-wrap gap-3"><button disabled={busy || !!controlAttempt || reason.trim().length < 8} onClick={() => decide(item.capability, true)}>Pause</button><button disabled={busy || !!controlAttempt || reason.trim().length < 8} onClick={() => decide(item.capability, false)}>Resume</button></div></div>)}</section>
     <section className="operator-panel"><h2 className="font-semibold">Unknown and pending decisions</h2>{pending.length ? pending.map((item) => <div key={item.id} className="operator-case"><p>{item.id} · {item.capability} · {item.paused ? "pause" : "resume"} · {item.state}</p><p>Original reason: {item.reason}</p><p>Actor: operator · deadline: before protected writes reopen · outcome: pending durable confirmation.</p><div className="flex flex-wrap gap-3"><button disabled={busy || reason.trim().length < 8} onClick={() => resumePending(item.id)}>Complete pending decision</button><button disabled={busy} onClick={() => checkPendingStatus(item.id)}>Check status</button></div></div>) : <p>No pending operator decisions recorded.</p>}</section>
     <section className="space-y-2 rounded border p-4"><h2 className="font-semibold">Unrestricted support preparation</h2>
       <p>Proposed contact: jatinawankar23@gmail.com. Nominated fallback inbox: supportpp@gmail.com.</p>
@@ -338,7 +395,7 @@ export default function OperatorPage() {
       <p>Suspending a student holds future confirmed seats and opens urgent cases for active trips.</p>
       <label className="block">Student ID<input className="mt-1 block w-full rounded border p-2" value={studentToRevoke}
         onChange={event=>setStudentToRevoke(event.target.value)} /></label>
-      <button disabled={busy||reason.trim().length<8||!studentToRevoke.trim()} onClick={revokeStudent}>
+      <button disabled={busy||!!pendingAction||reason.trim().length<8||!studentToRevoke.trim()} onClick={revokeStudent}>
         Suspend student eligibility</button>
     </section>
     <section className="space-y-3"><h2 className="font-semibold">Revocation holds</h2>
@@ -347,9 +404,9 @@ export default function OperatorPage() {
         <p>{item.subject_type} {item.subject_id} · ride {item.offer_status} · seat {item.allocation_status??"—"}</p>
         <p>Original reason: {item.reason}</p><p>{item.resolved_at?`Resolved: ${item.resolution}`:"Open: seat remains reserved until recorded cancellation."}</p>
         <p>Affected: driver {item.driver_id}; passengers {item.passenger_ids.join(", ")||"none listed"}. Actor: operator. Proposed action: outreach or resolve after cancellation. Impact: holds remain until a recorded outcome. Deadline: no server deadline supplied.</p>
-        {!item.resolved_at&&<div className="flex gap-3"><button disabled={busy||reason.trim().length<8}
+        {!item.resolved_at&&<div className="flex gap-3"><button disabled={busy||!!pendingAction||reason.trim().length<8}
           onClick={()=>actOnCase("hold",item,"outreach")}>Record participant outreach</button>
-          <button disabled={busy||reason.trim().length<8} onClick={()=>actOnCase("hold",item,"resolve","cancelled")}>
+          <button disabled={busy||!!pendingAction||reason.trim().length<8} onClick={()=>actOnCase("hold",item,"resolve","cancelled")}>
             Resolve after cancellation</button></div>}
       </div>):<p>{readsLoading ? "Loading revocation cases…" : readErrors.includes("Revocation cases") ? "Revocation cases unavailable. Retry reads." : "No revocation holds recorded."}</p>}
     </section>
@@ -361,11 +418,11 @@ export default function OperatorPage() {
         <p>Affected: driver {item.driver_id}; passengers {item.passenger_ids.join(", ")||"none listed"}. Actor: operator. Proposed action: outreach or reviewed resolution. Impact: active-trip outcome may change. Deadline: urgent; no timestamp supplied.</p>
         <p><Link className="underline" href={`/operator/restrictions?source_type=incident&source_id=${item.id}&target=${item.subject_id}`}>
           Review an account restriction from this incident</Link></p>
-        {!item.resolved_at&&<div className="flex gap-3"><button disabled={busy||reason.trim().length<8}
+        {!item.resolved_at&&<div className="flex gap-3"><button disabled={busy||!!pendingAction||reason.trim().length<8}
           onClick={()=>actOnCase("incident",item,"outreach")}>Record participant outreach</button>
-          <button disabled={busy||reason.trim().length<8} onClick={()=>actOnCase("incident",item,"resolve","safe_completion")}>
+          <button disabled={busy||!!pendingAction||reason.trim().length<8} onClick={()=>actOnCase("incident",item,"resolve","safe_completion")}>
             Close safety case</button>
-          <button disabled={busy||reason.trim().length<8} onClick={()=>actOnCase("incident",item,"resolve","interrupted")}>
+          <button disabled={busy||!!pendingAction||reason.trim().length<8} onClick={()=>actOnCase("incident",item,"resolve","interrupted")}>
             Record interruption</button></div>}
       </div>):<p>{readsLoading ? "Loading revocation incidents…" : readErrors.includes("Revocation cases") ? "Revocation incidents unavailable. Retry reads." : "No revocation incidents recorded."}</p>}
     </section>
@@ -377,7 +434,7 @@ export default function OperatorPage() {
         <p>State: awaiting historical student review · affected person: {review.user_id} · evidence: enrollment and age records. Proposed action: approve or reject after inspection. Impact: historical corridor eligibility only. Actor: operator · deadline: no server deadline supplied · outcome: none recorded.</p>
         <div className="flex gap-3"><button className="underline" onClick={() => openEvidence(review.user_id, "enrollment")}>Enrollment evidence</button><button className="underline" onClick={() => openEvidence(review.user_id, "age")}>Age evidence</button></div>
         <label className="flex items-center gap-2"><input type="checkbox" checked={adultFindings[review.user_id] === true} onChange={(event) => setAdultFindings((findings) => ({ ...findings, [review.user_id]: event.target.checked }))} />Age evidence confirms this student is at least 18</label>
-        <div className="flex gap-3"><button disabled={busy || adultFindings[review.user_id] !== true} onClick={() => reviewStudent(review.user_id, "verified")}>Approve adult student</button><button disabled={busy} onClick={() => reviewStudent(review.user_id, "rejected")}>Reject</button></div>
+        <div className="flex gap-3"><button disabled={busy || !!pendingAction || adultFindings[review.user_id] !== true} onClick={() => reviewStudent(review.user_id, "verified")}>Approve adult student</button><button disabled={busy||!!pendingAction} onClick={() => reviewStudent(review.user_id, "rejected")}>Reject</button></div>
       </div>) : <p>{readsLoading ? "Loading student reviews…" : readErrors.includes("Historical student reviews") ? "Historical student reviews unavailable. Retry reads." : "No pending student reviews."}</p>}
     </section>
   </main>;

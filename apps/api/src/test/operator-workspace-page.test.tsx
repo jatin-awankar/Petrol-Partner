@@ -5,10 +5,22 @@ import OperatorPage from '../../../../app/operator/page';
 
 const {state,HttpError}=vi.hoisted(()=>{
   class HttpError extends Error {status:number;constructor(status:number){super(`HTTP ${status}`);this.status=status;}}
-  return {state:{loading:false,user:{id:'operator'} as {id:string}|null,forbidden:false,failDelivery:false,failCancellation:false,holdCancellation:false,resolveCancellation:null as (()=>void)|null,failEndpoint:'',studentReviewPending:false,studentReviewError:false,studentByKeyState:'pending_unknown',revocationError:false,casePending:false,caseError:false,operationState:'pending_unknown'},HttpError};
+  return {state:{loading:false,user:{id:'operator'} as {id:string}|null,forbidden:false,failDelivery:false,failCancellation:false,holdCancellation:false,resolveCancellation:null as (()=>void)|null,failEndpoint:'',studentReviewPending:false,studentReviewError:false,studentByKeyState:'pending_unknown',revocationError:false,casePending:false,caseError:false,operationState:'pending_unknown',showPause:false,pauseError:false,pausePosts:[] as {key:string;body:string}[],reconciled:false,reopenError:false,reopenPosts:[] as {key:string;body:string}[]},HttpError};
 });
 vi.mock('@/hooks/auth/useCurrentUser',()=>({useCurrentUser:()=>({user:state.user,loading:state.loading})}));
-vi.mock('@/lib/api/client',()=>({ApiError:HttpError,apiRequest:async(path:string)=>{
+vi.mock('@/lib/api/client',()=>({ApiError:HttpError,apiRequest:async(path:string,options?:{headers?:Record<string,string>;body?:string})=>{
+  if(path==='/v1/operator/pause'){
+    state.pausePosts.push({key:options?.headers?.['Idempotency-Key']??'',body:options?.body??''});
+    if(state.pauseError)throw new HttpError(503);
+    return {id:'pause-decision-1',state:'committed'};
+  }
+  if(path==='/v1/operator/reopen'){
+    state.reopenPosts.push({key:options?.headers?.['Idempotency-Key']??'',body:options?.body??''});
+    if(state.reopenError)throw new HttpError(503);
+    return {operationId:'reopen-decision-1'};
+  }
+  if(path.startsWith('/v1/operator/operations/by-key/'))return {id:'pause-decision-1',state:state.operationState};
+  if(path==='/v1/operator/operations/pause-decision-1')return {id:'pause-decision-1',state:state.operationState};
   if(path==='/v1/verification/admin/student/student-1/review'){
     if(state.studentReviewError)throw new HttpError(503);
     return {operation:{id:'student-decision-1',state:'pending_unknown'}};
@@ -32,9 +44,9 @@ vi.mock('@/lib/api/client',()=>({ApiError:HttpError,apiRequest:async(path:string
       reason:'Recovery evidence pending',state:'committed'}]};
   }
   if(path==='/v1/operator/status')return {recovery:{mode:'restricted',cause:'receipt unavailable',
-    started_at:'2026-10-02T09:00:00.000Z',reconciled_at:null},
+    started_at:'2026-10-02T09:00:00.000Z',reconciled_at:state.reconciled?'2026-10-02T10:00:00.000Z':null},
     backup:{required:true,healthy:false,maximumAgeMinutes:50,ageMinutes:null,latest:null,
-      failedAttempts:[],runningAttempts:[]},capabilities:[]};
+    failedAttempts:[],runningAttempts:[]},capabilities:state.showPause?[{capability:'offers',paused:false,pending:false}]:[]};
   if(path==='/v1/operator/notifications/delivery'){
     if(state.failDelivery)throw new HttpError(503);
     return {jobs:[],health:{exhausted:1}};
@@ -54,7 +66,36 @@ vi.mock('@/lib/api/client',()=>({ApiError:HttpError,apiRequest:async(path:string
   throw new Error(`Unexpected request: ${path}`);
 }}));
 
-afterEach(()=>{state.resolveCancellation?.();cleanup();sessionStorage.clear();state.loading=false;state.user={id:'operator'};state.forbidden=false;state.failDelivery=false;state.failCancellation=false;state.holdCancellation=false;state.resolveCancellation=null;state.failEndpoint='';state.studentReviewPending=false;state.studentReviewError=false;state.studentByKeyState='pending_unknown';state.revocationError=false;state.casePending=false;state.caseError=false;state.operationState='pending_unknown';});
+afterEach(()=>{state.resolveCancellation?.();cleanup();sessionStorage.clear();state.loading=false;state.user={id:'operator'};state.forbidden=false;state.failDelivery=false;state.failCancellation=false;state.holdCancellation=false;state.resolveCancellation=null;state.failEndpoint='';state.studentReviewPending=false;state.studentReviewError=false;state.studentByKeyState='pending_unknown';state.revocationError=false;state.casePending=false;state.caseError=false;state.operationState='pending_unknown';state.showPause=false;state.pauseError=false;state.pausePosts=[];state.reconciled=false;state.reopenError=false;state.reopenPosts=[];});
+
+it('retries an uncertain pause with the same key and payload',async()=>{
+  state.showPause=true;state.pauseError=true;
+  render(<OperatorPage/>);
+  fireEvent.change(await screen.findByLabelText('Decision reason'),{target:{value:'Coverage is unavailable'}});
+  fireEvent.click(screen.getByRole('button',{name:'Pause'}));
+  expect(await screen.findByRole('button',{name:'Retry same pause decision'})).not.toBeNull();
+  expect(screen.getByRole('button',{name:'Pause'}).hasAttribute('disabled')).toBe(true);
+  fireEvent.change(screen.getByLabelText('Decision reason'),{target:{value:'A different reason now'}});
+  fireEvent.click(screen.getByRole('button',{name:'Retry same pause decision'}));
+  expect(await screen.findByText(/Pause outcome uncertain or rejected/)).not.toBeNull();
+  expect(state.pausePosts).toHaveLength(2);
+  expect(state.pausePosts[1]).toEqual(state.pausePosts[0]);
+  cleanup();render(<OperatorPage/>);
+  expect(await screen.findByRole('button',{name:'Retry same pause decision'})).not.toBeNull();
+});
+it('retries an uncertain reopen with the same key and reason after reload',async()=>{
+  state.reconciled=true;state.reopenError=true;
+  render(<OperatorPage/>);
+  fireEvent.change(await screen.findByLabelText('Decision reason'),{target:{value:'Recovery evidence reviewed'}});
+  fireEvent.click(screen.getByRole('button',{name:'Manually reopen'}));
+  expect(await screen.findByRole('button',{name:'Retry same reopen decision'})).not.toBeNull();
+  cleanup();render(<OperatorPage/>);
+  fireEvent.change(await screen.findByLabelText('Decision reason'),{target:{value:'A different reason now'}});
+  fireEvent.click(await screen.findByRole('button',{name:'Retry same reopen decision'}));
+  expect(await screen.findByText(/Reopen outcome uncertain or rejected/)).not.toBeNull();
+  expect(state.reopenPosts).toHaveLength(2);
+  expect(state.reopenPosts[1]).toEqual(state.reopenPosts[0]);
+});
 
 it('renders the protected queue map with restricted recovery and unknown operation state',async()=>{
   render(<OperatorPage/>);
@@ -116,6 +157,8 @@ it('lets an operator check a pending student review before making another decisi
   fireEvent.change(await screen.findByLabelText('Decision reason'),{target:{value:'Evidence is incomplete'}});
   fireEvent.click(screen.getByRole('button',{name:'Reject'}));
   expect(await screen.findByText(/Student review student-decision-1 is pending_unknown/)).not.toBeNull();
+  cleanup();render(<OperatorPage/>);
+  expect(await screen.findByRole('button',{name:'Check student review status'})).not.toBeNull();
   fireEvent.click(screen.getByRole('button',{name:'Check student review status'}));
   expect(await screen.findByText(/Student review student-decision-1 is still pending_unknown/)).not.toBeNull();
   state.operationState='recovered';

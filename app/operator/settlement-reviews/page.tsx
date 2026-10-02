@@ -1,5 +1,5 @@
 'use client';
-import {useCallback,useEffect,useState} from 'react';
+import {useCallback,useEffect,useRef,useState} from 'react';
 import {apiRequest,ApiError} from '@/lib/api/client';
 import Link from 'next/link';
 type QueueItem={obligation_id:string;reason:string|null;claimed_at:string;amount_paise:number;currency:string};
@@ -9,6 +9,8 @@ type Detail={obligation:{id:string;amount_paise:number;currency:string;due_at:st
   reports:{reason:string}[];decisions:{case_resolution:string;contribution_owed:boolean|null;
     receipt_established:boolean|null;reason:string}[];
   audit:{action:string;created_at:string;operation_id:string}[]};
+type DecisionAttempt={caseId:string;key:string;body:string;operationId:string|null};
+const attemptStorage='operator:settlement-decision-attempt';
 export default function SettlementReviewsPage(){
   const [queue,setQueue]=useState<QueueItem[]>([]),[detail,setDetail]=useState<Detail|null>(null);
   const [id,setId]=useState<string|null>(null),[reason,setReason]=useState(''),[evidence,setEvidence]=useState('');
@@ -17,7 +19,8 @@ export default function SettlementReviewsPage(){
   const [confirmation,setConfirmation]=useState(''),[reviewSummary,setReviewSummary]=useState('');
   const [resolution,setResolution]=useState<'resolved'|'unresolved'>('unresolved');
   const [message,setMessage]=useState(''),[busy,setBusy]=useState(false);
-  const [pendingDecision,setPendingDecision]=useState<{id:string;storageKey:string}|null>(null);
+  const [attempt,setAttempt]=useState<DecisionAttempt|null>(null);
+  const inspection=useRef(0);
   const [access,setAccess]=useState<'loading'|'ready'|'denied'|'error'>('loading');
   const refresh=useCallback(async()=>{
     setQueue((await apiRequest<{queue:QueueItem[]}>(
@@ -28,51 +31,74 @@ export default function SettlementReviewsPage(){
     setAccess(error instanceof ApiError&&(error.status===401||error.status===403)?'denied':'error');
     setMessage(error instanceof Error?error.message:'Unable to load settlement reviews');
   });},[refresh]);
+  useEffect(()=>{
+    const saved=sessionStorage.getItem(attemptStorage);
+    if(saved)try{setAttempt(JSON.parse(saved) as DecisionAttempt);}catch{sessionStorage.removeItem(attemptStorage);}
+  },[]);
+  function saveAttempt(next:DecisionAttempt|null){
+    setAttempt(next);
+    if(next)sessionStorage.setItem(attemptStorage,JSON.stringify(next));
+    else sessionStorage.removeItem(attemptStorage);
+  }
   async function inspect(obligationId:string){
-    try{setId(obligationId);setDetail(await apiRequest<Detail>(
-      `/v1/operator/settlement-reviews/${obligationId}`));}
-    catch(error){setMessage(String(error));}
+    const request=++inspection.current;
+    setId(null);setDetail(null);setMessage('');
+    try{
+      const next=await apiRequest<Detail>(`/v1/operator/settlement-reviews/${obligationId}`);
+      if(request!==inspection.current)return false;
+      if(next.obligation.id!==obligationId)throw new Error('Case detail did not match the selected obligation');
+      setDetail(next);setId(obligationId);
+      return true;
+    }catch(error){if(request===inspection.current)setMessage(String(error));return false;}
   }
   async function decide(){
-    if(!id||reason.trim().length<8) return;
-    const storageKey=`settlement-decision:${id}`;
-    const key=sessionStorage.getItem(storageKey)??crypto.randomUUID();
-    sessionStorage.setItem(storageKey,key);setBusy(true);
+    if(!id||detail?.obligation.id!==id||reason.trim().length<8||attempt) return;
     const finding=(value:string)=>value==='unknown'?null:value==='yes';
+    const body=JSON.stringify({contribution_owed:finding(owed),
+      receipt_established:finding(received),case_resolution:resolution,reason:reason.trim(),
+      evidence_refs:received==='yes'&&basis==='participant_confirmation'?[]:
+        evidence.split('\n').map(x=>x.trim()).filter(Boolean),
+      participant_confirmation_id:received==='yes'&&basis==='participant_confirmation'?
+        confirmation.trim()||null:null,
+      receipt_basis:received==='yes'?basis:null,
+      reviewed_evidence_summary:received==='yes'&&basis==='reviewed_evidence'?
+        reviewSummary.trim():null});
+    const next={caseId:id,key:crypto.randomUUID(),body,operationId:null};
+    saveAttempt(next);void sendAttempt(next);
+  }
+  async function sendAttempt(next:DecisionAttempt){
+    setBusy(true);
     try{
       const result=await apiRequest<{operation:{state:string;operation_id:string}}>(
-        `/v1/operator/settlement-reviews/${id}/decide`,{method:'POST',
-          headers:{'Idempotency-Key':key},body:JSON.stringify({contribution_owed:finding(owed),
-            receipt_established:finding(received),case_resolution:resolution,reason:reason.trim(),
-            evidence_refs:received==='yes'&&basis==='participant_confirmation'?[]:
-              evidence.split('\n').map(x=>x.trim()).filter(Boolean),
-            participant_confirmation_id:received==='yes'&&basis==='participant_confirmation'?
-              confirmation.trim()||null:null,
-            receipt_basis:received==='yes'?basis:null,
-            reviewed_evidence_summary:received==='yes'&&basis==='reviewed_evidence'?
-              reviewSummary.trim():null})});
+        `/v1/operator/settlement-reviews/${next.caseId}/decide`,{method:'POST',
+          headers:{'Idempotency-Key':next.key},body:next.body});
       if(result.operation.state==='acknowledged'||result.operation.state==='recovered'){
-        sessionStorage.removeItem(storageKey);setPendingDecision(null);setMessage(`Decision ${result.operation.operation_id} recorded.`);
-        await refresh();await inspect(id);
-      }else {setPendingDecision({id:result.operation.operation_id,storageKey});setMessage(`Decision ${result.operation.operation_id} pending. Retry with the same key.`);}
-    }catch(error){if(error instanceof ApiError&&error.status<500&&error.code!=='OPERATION_PENDING')
-      sessionStorage.removeItem(storageKey);
+        saveAttempt(null);
+        const refreshed=await refresh().then(()=>true).catch(()=>false);
+        const inspected=id===next.caseId?await inspect(next.caseId):true;
+        setMessage(`Decision ${result.operation.operation_id} recorded.${refreshed?'':' Queue could not refresh; retry the read.'}${inspected?'':' Case detail could not refresh; reopen it.'}`);
+      }else {saveAttempt({...next,operationId:result.operation.operation_id});setMessage(`Decision ${result.operation.operation_id} pending. Check its status before another decision.`);}
+    }catch(error){
       const details=error&&typeof error==='object'&&'details' in error?error.details:null;
       const operationId=details&&typeof details==='object'&&'operationId' in details?String(details.operationId):null;
-      if(operationId)setPendingDecision({id:operationId,storageKey});
-      setMessage(error instanceof Error?error.message:'Outcome uncertain. Retry with the same key.');
+      if(operationId)saveAttempt({...next,operationId});
+      else if(error instanceof ApiError&&error.status<500&&error.code!=='OPERATION_PENDING')saveAttempt(null);
+      setMessage(error instanceof Error?error.message:'Outcome uncertain. Retry the same decision.');
     }finally{setBusy(false);}
   }
   async function checkDecision(){
-    if(!pendingDecision)return;
+    if(!attempt?.operationId)return;
+    setBusy(true);
     try{
-      const result=await apiRequest<{operation:{state:string}}>(`/v1/operator/settlement-case-operations/${pendingDecision.id}`);
+      const result=await apiRequest<{operation:{state:string}}>(`/v1/operator/settlement-case-operations/${attempt.operationId}`);
       if(result.operation.state==='acknowledged'||result.operation.state==='recovered'){
-        sessionStorage.removeItem(pendingDecision.storageKey);setPendingDecision(null);
-        setMessage(`Decision ${pendingDecision.id}: ${result.operation.state}.`);
-        await refresh();if(id)await inspect(id);
-      }else setMessage(`Decision ${pendingDecision.id} is still ${result.operation.state}. Keep the same decision key.`);
-    }catch(error){setMessage(`Could not check decision ${pendingDecision.id}: ${error instanceof Error?error.message:'unknown error'}`);}
+        saveAttempt(null);
+        const refreshed=await refresh().then(()=>true).catch(()=>false);
+        const inspected=id===attempt.caseId?await inspect(id):true;
+        setMessage(`Decision ${attempt.operationId}: ${result.operation.state}.${refreshed?'':' Queue could not refresh; retry the read.'}${inspected?'':' Case detail could not refresh; reopen it.'}`);
+      }else setMessage(`Decision ${attempt.operationId} is still ${result.operation.state}. Keep the same decision key.`);
+    }catch(error){setMessage(`Could not check decision ${attempt.operationId}: ${error instanceof Error?error.message:'unknown error'}`);}
+    finally{setBusy(false);}
   }
   if(access==='loading')return <main id="main-content" className="operator-workspace" role="status">Loading settlement reviews…</main>;
   if(access==='denied')return <main id="main-content" className="operator-workspace" role="alert">Operator access requires current allowlist membership and MFA. {message}</main>;
@@ -82,7 +108,9 @@ export default function SettlementReviewsPage(){
     <p>Historical fixed-corridor cases. Record contribution, receipt, and case findings separately. Closing a case creates no payment or penalty.</p>
     {access==='error'&&<p role="alert">Queue unavailable. <button onClick={()=>void refresh()}>Retry load</button></p>}
     {message&&<p role="status">{message}</p>}
-    {pendingDecision&&<button onClick={()=>void checkDecision()}>Check settlement decision status</button>}
+    {attempt&&<div className="operator-notice" role="status">Decision for case {attempt.caseId} needs a confirmed outcome.
+      {' '}{attempt.operationId?<button disabled={busy} onClick={()=>void checkDecision()}>Check settlement decision status</button>
+        :<button disabled={busy} onClick={()=>void sendAttempt(attempt)}>Retry same settlement decision</button>}</div>}
     <section className="operator-panel"><h2 className="font-semibold">Open disputes and unanswered claims</h2>
       {queue.map(item=><button key={item.obligation_id} className="block w-full rounded border p-3 text-left"
         onClick={()=>void inspect(item.obligation_id)}>{item.obligation_id} · {item.currency}
@@ -133,7 +161,7 @@ export default function SettlementReviewsPage(){
         <p>Reason and reviewed evidence are recorded with the findings. Existing claims and receipts remain in the case history.</p>
       </div>
       {resolution==='resolved'&&(owed==='unknown'||received==='unknown')&&<p>Select both contribution and receipt findings to resolve this case.</p>}
-      <button disabled={busy||reason.trim().length<8||(resolution==='resolved'&&(owed==='unknown'||received==='unknown'))} onClick={()=>void decide()}>Record findings</button>
+      <button disabled={busy||!!attempt||reason.trim().length<8||(resolution==='resolved'&&(owed==='unknown'||received==='unknown'))} onClick={()=>void decide()}>Record findings</button>
     </section>}
   </main>;
 }
