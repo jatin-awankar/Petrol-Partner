@@ -45,6 +45,13 @@ it('uses the account page title as its only primary heading',async()=>{
   expect(screen.getByRole('heading',{level:1}).textContent).toBe('Account and declarations');
 });
 
+it('shows a profile placeholder when no photo is recorded',async()=>{
+  session.signedIn=true;
+  render(<ProfileSettingsPage/>);
+  expect(await screen.findByRole('img',{name:"Mira's profile placeholder"})).not.toBeNull();
+  expect(screen.queryByRole('img',{name:"Mira's profile"})).toBeNull();
+});
+
 it('keeps collapsed account controls out of keyboard navigation',async()=>{
   session.signedIn=true;
   render(<ProfileSettingsPage/>);
