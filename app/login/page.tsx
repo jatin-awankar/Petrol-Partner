@@ -10,13 +10,13 @@ import { useCurrentUser } from "@/hooks/auth/useCurrentUser";
 
 export default function LoginPage() {
   const router = useRouter();
-  const { isAuthenticated, loading } = useCurrentUser();
+  const { user, isAuthenticated, loading } = useCurrentUser();
 
   useEffect(() => {
     if (!loading && isAuthenticated) {
-      router.replace("/dashboard");
+      router.replace(user?.role === "admin" ? "/operator/mfa" : "/dashboard");
     }
-  }, [isAuthenticated, loading, router]);
+  }, [isAuthenticated, loading, router, user?.role]);
 
   return (
     <AuthSplitLayout
