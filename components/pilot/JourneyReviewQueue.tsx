@@ -36,9 +36,11 @@ export function JourneyReviewQueue(){
       const result=await apiRequest<{operation:{operation_id:string;state:string}}>(
         `/v1/operator/journey-reviews/${selected.case.id}/decide`,{method:"POST",
           headers:{"Idempotency-Key":key},body:JSON.stringify(command)});
-      sessionStorage.removeItem(storageKey);
-      setMessage(`Decision ${result.operation.operation_id}: ${result.operation.state}.`);
-      await refresh();
+      if(result.operation.state==='acknowledged'||result.operation.state==='recovered'){
+        sessionStorage.removeItem(storageKey);
+        setMessage(`Decision ${result.operation.operation_id}: ${result.operation.state}.`);
+        await refresh();
+      }else setMessage(`Decision ${result.operation.operation_id} is ${result.operation.state}. Check the operation before retrying with the same key.`);
     }catch(error){setMessage(`Decision outcome uncertain. Retry with the same inputs and key ${key}. ${error instanceof Error?error.message:""}`);}
     finally{setBusy(false);}
   }

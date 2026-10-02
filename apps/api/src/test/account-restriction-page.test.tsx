@@ -9,6 +9,7 @@ vi.mock('next/navigation',()=>({useSearchParams:()=>new URLSearchParams(`target=
 vi.mock('@/hooks/auth/useCurrentUser',()=>({useCurrentUser:()=>({user:{id:target},loading:false})}));
 vi.mock('@/lib/api/client',()=>({ApiError:class ApiError extends Error{},
   apiRequest:async(path:string)=>{
+    if(path==='/v1/operator/status') return {recovery:{mode:'normal'}};
     if(path.includes('/operator/account-restrictions/')) return {history:[{
       id:'22222222-2222-4222-8222-222222222222',operator_id:'operator',
       target_user_id:target,action:'restrict',scope:'passenger',source_type:'incident',

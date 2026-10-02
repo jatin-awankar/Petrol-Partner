@@ -17,9 +17,16 @@ export default function SettlementReviewsPage(){
   const [confirmation,setConfirmation]=useState(''),[reviewSummary,setReviewSummary]=useState('');
   const [resolution,setResolution]=useState<'resolved'|'unresolved'>('unresolved');
   const [message,setMessage]=useState(''),[busy,setBusy]=useState(false);
-  const refresh=useCallback(async()=>setQueue((await apiRequest<{queue:QueueItem[]}>(
-    '/v1/operator/settlement-reviews')).queue),[]);
-  useEffect(()=>{void refresh().catch(error=>setMessage(String(error)));},[refresh]);
+  const [access,setAccess]=useState<'loading'|'ready'|'denied'|'error'>('loading');
+  const refresh=useCallback(async()=>{
+    setQueue((await apiRequest<{queue:QueueItem[]}>(
+      '/v1/operator/settlement-reviews')).queue);
+    setAccess('ready');
+  },[]);
+  useEffect(()=>{void refresh().catch(error=>{
+    setAccess(error instanceof ApiError&&(error.status===401||error.status===403)?'denied':'error');
+    setMessage(error instanceof Error?error.message:'Unable to load settlement reviews');
+  });},[refresh]);
   async function inspect(obligationId:string){
     try{setId(obligationId);setDetail(await apiRequest<Detail>(
       `/v1/operator/settlement-reviews/${obligationId}`));}
@@ -52,17 +59,21 @@ export default function SettlementReviewsPage(){
       setMessage(error instanceof Error?error.message:'Outcome uncertain. Retry with the same key.');
     }finally{setBusy(false);}
   }
-  return <main className="mx-auto max-w-4xl space-y-5 p-6">
+  if(access==='loading')return <main id="main-content" className="operator-workspace" role="status">Loading settlement reviews…</main>;
+  if(access==='denied')return <main id="main-content" className="operator-workspace" role="alert">Operator access requires current allowlist membership and MFA. {message}</main>;
+  return <main id="main-content" className="operator-workspace space-y-5">
+    <Link href="/operator#journeys">← Operator workspace</Link>
     <h1 className="text-2xl font-semibold">Settlement reviews</h1>
-    <p>Record contribution, receipt, and case findings separately. Closing a case creates no payment or penalty.</p>
+    <p>Historical fixed-corridor cases. Record contribution, receipt, and case findings separately. Closing a case creates no payment or penalty.</p>
+    {access==='error'&&<p role="alert">Queue unavailable. <button onClick={()=>void refresh()}>Retry load</button></p>}
     {message&&<p role="status">{message}</p>}
-    <section><h2 className="font-semibold">Open disputes and unanswered claims</h2>
+    <section className="operator-panel"><h2 className="font-semibold">Open disputes and unanswered claims</h2>
       {queue.map(item=><button key={item.obligation_id} className="block w-full rounded border p-3 text-left"
         onClick={()=>void inspect(item.obligation_id)}>{item.obligation_id} · {item.currency}
         {' '}{(item.amount_paise/100).toFixed(2)} · {item.reason??'unanswered for 24 hours'}</button>)}
       {!queue.length&&<p>No open settlement cases.</p>}
     </section>
-    {id&&detail&&<section className="space-y-3 rounded border p-4">
+    {id&&detail&&<section className="operator-panel space-y-3">
       <h2 className="font-semibold">Case {id}</h2>
       <p>Original obligation: {detail.obligation.currency}
         {' '}{(detail.obligation.amount_paise/100).toFixed(2)}</p>

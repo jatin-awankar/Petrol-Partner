@@ -20,12 +20,17 @@ export default function AccountRestrictionsPage(){
   const [reason,setReason]=useState(''),[evidence,setEvidence]=useState('');
   const [history,setHistory]=useState<Item[]>([]),[message,setMessage]=useState('');
   const [busy,setBusy]=useState(false);
+  const [access,setAccess]=useState<'loading'|'ready'|'denied'|'error'>('loading');
   const refresh=useCallback(async(id:string)=>{
     if(!id) return;
     setHistory((await apiRequest<{history:Item[]}>(
       `/v1/operator/account-restrictions/${encodeURIComponent(id)}`)).history);
   },[]);
-  useEffect(()=>{if(target) void refresh(target).catch(e=>setMessage(String(e)));},[target,refresh]);
+  useEffect(()=>{void apiRequest('/v1/operator/status').then(()=>setAccess('ready')).catch(error=>{
+    setAccess(error instanceof ApiError&&(error.status===401||error.status===403)?'denied':'error');
+    setMessage(error instanceof Error?error.message:'Unable to verify operator access');
+  });},[]);
+  useEffect(()=>{if(target&&access==='ready') void refresh(target).catch(e=>setMessage(String(e)));},[target,refresh,access]);
   async function submit(path:string,body:unknown,storageKey:string){
     const key=sessionStorage.getItem(storageKey)??crypto.randomUUID();
     sessionStorage.setItem(storageKey,key);setBusy(true);
@@ -45,12 +50,15 @@ export default function AccountRestrictionsPage(){
   }
   const ready=target&&sourceId&&reason.trim().length>=8&&evidence.trim().length>=8;
   const reversed=new Set(history.filter(item=>item.action==='reverse').map(item=>item.reverses_id));
-  return <main className="mx-auto max-w-4xl space-y-5 p-6">
-    <Link href="/operator" className="underline">Operator console</Link>
+  if(access==='loading')return <main id="main-content" className="operator-workspace" role="status">Checking operator access…</main>;
+  if(access==='denied')return <main id="main-content" className="operator-workspace" role="alert">Operator access requires current allowlist membership and MFA. {message}</main>;
+  return <main id="main-content" className="operator-workspace space-y-5">
+    <Link href="/operator#eligibility" className="underline">← Operator workspace</Link>
     <h1 className="text-2xl font-semibold">Reviewed account restrictions</h1>
     <p>Review the incident or resolved settlement case before acting. A restriction holds future commitments; seats stay reserved until recorded cancellation. Reversals do not override other eligibility checks.</p>
+    {access==='error'&&<p role="alert">Operator access could not be checked. <button onClick={()=>void apiRequest('/v1/operator/status').then(()=>setAccess('ready')).catch(e=>setMessage(String(e)))}>Retry access check</button></p>}
     <p role="status">{message}</p>
-    <section className="space-y-3 rounded border p-4">
+    <section className="operator-panel space-y-3">
       <h2 className="font-semibold">Record a restriction</h2>
       <label className="block">Participant ID<input className="block w-full rounded border p-2" value={target}
         onChange={e=>setTarget(e.target.value)} /></label>
@@ -67,14 +75,15 @@ export default function AccountRestrictionsPage(){
         onChange={e=>setReason(e.target.value)} /></label>
       <label className="block">Reviewed evidence summary<textarea className="block w-full rounded border p-2"
         value={evidence} onChange={e=>setEvidence(e.target.value)} /></label>
-      <button disabled={busy||!ready} onClick={()=>void submit('/v1/operator/account-restrictions',{
+      <p>Proposed action: restrict future travel actions in the selected scope. Affected: participant {target||'not selected'}. Actor: current operator. Recorded outcome appears in the history below; seats require separate cancellation.</p>
+      <button disabled={access!=='ready'||busy||!ready} onClick={()=>void submit('/v1/operator/account-restrictions',{
         target_user_id:target,source_type:sourceType,source_id:sourceId,scope,
         reason:reason.trim(),reviewed_evidence:evidence.trim()},
         `account-restrict:${target}:${sourceType}:${sourceId}:${scope}`)}>Record restriction</button>
     </section>
-    <section className="space-y-3"><h2 className="font-semibold">Decision history</h2>
+    <section className="operator-panel space-y-3"><h2 className="font-semibold">Decision history</h2>
       <button onClick={()=>void refresh(target)} disabled={busy||!target}>Refresh history</button>
-      {history.map(item=><div key={item.id} className="space-y-2 rounded border p-3">
+      {history.map(item=><div key={item.id} className="operator-case space-y-2">
         <p>{item.action==='restrict'?(reversed.has(item.id)?'Reversed restriction':'Active restriction'):'Reversal'}
           {' '}· {item.scope} · {new Date(item.committed_at).toLocaleString()}</p>
         <p>Operator {item.operator_id} · {item.source_type} {item.source_id}</p>

@@ -1,4 +1,27 @@
 "use client";
+
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-export default function OperatorShell() { const path=usePathname(); if (!path.startsWith("/operator")) return null; return <header className="operator-shell"><div><Link href="/operator" className="operator-brand">PETROL PARTNER <span>/ OPERATIONS</span></Link><nav aria-label="Operator workspace"><Link href="/operator" aria-current={path==="/operator"?"page":undefined}>Console</Link><Link href="/operator/restrictions" aria-current={path==="/operator/restrictions"?"page":undefined}>Restrictions</Link><Link href="/operator/settlement-reviews" aria-current={path==="/operator/settlement-reviews"?"page":undefined}>Settlement reviews</Link></nav><Link href="/dashboard">Participant Home</Link></div></header>; }
+
+const queues = [
+  { href: "/operator#eligibility", label: "Eligibility" },
+  { href: "/operator#routes", label: "Routes & incidents" },
+  { href: "/operator#journeys", label: "Journey & settlement" },
+  { href: "/operator#delivery", label: "Delivery" },
+  { href: "/operator#recovery", label: "Pause & recovery" },
+  { href: "/operator#audit", label: "Audit" },
+];
+
+export default function OperatorShell() {
+  const path = usePathname();
+  if (!path.startsWith("/operator")) return null;
+  return <header className="operator-shell">
+    <div className="operator-shell-inner">
+      <Link href="/operator" className="operator-brand">PETROL PARTNER <span>/ OPERATIONS</span></Link>
+      <nav aria-label="Operator queues">
+        {queues.map(queue => <Link key={queue.href} href={queue.href}>{queue.label}</Link>)}
+      </nav>
+      <Link href="/dashboard">Participant home</Link>
+    </div>
+  </header>;
+}
