@@ -4,7 +4,7 @@
 
 ## Scope and recommendation
 
-The local `main` and `origin/main` both point to `ac9c5c4`, **Merge pull request #77**. The GitHub API could not be reached during this review, so that local commit graph is the merge evidence. The untracked `.worktrees/` directory and all existing data were left intact.
+PR #77 is `MERGED` into `main` at `2026-10-02T07:51:59Z`, with merge commit `ac9c5c4`, as confirmed by `gh pr view 77`. The local `main` and `origin/main` point to the same commit. The untracked `.worktrees/` directory and all existing data were left intact.
 
 **Recommendation:** review and merge this frontend QA slice after CI. Do **not** authorize real bookings or describe the redesigned journeys as live. Public discovery, passenger quotes, posted-route seat actions, route outcomes, payment collection, chat, tracking, and matching remain launch gated. The authenticated UI and the step 7 operator evidence gaps below still need separate server and staging proof.
 
