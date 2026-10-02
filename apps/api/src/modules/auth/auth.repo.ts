@@ -1,6 +1,6 @@
 import type { Pool, PoolClient } from "pg";
 
-import { pool } from "../../db/pool";
+import { mfaEnrollmentLockPool, pool } from "../../db/pool";
 
 type Queryable = Pool | PoolClient;
 
@@ -273,6 +273,25 @@ export async function isOperatorAllowlisted(userId: string) {
     [userId],
   );
   return result.rows[0]?.allowed === true;
+}
+
+export async function withOperatorMfaEnrollmentLock<T>(userId: string, action: () => Promise<T>): Promise<T> {
+  const client = await mfaEnrollmentLockPool.connect();
+  const lockKey = `operator-mfa-enrollment:${userId}`;
+  let locked = false;
+  try {
+    await client.query("SELECT pg_advisory_lock(hashtextextended($1::text, 0))", [lockKey]);
+    locked = true;
+    return await action();
+  } finally {
+    try {
+      if (locked) await client.query("SELECT pg_advisory_unlock(hashtextextended($1::text, 0))", [lockKey]);
+      client.release();
+    } catch (error) {
+      client.release(error instanceof Error ? error : new Error("MFA enrollment lock release failed"));
+      throw error;
+    }
+  }
 }
 
 export async function recordOperatorMfaAudit(userId: string, action: string, metadata: Record<string, string>) {

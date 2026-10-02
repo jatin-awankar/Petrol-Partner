@@ -24,6 +24,7 @@ import {
   isLegacyAuthAuthorized,
   revokeRefreshToken,
   isOperatorAllowlisted,
+  withOperatorMfaEnrollmentLock,
   recordOperatorMfaAudit,
   operatorMfaAuditHistory,
   observeOperatorMfaFactors,
@@ -391,7 +392,6 @@ export async function authenticateProviderAccessToken(accessToken: string, refre
   }
   const user = await findUserById(mapping.userId);
   if (!user || user.status !== "active") throw new AppError(401, "Unauthorized", "UNAUTHORIZED");
-  await touchAuthIdentity("supabase", identity.subject);
   return {
     userId: user.id,
     email: user.email,
@@ -431,47 +431,50 @@ export async function operatorMfaFactors(user: NonNullable<Express.Request["user
     provider.listTotpFactors(token),
     provider.listPendingTotpFactors?.(token) ?? Promise.resolve([]),
   ]);
-  await withTransaction((client) => observeOperatorMfaFactors(client, user.userId,
-    factors.map((factor) => factor.id), pendingFactors.map((factor) => factor.id)));
   return { factors, pendingFactors, assuranceLevel: user.assuranceLevel ?? null };
 }
 
 export async function enrollOperatorTotp(user: NonNullable<Express.Request["user"]>, accessToken?: string, replacePendingFactorId?: string) {
-  const token = await assertOperatorMfaSession(user, accessToken);
-  const provider = getAuthProvider();
-  if (!provider.enrollTotp) throw new AppError(503, "MFA provider is unavailable", "AUTH_ASSURANCE_UNAVAILABLE");
-  if (user.assuranceLevel !== "aal2") {
-    if (!provider.listTotpFactors) throw new AppError(503, "MFA provider is unavailable", "AUTH_ASSURANCE_UNAVAILABLE");
-    if ((await provider.listTotpFactors(token)).length > 0) {
+  return withOperatorMfaEnrollmentLock(user.userId, async () => {
+    const token = await assertOperatorMfaSession(user, accessToken);
+    const provider = getAuthProvider();
+    if (!provider.enrollTotp) throw new AppError(503, "MFA provider is unavailable", "AUTH_ASSURANCE_UNAVAILABLE");
+    if (user.assuranceLevel !== "aal2" && !provider.listTotpFactors) {
+      throw new AppError(503, "MFA provider is unavailable", "AUTH_ASSURANCE_UNAVAILABLE");
+    }
+    const verifiedFactors = await provider.listTotpFactors?.(token) ?? [];
+    const pendingFactors = await provider.listPendingTotpFactors?.(token) ?? [];
+    await withTransaction((client) => observeOperatorMfaFactors(client, user.userId,
+      verifiedFactors.map((factor) => factor.id), pendingFactors.map((factor) => factor.id)));
+    if (user.assuranceLevel !== "aal2" && verifiedFactors.length > 0) {
       throw new AppError(403, "Verify an existing factor before adding another", "MFA_REQUIRED");
     }
-  }
-  const pendingFactors = await provider.listPendingTotpFactors?.(token) ?? [];
-  if (pendingFactors.length && !replacePendingFactorId) {
-    throw new AppError(409, "An unfinished authenticator setup already exists", "MFA_SETUP_PENDING", { factorId: pendingFactors[0].id });
-  }
-  if (replacePendingFactorId && !pendingFactors.some((factor) => factor.id === replacePendingFactorId)) {
-    throw new AppError(409, "Authenticator setup changed; refresh its status", "MFA_SETUP_CHANGED");
-  }
-  const removePendingTotp = provider.removePendingTotp;
-  if (replacePendingFactorId && !removePendingTotp) {
-    throw new AppError(503, "MFA provider is unavailable", "AUTH_ASSURANCE_UNAVAILABLE");
-  }
-  const operationId = randomUUID();
-  const metadata: Record<string, string> = { operationId };
-  if (replacePendingFactorId) metadata.replacedFactorId = replacePendingFactorId;
-  await recordOperatorMfaAudit(user.userId, replacePendingFactorId
-    ? "operator_mfa_replacement_requested" : "operator_mfa_enrollment_requested", metadata);
-  if (replacePendingFactorId) {
-    await removePendingTotp!(token, replacePendingFactorId);
-    await recordOperatorMfaAudit(user.userId, "operator_mfa_factor_discarded",
-      { ...metadata, factorId: replacePendingFactorId });
-  }
-  const enrollment = await provider.enrollTotp(token);
-  await recordOperatorMfaAudit(user.userId, replacePendingFactorId
-    ? "operator_mfa_factor_replaced" : "operator_mfa_factor_enrolled",
-  { ...metadata, factorId: enrollment.factorId });
-  return enrollment;
+    if (pendingFactors.length && !replacePendingFactorId) {
+      throw new AppError(409, "An unfinished authenticator setup already exists", "MFA_SETUP_PENDING", { factorId: pendingFactors[0].id });
+    }
+    if (replacePendingFactorId && !pendingFactors.some((factor) => factor.id === replacePendingFactorId)) {
+      throw new AppError(409, "Authenticator setup changed; refresh its status", "MFA_SETUP_CHANGED");
+    }
+    const removePendingTotp = provider.removePendingTotp;
+    if (replacePendingFactorId && !removePendingTotp) {
+      throw new AppError(503, "MFA provider is unavailable", "AUTH_ASSURANCE_UNAVAILABLE");
+    }
+    const operationId = randomUUID();
+    const metadata: Record<string, string> = { operationId };
+    if (replacePendingFactorId) metadata.replacedFactorId = replacePendingFactorId;
+    await recordOperatorMfaAudit(user.userId, replacePendingFactorId
+      ? "operator_mfa_replacement_requested" : "operator_mfa_enrollment_requested", metadata);
+    if (replacePendingFactorId) {
+      await removePendingTotp!(token, replacePendingFactorId);
+      await recordOperatorMfaAudit(user.userId, "operator_mfa_factor_discarded",
+        { ...metadata, factorId: replacePendingFactorId });
+    }
+    const enrollment = await provider.enrollTotp(token);
+    await recordOperatorMfaAudit(user.userId, replacePendingFactorId
+      ? "operator_mfa_factor_replaced" : "operator_mfa_factor_enrolled",
+    { ...metadata, factorId: enrollment.factorId });
+    return enrollment;
+  });
 }
 
 export async function operatorMfaHistory(user: NonNullable<Express.Request["user"]>, accessToken?: string) {

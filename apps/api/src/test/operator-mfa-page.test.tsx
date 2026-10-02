@@ -4,7 +4,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import OperatorMfaPage from "../../../../app/operator/mfa/page";
 
 const state = vi.hoisted(() => ({ calls: [] as string[], existingFactor: false, pendingFactor: false,
-  enrollBody: "", enrollConflict: false, refreshes: 0 }));
+  enrollBody: "", challengeBody: "", enrollConflict: false, refreshes: 0 }));
 vi.mock("@/hooks/auth/useCurrentUser", () => ({
   useCurrentUser: () => ({ user: { id: "operator", role: "admin" }, loading: false,
     refreshUser: async () => { state.refreshes += 1; } }),
@@ -32,7 +32,10 @@ vi.mock("@/lib/api/client", () => {
       factorId: "df4ecc30-e46e-4bd5-b8c1-a403cbda9a07", secret: "SYNTHETICSECRET",
       uri: "otpauth://totp/Petrol%20Partner?secret=SYNTHETICSECRET", qrCode: "<svg/>" };
     }
-    if (path === "/v1/auth/mfa/challenge") return { challengeId: "b01e9b8c-55bd-4de3-b9b4-b3a6a4c67591" };
+    if (path === "/v1/auth/mfa/challenge") {
+      state.challengeBody = options?.body ?? "";
+      return { challengeId: "b01e9b8c-55bd-4de3-b9b4-b3a6a4c67591" };
+    }
     if (path === "/v1/auth/mfa/verify") return { assuranceLevel: "aal2" };
     throw new Error(`Unexpected request: ${path}`);
   },
@@ -40,7 +43,7 @@ vi.mock("@/lib/api/client", () => {
 });
 
 afterEach(() => { cleanup(); state.calls = []; state.existingFactor = false; state.pendingFactor = false;
-  state.enrollBody = ""; state.enrollConflict = false; state.refreshes = 0; sessionStorage.clear(); });
+  state.enrollBody = ""; state.challengeBody = ""; state.enrollConflict = false; state.refreshes = 0; sessionStorage.clear(); });
 
 it("lets an operator begin TOTP setup and reach a labeled keyboard entry field", async () => {
   render(<OperatorMfaPage />);
@@ -81,6 +84,19 @@ it("lets an operator finish an already scanned pending factor without replacing 
   expect(state.calls).toEqual([
     "/v1/auth/mfa/factors", "/v1/auth/mfa/challenge", "/v1/auth/mfa/verify",
   ]);
+});
+
+it("lets an operator select an unfinished factor when a verified factor also exists", async () => {
+  state.existingFactor = true;
+  state.pendingFactor = true;
+  render(<OperatorMfaPage />);
+  const selector = await screen.findByRole("combobox", { name: "Authenticator" });
+  fireEvent.change(selector, { target: { value: "4385e583-a2c9-4294-af3a-a420b165a319" } });
+  fireEvent.change(screen.getByRole("textbox", { name: "Six-digit authenticator code" }),
+    { target: { value: "123456" } });
+  fireEvent.click(screen.getByRole("button", { name: "Verify and continue" }));
+  expect(await screen.findByRole("link", { name: "Continue to operator workspace" })).not.toBeNull();
+  expect(JSON.parse(state.challengeBody)).toEqual({ factorId: "4385e583-a2c9-4294-af3a-a420b165a319" });
 });
 
 it("asks before replacing an unfinished factor whose secret was lost", async () => {

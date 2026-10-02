@@ -152,6 +152,8 @@ export default function OperatorMfaPage() {
             <select id="operator-factor" value={selectedFactor} onChange={(event) => setSelectedFactor(event.target.value)}>
               {factors.factors.map((factor) => <option key={factor.id} value={factor.id}>
                 {factor.friendlyName || "Authenticator"}</option>)}
+              {factors.pendingFactors.map((factor) => <option key={factor.id} value={factor.id}>
+                {factor.friendlyName || "Authenticator"} (unfinished setup)</option>)}
             </select>
           </div>}
           {(enrollment || factors.factors.length > 0 || factors.pendingFactors.length > 0) && <form aria-label="Verify authenticator" onSubmit={(event) => void verify(event)} className="operator-case">
