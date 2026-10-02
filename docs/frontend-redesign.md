@@ -77,7 +77,7 @@ A separate reviewed server slice is needed before connecting live Offer reads: i
 
 ## Step 6 implementation note (2026-10-02)
 
-Trips reads only the existing owner-scoped historical fixed-corridor confirmed-seat and journey-review endpoints. The confirmed-seat query intentionally expires ordinary trip detail after the pilot access window, so it is a recent-record view rather than a complete history. The guide for future route commitments, holds, boarding, statements, incidents, review, and unknown operations is labelled synthetic and sends no mutation.
+Trips reads only the existing owner-scoped historical fixed-corridor confirmed-seat and journey-review endpoints. The confirmed-seat query intentionally expires ordinary trip detail after the pilot access window, so it is a recent-record view rather than a complete history. Historical protected actions remain on legacy screens and are not linked from this read-only record view; moving them requires a separate policy and API review. The guide for future route commitments, holds, boarding, statements, incidents, review, and unknown operations is labelled synthetic and sends no mutation.
 
 Contributions reads existing owner-scoped historical direct obligations and retains the pilot's idempotent claim, receipt, dispute, and case-report actions. The UI distinguishes a passenger payment claim from driver receipt and operator findings, displays integer paise with currency and due times, and links historical platform-payment reads separately. No new route booking or contribution endpoint was opened.
 

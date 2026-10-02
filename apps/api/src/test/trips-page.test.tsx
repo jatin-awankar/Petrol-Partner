@@ -2,15 +2,17 @@
 import {cleanup,fireEvent,render,screen,waitFor} from "@testing-library/react";
 import {afterEach,describe,expect,it,vi} from "vitest";
 import TripsPage from "../../../../app/trips/page";
-const fixture=vi.hoisted(()=>({actor:"passenger",fail:false,bookings:[] as Record<string,unknown>[],calls:[] as string[]}));
+const fixture=vi.hoisted(()=>({actor:"passenger",fail:false,bookings:[] as Record<string,unknown>[],
+  reviews:[] as Record<string,unknown>[],calls:[] as string[]}));
 vi.mock("next/navigation",()=>({useRouter:()=>({replace:vi.fn()})}));
 vi.mock("@/hooks/auth/useCurrentUser",()=>({useCurrentUser:()=>({isAuthenticated:true,loading:false,user:{id:fixture.actor}})}));
 vi.mock("@/lib/api/client",()=>({apiRequest:async(path:string)=>{fixture.calls.push(path);
   if(fixture.fail)throw new Error("Read unavailable");
   if(path==="/v1/seat-requests/confirmed")return {bookings:fixture.bookings};
-  if(path==="/v1/seat-requests/journey-reviews")return {cases:[]};
+  if(path==="/v1/seat-requests/journey-reviews")return {cases:fixture.reviews};
   throw new Error("Unexpected request");}}));
-afterEach(()=>{cleanup();fixture.actor="passenger";fixture.fail=false;fixture.bookings=[];fixture.calls=[];});
+afterEach(()=>{cleanup();fixture.actor="passenger";fixture.fail=false;fixture.bookings=[];
+  fixture.reviews=[];fixture.calls=[];});
 const booking={id:"allocation",driver_id:"driver",passenger_id:"passenger",departure_at:"2026-10-03T11:30:00Z",
   status:"confirmed",trip_state:"delayed",contribution_paise:2500,currency:"INR",origin_code:"university",
   destination_code:"prmitr",boarded:null,driver_recorded_at:null,passenger_recorded_at:null,
@@ -71,6 +73,31 @@ describe("Trips rendered state",()=>{
     const card=(await screen.findByText(/Read recorded cancellation/)).closest("article");
     expect(card?.textContent).toContain("Actor: No action due");
     expect(card?.textContent).toContain("By: Cancellation recorded");
+  });
+  it("treats a cancelled passenger seat as cancelled even when the offer remains scheduled",async()=>{
+    fixture.bookings=[{...booking,status:"cancelled",trip_state:"scheduled"}];
+    render(<TripsPage/>);
+    const card=(await screen.findByText(/Read recorded cancellation/)).closest("article");
+    expect(card?.textContent).toContain("cancelled");
+    expect(card?.textContent).not.toContain("Driver records departure and boarding");
+  });
+  it("shows the contribution due after an operator resolves a journey review",async()=>{
+    fixture.bookings=[{...booking,trip_state:"departed",journey_review_reason:"disagreement",
+      obligation_paise:2500,obligation_due_at:"2026-10-04T12:05:00Z"}];
+    render(<TripsPage/>);
+    const card=(await screen.findByText(/Open Contributions for the separate obligation/)).closest("article");
+    expect(card?.textContent).toContain("Actor: Passenger");
+    expect(card?.textContent).toContain("By: 4 Oct 2026, 5:35 pm IST");
+  });
+  it("shows a resolved no-debt review as a recorded decision",async()=>{
+    fixture.bookings=[{...booking,trip_state:"departed",journey_review_reason:"disagreement"}];
+    fixture.reviews=[{id:"review",allocation_id:"allocation",reason:"disagreement",status:"resolved",
+      outcome:"did_not_travel",contribution_owed:false}];
+    render(<TripsPage/>);
+    const card=(await screen.findByText(/Read the recorded operator decision/)).closest("article");
+    expect(card?.textContent).toContain("Actor: No action due");
+    expect(card?.textContent).not.toContain("Operator reviews journey evidence");
+    expect(card?.querySelector('a[href="/journey-reviews/review"]')).not.toBeNull();
   });
   it("shows the departure time for an operator-held commitment",async()=>{
     fixture.bookings=[{...booking,trip_state:"held"}];

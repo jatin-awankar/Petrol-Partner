@@ -249,8 +249,7 @@ export default function PaymentsPage() {
             <div className="flex items-start gap-2">
               <AlertTriangle className="mt-0.5 size-4" />
               <p className="text-sm">
-                Financial hold is active due to overdue dues. Settle pending
-                payments to restore full platform access.
+                A historical financial hold is recorded. Review the related records and any operator decision. This read-only screen cannot clear the hold.
               </p>
             </div>
           </section>

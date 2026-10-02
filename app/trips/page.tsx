@@ -6,12 +6,13 @@ import {apiRequest} from "@/lib/api/client";
 import {useCurrentUser} from "@/hooks/auth/useCurrentUser";
 import {StatusTag} from "@/components/ProductStates";
 import JourneyStateGuide from "@/components/JourneyStateGuide";
+import {formatPaiseAmount} from "@/lib/formatPaiseAmount";
 
 type Trip={id:string;driver_id:string;passenger_id:string;departure_at:string;status:string;trip_state:string;
   contribution_paise:number;currency:string;origin_code:string;destination_code:string;boarded:boolean|null;
   driver_recorded_at:string|null;passenger_recorded_at:string|null;obligation_paise:number|null;
   obligation_due_at:string|null;journey_review_reason:string|null};
-type Review={id:string;reason:string;status:string;outcome:string|null;contribution_owed:boolean|null};
+type Review={id:string;allocation_id:string;reason:string;status:string;outcome:string|null;contribution_owed:boolean|null};
 const guide={
   accepted:["Accepted commitment","One seat was allocated and its terms frozen.","Check the recorded departure; nobody has travelled yet.","Driver and passenger","Before departure"],
   held:["Commitment on hold","A restriction or safety concern paused the commitment; the seat is not silently released.","Wait for a recorded operator decision or cancellation.","Operator and participant","Before departure"],
@@ -28,7 +29,6 @@ const guide={
 } as const;
 type GuideState=keyof typeof guide;
 const date=(value:string)=>new Date(value).toLocaleString("en-IN",{dateStyle:"medium",timeStyle:"short"});
-const money=(paise:number,currency:string)=>currency+" "+paise.toLocaleString("en-IN")+" paise (₹"+(paise/100).toFixed(2)+")";
 export default function TripsPage(){
   const {isAuthenticated,loading,user}=useCurrentUser();const router=useRouter();
   const [trips,setTrips]=useState<Trip[]>([]),[reviews,setReviews]=useState<Review[]>([]);
@@ -46,12 +46,12 @@ export default function TripsPage(){
   const past=trips.filter(t=>!upcoming.includes(t));
   return <main id="main-content" className="journey-page">
     <header className="journey-head"><div><span className="journey-kicker">JOURNEYS / PARTICIPANT</span><h1>Trips</h1><p>Follow commitments and each person&apos;s account of a journey. Time alone never proves travel.</p></div><StatusTag tone="restricted">Real bookings disabled</StatusTag></header>
-    <div className="journey-alert"><strong>Current availability</strong><p>New route bookings are closed. The records below are historical fixed-corridor pilot data. The journey guide is synthetic and sends no action.</p><Link href="/direct-settlements">Open Contributions →</Link></div>
+    <div className="journey-alert"><strong>Current availability</strong><p>New route bookings are closed. The cards below are read-only historical fixed-corridor records. The journey guide is synthetic and sends no action.</p><Link href="/direct-settlements">Open Contributions →</Link></div>
     <section className="journey-section" aria-labelledby="recent-title"><div className="journey-section-head"><div><span>OWNER-SCOPED HISTORICAL READ</span><h2 id="recent-title">Recorded commitments</h2></div><button type="button" onClick={()=>void refresh()} disabled={phase==="loading"}>Retry read</button></div>
       {phase==="loading"&&<p role="status" className="journey-message">Loading recent historical commitments and reviews…</p>}
       {(phase==="error"||phase==="restricted")&&<div role="alert" className="journey-message"><strong>{phase==="restricted"?"Access restricted":"Could not load records"}</strong><p>{error}</p><p>Retry the read. No trip action was submitted.</p></div>}
       {phase==="ready"&&<><p className="journey-help">This legacy read covers recent confirmed records only. Older records may not appear. A missing card does not mean travel happened or a trip was cancelled.</p>
-        <div className="journey-columns"><div><h3>Upcoming or unresolved <small>{upcoming.length}</small></h3>{upcoming.length?upcoming.map(t=><TripCard key={t.id} trip={t} userId={user?.id??""}/>):<p className="journey-empty">No recent upcoming commitment is recorded.</p>}</div><div><h3>Past or cancelled <small>{past.length}</small></h3>{past.length?past.map(t=><TripCard key={t.id} trip={t} userId={user?.id??""}/>):<p className="journey-empty">No recent past commitment is in this limited read.</p>}</div></div>
+        <div className="journey-columns"><div><h3>Upcoming or unresolved <small>{upcoming.length}</small></h3>{upcoming.length?upcoming.map(t=><TripCard key={t.id} trip={t} review={reviews.find(r=>r.allocation_id===t.id)} userId={user?.id??""}/>):<p className="journey-empty">No recent upcoming commitment is recorded.</p>}</div><div><h3>Past or cancelled <small>{past.length}</small></h3>{past.length?past.map(t=><TripCard key={t.id} trip={t} review={reviews.find(r=>r.allocation_id===t.id)} userId={user?.id??""}/>):<p className="journey-empty">No recent past commitment is in this limited read.</p>}</div></div>
         {reviews.length>0&&<div className="journey-reviews"><h3>Journey reviews</h3>{reviews.map(r=><article key={r.id}><strong>{r.status==="resolved"?"Operator outcome recorded":"Operator review open"}</strong><p>{r.reason.replaceAll("_"," ")} · {r.outcome??"No outcome yet"} · {r.contribution_owed===null?"Contribution undecided":r.contribution_owed?"Contribution owed":"No contribution owed"}</p><Link href={"/journey-reviews/"+r.id}>Read case and reason →</Link></article>)}</div>}
       </>}
     </section>
@@ -63,27 +63,29 @@ export default function TripsPage(){
     <footer className="journey-foot"><Link href="/payments">Historical platform-payment records →</Link><p>Prior platform-payment records are read-only history. Petrol Partner does not collect or transfer new contributions.</p></footer>
   </main>;
 }
-function TripCard({trip,userId}:{trip:Trip;userId:string}){
+function TripCard({trip,review,userId}:{trip:Trip;review?:Review;userId:string}){
   const statement=trip.driver_recorded_at&&trip.passenger_recorded_at?"Both statements recorded":trip.driver_recorded_at?"Driver statement recorded; passenger response needed":trip.passenger_recorded_at?"Passenger statement recorded; driver account needed":"No journey statements recorded";
-  const next=nextTripStep(trip);
+  const next=nextTripStep(trip,review);
   return <article className="journey-record">
-    <div className="journey-record-top"><span>HISTORICAL FIXED CORRIDOR · {trip.driver_id===userId?"DRIVER":"PASSENGER"}</span><StatusTag tone={trip.trip_state==="held"?"caution":trip.trip_state==="cancelled"?"restricted":"neutral"}>{trip.trip_state.replaceAll("_"," ")}</StatusTag></div>
+    <div className="journey-record-top"><span>HISTORICAL FIXED CORRIDOR · {trip.driver_id===userId?"DRIVER":"PASSENGER"}</span><StatusTag tone={trip.status==="cancelled"||trip.trip_state==="cancelled"?"restricted":trip.status==="held"||trip.trip_state==="held"?"caution":"neutral"}>{trip.status==="cancelled"?"seat cancelled":trip.trip_state.replaceAll("_"," ")}</StatusTag></div>
     <h4>{trip.origin_code} → {trip.destination_code}</h4><p>Scheduled {date(trip.departure_at)}</p>
-    <p>Frozen terms: {money(trip.contribution_paise,trip.currency)}</p>
+    <p>Frozen terms: {formatPaiseAmount(trip.contribution_paise,trip.currency)}</p>
     <p>Boarding: {trip.boarded===null?"not recorded":trip.boarded?"recorded boarded":"recorded not boarded"} · {statement}</p>
     <p><strong>Next:</strong> {next.action}</p>
     <p><strong>Actor:</strong> {next.actor} · <strong>By:</strong> {next.deadline}</p>
+    {review&&<Link href={"/journey-reviews/"+review.id}>Read journey review →</Link>}
     <Link href="/direct-settlements">Check contribution record →</Link>
   </article>;
 }
 const ist=(value:string|number)=>new Date(value).toLocaleString("en-IN",{
   dateStyle:"medium",timeStyle:"short",timeZone:"Asia/Kolkata"})+" IST";
-function nextTripStep(trip:Trip){
-  if(trip.trip_state==="cancelled") return {action:"Read recorded cancellation",actor:"No action due",deadline:"Cancellation recorded"};
-  if(trip.trip_state==="held") return {action:"Operator review before departure",actor:"Operator",deadline:ist(trip.departure_at)};
-  if(trip.journey_review_reason) return {action:"Operator reviews journey evidence",actor:"Operator",deadline:"When the case is decided"};
+function nextTripStep(trip:Trip,review?:Review){
+  if(trip.status==="cancelled"||trip.trip_state==="cancelled") return {action:"Read recorded cancellation",actor:"No action due",deadline:"Cancellation recorded"};
+  if(trip.status==="held"||trip.trip_state==="held") return {action:"Operator review before departure",actor:"Operator",deadline:ist(trip.departure_at)};
   if(trip.obligation_paise!==null) return {action:"Open Contributions for the separate obligation",actor:"Passenger",
     deadline:trip.obligation_due_at?ist(trip.obligation_due_at):"Due time unavailable in this record"};
+  if(review?.status==="resolved") return {action:"Read the recorded operator decision",actor:"No action due",deadline:"Decision recorded"};
+  if(trip.journey_review_reason) return {action:review?"Operator reviews journey evidence":"Check journey review",actor:"Operator",deadline:"When the case is decided"};
   if(trip.driver_recorded_at&&!trip.passenger_recorded_at) return {action:"Passenger reports their own outcome",actor:"Passenger",
     deadline:ist(Date.parse(trip.driver_recorded_at)+24*60*60*1000)};
   if(trip.passenger_recorded_at&&!trip.driver_recorded_at) return {action:"Driver records the journey outcome",actor:"Driver",deadline:"No recorded deadline"};

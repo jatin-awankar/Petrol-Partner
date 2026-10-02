@@ -5,6 +5,7 @@ import Link from 'next/link';
 import {apiRequest,ApiError} from '@/lib/api/client';
 import {useCurrentUser} from '@/hooks/auth/useCurrentUser';
 import JourneyStateGuide from '@/components/JourneyStateGuide';
+import {formatPaiseAmount} from '@/lib/formatPaiseAmount';
 
 type Obligation={obligation_id:string;amount_paise:number;currency:string;due_at:string;
   driver_id:string;passenger_id:string;claim:{id:string;method:string;recorded_at:string}|null;
@@ -111,7 +112,7 @@ export default function DirectSettlementsPage(){
       item.contribution_owed===true&&item.receipt_established===false;
       return <section key={item.obligation_id} className="contribution-card">
       <div className="contribution-card-head"><span>HISTORICAL FIXED CORRIDOR · {user?.id===item.passenger_id?'PASSENGER':'DRIVER'}</span><strong>{item.status.replaceAll('_',' ')}</strong></div>
-      <h2>{item.currency} {item.amount_paise.toLocaleString('en-IN')} paise <small>(₹{(item.amount_paise/100).toFixed(2)})</small></h2>
+      <h2>{formatPaiseAmount(item.amount_paise,item.currency)}</h2>
       <p>Frozen amount · due <time dateTime={item.due_at}>{new Date(item.due_at).toLocaleString('en-IN')}</time></p>
       {item.claim&&<p>Passenger reported {item.claim.method.toUpperCase()} payment at {new Date(item.claim.recorded_at).toLocaleString('en-IN')}. Awaiting driver receipt unless shown below.</p>}
       {item.receipt&&<p>Driver confirmed receipt at {new Date(item.receipt.recorded_at).toLocaleString('en-IN')}.</p>}
@@ -135,7 +136,7 @@ export default function DirectSettlementsPage(){
             {' '}{entry.reason}</p>)}
         </div>}
       </div>}
-      {user?.id===item.passenger_id&&!item.claim&&<div className="contribution-actions">
+      {user?.id===item.passenger_id&&!item.claim&&item.contribution_owed!==false&&<div className="contribution-actions">
         <button disabled={Boolean(busy)} onClick={()=>void act(item,'claim','cash')}>Report cash handed over</button>
         <button disabled={Boolean(busy)} onClick={()=>void act(item,'claim','upi')}>Report UPI sent</button>
       </div>}

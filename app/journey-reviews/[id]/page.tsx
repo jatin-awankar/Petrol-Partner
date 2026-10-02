@@ -4,6 +4,7 @@ import {useParams} from "next/navigation";
 import Link from "next/link";
 import {apiRequest} from "@/lib/api/client";
 import {StatusTag} from "@/components/ProductStates";
+import {formatPaiseAmount} from "@/lib/formatPaiseAmount";
 type Detail={case:{id:string;offer_id:string;review_reason:string;status:string;
   frozen_paise:number;currency:string;driver_travelled:boolean|null;driver_completed:boolean|null;
   passenger_travelled:boolean|null;passenger_completed:boolean|null;obligation_paise:number|null;
@@ -31,11 +32,11 @@ export default function JourneyReviewDetail(){
         <h2>What each person said</h2><p>Review reason: {detail.case.review_reason.replaceAll("_"," ")}</p>
         <p><strong>Driver:</strong> {statement(detail.case.driver_travelled,detail.case.driver_completed)}</p>
         <p><strong>Passenger:</strong> {statement(detail.case.passenger_travelled,detail.case.passenger_completed)}</p>
-        <p>Frozen terms: {detail.case.currency} {detail.case.frozen_paise.toLocaleString("en-IN")} paise (₹{(detail.case.frozen_paise/100).toFixed(2)}). This is not a payment receipt.</p>
+        <p>Frozen terms: {formatPaiseAmount(detail.case.frozen_paise,detail.case.currency)}. This is not a payment receipt.</p>
       </section>
       <section className="journey-record"><h2>Operator decision</h2>
         {detail.decisions.length?detail.decisions.map(d=><article key={d.id}><strong>{d.outcome.replaceAll("_"," ")}</strong><p>Contribution {d.contribution_owed===null?"undetermined":d.contribution_owed?"owed":"not owed"} · {d.reason}</p><p>Recorded {new Date(d.decided_at).toLocaleString("en-IN")}</p></article>):<p>No operator decision is recorded. Silence or elapsed time does not establish travel or debt.</p>}
-        <p>{detail.case.obligation_paise===null?"No contribution obligation is recorded.":<>Contribution obligation: {detail.case.currency} {detail.case.obligation_paise.toLocaleString("en-IN")} paise (₹{(detail.case.obligation_paise/100).toFixed(2)}), due {detail.case.obligation_due_at?new Date(detail.case.obligation_due_at).toLocaleString("en-IN"):"at the recorded deadline"}. Receipt remains separate.</>}</p>
+        <p>{detail.case.obligation_paise===null?"No contribution obligation is recorded.":<>Contribution obligation: {formatPaiseAmount(detail.case.obligation_paise,detail.case.currency)}, due {detail.case.obligation_due_at?new Date(detail.case.obligation_due_at).toLocaleString("en-IN"):"at the recorded deadline"}. Receipt remains separate.</>}</p>
         <p><strong>Next actor:</strong> {detail.case.status==="resolved"?detail.case.obligation_paise===null?"No payment action due":"Passenger and driver check Contributions":"Operator"} · <strong>By:</strong> {detail.case.obligation_due_at?new Date(detail.case.obligation_due_at).toLocaleString("en-IN"):"recorded case decision"}</p>
         <Link href="/direct-settlements">Open Contributions →</Link>
       </section>

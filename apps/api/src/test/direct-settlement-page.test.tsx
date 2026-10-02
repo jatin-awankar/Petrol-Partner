@@ -81,6 +81,17 @@ describe('direct settlement browser journey',()=>{
     render(<Page/>);
     expect(await screen.findByText(/No contribution owed; receipt not established/)).not.toBeNull();
     expect(screen.queryByRole('button',{name:'Send dispute report'})).toBeNull();
+    expect(screen.queryByRole('button',{name:'Report cash handed over'})).toBeNull();
+    expect(screen.queryByRole('button',{name:'Report UPI sent'})).toBeNull();
     expect(screen.getByRole('button',{name:'View case history'})).not.toBeNull();
+  });
+  it('does not invite a payment claim after a resolved no-debt finding without an earlier claim',async()=>{
+    state.item.review={id:'review',reason:'disputed',status:'resolved'};
+    state.item.status='case_resolved';state.item.contribution_owed=false;
+    state.item.receipt_established=false;
+    render(<Page/>);
+    expect(await screen.findByText(/No contribution owed; receipt not established/)).not.toBeNull();
+    expect(screen.queryByRole('button',{name:'Report cash handed over'})).toBeNull();
+    expect(screen.queryByRole('button',{name:'Report UPI sent'})).toBeNull();
   });
 });
