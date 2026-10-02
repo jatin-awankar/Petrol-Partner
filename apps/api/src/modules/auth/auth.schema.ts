@@ -22,6 +22,8 @@ export const loginSchema = z.object({
 export const recoveryRequestSchema = z.object({ email: emailSchema });
 export const passwordUpdateSchema = z.object({ password: z.string().min(8).max(72) });
 export const providerSessionSchema = z.object({ code: z.string().min(1).max(2048) });
+export const mfaChallengeSchema = z.strictObject({ factorId: z.uuid() });
+export const mfaVerifySchema = z.strictObject({ factorId: z.uuid(), challengeId: z.uuid(), code: z.string().regex(/^\d{6}$/) });
 
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;

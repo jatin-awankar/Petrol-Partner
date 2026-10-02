@@ -23,6 +23,7 @@ import {
   isManagedCutoverAuthorized,
   isLegacyAuthAuthorized,
   revokeRefreshToken,
+  isOperatorAllowlisted,
   type UserRecord,
 } from "./auth.repo";
 import { getAuthProvider, isManagedAuthEnabled, type ProviderIdentity, type ProviderSession } from "./auth-provider";
@@ -405,4 +406,61 @@ export async function me(userId: string) {
   }
 
   return toPublicUser(user);
+}
+
+async function assertOperatorMfaSession(user: NonNullable<Express.Request["user"]>, accessToken?: string) {
+  await assertManagedCutoverAuthorized();
+  if (user.authProvider !== "supabase" || !accessToken) {
+    throw new AppError(401, "Current managed session is required", "CURRENT_SESSION_REQUIRED");
+  }
+  if (user.role !== "admin") throw new AppError(403, "Operator access required", "FORBIDDEN");
+  if (!(await isOperatorAllowlisted(user.userId))) {
+    throw new AppError(403, "Operator access has been revoked", "OPERATOR_ACCESS_REVOKED");
+  }
+  return accessToken;
+}
+
+export async function operatorMfaFactors(user: NonNullable<Express.Request["user"]>, accessToken?: string) {
+  const token = await assertOperatorMfaSession(user, accessToken);
+  const provider = getAuthProvider();
+  if (!provider.listTotpFactors) throw new AppError(503, "MFA provider is unavailable", "AUTH_ASSURANCE_UNAVAILABLE");
+  return { factors: await provider.listTotpFactors(token), assuranceLevel: user.assuranceLevel ?? null };
+}
+
+export async function enrollOperatorTotp(user: NonNullable<Express.Request["user"]>, accessToken?: string) {
+  const token = await assertOperatorMfaSession(user, accessToken);
+  const provider = getAuthProvider();
+  if (!provider.enrollTotp) throw new AppError(503, "MFA provider is unavailable", "AUTH_ASSURANCE_UNAVAILABLE");
+  if (user.assuranceLevel !== "aal2") {
+    if (!provider.listTotpFactors) throw new AppError(503, "MFA provider is unavailable", "AUTH_ASSURANCE_UNAVAILABLE");
+    if ((await provider.listTotpFactors(token)).length > 0) {
+      throw new AppError(403, "Verify an existing factor before adding another", "MFA_REQUIRED");
+    }
+  }
+  return provider.enrollTotp(token);
+}
+
+export async function challengeOperatorTotp(user: NonNullable<Express.Request["user"]>, factorId: string, accessToken?: string) {
+  const token = await assertOperatorMfaSession(user, accessToken);
+  const provider = getAuthProvider();
+  if (!provider.challengeTotp) throw new AppError(503, "MFA provider is unavailable", "AUTH_ASSURANCE_UNAVAILABLE");
+  return provider.challengeTotp(token, factorId);
+}
+
+export async function verifyOperatorTotp(user: NonNullable<Express.Request["user"]>, input: {
+  factorId: string; challengeId: string; code: string;
+}, accessToken?: string) {
+  const token = await assertOperatorMfaSession(user, accessToken);
+  const provider = getAuthProvider();
+  if (!provider.verifyTotp) throw new AppError(503, "MFA provider is unavailable", "AUTH_ASSURANCE_UNAVAILABLE");
+  const currentIdentity = await provider.validate(token);
+  const verified = await provider.verifyTotp(token, input.factorId, input.challengeId, input.code);
+  if (verified.identity.subject !== currentIdentity.subject || verified.identity.assuranceLevel !== "aal2") {
+    throw new AppError(503, "MFA verification did not establish the current operator session", "AUTH_ASSURANCE_UNAVAILABLE");
+  }
+  const result = await managedAuthResult(verified);
+  if (result.user.id !== user.userId) {
+    throw new AppError(503, "MFA verification changed the application account", "AUTH_ASSURANCE_UNAVAILABLE");
+  }
+  return result;
 }

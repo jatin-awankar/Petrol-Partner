@@ -405,6 +405,12 @@
 .operator-workspace button:disabled { opacity: .5; cursor: not-allowed; }
 .operator-workspace :is(input,select,textarea) { max-width: 100%; padding: 8px 10px; border: 1px solid #777f73; background: white; color: var(--product-ink); }
 .operator-workspace a { text-decoration: underline; text-underline-offset: 3px; font-weight: 800; }
+.operator-mfa .operator-panel { max-width: 780px; margin-left: 0; }
+.operator-mfa .operator-case { display: block; }
+.operator-mfa .operator-case :is(input,select) { margin-top: 8px; min-width: min(100%, 270px); }
+.operator-mfa .operator-case button { margin-top: 12px; }
+.operator-mfa-qr { display: block; width: 220px; height: 220px; max-width: 100%; margin: 16px 0; border: 8px solid white; }
+.operator-mfa-secret code { display: inline-block; max-width: 100%; margin-top: 6px; padding: 8px; background: white; overflow-wrap: anywhere; font-size: 15px; }
 .operator-workspace p { font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
 .operator-heading { display: flex; justify-content: space-between; align-items: start; gap: 20px; margin-bottom: 28px; }
 .operator-kicker,.operator-panel-head > span,.operator-section-heading > span,.operator-summary span { font: 800 11px ui-monospace,monospace; letter-spacing: .1em; }

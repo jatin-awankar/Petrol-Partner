@@ -24,8 +24,8 @@ export default function LoginForm() {
     setErrorMsg("");
 
     try {
-      await login({ email, password });
-      router.push("/dashboard");
+      const user = await login({ email, password });
+      router.push(user.role === "admin" ? "/operator/mfa" : "/dashboard");
       router.refresh();
     } catch (error) {
       setErrorMsg(

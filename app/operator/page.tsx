@@ -47,6 +47,7 @@ export default function OperatorPage() {
   const [controlAttempt,setControlAttempt]=useState<ControlAttempt|null>(null);
   const [busy, setBusy] = useState(false);
   const [authorized, setAuthorized] = useState<boolean | null>(null);
+  const [mfaRequired, setMfaRequired] = useState(false);
   const refresh = useCallback(async () => {
     const operations = await apiRequest<{ operations: Pending[] }>("/v1/operator/pending");
     setAuthorized(true);
@@ -75,7 +76,10 @@ export default function OperatorPage() {
   }, []);
   useEffect(() => {
     if (user) void refresh().catch((error) => {
-      if (error instanceof ApiError && (error.status === 401 || error.status === 403)) setAuthorized(false);
+      if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+        setAuthorized(false);
+        setMfaRequired(error.code === "MFA_REQUIRED");
+      }
       setMessage(error instanceof Error ? error.message : "Unable to load operator status");
     });
   }, [user, refresh]);
@@ -313,7 +317,7 @@ export default function OperatorPage() {
   }
   if (loading) return <div className="operator-workspace"><div className="operator-access" role="status">Checking operator access…</div></div>;
   if (!user) return <div className="operator-workspace"><div className="operator-access">Sign in to access the operator workspace. <Link href="/login">Sign in</Link></div></div>;
-  if (authorized === false) return <div className="operator-workspace"><div className="operator-access" role="alert">Operator access requires current allowlist membership and MFA. {message}</div></div>;
+  if (authorized === false) return <div className="operator-workspace"><div className="operator-access" role="alert">Operator access requires current allowlist membership and MFA. {message} {mfaRequired && <Link href="/operator/mfa">Set up or verify your authenticator</Link>}</div></div>;
   if (authorized === null) return <div className="operator-workspace"><div className="operator-access" role="status">{message||"Loading protected queues…"} {message&&<button onClick={()=>void refresh()}>Retry access check</button>}</div></div>;
   return <div className="operator-workspace">
     <div className="operator-heading"><div><span className="operator-kicker">OPERATIONS / CURRENT VIEW</span><h1>Operator workspace</h1>

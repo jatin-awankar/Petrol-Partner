@@ -51,6 +51,7 @@ export default function ParticipantShell() {
         <Link href="/adult-declaration" onClick={() => setOpen(false)}><ShieldCheck size={18}/>Adult declaration</Link>
         <Link href="/eligibility" onClick={() => setOpen(false)}><Archive size={18}/>Historical pilot eligibility</Link>
         <Link href="/direct-settlements" onClick={() => setOpen(false)}><ReceiptText size={18}/>Contribution records</Link>
+        {user.role === "admin" && <Link href="/operator/mfa" onClick={() => setOpen(false)}><ShieldCheck size={18}/>Operator access</Link>}
         <button onClick={() => void signOut()}><LogOut size={18}/>Sign out</button>
       </nav>}
     </header>
