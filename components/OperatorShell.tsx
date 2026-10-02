@@ -15,7 +15,7 @@ const queues = [
 export default function OperatorShell() {
   const path = usePathname();
   if (!path.startsWith("/operator")) return null;
-  return <header className="operator-shell">
+  return <><a href="#main-content" className="shell-skip">Skip to content</a><header className="operator-shell">
     <div className="operator-shell-inner">
       <Link href="/operator" className="operator-brand">PETROL PARTNER <span>/ OPERATIONS</span></Link>
       <nav aria-label="Operator queues">
@@ -23,5 +23,5 @@ export default function OperatorShell() {
       </nav>
       <Link href="/dashboard">Participant home</Link>
     </div>
-  </header>;
+  </header></>;
 }

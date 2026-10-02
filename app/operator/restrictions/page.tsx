@@ -90,9 +90,9 @@ export default function AccountRestrictionsPage(){
   }
   const ready=target&&sourceId&&reason.trim().length>=8&&evidence.trim().length>=8;
   const reversed=new Set(history.filter(item=>item.action==='reverse').map(item=>item.reverses_id));
-  if(access==='loading')return <main id="main-content" className="operator-workspace" role="status">Checking operator access…</main>;
-  if(access==='denied')return <main id="main-content" className="operator-workspace" role="alert">Operator access requires current allowlist membership and MFA. {message}</main>;
-  return <main id="main-content" className="operator-workspace space-y-5">
+  if(access==='loading')return <div className="operator-workspace" role="status">Checking operator access…</div>;
+  if(access==='denied')return <div className="operator-workspace" role="alert">Operator access requires current allowlist membership and MFA. {message}</div>;
+  return <div className="operator-workspace space-y-5">
     <Link href="/operator#eligibility" className="underline">← Operator workspace</Link>
     <h1 className="text-2xl font-semibold">Reviewed account restrictions</h1>
     <p>Review the incident or resolved settlement case before acting. A restriction holds future commitments; seats stay reserved until recorded cancellation. Reversals do not override other eligibility checks.</p>
@@ -137,5 +137,5 @@ export default function AccountRestrictionsPage(){
       </div>)}
       {!history.length&&<p>{!target?'Enter a participant ID to view restriction history.':historyStatus==='loading'?'Loading restriction history…':historyStatus==='error'?'Restriction history unavailable. Retry history.':'No restrictions recorded for this participant.'}</p>}
     </section>
-  </main>;
+  </div>;
 }

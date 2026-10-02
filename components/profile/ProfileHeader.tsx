@@ -1,7 +1,7 @@
 import React, { useRef } from "react";
 import { Camera, Edit, Loader2 } from "lucide-react";
 
-import AppImage from "../AppImage";
+import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 
@@ -49,6 +49,9 @@ const ProfileHeader: React.FC<ProfileHeaderProps> = ({
     inputEl.value = "";
   };
 
+  const initials = user.name.trim().split(/\s+/).slice(0, 2)
+    .map((part) => part[0]?.toUpperCase()).join("") || "?";
+
   return (
     <section className="rounded-2xl border border-primary/20 bg-gradient-to-br from-card via-card to-card p-4 shadow-card sm:p-6">
       <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-center">
@@ -61,13 +64,20 @@ const ProfileHeader: React.FC<ProfileHeaderProps> = ({
               className="hidden"
               onChange={handleFilePick}
             />
-            <div className="h-20 w-20 overflow-hidden rounded-2xl border border-border/70 bg-muted shadow-md sm:h-24 sm:w-24">
-              <AppImage
-                src={user.profilePhoto ?? ""}
+            <Avatar className="h-20 w-20 rounded-2xl border border-border/70 bg-muted shadow-md sm:h-24 sm:w-24">
+              <AvatarImage
+                src={user.profilePhoto || undefined}
                 alt={`${user.name}'s profile`}
-                className="h-full w-full object-cover transition-all duration-300"
+                className="object-cover transition-all duration-300"
               />
-            </div>
+              <AvatarFallback
+                role="img"
+                aria-label={`${user.name}'s profile placeholder`}
+                className="rounded-2xl bg-lime-200 text-2xl font-semibold text-emerald-950"
+              >
+                {initials}
+              </AvatarFallback>
+            </Avatar>
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
@@ -85,9 +95,9 @@ const ProfileHeader: React.FC<ProfileHeaderProps> = ({
 
           <div className="min-w-0 space-y-1.5 sm:space-y-2">
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="max-w-full truncate text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
+              <h2 className="max-w-full truncate text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
                 {user.name}
-              </h1>
+              </h2>
               {user.isCollegeVerified && <Badge variant="outline">Historical corridor student approval</Badge>}
               {user.isDriverVerified && <Badge variant="outline">Historical corridor driver approval</Badge>}
             </div>

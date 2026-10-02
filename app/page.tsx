@@ -40,7 +40,7 @@ export const metadata: Metadata = {
 export default function LandingPage() {
   return (
     <div className={styles.page}>
-      <a className={styles.skipLink} href="#main-content">Skip to main content</a>
+      <a className={styles.skipLink} href="#landing-content">Skip to main content</a>
       <div className={styles.notice}>
         <span className={styles.noticeDot} />
         Accounts are open · Real ride bookings are not live yet
@@ -59,7 +59,7 @@ export default function LandingPage() {
         <Link className={styles.signIn} href="/login">Sign in <ArrowUpRight size={17} /></Link>
       </header>
 
-      <section className={styles.hero} id="main-content" tabIndex={-1} aria-labelledby="hero-heading">
+      <section className={styles.hero} id="landing-content" tabIndex={-1} aria-labelledby="hero-heading">
         <div className={styles.heroCopy}>
           <div className={styles.heroLabel}><span>FOR THE ROUTE YOU&apos;RE ALREADY TAKING</span><span>EST. FOR THE EVERYDAY</span></div>
           <h1 id="hero-heading">SAME<br /><span className={styles.outlineWord}>ROUTE.</span><br /><span className={styles.highlightWord}>BETTER</span><br />RIDE<span className={styles.heroDot}>.</span></h1>

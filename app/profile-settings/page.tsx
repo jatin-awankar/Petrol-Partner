@@ -26,11 +26,11 @@ function AccountSettings(){
   const toggle=(section:Section)=>setOpen(current=>current===section?null:section);
 
   if(loading&&!user)return <ProfileSettingsPageSkeleton/>;
-  if(!user)return <main className="mx-auto max-w-3xl space-y-4 px-4 py-8" role="alert">
+  if(!user)return <div className="mx-auto max-w-3xl space-y-4 px-4 py-8" role="alert">
     <h1 className="text-2xl font-semibold">Account details unavailable</h1>
     <p>{error??"We could not load this account."}</p>
     <button type="button" className="min-h-11 rounded-md border px-4" onClick={()=>void refetch.user()}>Try again</button>
-  </main>;
+  </div>;
 
   async function savePersonal(data:PersonalInfo){
     await updateProfile({full_name:data.name??"",phone:data.phone??"",date_of_birth:data.dateOfBirth??null,
@@ -67,7 +67,7 @@ function AccountSettings(){
     {id:"preferences",label:"Comfort"},{id:"safety",label:"Trusted contacts"},
     {id:"security",label:"Security"},
   ];
-  return <main className="mx-auto max-w-5xl space-y-6 px-4 py-8 sm:px-8">
+  return <div className="mx-auto max-w-5xl space-y-6 px-4 py-8 sm:px-8">
     <div><Link href="/dashboard" className="inline-flex min-h-11 items-center underline">← Home</Link>
       <p className="mt-3 text-xs font-semibold uppercase tracking-widest text-muted-foreground">Your account / 03</p>
       <h1 className="text-3xl font-semibold">Account and declarations</h1>
@@ -110,16 +110,16 @@ function AccountSettings(){
         <Link href="/direct-settlements" className="inline-flex min-h-11 items-center rounded-md border px-4 underline">Historical contributions</Link>
       </div>
     </section>
-  </main>;
+  </div>;
 }
 
 export default function ProfileSettingsPage(){
   const {user,loading}=useCurrentUser();
   if(loading)return <ProfileSettingsPageSkeleton/>;
-  if(!user)return <main className="mx-auto max-w-3xl space-y-4 px-4 py-8">
+  if(!user)return <div className="mx-auto max-w-3xl space-y-4 px-4 py-8">
     <h1 className="text-2xl font-semibold">Sign in to view account settings</h1>
     <p>Your account, declarations, and historical records are private.</p>
     <Link href="/login" className="inline-flex min-h-11 items-center rounded-md border px-4 underline">Sign in</Link>
-  </main>;
+  </div>;
   return <AccountSettings/>;
 }

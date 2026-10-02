@@ -24,6 +24,11 @@ afterEach(()=>{cleanup();state.actor='passenger';state.calls=[];state.item.claim
   state.item.receipt=null;state.item.response=null;state.item.review=null;state.item.status='due';
   state.item.contribution_owed=null;state.item.receipt_established=null;});
 describe('direct settlement browser journey',()=>{
+  it('uses the root main landmark and its unique skip target',()=>{
+    const {container}=render(<main id="main-content"><Page/></main>);
+    expect(screen.getAllByRole('main')).toHaveLength(1);
+    expect(container.querySelectorAll('#main-content')).toHaveLength(1);
+  });
   it('keeps a passenger claim pending until the driver records receipt',async()=>{
     const view=render(<Page/>);
     expect(await screen.findByText(/INR 2,500 paise/)).not.toBeNull();

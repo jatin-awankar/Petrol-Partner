@@ -60,3 +60,9 @@ test("public landing page description identifies route sharing as prelaunch", ()
   assert.match(descriptionTag, /driver-posted route sharing/i);
   assert.match(descriptionTag, /real ride bookings are not live/i);
 });
+
+test("landing skip link has a unique focusable content target", () => {
+  assert.match(html, /href="#landing-content"[^>]*>Skip to main content/);
+  assert.equal([...html.matchAll(/id="landing-content"/g)].length, 1);
+  assert.equal([...html.matchAll(/id="main-content"/g)].length, 1);
+});

@@ -101,7 +101,7 @@ export default function DirectSettlementsPage(){
       setCaseDetail(current=>({...current,[id]:detail}));}
     catch(error){setMessage(error instanceof Error?error.message:'Unable to load settlement case.');}
   }
-  return <main id="main-content" className="journey-page">
+  return <div className="journey-page">
     <header className="journey-head"><div><span className="journey-kicker">DIRECT SETTLEMENT / PARTICIPANT</span><h1>Contributions</h1><p>Pay each other directly in cash or by UPI. Petrol Partner does not collect or transfer money.</p></div><Link href="/trips">← Back to Trips</Link></header>
     <div className="journey-alert"><strong>Evidence matters</strong><p>A passenger claim is a report, not proof of receipt. Only a driver receipt or recorded operator decision establishes the corresponding outcome. These are historical fixed-corridor pilot records.</p><Link href="/payments">Historical platform-payment records →</Link></div>
     {message&&<p role="status" className="journey-message">{message}</p>}
@@ -151,5 +151,5 @@ export default function DirectSettlementsPage(){
       description="Sample frozen amount: INR 2,500 paise (₹25.00). Sample due time: 3 October, 17:00 IST. No obligation or payment was created by this example."
       selectLabel="Contribution state" states={contributionGuide} selected={guideState}
       onSelect={key=>setGuideState(key as GuideState)}/>
-  </main>;
+  </div>;
 }

@@ -110,7 +110,7 @@ export default function PostRide() {
     } catch(error) {setMessage(error instanceof Error ? error.message : "Could not check offer status");}
     finally {setBusy(false);}
   }
-  return <main className="mx-auto max-w-2xl space-y-6 p-6">
+  return <div className="mx-auto max-w-2xl space-y-6 p-6">
     <Link href="/search-rides" className="text-sm underline">Discover offers</Link>
     <h1 className="text-3xl font-semibold">Publish a corridor offer</h1>
     {replacesOfferId && <p className="rounded border p-3">Replacing cancelled offer {replacesOfferId}. This creates a new offer; passengers must request seats again.</p>}
@@ -145,5 +145,5 @@ export default function PostRide() {
         {offer.status === "cancelled" && <Link className="underline" href={`/post-a-ride?replaces=${offer.id}`}>Create a replacement offer</Link>}
       </li>)}</ul>
     </section>
-  </main>;
+  </div>;
 }

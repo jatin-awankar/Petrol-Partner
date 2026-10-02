@@ -100,9 +100,9 @@ export default function SettlementReviewsPage(){
     }catch(error){setMessage(`Could not check decision ${attempt.operationId}: ${error instanceof Error?error.message:'unknown error'}`);}
     finally{setBusy(false);}
   }
-  if(access==='loading')return <main id="main-content" className="operator-workspace" role="status">Loading settlement reviews…</main>;
-  if(access==='denied')return <main id="main-content" className="operator-workspace" role="alert">Operator access requires current allowlist membership and MFA. {message}</main>;
-  return <main id="main-content" className="operator-workspace space-y-5">
+  if(access==='loading')return <div className="operator-workspace" role="status">Loading settlement reviews…</div>;
+  if(access==='denied')return <div className="operator-workspace" role="alert">Operator access requires current allowlist membership and MFA. {message}</div>;
+  return <div className="operator-workspace space-y-5">
     <Link href="/operator#journeys">← Operator workspace</Link>
     <h1 className="text-2xl font-semibold">Settlement reviews</h1>
     <p>Historical fixed-corridor cases. Record contribution, receipt, and case findings separately. Closing a case creates no payment or penalty.</p>
@@ -163,5 +163,5 @@ export default function SettlementReviewsPage(){
       {resolution==='resolved'&&(owed==='unknown'||received==='unknown')&&<p>Select both contribution and receipt findings to resolve this case.</p>}
       <button disabled={busy||!!attempt||reason.trim().length<8||(resolution==='resolved'&&(owed==='unknown'||received==='unknown'))} onClick={()=>void decide()}>Record findings</button>
     </section>}
-  </main>;
+  </div>;
 }
