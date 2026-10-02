@@ -15,13 +15,16 @@ export function JourneyReviewQueue(){
   const [outcome,setOutcome]=useState<Outcome>("insufficient_evidence");
   const [owed,setOwed]=useState(false),[reason,setReason]=useState(""),[refs,setRefs]=useState("");
   const [message,setMessage]=useState(""),[busy,setBusy]=useState(false);
+  const [queueLoading,setQueueLoading]=useState(true);
+  const [queueError,setQueueError]=useState(false);
+  const [pendingDecision,setPendingDecision]=useState<{id:string;storageKey:string}|null>(null);
   const refresh=useCallback(async()=>{
     const cases=(await apiRequest<{cases:Item[]}>("/v1/operator/journey-reviews")).cases;
-    setItems(cases);
+    setItems(cases);setQueueError(false);setQueueLoading(false);
     if(selected) setSelected(await apiRequest<Detail>(`/v1/operator/journey-reviews/${selected.case.id}`));
   },[selected]);
   useEffect(()=>{void apiRequest<{cases:Item[]}>("/v1/operator/journey-reviews")
-    .then(result=>setItems(result.cases)).catch(()=>setMessage("Unable to load journey reviews."));},[]);
+    .then(result=>{setItems(result.cases);setQueueError(false);setQueueLoading(false);}).catch(()=>{setQueueError(true);setQueueLoading(false);setMessage("Unable to load journey reviews.");});},[]);
   async function open(id:string){try{setSelected(await apiRequest<Detail>(`/v1/operator/journey-reviews/${id}`));
     setMessage("");}catch(error){setMessage(error instanceof Error?error.message:"Unable to load review");}}
   async function decide(){
@@ -36,17 +39,41 @@ export function JourneyReviewQueue(){
       const result=await apiRequest<{operation:{operation_id:string;state:string}}>(
         `/v1/operator/journey-reviews/${selected.case.id}/decide`,{method:"POST",
           headers:{"Idempotency-Key":key},body:JSON.stringify(command)});
-      sessionStorage.removeItem(storageKey);
-      setMessage(`Decision ${result.operation.operation_id}: ${result.operation.state}.`);
-      await refresh();
-    }catch(error){setMessage(`Decision outcome uncertain. Retry with the same inputs and key ${key}. ${error instanceof Error?error.message:""}`);}
+      if(result.operation.state==='acknowledged'||result.operation.state==='recovered'){
+        sessionStorage.removeItem(storageKey);
+        setPendingDecision(null);
+        setMessage(`Decision ${result.operation.operation_id}: ${result.operation.state}.`);
+        await refresh();
+      }else {
+        setPendingDecision({id:result.operation.operation_id,storageKey});
+        setMessage(`Decision ${result.operation.operation_id} is ${result.operation.state}. Check the operation before retrying with the same key.`);
+      }
+    }catch(error){
+      const details=error&&typeof error==='object'&&'details' in error?error.details:null;
+      const operationId=details&&typeof details==='object'&&'operationId' in details?String(details.operationId):null;
+      if(operationId)setPendingDecision({id:operationId,storageKey});
+      setMessage(`Decision outcome uncertain. Retry with the same inputs and key ${key}. ${error instanceof Error?error.message:""}`);
+    }
     finally{setBusy(false);}
+  }
+  async function checkDecision(){
+    if(!pendingDecision)return;
+    try{
+      const result=await apiRequest<{operation:{state:string}}>(`/v1/operator/journey-review-decisions/${pendingDecision.id}`);
+      if(result.operation.state==='acknowledged'||result.operation.state==='recovered'){
+        sessionStorage.removeItem(pendingDecision.storageKey);
+        setPendingDecision(null);
+        setMessage(`Decision ${pendingDecision.id}: ${result.operation.state}.`);
+        await refresh();
+      }else setMessage(`Decision ${pendingDecision.id} is still ${result.operation.state}. Keep the same decision key.`);
+    }catch(error){setMessage(`Could not check decision ${pendingDecision.id}: ${error instanceof Error?error.message:'unknown error'}`);}
   }
   return <section className="space-y-3 rounded border p-4" aria-label="Journey review queue">
     <h2 className="font-semibold">Journey review queue</h2><p role="status">{message}</p>
+    {pendingDecision&&<button onClick={()=>void checkDecision()}>Check decision status</button>}
     {items.length?items.map(item=><button key={item.id} className="block w-full rounded border p-3 text-left"
       onClick={()=>void open(item.id)}>Ride {item.offer_id} · passenger {item.passenger_id} · {item.reason} · {item.status}
-      {item.latest_outcome?` · latest: ${item.latest_outcome}`:""}</button>):<p>No open journey reviews.</p>}
+      {item.latest_outcome?` · latest: ${item.latest_outcome}`:""}</button>):<p>{queueLoading?"Loading journey reviews…":queueError?"Journey review queue unavailable.":"No open journey reviews."}</p>}
     {selected&&<div className="space-y-3 rounded border p-3" aria-label="Journey review detail">
       <h3 className="font-semibold">Case {selected.case.id}</h3>
       <p>Ride {selected.case.offer_id} · seat {selected.case.allocation_id} · {selected.case.review_reason} · {selected.case.status}</p>

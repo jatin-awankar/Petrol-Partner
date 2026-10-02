@@ -1,5 +1,5 @@
 'use client';
-import {useCallback,useEffect,useState} from 'react';
+import {useCallback,useEffect,useRef,useState} from 'react';
 import {useSearchParams} from 'next/navigation';
 import Link from 'next/link';
 import {apiRequest,ApiError} from '@/lib/api/client';
@@ -9,6 +9,8 @@ type Source='incident'|'settlement';
 type Item={id:string;operator_id:string;target_user_id:string;action:'restrict'|'reverse';
   scope:Scope;source_type:Source;source_id:string;reason:string;reviewed_evidence:string;
   reverses_id:string|null;committed_at:string};
+type Attempt={path:string;body:string;key:string;target:string;operationId:string|null};
+const attemptStorage='operator:restriction-attempt';
 
 export default function AccountRestrictionsPage(){
   const params=useSearchParams();
@@ -19,41 +21,90 @@ export default function AccountRestrictionsPage(){
     params.get('scope')==='passenger'?'passenger':'all');
   const [reason,setReason]=useState(''),[evidence,setEvidence]=useState('');
   const [history,setHistory]=useState<Item[]>([]),[message,setMessage]=useState('');
+  const [historyStatus,setHistoryStatus]=useState<'loading'|'ready'|'error'>('loading');
+  const historyRequest=useRef(0);
   const [busy,setBusy]=useState(false);
+  const [attempt,setAttempt]=useState<Attempt|null>(null);
+  const [access,setAccess]=useState<'loading'|'ready'|'denied'|'error'>('loading');
   const refresh=useCallback(async(id:string)=>{
     if(!id) return;
-    setHistory((await apiRequest<{history:Item[]}>(
-      `/v1/operator/account-restrictions/${encodeURIComponent(id)}`)).history);
-  },[]);
-  useEffect(()=>{if(target) void refresh(target).catch(e=>setMessage(String(e)));},[target,refresh]);
-  async function submit(path:string,body:unknown,storageKey:string){
-    const key=sessionStorage.getItem(storageKey)??crypto.randomUUID();
-    sessionStorage.setItem(storageKey,key);setBusy(true);
+    const request=++historyRequest.current;
+    setHistoryStatus('loading');
     try{
-      const result=await apiRequest<{operation:{operation_id:string;state:string}}>(path,{method:'POST',
-        headers:{'Idempotency-Key':key},body:JSON.stringify(body)});
+      const result=await apiRequest<{history:Item[]}>(`/v1/operator/account-restrictions/${encodeURIComponent(id)}`);
+      if(request===historyRequest.current){setHistory(result.history);setHistoryStatus('ready');}
+    }catch(error){if(request===historyRequest.current)setHistoryStatus('error');throw error;}
+  },[]);
+  useEffect(()=>{void apiRequest('/v1/operator/status').then(()=>setAccess('ready')).catch(error=>{
+    setAccess(error instanceof ApiError&&(error.status===401||error.status===403)?'denied':'error');
+    setMessage(error instanceof Error?error.message:'Unable to verify operator access');
+  });},[]);
+  useEffect(()=>{
+    const saved=sessionStorage.getItem(attemptStorage);
+    if(saved)try{setAttempt(JSON.parse(saved) as Attempt);}catch{sessionStorage.removeItem(attemptStorage);}
+  },[]);
+  useEffect(()=>{if(target&&access==='ready') void refresh(target).catch(e=>setMessage(String(e)));},[target,refresh,access]);
+  function saveAttempt(next:Attempt|null){
+    setAttempt(next);
+    if(next)sessionStorage.setItem(attemptStorage,JSON.stringify(next));
+    else sessionStorage.removeItem(attemptStorage);
+  }
+  async function send(next:Attempt){
+    setBusy(true);
+    try{
+      const result=await apiRequest<{operation:{operation_id:string;state:string}}>(next.path,{method:'POST',
+        headers:{'Idempotency-Key':next.key},body:next.body});
       if(['acknowledged','recovered'].includes(result.operation.state)){
-        sessionStorage.removeItem(storageKey);
+        saveAttempt(null);
         setMessage(`Decision ${result.operation.operation_id} recorded.`);
-        await refresh(target);
-      }else setMessage(`Decision ${result.operation.operation_id} pending. Retry with the same key.`);
+        await refresh(next.target).catch(()=>setMessage(`Decision ${result.operation.operation_id} recorded. History could not refresh; retry the read.`));
+      }else{
+        saveAttempt({...next,operationId:result.operation.operation_id});
+        setMessage(`Decision ${result.operation.operation_id} pending. Check its status before another action.`);
+      }
     }catch(error){
-      if(error instanceof ApiError&&error.status<500&&error.code!=='OPERATION_PENDING')
-        sessionStorage.removeItem(storageKey);
-      setMessage(error instanceof Error?error.message:'Outcome uncertain. Retry with the same key.');
+      const details=error instanceof ApiError&&typeof error.details==='object'&&error.details!==null?error.details:null;
+      const operationId=details&&'operationId' in details?String(details.operationId):null;
+      if(operationId)saveAttempt({...next,operationId});
+      else if(error instanceof ApiError&&error.status<500&&error.code!=='OPERATION_PENDING')saveAttempt(null);
+      setMessage(`Outcome uncertain or rejected. ${error instanceof Error?error.message:'Check the same decision before retrying.'}`);
     }finally{setBusy(false);}
+  }
+  function submit(path:string,body:unknown){
+    if(attempt)return;
+    const next={path,body:JSON.stringify(body),key:crypto.randomUUID(),target,operationId:null};
+    saveAttempt(next);void send(next);
+  }
+  async function checkAttempt(){
+    if(!attempt?.operationId)return;
+    setBusy(true);
+    try{
+      const result=await apiRequest<{operation:{state:string}}>(`/v1/operator/account-restriction-operations/${attempt.operationId}`);
+      if(['acknowledged','recovered'].includes(result.operation.state)){
+        saveAttempt(null);
+        setMessage(`Decision ${attempt.operationId}: ${result.operation.state}.`);
+        await refresh(attempt.target).catch(()=>setMessage(`Decision ${attempt.operationId}: ${result.operation.state}. History could not refresh; retry the read.`));
+      }else setMessage(`Decision ${attempt.operationId} is ${result.operation.state}. Check again before another action.`);
+    }catch(error){setMessage(`Could not check decision ${attempt.operationId}: ${error instanceof Error?error.message:'unknown error'}`);}
+    finally{setBusy(false);}
   }
   const ready=target&&sourceId&&reason.trim().length>=8&&evidence.trim().length>=8;
   const reversed=new Set(history.filter(item=>item.action==='reverse').map(item=>item.reverses_id));
-  return <main className="mx-auto max-w-4xl space-y-5 p-6">
-    <Link href="/operator" className="underline">Operator console</Link>
+  if(access==='loading')return <main id="main-content" className="operator-workspace" role="status">Checking operator access…</main>;
+  if(access==='denied')return <main id="main-content" className="operator-workspace" role="alert">Operator access requires current allowlist membership and MFA. {message}</main>;
+  return <main id="main-content" className="operator-workspace space-y-5">
+    <Link href="/operator#eligibility" className="underline">← Operator workspace</Link>
     <h1 className="text-2xl font-semibold">Reviewed account restrictions</h1>
     <p>Review the incident or resolved settlement case before acting. A restriction holds future commitments; seats stay reserved until recorded cancellation. Reversals do not override other eligibility checks.</p>
+    {access==='error'&&<p role="alert">Operator access could not be checked. <button onClick={()=>void apiRequest('/v1/operator/status').then(()=>setAccess('ready')).catch(e=>setMessage(String(e)))}>Retry access check</button></p>}
     <p role="status">{message}</p>
-    <section className="space-y-3 rounded border p-4">
+    {attempt&&<div className="operator-notice" role="status">A restriction decision for participant {attempt.target} needs a confirmed outcome before another decision.
+      {' '}{attempt.operationId?<button disabled={busy} onClick={()=>void checkAttempt()}>Check restriction decision status</button>
+        :<button disabled={busy} onClick={()=>void send(attempt)}>Retry same restriction decision</button>}</div>}
+    <section className="operator-panel space-y-3">
       <h2 className="font-semibold">Record a restriction</h2>
       <label className="block">Participant ID<input className="block w-full rounded border p-2" value={target}
-        onChange={e=>setTarget(e.target.value)} /></label>
+        onChange={e=>{historyRequest.current++;setHistory([]);setHistoryStatus('loading');setTarget(e.target.value);}} /></label>
       <label className="block">Reviewed source<select className="block rounded border p-2" value={sourceType}
         onChange={e=>setSourceType(e.target.value as Source)}><option value="incident">Incident</option>
         <option value="settlement">Resolved settlement case</option></select></label>
@@ -67,24 +118,24 @@ export default function AccountRestrictionsPage(){
         onChange={e=>setReason(e.target.value)} /></label>
       <label className="block">Reviewed evidence summary<textarea className="block w-full rounded border p-2"
         value={evidence} onChange={e=>setEvidence(e.target.value)} /></label>
-      <button disabled={busy||!ready} onClick={()=>void submit('/v1/operator/account-restrictions',{
+      <p>Proposed action: restrict future travel actions in the selected scope. Affected: participant {target||'not selected'}. Actor: current operator. Recorded outcome appears in the history below; seats require separate cancellation.</p>
+      <button disabled={access!=='ready'||busy||!!attempt||!ready} onClick={()=>submit('/v1/operator/account-restrictions',{
         target_user_id:target,source_type:sourceType,source_id:sourceId,scope,
-        reason:reason.trim(),reviewed_evidence:evidence.trim()},
-        `account-restrict:${target}:${sourceType}:${sourceId}:${scope}`)}>Record restriction</button>
+        reason:reason.trim(),reviewed_evidence:evidence.trim()})}>Record restriction</button>
     </section>
-    <section className="space-y-3"><h2 className="font-semibold">Decision history</h2>
-      <button onClick={()=>void refresh(target)} disabled={busy||!target}>Refresh history</button>
-      {history.map(item=><div key={item.id} className="space-y-2 rounded border p-3">
+    <section className="operator-panel space-y-3"><h2 className="font-semibold">Decision history</h2>
+      <button onClick={()=>void refresh(target).catch(e=>setMessage(String(e)))} disabled={busy||!target}>Refresh history</button>
+      {history.map(item=><div key={item.id} className="operator-case space-y-2">
         <p>{item.action==='restrict'?(reversed.has(item.id)?'Reversed restriction':'Active restriction'):'Reversal'}
           {' '}· {item.scope} · {new Date(item.committed_at).toLocaleString()}</p>
         <p>Operator {item.operator_id} · {item.source_type} {item.source_id}</p>
         <p>Reason: {item.reason}</p><p>Reviewed evidence: {item.reviewed_evidence}</p>
-        {item.action==='restrict'&&!reversed.has(item.id)&&<button disabled={busy||reason.trim().length<8||evidence.trim().length<8}
-          onClick={()=>void submit(`/v1/operator/account-restrictions/${item.id}/reverse`,{
-            reason:reason.trim(),reviewed_evidence:evidence.trim()},`account-reverse:${item.id}`)}>
+        {item.action==='restrict'&&!reversed.has(item.id)&&<button disabled={busy||!!attempt||reason.trim().length<8||evidence.trim().length<8}
+          onClick={()=>submit(`/v1/operator/account-restrictions/${item.id}/reverse`,{
+            reason:reason.trim(),reviewed_evidence:evidence.trim()})}>
           Reverse after review</button>}
       </div>)}
-      {!history.length&&<p>No restrictions recorded for this participant.</p>}
+      {!history.length&&<p>{!target?'Enter a participant ID to view restriction history.':historyStatus==='loading'?'Loading restriction history…':historyStatus==='error'?'Restriction history unavailable. Retry history.':'No restrictions recorded for this participant.'}</p>}
     </section>
   </main>;
 }
