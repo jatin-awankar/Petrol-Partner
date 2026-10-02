@@ -85,9 +85,9 @@ const ProfileHeader: React.FC<ProfileHeaderProps> = ({
 
           <div className="min-w-0 space-y-1.5 sm:space-y-2">
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="max-w-full truncate text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
+              <h2 className="max-w-full truncate text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
                 {user.name}
-              </h1>
+              </h2>
               {user.isCollegeVerified && <Badge variant="outline">Historical corridor student approval</Badge>}
               {user.isDriverVerified && <Badge variant="outline">Historical corridor driver approval</Badge>}
             </div>

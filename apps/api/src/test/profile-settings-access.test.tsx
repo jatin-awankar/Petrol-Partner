@@ -37,6 +37,14 @@ it('shows account actions without fabricated impact or live trip controls',async
   expect(screen.queryByText(/Enable location tracking during active rides/i)).toBeNull();
 });
 
+it('uses the account page title as its only primary heading',async()=>{
+  session.signedIn=true;
+  render(<ProfileSettingsPage/>);
+  expect(await screen.findByRole('heading',{name:'Mira'})).not.toBeNull();
+  expect(screen.getAllByRole('heading',{level:1})).toHaveLength(1);
+  expect(screen.getByRole('heading',{level:1}).textContent).toBe('Account and declarations');
+});
+
 it('keeps collapsed account controls out of keyboard navigation',async()=>{
   session.signedIn=true;
   render(<ProfileSettingsPage/>);
