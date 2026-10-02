@@ -311,11 +311,11 @@ export default function OperatorPage() {
       setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
     } catch (error) { preview?.close(); setMessage(error instanceof Error ? error.message : "Unable to open evidence"); }
   }
-  if (loading) return <main id="main-content" className="operator-workspace"><div className="operator-access" role="status">Checking operator access…</div></main>;
-  if (!user) return <main id="main-content" className="operator-workspace"><div className="operator-access">Sign in to access the operator workspace. <Link href="/login">Sign in</Link></div></main>;
-  if (authorized === false) return <main id="main-content" className="operator-workspace"><div className="operator-access" role="alert">Operator access requires current allowlist membership and MFA. {message}</div></main>;
-  if (authorized === null) return <main id="main-content" className="operator-workspace"><div className="operator-access" role="status">{message||"Loading protected queues…"} {message&&<button onClick={()=>void refresh()}>Retry access check</button>}</div></main>;
-  return <main id="main-content" className="operator-workspace">
+  if (loading) return <div className="operator-workspace"><div className="operator-access" role="status">Checking operator access…</div></div>;
+  if (!user) return <div className="operator-workspace"><div className="operator-access">Sign in to access the operator workspace. <Link href="/login">Sign in</Link></div></div>;
+  if (authorized === false) return <div className="operator-workspace"><div className="operator-access" role="alert">Operator access requires current allowlist membership and MFA. {message}</div></div>;
+  if (authorized === null) return <div className="operator-workspace"><div className="operator-access" role="status">{message||"Loading protected queues…"} {message&&<button onClick={()=>void refresh()}>Retry access check</button>}</div></div>;
+  return <div className="operator-workspace">
     <div className="operator-heading"><div><span className="operator-kicker">OPERATIONS / CURRENT VIEW</span><h1>Operator workspace</h1>
       <p>Server-authorized queues. Real route bookings remain disabled. Historical fixed-corridor cases are marked below.</p></div>
       <span className="product-status product-status-restricted">Prelaunch</span></div>
@@ -437,5 +437,5 @@ export default function OperatorPage() {
         <div className="flex gap-3"><button disabled={busy || !!pendingAction || adultFindings[review.user_id] !== true} onClick={() => reviewStudent(review.user_id, "verified")}>Approve adult student</button><button disabled={busy||!!pendingAction} onClick={() => reviewStudent(review.user_id, "rejected")}>Reject</button></div>
       </div>) : <p>{readsLoading ? "Loading student reviews…" : readErrors.includes("Historical student reviews") ? "Historical student reviews unavailable. Retry reads." : "No pending student reviews."}</p>}
     </section>
-  </main>;
+  </div>;
 }

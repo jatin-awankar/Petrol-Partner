@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { ApiError } from "@/lib/api/client";
@@ -96,25 +95,11 @@ export default function LoginForm() {
           </p>
         </div>
 
-        <Button
-          type="button"
-          onClick={() =>
-            setErrorMsg("Google sign-in is not available during the backend cutover.")
-          }
-          variant="outline"
-          disabled={loading}
-          className="min-h-11 w-full rounded-md"
-        >
+        <Button type="button" variant="outline" disabled aria-describedby="google-signin-status" className="min-h-11 w-full rounded-md">
           Sign in with Google
         </Button>
+        <p id="google-signin-status" className="text-center text-xs text-muted-foreground">Google sign-in is unavailable during the backend cutover.</p>
       </form>
-
-      <p className="mt-6 text-center text-sm text-muted-foreground">
-        Don&apos;t have an account?{" "}
-        <Link href="/register" className="inline-flex min-h-11 items-center font-medium text-primary hover:underline">
-          Create one
-        </Link>
-      </p>
     </div>
   );
 }
