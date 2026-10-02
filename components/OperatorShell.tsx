@@ -19,6 +19,7 @@ export default function OperatorShell() {
     <div className="operator-shell-inner">
       <Link href="/operator" className="operator-brand">PETROL PARTNER <span>/ OPERATIONS</span></Link>
       <nav aria-label="Operator queues">
+        <Link href="/operator/mfa" aria-current={path === "/operator/mfa" ? "page" : undefined}>Authenticator</Link>
         {queues.map(queue => <Link key={queue.href} href={queue.href}>{queue.label}</Link>)}
       </nav>
       <Link href="/dashboard">Participant home</Link>

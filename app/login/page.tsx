@@ -7,16 +7,17 @@ import { useRouter } from "next/navigation";
 import AuthSplitLayout from "@/components/auth/AuthSplitLayout";
 import LoginForm from "@/components/LoginForm";
 import { useCurrentUser } from "@/hooks/auth/useCurrentUser";
+import { postLoginDestination } from "@/lib/post-login-destination";
 
 export default function LoginPage() {
   const router = useRouter();
-  const { isAuthenticated, loading } = useCurrentUser();
+  const { user, isAuthenticated, loading } = useCurrentUser();
 
   useEffect(() => {
     if (!loading && isAuthenticated) {
-      router.replace("/dashboard");
+      router.replace(postLoginDestination(user?.role));
     }
-  }, [isAuthenticated, loading, router]);
+  }, [isAuthenticated, loading, router, user?.role]);
 
   return (
     <AuthSplitLayout

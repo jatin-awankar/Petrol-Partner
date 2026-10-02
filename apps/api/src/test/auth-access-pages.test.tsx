@@ -7,19 +7,31 @@ import RecoverPage from "../../../../app/recover/page";
 import RecoveryPasswordPage from "../../../../app/recover/password/page";
 import AuthCallbackPage from "../../../../app/auth/callback/page";
 
+const state = vi.hoisted(() => ({
+  user: null as null | { role: string },
+  replace: vi.fn(),
+}));
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ replace: vi.fn(), push: vi.fn(), refresh: vi.fn() }),
+  useRouter: () => ({ replace: state.replace, push: vi.fn(), refresh: vi.fn() }),
 }));
 vi.mock("@/hooks/auth/useCurrentUser", () => ({
   useCurrentUser: () => ({
-    isAuthenticated: false,
+    user: state.user,
+    isAuthenticated: Boolean(state.user),
     loading: false,
     login: vi.fn(),
     register: vi.fn(),
   }),
 }));
 
-afterEach(cleanup);
+afterEach(() => { cleanup(); state.user = null; state.replace.mockReset(); });
+
+it("routes a signed-in operator to the authenticator challenge", () => {
+  state.user = { role: "admin" };
+  render(<main><LoginPage /></main>);
+  expect(state.replace).toHaveBeenCalledWith("/operator/mfa");
+  expect(state.replace).not.toHaveBeenCalledWith("/dashboard");
+});
 
 it("renders one sign-in heading and one main landmark with the unavailable provider stated up front", () => {
   const { container } = render(<main><LoginPage /></main>);

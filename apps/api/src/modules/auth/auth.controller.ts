@@ -2,7 +2,7 @@ import type { Request, Response } from "express";
 
 import { AppError } from "../../shared/errors/app-error";
 import { ACCESS_TOKEN_COOKIE, clearAuthCookies, clearPkceVerifierCookie, PKCE_VERIFIER_COOKIE, REFRESH_TOKEN_COOKIE, setAuthCookies, setPkceVerifierCookie } from "../../shared/utils/cookies";
-import { loginSchema, passwordUpdateSchema, providerSessionSchema, recoveryRequestSchema, registerSchema } from "./auth.schema";
+import { loginSchema, mfaChallengeSchema, mfaEnrollSchema, mfaVerifySchema, passwordUpdateSchema, providerSessionSchema, recoveryRequestSchema, registerSchema } from "./auth.schema";
 import * as authService from "./auth.service";
 
 function getSessionMeta(req: Request) {
@@ -110,4 +110,38 @@ export async function me(req: Request, res: Response) {
   res.status(200).json({
     user,
   });
+}
+
+export async function mfaFactors(req: Request, res: Response) {
+  if (!req.user) throw new AppError(401, "Unauthorized", "UNAUTHORIZED");
+  res.set("Cache-Control", "no-store").status(200).json(
+    await authService.operatorMfaFactors(req.user, res.locals.providerAccessToken));
+}
+
+export async function mfaHistory(req: Request, res: Response) {
+  if (!req.user) throw new AppError(401, "Unauthorized", "UNAUTHORIZED");
+  res.set("Cache-Control", "no-store").status(200).json(
+    await authService.operatorMfaHistory(req.user, res.locals.providerAccessToken));
+}
+
+export async function enrollMfa(req: Request, res: Response) {
+  if (!req.user) throw new AppError(401, "Unauthorized", "UNAUTHORIZED");
+  const { replacePendingFactorId } = mfaEnrollSchema.parse(req.body);
+  const enrollment = await authService.enrollOperatorTotp(req.user, res.locals.providerAccessToken, replacePendingFactorId);
+  res.set("Cache-Control", "no-store").status(201).json(enrollment);
+}
+
+export async function challengeMfa(req: Request, res: Response) {
+  if (!req.user) throw new AppError(401, "Unauthorized", "UNAUTHORIZED");
+  const { factorId } = mfaChallengeSchema.parse(req.body);
+  res.set("Cache-Control", "no-store").status(200).json(
+    await authService.challengeOperatorTotp(req.user, factorId, res.locals.providerAccessToken));
+}
+
+export async function verifyMfa(req: Request, res: Response) {
+  if (!req.user) throw new AppError(401, "Unauthorized", "UNAUTHORIZED");
+  const input = mfaVerifySchema.parse(req.body);
+  const result = await authService.verifyOperatorTotp(req.user, input, res.locals.providerAccessToken);
+  setAuthCookies(res, result.tokens);
+  res.set("Cache-Control", "no-store").status(200).json({ assuranceLevel: "aal2" });
 }

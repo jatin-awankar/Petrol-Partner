@@ -16,6 +16,9 @@ export interface ProviderSession {
   identity: ProviderIdentity;
 }
 
+export interface TotpFactor { id: string; friendlyName: string | null }
+export interface TotpEnrollment { factorId: string; secret: string; uri: string; qrCode: string }
+
 export interface AuthProvider {
   register(input: { email: string; password: string; fullName: string; college?: string; pkceChallenge: string }): Promise<void>;
   login(email: string, password: string): Promise<ProviderSession>;
@@ -25,6 +28,12 @@ export interface AuthProvider {
   exchangeCode(code: string, verifier: string): Promise<ProviderSession>;
   updatePassword(accessToken: string, password: string): Promise<void>;
   logout(accessToken: string): Promise<void>;
+  listTotpFactors?(accessToken: string): Promise<TotpFactor[]>;
+  listPendingTotpFactors?(accessToken: string): Promise<TotpFactor[]>;
+  enrollTotp?(accessToken: string): Promise<TotpEnrollment>;
+  removePendingTotp?(accessToken: string, factorId: string): Promise<void>;
+  challengeTotp?(accessToken: string, factorId: string): Promise<{ challengeId: string }>;
+  verifyTotp?(accessToken: string, factorId: string, challengeId: string, code: string): Promise<ProviderSession>;
 }
 
 function providerError(status: number, body: unknown): never {
@@ -32,6 +41,9 @@ function providerError(status: number, body: unknown): never {
     typeof body === "object" && body && "msg" in body ? String(body.msg) : "Authentication provider rejected the request";
   if (status >= 500) {
     throw new AppError(503, "Authentication assurance is temporarily unavailable", "AUTH_ASSURANCE_UNAVAILABLE");
+  }
+  if (status === 429) {
+    throw new AppError(429, "Too many authentication attempts. Try again later", "AUTH_RATE_LIMITED");
   }
   throw new AppError(401, providerMessage, "INVALID_CREDENTIALS");
 }
@@ -140,6 +152,77 @@ export const supabaseAuthProvider: AuthProvider = {
       method: "POST",
       headers: { Authorization: `Bearer ${accessToken}` },
     });
+  },
+  async listTotpFactors(accessToken) {
+    const user = await requestProvider("/user", { headers: { Authorization: `Bearer ${accessToken}` } });
+    return (Array.isArray(user.factors) ? user.factors : [])
+      .filter((factor: any) => factor.factor_type === "totp" && factor.status === "verified")
+      .map((factor: any) => ({ id: factor.id, friendlyName: factor.friendly_name ?? null }));
+  },
+  async listPendingTotpFactors(accessToken) {
+    const user = await requestProvider("/user", { headers: { Authorization: `Bearer ${accessToken}` } });
+    return (Array.isArray(user.factors) ? user.factors : [])
+      .filter((factor: any) => factor.factor_type === "totp" && factor.status === "unverified" && typeof factor.id === "string")
+      .map((factor: any) => ({ id: factor.id, friendlyName: factor.friendly_name ?? null }));
+  },
+  async enrollTotp(accessToken) {
+    const user = await requestProvider("/user", { headers: { Authorization: `Bearer ${accessToken}` } });
+    const pending = (Array.isArray(user.factors) ? user.factors : [])
+      .find((factor: any) => factor.factor_type === "totp" && factor.status === "unverified" && typeof factor.id === "string");
+    if (pending) {
+      throw new AppError(409, "An unfinished authenticator setup already exists", "MFA_SETUP_PENDING", { factorId: pending.id });
+    }
+    const enrolled = await requestProvider("/factors", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify({ factor_type: "totp", friendly_name: "Operator authenticator" }),
+    });
+    if (typeof enrolled.id !== "string" || typeof enrolled.totp?.secret !== "string" ||
+        typeof enrolled.totp?.uri !== "string" || typeof enrolled.totp?.qr_code !== "string") {
+      throw new AppError(503, "MFA provider returned an invalid setup response", "AUTH_ASSURANCE_UNAVAILABLE");
+    }
+    return { factorId: enrolled.id, secret: enrolled.totp.secret, uri: enrolled.totp.uri, qrCode: enrolled.totp.qr_code };
+  },
+  async removePendingTotp(accessToken, factorId) {
+    const user = await requestProvider("/user", { headers: { Authorization: `Bearer ${accessToken}` } });
+    const pending = (Array.isArray(user.factors) ? user.factors : [])
+      .find((factor: any) => factor.factor_type === "totp" && factor.status === "unverified" && factor.id === factorId);
+    if (!pending) throw new AppError(409, "Authenticator setup changed; refresh its status", "MFA_SETUP_CHANGED");
+    await requestProvider(`/factors/${encodeURIComponent(factorId)}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+  },
+  async challengeTotp(accessToken, factorId) {
+    const challenge = await requestProvider(`/factors/${factorId}/challenge`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify({}),
+    });
+    if (typeof challenge.id !== "string") {
+      throw new AppError(503, "MFA provider returned an invalid challenge", "AUTH_ASSURANCE_UNAVAILABLE");
+    }
+    return { challengeId: challenge.id };
+  },
+  async verifyTotp(accessToken, factorId, challengeId, code) {
+    let verified: any;
+    try {
+      verified = await requestProvider(`/factors/${factorId}/verify`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${accessToken}` },
+        body: JSON.stringify({ challenge_id: challengeId, code }),
+      });
+    } catch (error) {
+      if (error instanceof AppError && error.code === "INVALID_CREDENTIALS") {
+        throw new AppError(400, "Invalid or expired authenticator code", "MFA_CODE_INVALID");
+      }
+      throw error;
+    }
+    if (typeof verified.access_token !== "string" || typeof verified.refresh_token !== "string" ||
+        typeof verified.expires_in !== "number" || typeof verified.user?.id !== "string") {
+      throw new AppError(503, "MFA provider returned an invalid session", "AUTH_ASSURANCE_UNAVAILABLE");
+    }
+    return sessionFromBody(verified);
   },
 };
 

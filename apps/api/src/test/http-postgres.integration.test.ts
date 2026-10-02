@@ -26,12 +26,13 @@ import { resolve } from "node:path";
 
 import { Pool } from "pg";
 import request from "supertest";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createApp } from "../app";
 import { pool } from "../db/pool";
 import { resetRateLimitsForTests } from "../middleware/rate-limit";
 import { setAuthProviderForTests, setManagedAuthEnabledForTests, type AuthProvider, type ProviderIdentity } from "../modules/auth/auth-provider";
+import { AppError } from "../shared/errors/app-error";
 import { setBackupObjectProbeForTests } from "../modules/operator/backup-status";
 import { setStudentReviewAfterCommitHookForTests } from "../modules/verification/student-review.service";
 
@@ -3135,6 +3136,446 @@ afterAll(async () => {
 });
 
 describe("managed authentication HTTP boundary with PostgreSQL", () => {
+  it("reads MFA status and history while the application database is read-only", async () => {
+    const email = "mfa-readonly@example.test";
+    const subject = "mfa-readonly-subject";
+    const factorId = "read-only-pending-factor";
+    const operator = await verificationPool.query<{ id: string }>(
+      "INSERT INTO users (email, role, email_verified_at) VALUES ($1, 'admin', now()) RETURNING id", [email]);
+    await verificationPool.query("INSERT INTO user_profiles (user_id, full_name) VALUES ($1, 'MFA Operator')", [operator.rows[0].id]);
+    await verificationPool.query(
+      "INSERT INTO auth_identities (provider, provider_subject, user_id, provider_email) VALUES ('supabase', $1, $2, $3)",
+      [subject, operator.rows[0].id, email]);
+    await verificationPool.query(
+      "INSERT INTO operator_allowlist (user_id, active, reason, reviewed_at) VALUES ($1, true, 'synthetic test', now())",
+      [operator.rows[0].id]);
+    await verificationPool.query(
+      "UPDATE auth_cutover_state SET active_provider = 'supabase', legacy_login_enabled = false, authorized_at = now(), authorized_by = 'integration-test'");
+    setManagedAuthEnabledForTests(true);
+    const identity = { subject, email, emailVerified: true, assuranceLevel: "aal1", userMetadata: {} };
+    setAuthProviderForTests({ ...fakeProvider(identity), listTotpFactors: async () => [],
+      listPendingTotpFactors: async () => [{ id: factorId, friendlyName: "Unfinished setup" }],
+    });
+    const agent = request.agent(createApp());
+    expect((await agent.post("/v1/auth/login").send({ email, password: "synthetic-password" })).status).toBe(200);
+    const clients = await Promise.all(Array.from({ length: Math.max(1, pool.totalCount) }, () => pool.connect()));
+    try {
+      await Promise.all(clients.map((client) => client.query("SET default_transaction_read_only = on")));
+    } finally {
+      clients.forEach((client) => client.release());
+    }
+    try {
+      expect((await pool.query<{ readOnly: string }>('SHOW transaction_read_only')).rows[0].transaction_read_only).toBe("on");
+      const status = await agent.get("/v1/auth/mfa/factors");
+      expect(status.status).toBe(200);
+      expect(status.body.pendingFactors).toEqual([{ id: factorId, friendlyName: "Unfinished setup" }]);
+      const history = await agent.get("/v1/auth/mfa/history");
+      expect(history.status).toBe(200);
+      expect(history.body.events).toEqual([]);
+    } finally {
+      const restore = await Promise.all(Array.from({ length: Math.max(1, pool.totalCount) }, () => pool.connect()));
+      try {
+        await Promise.all(restore.map((client) => client.query("SET default_transaction_read_only = off")));
+      } finally {
+        restore.forEach((client) => client.release());
+      }
+    }
+  });
+
+  it("serializes overlapping authenticator setups for the same operator", async () => {
+    const email = "mfa-overlap@example.test";
+    const subject = "mfa-overlap-subject";
+    const operator = await verificationPool.query<{ id: string }>(
+      "INSERT INTO users (email, role, email_verified_at) VALUES ($1, 'admin', now()) RETURNING id", [email]);
+    await verificationPool.query("INSERT INTO user_profiles (user_id, full_name) VALUES ($1, 'MFA Operator')", [operator.rows[0].id]);
+    await verificationPool.query(
+      "INSERT INTO auth_identities (provider, provider_subject, user_id, provider_email) VALUES ('supabase', $1, $2, $3)",
+      [subject, operator.rows[0].id, email]);
+    await verificationPool.query(
+      "INSERT INTO operator_allowlist (user_id, active, reason, reviewed_at) VALUES ($1, true, 'synthetic test', now())",
+      [operator.rows[0].id]);
+    await verificationPool.query(
+      "UPDATE auth_cutover_state SET active_provider = 'supabase', legacy_login_enabled = false, authorized_at = now(), authorized_by = 'integration-test'");
+    setManagedAuthEnabledForTests(true);
+    const identity = { subject, email, emailVerified: true, assuranceLevel: "aal1", userMetadata: {} };
+    const pending: Array<{ id: string; friendlyName: string }> = [];
+    let createCount = 0;
+    let signalFirstEntered!: () => void;
+    let releaseFirst!: () => void;
+    const firstEntered = new Promise<void>((resolve) => { signalFirstEntered = resolve; });
+    const firstMayFinish = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    setAuthProviderForTests({ ...fakeProvider(identity), listTotpFactors: async () => [],
+      listPendingTotpFactors: async () => [...pending],
+      enrollTotp: async () => {
+        const number = ++createCount;
+        if (number === 1) { signalFirstEntered(); await firstMayFinish; }
+        const factorId = `factor-${number}`;
+        pending.push({ id: factorId, friendlyName: "Operator authenticator" });
+        return { factorId, secret: `SYNTHETICSECRET${number}`, uri: "otpauth://totp/synthetic", qrCode: "<svg/>" };
+      },
+    });
+    const app = createApp();
+    const firstAgent = request.agent(app);
+    const secondAgent = request.agent(app);
+    const firstLogin = await firstAgent.post("/v1/auth/login").send({ email, password: "synthetic-password" });
+    const secondLogin = await secondAgent.post("/v1/auth/login").send({ email, password: "synthetic-password" });
+    const csrfFor = (response: typeof firstLogin) => response.headers["set-cookie"]
+      .find((cookie: string) => cookie.startsWith("pp_csrf_token="))?.split(";", 1)[0]?.split("=", 2)[1];
+    const start = (agent: typeof firstAgent, csrf: string) => agent.post("/v1/auth/mfa/enroll")
+      .set("Origin", "http://localhost:3000").set("X-CSRF-Token", csrf).send({});
+    const first = start(firstAgent, csrfFor(firstLogin)).then((response) => response);
+    await firstEntered;
+    const second = start(secondAgent, csrfFor(secondLogin)).then((response) => response);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    releaseFirst();
+    const results = await Promise.all([first, second]);
+    expect(results.map((response) => response.status)).toEqual([201, 409]);
+    expect(results[1].body.error.code).toBe("MFA_SETUP_PENDING");
+    expect(createCount).toBe(1);
+    expect((await firstAgent.get("/v1/auth/mfa/factors")).body.pendingFactors)
+      .toEqual([{ id: "factor-1", friendlyName: "Operator authenticator" }]);
+    const history = await firstAgent.get("/v1/auth/mfa/history");
+    expect(history.body.events.map((event: { action: string }) => event.action)).toEqual([
+      "operator_mfa_enrollment_requested", "operator_mfa_factor_enrolled",
+    ]);
+  });
+
+  it("shows an allowlisted operator their verified TOTP factors before step-up", async () => {
+    const email = "mfa-operator@example.test";
+    const subject = "mfa-operator-subject";
+    const operator = await verificationPool.query<{ id: string }>(
+      "INSERT INTO users (email, role, email_verified_at) VALUES ($1, 'admin', now()) RETURNING id", [email]);
+    await verificationPool.query("INSERT INTO user_profiles (user_id, full_name) VALUES ($1, 'MFA Operator')", [operator.rows[0].id]);
+    await verificationPool.query(
+      "INSERT INTO auth_identities (provider, provider_subject, user_id, provider_email) VALUES ('supabase', $1, $2, $3)",
+      [subject, operator.rows[0].id, email]);
+    await verificationPool.query(
+      "INSERT INTO operator_allowlist (user_id, active, reason, reviewed_at) VALUES ($1, true, 'synthetic test', now())",
+      [operator.rows[0].id]);
+    await verificationPool.query(
+      "UPDATE auth_cutover_state SET active_provider = 'supabase', legacy_login_enabled = false, authorized_at = now(), authorized_by = 'integration-test'");
+    setManagedAuthEnabledForTests(true);
+    const identity = { subject, email, emailVerified: true, assuranceLevel: "aal1", userMetadata: {} };
+    const provider = fakeProvider(identity);
+    setAuthProviderForTests({ ...provider, listTotpFactors: async () => [] });
+    const agent = request.agent(createApp());
+    expect((await agent.post("/v1/auth/login").send({ email, password: "synthetic-password" })).status).toBe(200);
+
+    const response = await agent.get("/v1/auth/mfa/factors");
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ factors: [], pendingFactors: [], assuranceLevel: "aal1" });
+  });
+
+  it("enrolls a TOTP factor only from the current allowlisted operator session", async () => {
+    const email = "mfa-enroll@example.test";
+    const subject = "mfa-enroll-subject";
+    const operator = await verificationPool.query<{ id: string }>(
+      "INSERT INTO users (email, role, email_verified_at) VALUES ($1, 'admin', now()) RETURNING id", [email]);
+    await verificationPool.query("INSERT INTO user_profiles (user_id, full_name) VALUES ($1, 'MFA Operator')", [operator.rows[0].id]);
+    await verificationPool.query(
+      "INSERT INTO auth_identities (provider, provider_subject, user_id, provider_email) VALUES ('supabase', $1, $2, $3)",
+      [subject, operator.rows[0].id, email]);
+    await verificationPool.query(
+      "INSERT INTO operator_allowlist (user_id, active, reason, reviewed_at) VALUES ($1, true, 'synthetic test', now())",
+      [operator.rows[0].id]);
+    await verificationPool.query(
+      "UPDATE auth_cutover_state SET active_provider = 'supabase', legacy_login_enabled = false, authorized_at = now(), authorized_by = 'integration-test'");
+    setManagedAuthEnabledForTests(true);
+    const identity = { subject, email, emailVerified: true, assuranceLevel: "aal1", userMetadata: {} };
+    const provider = fakeProvider(identity);
+    let enrolledWith = "";
+    let hasVerifiedFactor = false;
+    setAuthProviderForTests({ ...provider, listTotpFactors: async () => hasVerifiedFactor
+      ? [{ id: "verified-factor", friendlyName: "Existing" }] : [], enrollTotp: async (token) => {
+      enrolledWith = token;
+      return { factorId: "factor-1", secret: "SYNTHETICSECRET", uri: "otpauth://totp/Petrol%20Partner?secret=SYNTHETICSECRET", qrCode: "<svg/>" };
+    } });
+    const app = createApp();
+    const agent = request.agent(app);
+    const login = await agent.post("/v1/auth/login").send({ email, password: "synthetic-password" });
+    expect(login.status).toBe(200);
+    const csrf = login.headers["set-cookie"].find((cookie: string) => cookie.startsWith("pp_csrf_token="))?.split(";", 1)[0]?.split("=", 2)[1];
+
+    const denied = await agent.post("/v1/auth/mfa/enroll").set("Origin", "http://localhost:3000").send({});
+    expect(denied.body.error.code).toBe("CSRF_REJECTED");
+    const enrolled = await agent.post("/v1/auth/mfa/enroll")
+      .set("Origin", "http://localhost:3000").set("X-CSRF-Token", csrf).send({});
+    expect(enrolled.status).toBe(201);
+    expect(enrolled.body).toEqual({ factorId: "factor-1", secret: "SYNTHETICSECRET", uri: "otpauth://totp/Petrol%20Partner?secret=SYNTHETICSECRET", qrCode: "<svg/>" });
+    expect(enrolledWith).toBe("provider-access");
+    hasVerifiedFactor = true;
+    const rotatedCsrf = enrolled.headers["set-cookie"].find((cookie: string) => cookie.startsWith("pp_csrf_token="))?.split(";", 1)[0]?.split("=", 2)[1];
+    const missingMfa = await agent.post("/v1/auth/mfa/enroll")
+      .set("Origin", "http://localhost:3000").set("X-CSRF-Token", rotatedCsrf).send({});
+    expect(missingMfa.status).toBe(403);
+    expect(missingMfa.body.error.code).toBe("MFA_REQUIRED");
+    await verificationPool.query("UPDATE operator_allowlist SET active = false WHERE user_id = $1", [operator.rows[0].id]);
+    const nextCsrf = missingMfa.headers["set-cookie"].find((cookie: string) => cookie.startsWith("pp_csrf_token="))?.split(";", 1)[0]?.split("=", 2)[1];
+    const revoked = await agent.post("/v1/auth/mfa/enroll")
+      .set("Origin", "http://localhost:3000").set("X-CSRF-Token", nextCsrf).send({});
+    expect(revoked.status).toBe(403);
+    expect(revoked.body.error.code).toBe("OPERATOR_ACCESS_REVOKED");
+  });
+
+  it("preserves an unfinished TOTP setup on retry until the operator explicitly replaces it", async () => {
+    const email = "mfa-restart@example.test";
+    const subject = "mfa-restart-subject";
+    const operator = await verificationPool.query<{ id: string }>(
+      "INSERT INTO users (email, role, email_verified_at) VALUES ($1, 'admin', now()) RETURNING id", [email]);
+    await verificationPool.query("INSERT INTO user_profiles (user_id, full_name) VALUES ($1, 'MFA Operator')", [operator.rows[0].id]);
+    await verificationPool.query(
+      "INSERT INTO auth_identities (provider, provider_subject, user_id, provider_email) VALUES ('supabase', $1, $2, $3)",
+      [subject, operator.rows[0].id, email]);
+    await verificationPool.query(
+      "INSERT INTO operator_allowlist (user_id, active, reason, reviewed_at) VALUES ($1, true, 'synthetic test', now())",
+      [operator.rows[0].id]);
+    await verificationPool.query(
+      "UPDATE auth_cutover_state SET active_provider = 'supabase', legacy_login_enabled = false, authorized_at = now(), authorized_by = 'integration-test'");
+    setManagedAuthEnabledForTests(true);
+    const identity = { subject, email, emailVerified: true, assuranceLevel: "aal1", userMetadata: {} };
+    setAuthProviderForTests(fakeProvider(identity));
+    const agent = request.agent(createApp());
+    const login = await agent.post("/v1/auth/login").send({ email, password: "synthetic-password" });
+    expect(login.status).toBe(200);
+    const csrf = login.headers["set-cookie"].find((cookie: string) => cookie.startsWith("pp_csrf_token="))?.split(";", 1)[0]?.split("=", 2)[1];
+    setAuthProviderForTests(null);
+    const accessToken = `header.${Buffer.from(JSON.stringify({ aal: "aal1" })).toString("base64url")}.signature`;
+    const providerUser = { id: subject, email, email_confirmed_at: "2026-10-02T00:00:00Z", user_metadata: {},
+      factors: [] as Array<{ id: string; factor_type: string; status: string; friendly_name: string }> };
+    const pendingFactorId = "df4ecc30-e46e-4bd5-b8c1-a403cbda9a07";
+    const replacementFactorId = "4385e583-a2c9-4294-af3a-a420b165a319";
+    let enrollments = 0;
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init: RequestInit) => {
+      const path = new URL(url, "https://synthetic.example").pathname;
+      if (path.endsWith("/token")) return Response.json({ access_token: accessToken, refresh_token: "provider-refresh", expires_in: 900, user: providerUser });
+      if (path.endsWith("/user")) return Response.json(providerUser);
+      if (path.endsWith(`/factors/${pendingFactorId}`) && init.method === "DELETE") {
+        providerUser.factors = providerUser.factors.filter((factor) => factor.id !== pendingFactorId);
+        return Response.json({ id: pendingFactorId });
+      }
+      if (path.endsWith("/factors") && init.method === "POST") {
+        const id = ++enrollments === 1 ? pendingFactorId : replacementFactorId;
+        providerUser.factors.push({ id, factor_type: "totp", status: "unverified", friendly_name: "Operator authenticator" });
+        return Response.json({ id, totp: { secret: "SYNTHETICSECRET", uri: "otpauth://totp/first", qr_code: "<svg/>" } });
+      }
+      throw new Error(`Unexpected provider path: ${path}`);
+    }));
+    try {
+      const first = await agent.post("/v1/auth/mfa/enroll")
+        .set("Origin", "http://localhost:3000").set("X-CSRF-Token", csrf).send({});
+      expect(first.status).toBe(201);
+      // The caller never receives the first response, then repeats the same setup action.
+      const nextCsrf = first.headers["set-cookie"].find((cookie: string) => cookie.startsWith("pp_csrf_token="))?.split(";", 1)[0]?.split("=", 2)[1];
+      const retry = await agent.post("/v1/auth/mfa/enroll")
+        .set("Origin", "http://localhost:3000").set("X-CSRF-Token", nextCsrf).send({});
+      expect(retry.status).toBe(409);
+      expect(retry.body.error.code).toBe("MFA_SETUP_PENDING");
+      const factors = await agent.get("/v1/auth/mfa/factors");
+      expect(factors.body.pendingFactors).toEqual([{ id: pendingFactorId, friendlyName: "Operator authenticator" }]);
+      const statusCsrf = factors.headers["set-cookie"].find((cookie: string) => cookie.startsWith("pp_csrf_token="))?.split(";", 1)[0]?.split("=", 2)[1];
+      const replacement = await agent.post("/v1/auth/mfa/enroll")
+        .set("Origin", "http://localhost:3000").set("X-CSRF-Token", statusCsrf)
+        .send({ replacePendingFactorId: pendingFactorId });
+      expect(replacement.status).toBe(201);
+      expect(replacement.body.factorId).toBe(replacementFactorId);
+      const replacementStatus = await agent.get("/v1/auth/mfa/factors");
+      expect(replacementStatus.body.pendingFactors)
+        .toEqual([{ id: replacementFactorId, friendlyName: "Operator authenticator" }]);
+      const replacementCsrf = replacementStatus.headers["set-cookie"]
+        .find((cookie: string) => cookie.startsWith("pp_csrf_token="))?.split(";", 1)[0]?.split("=", 2)[1];
+      const staleRetry = await agent.post("/v1/auth/mfa/enroll")
+        .set("Origin", "http://localhost:3000").set("X-CSRF-Token", replacementCsrf)
+        .send({ replacePendingFactorId: pendingFactorId });
+      expect(staleRetry.status).toBe(409);
+      expect(staleRetry.body.error.code).toBe("MFA_SETUP_CHANGED");
+      expect((await agent.get("/v1/auth/mfa/factors")).body.pendingFactors)
+        .toEqual([{ id: replacementFactorId, friendlyName: "Operator authenticator" }]);
+      const history = await agent.get("/v1/auth/mfa/history");
+      expect(history.status).toBe(200);
+      expect(history.body.events.map((event: { action: string }) => event.action)).toEqual([
+        "operator_mfa_enrollment_requested", "operator_mfa_factor_enrolled",
+        "operator_mfa_replacement_requested", "operator_mfa_factor_discarded", "operator_mfa_factor_replaced",
+      ]);
+      expect(history.body.events[3].factorId).toBe(pendingFactorId);
+      expect(history.body.events[4]).toMatchObject({
+        factorId: replacementFactorId, replacedFactorId: pendingFactorId,
+      });
+      expect(JSON.stringify(history.body)).not.toContain("SYNTHETICSECRET");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("records a provider-created factor discovered after an uncertain enrollment response", async () => {
+    const email = "mfa-uncertain@example.test";
+    const subject = "mfa-uncertain-subject";
+    const factorId = "650b19c8-3ec7-4c34-bf4d-96828a58922e";
+    const operator = await verificationPool.query<{ id: string }>(
+      "INSERT INTO users (email, role, email_verified_at) VALUES ($1, 'admin', now()) RETURNING id", [email]);
+    await verificationPool.query("INSERT INTO user_profiles (user_id, full_name) VALUES ($1, 'MFA Operator')", [operator.rows[0].id]);
+    await verificationPool.query(
+      "INSERT INTO auth_identities (provider, provider_subject, user_id, provider_email) VALUES ('supabase', $1, $2, $3)",
+      [subject, operator.rows[0].id, email]);
+    await verificationPool.query(
+      "INSERT INTO operator_allowlist (user_id, active, reason, reviewed_at) VALUES ($1, true, 'synthetic test', now())",
+      [operator.rows[0].id]);
+    await verificationPool.query(
+      "UPDATE auth_cutover_state SET active_provider = 'supabase', legacy_login_enabled = false, authorized_at = now(), authorized_by = 'integration-test'");
+    setManagedAuthEnabledForTests(true);
+    const identity = { subject, email, emailVerified: true, assuranceLevel: "aal1", userMetadata: {} };
+    let pending: Array<{ id: string; friendlyName: string }> = [];
+    let verified = false;
+    setAuthProviderForTests({ ...fakeProvider(identity), listTotpFactors: async () => verified
+      ? [{ id: factorId, friendlyName: "Operator authenticator" }] : [],
+      listPendingTotpFactors: async () => pending,
+      enrollTotp: async () => {
+        pending = [{ id: factorId, friendlyName: "Operator authenticator" }];
+        throw new AppError(503, "Provider response was lost", "AUTH_ASSURANCE_UNAVAILABLE");
+      },
+    });
+    const agent = request.agent(createApp());
+    const login = await agent.post("/v1/auth/login").send({ email, password: "synthetic-password" });
+    const csrf = login.headers["set-cookie"].find((cookie: string) => cookie.startsWith("pp_csrf_token="))?.split(";", 1)[0]?.split("=", 2)[1];
+    const uncertain = await agent.post("/v1/auth/mfa/enroll")
+      .set("Origin", "http://localhost:3000").set("X-CSRF-Token", csrf).send({});
+    expect(uncertain.status).toBe(503);
+    const status = await agent.get("/v1/auth/mfa/factors");
+    expect(status.body.pendingFactors).toEqual([{ id: factorId, friendlyName: "Operator authenticator" }]);
+    const retryCsrf = status.headers["set-cookie"].find((cookie: string) => cookie.startsWith("pp_csrf_token="))?.split(";", 1)[0]?.split("=", 2)[1];
+    const retry = await agent.post("/v1/auth/mfa/enroll")
+      .set("Origin", "http://localhost:3000").set("X-CSRF-Token", retryCsrf).send({});
+    expect(retry.body.error.code).toBe("MFA_SETUP_PENDING");
+    const history = await agent.get("/v1/auth/mfa/history");
+    expect(history.body.events.map((event: { action: string }) => event.action)).toEqual([
+      "operator_mfa_enrollment_requested", "operator_mfa_factor_observed",
+    ]);
+    expect(history.body.events[1].factorId).toBe(factorId);
+    verified = true;
+    pending = [];
+    const verifiedStatus = await agent.get("/v1/auth/mfa/factors");
+    expect(verifiedStatus.body.factors).toEqual([
+      { id: factorId, friendlyName: "Operator authenticator" },
+    ]);
+    const verifiedRetry = await agent.post("/v1/auth/mfa/enroll")
+      .set("Origin", "http://localhost:3000")
+      .set("X-CSRF-Token", verifiedStatus.headers["set-cookie"].find((cookie: string) => cookie.startsWith("pp_csrf_token="))?.split(";", 1)[0]?.split("=", 2)[1])
+      .send({});
+    expect(verifiedRetry.body.error.code).toBe("MFA_REQUIRED");
+    const verifiedHistory = await agent.get("/v1/auth/mfa/history");
+    expect(verifiedHistory.body.events[2]).toMatchObject({
+      action: "operator_mfa_factor_verification_observed", factorId,
+    });
+  });
+
+  it("records a discarded factor discovered after an uncertain replacement response", async () => {
+    const email = "mfa-discard-uncertain@example.test";
+    const subject = "mfa-discard-uncertain-subject";
+    const factorId = "b680e24d-23d5-4d05-9bc0-10ea6c89832f";
+    const operator = await verificationPool.query<{ id: string }>(
+      "INSERT INTO users (email, role, email_verified_at) VALUES ($1, 'admin', now()) RETURNING id", [email]);
+    await verificationPool.query("INSERT INTO user_profiles (user_id, full_name) VALUES ($1, 'MFA Operator')", [operator.rows[0].id]);
+    await verificationPool.query(
+      "INSERT INTO auth_identities (provider, provider_subject, user_id, provider_email) VALUES ('supabase', $1, $2, $3)",
+      [subject, operator.rows[0].id, email]);
+    await verificationPool.query(
+      "INSERT INTO operator_allowlist (user_id, active, reason, reviewed_at) VALUES ($1, true, 'synthetic test', now())",
+      [operator.rows[0].id]);
+    await verificationPool.query(
+      "UPDATE auth_cutover_state SET active_provider = 'supabase', legacy_login_enabled = false, authorized_at = now(), authorized_by = 'integration-test'");
+    setManagedAuthEnabledForTests(true);
+    const identity = { subject, email, emailVerified: true, assuranceLevel: "aal1", userMetadata: {} };
+    let pending = [{ id: factorId, friendlyName: "Unfinished setup" }];
+    setAuthProviderForTests({ ...fakeProvider(identity), listTotpFactors: async () => [],
+      listPendingTotpFactors: async () => pending,
+      removePendingTotp: async () => {
+        pending = [];
+        throw new AppError(503, "Provider response was lost", "AUTH_ASSURANCE_UNAVAILABLE");
+      },
+      enrollTotp: async () => { throw new Error("Replacement must stop after the uncertain removal"); },
+    });
+    const agent = request.agent(createApp());
+    const login = await agent.post("/v1/auth/login").send({ email, password: "synthetic-password" });
+    const csrf = login.headers["set-cookie"].find((cookie: string) => cookie.startsWith("pp_csrf_token="))?.split(";", 1)[0]?.split("=", 2)[1];
+    const uncertain = await agent.post("/v1/auth/mfa/enroll")
+      .set("Origin", "http://localhost:3000").set("X-CSRF-Token", csrf)
+      .send({ replacePendingFactorId: factorId });
+    expect(uncertain.status).toBe(503);
+    const status = await agent.get("/v1/auth/mfa/factors");
+    expect(status.body.pendingFactors).toEqual([]);
+    const retry = await agent.post("/v1/auth/mfa/enroll")
+      .set("Origin", "http://localhost:3000")
+      .set("X-CSRF-Token", status.headers["set-cookie"].find((cookie: string) => cookie.startsWith("pp_csrf_token="))?.split(";", 1)[0]?.split("=", 2)[1])
+      .send({ replacePendingFactorId: factorId });
+    expect(retry.body.error.code).toBe("MFA_SETUP_CHANGED");
+    const history = await agent.get("/v1/auth/mfa/history");
+    expect(history.body.events.map((event: { action: string }) => event.action)).toEqual([
+      "operator_mfa_factor_observed", "operator_mfa_replacement_requested", "operator_mfa_factor_discard_observed",
+    ]);
+    expect(history.body.events[2].factorId).toBe(factorId);
+  });
+
+  it("promotes a verified TOTP challenge to an aal2 operator session", async () => {
+    const email = "mfa-verify@example.test";
+    const subject = "mfa-verify-subject";
+    const factorId = "df4ecc30-e46e-4bd5-b8c1-a403cbda9a07";
+    const challengeId = "b01e9b8c-55bd-4de3-b9b4-b3a6a4c67591";
+    const operator = await verificationPool.query<{ id: string }>(
+      "INSERT INTO users (email, role, email_verified_at) VALUES ($1, 'admin', now()) RETURNING id", [email]);
+    await verificationPool.query("INSERT INTO user_profiles (user_id, full_name) VALUES ($1, 'MFA Operator')", [operator.rows[0].id]);
+    await verificationPool.query(
+      "INSERT INTO auth_identities (provider, provider_subject, user_id, provider_email) VALUES ('supabase', $1, $2, $3)",
+      [subject, operator.rows[0].id, email]);
+    await verificationPool.query(
+      "INSERT INTO operator_allowlist (user_id, active, reason, reviewed_at) VALUES ($1, true, 'synthetic test', now())",
+      [operator.rows[0].id]);
+    await verificationPool.query(
+      "UPDATE auth_cutover_state SET active_provider = 'supabase', legacy_login_enabled = false, authorized_at = now(), authorized_by = 'integration-test'");
+    setManagedAuthEnabledForTests(true);
+    let level = "aal1";
+    const identity = () => ({ subject, email, emailVerified: true, assuranceLevel: level, userMetadata: {} });
+    const session = () => ({ accessToken: level === "aal2" ? "verified-access" : "provider-access", refreshToken: "provider-refresh", expiresIn: 900, identity: identity() });
+    setAuthProviderForTests({
+      ...fakeProvider(identity()),
+      login: async () => session(), refresh: async () => session(), validate: async () => identity(),
+      challengeTotp: async () => ({ challengeId }),
+      verifyTotp: async (_token, _factor, _challenge, code) => {
+        if (code !== "123456") throw new AppError(400, "Invalid authenticator code", "MFA_CODE_INVALID");
+        level = "aal2";
+        return session();
+      },
+    });
+    const agent = request.agent(createApp());
+    const login = await agent.post("/v1/auth/login").send({ email, password: "synthetic-password" });
+    expect(login.status).toBe(200);
+    const csrfFrom = (response: typeof login) => response.headers["set-cookie"]
+      ?.find((cookie: string) => cookie.startsWith("pp_csrf_token="))?.split(";", 1)[0]?.split("=", 2)[1];
+    const beforeStepUp = await agent.get("/v1/operator/pending");
+    expect(beforeStepUp.body.error.code).toBe("MFA_REQUIRED");
+
+    const challenge = await agent.post("/v1/auth/mfa/challenge")
+      .set("Origin", "http://localhost:3000").set("X-CSRF-Token", csrfFrom(beforeStepUp))
+      .send({ factorId });
+    expect(challenge.status).toBe(200);
+    expect(challenge.body).toEqual({ challengeId });
+    const invalid = await agent.post("/v1/auth/mfa/verify")
+      .set("Origin", "http://localhost:3000").set("X-CSRF-Token", csrfFrom(challenge))
+      .send({ factorId, challengeId, code: "000000" });
+    expect(invalid.body.error.code).toBe("MFA_CODE_INVALID");
+    const stillAal1 = await agent.get("/v1/operator/pending");
+    expect(stillAal1.body.error.code).toBe("MFA_REQUIRED");
+    const verified = await agent.post("/v1/auth/mfa/verify")
+      .set("Origin", "http://localhost:3000").set("X-CSRF-Token", csrfFrom(stillAal1))
+      .send({ factorId, challengeId, code: "123456" });
+    expect(verified.status).toBe(200);
+    expect(verified.body).toEqual({ assuranceLevel: "aal2" });
+    expect((await agent.get("/v1/operator/pending")).status).toBe(200);
+    const history = await agent.get("/v1/auth/mfa/history");
+    expect(history.body.events).toEqual([expect.objectContaining({
+      action: "operator_mfa_factor_verified", factorId,
+    })]);
+  });
+
   it("claims a verified provider identity without changing the stable application owner", async () => {
     const legacy = await verificationPool.query<{ id: string }>(
       `INSERT INTO users (email, password_hash) VALUES ('student@example.test', 'legacy-hash') RETURNING id`,

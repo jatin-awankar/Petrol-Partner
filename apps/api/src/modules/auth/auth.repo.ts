@@ -1,6 +1,6 @@
 import type { Pool, PoolClient } from "pg";
 
-import { pool } from "../../db/pool";
+import { mfaEnrollmentLockPool, pool } from "../../db/pool";
 
 type Queryable = Pool | PoolClient;
 
@@ -273,4 +273,102 @@ export async function isOperatorAllowlisted(userId: string) {
     [userId],
   );
   return result.rows[0]?.allowed === true;
+}
+
+export async function withOperatorMfaEnrollmentLock<T>(userId: string, action: () => Promise<T>): Promise<T> {
+  const client = await mfaEnrollmentLockPool.connect();
+  const lockKey = `operator-mfa-enrollment:${userId}`;
+  let locked = false;
+  try {
+    await client.query("SELECT pg_advisory_lock(hashtextextended($1::text, 0))", [lockKey]);
+    locked = true;
+    return await action();
+  } finally {
+    try {
+      if (locked) await client.query("SELECT pg_advisory_unlock(hashtextextended($1::text, 0))", [lockKey]);
+      client.release();
+    } catch (error) {
+      client.release(error instanceof Error ? error : new Error("MFA enrollment lock release failed"));
+      throw error;
+    }
+  }
+}
+
+export async function recordOperatorMfaAudit(userId: string, action: string, metadata: Record<string, string>) {
+  await pool.query(
+    `INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, metadata)
+     VALUES ($1, $2, 'operator_mfa', $4, $3::jsonb)`,
+    [userId, action, JSON.stringify(metadata), userId],
+  );
+}
+
+export async function operatorMfaAuditHistory(userId: string) {
+  const result = await pool.query<{
+    action: string; factorId: string | null; replacedFactorId: string | null; recordedAt: Date;
+  }>(
+    `SELECT action, metadata->>'factorId' AS "factorId",
+            metadata->>'replacedFactorId' AS "replacedFactorId", created_at AS "recordedAt"
+       FROM audit_logs
+      WHERE actor_user_id = $1 AND entity_type = 'operator_mfa' AND entity_id = $2
+      ORDER BY created_at ASC, id ASC`,
+    [userId, userId],
+  );
+  return result.rows;
+}
+
+export async function observeOperatorMfaFactors(
+  client: PoolClient, userId: string, verifiedFactorIds: string[], pendingFactorIds: string[],
+) {
+  await client.query("SELECT id FROM users WHERE id = $1 FOR UPDATE", [userId]);
+  const factorIds = [...verifiedFactorIds, ...pendingFactorIds];
+  for (const factorId of factorIds) {
+    await client.query(
+      `INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, metadata)
+       SELECT $1, 'operator_mfa_factor_observed', 'operator_mfa', $2, jsonb_build_object('factorId', $3::text)
+        WHERE NOT EXISTS (
+          SELECT 1 FROM audit_logs
+           WHERE entity_type = 'operator_mfa' AND entity_id = $2
+             AND metadata->>'factorId' = $3
+             AND action IN ('operator_mfa_factor_enrolled', 'operator_mfa_factor_replaced', 'operator_mfa_factor_observed')
+        )`,
+      [userId, userId, factorId],
+    );
+  }
+  for (const factorId of verifiedFactorIds) {
+    await client.query(
+      `INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, metadata)
+       SELECT $1, 'operator_mfa_factor_verification_observed', 'operator_mfa', $2,
+              jsonb_build_object('factorId', $3::text)
+        WHERE NOT EXISTS (
+          SELECT 1 FROM audit_logs
+           WHERE entity_type = 'operator_mfa' AND entity_id = $2
+             AND metadata->>'factorId' = $3
+             AND action IN ('operator_mfa_factor_verified', 'operator_mfa_factor_verification_observed')
+        )`,
+      [userId, userId, factorId],
+    );
+  }
+  const replacements = await client.query<{ operationId: string; factorId: string }>(
+    `SELECT metadata->>'operationId' AS "operationId",
+            metadata->>'replacedFactorId' AS "factorId"
+       FROM audit_logs
+      WHERE actor_user_id = $1 AND entity_type = 'operator_mfa' AND entity_id = $2
+        AND action = 'operator_mfa_replacement_requested'
+        AND NOT EXISTS (
+          SELECT 1 FROM audit_logs completed
+           WHERE completed.entity_type = 'operator_mfa' AND completed.entity_id = $2
+             AND completed.metadata->>'operationId' = audit_logs.metadata->>'operationId'
+             AND completed.action IN ('operator_mfa_factor_discarded', 'operator_mfa_factor_discard_observed')
+        )`,
+    [userId, userId],
+  );
+  for (const replacement of replacements.rows) {
+    if (factorIds.includes(replacement.factorId)) continue;
+    await client.query(
+      `INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, metadata)
+       VALUES ($1, 'operator_mfa_factor_discard_observed', 'operator_mfa', $2,
+               jsonb_build_object('operationId', $3::text, 'factorId', $4::text))`,
+      [userId, userId, replacement.operationId, replacement.factorId],
+    );
+  }
 }

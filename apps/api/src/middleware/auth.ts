@@ -23,7 +23,10 @@ export const optionalAuth: RequestHandler = async (req, res, next) => {
     const payload = isManagedAuthEnabled()
       ? await authenticateProviderAccessToken(accessToken, req.cookies?.[REFRESH_TOKEN_COOKIE])
       : (await assertLegacyAuthAuthorized(), verifyAccessToken(accessToken));
-    if ("tokens" in payload) setAuthCookies(res, payload.tokens);
+    if ("tokens" in payload) {
+      setAuthCookies(res, payload.tokens);
+      res.locals.providerAccessToken = payload.tokens.accessToken;
+    }
     req.user = {
       userId: "sub" in payload ? payload.sub : payload.userId,
       email: payload.email,
