@@ -63,16 +63,18 @@ export default function PaymentsFilterBar({
 
       <div className="flex flex-col gap-3 md:flex-row">
         <label className="relative flex-1">
+          <span className="sr-only">Search historical payment records</span>
           <Search className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" />
           <input
             value={query}
             onChange={(event) => onQueryChange(event.target.value)}
-            placeholder="Search by route or student name"
+            placeholder="Search by route or participant name"
             className="h-9 w-full rounded-lg border border-input bg-background pl-9 pr-3 text-sm outline-none transition focus:border-ring"
           />
         </label>
 
         <label className="relative w-full md:w-56">
+          <span className="sr-only">Sort historical payment records</span>
           <SlidersHorizontal className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" />
           <select
             value={sortBy}

@@ -49,3 +49,9 @@ it("shows historical settlement status without legacy payment actions", async ()
   expect(screen.getByText(/historical financial hold/i)).not.toBeNull();
   expect(screen.queryByText(/restore full platform access/i)).toBeNull();
 });
+
+it("names the historical payment search and sort controls", () => {
+  render(<PaymentsPage />);
+  expect(screen.getByRole("textbox", { name: "Search historical payment records" })).not.toBeNull();
+  expect(screen.getByRole("combobox", { name: "Sort historical payment records" })).not.toBeNull();
+});
