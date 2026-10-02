@@ -73,7 +73,7 @@ const ProfileHeader: React.FC<ProfileHeaderProps> = ({
               <AvatarFallback
                 role="img"
                 aria-label={`${user.name}'s profile placeholder`}
-                className="rounded-2xl bg-lime-200 text-2xl font-semibold text-foreground"
+                className="rounded-2xl bg-lime-200 text-2xl font-semibold text-emerald-950"
               >
                 {initials}
               </AvatarFallback>
