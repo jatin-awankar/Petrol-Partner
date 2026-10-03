@@ -5686,6 +5686,10 @@ describe('ticket 10 isolated posted route preparation',()=>{
     const accepted=await f.call(f.driver.token,`${path}/requests/${id}/accept`,{},key);
     expect(accepted.status,JSON.stringify(accepted.body)).toBe(200);
     const operation=accepted.body.operation_id;
+    const requestedOperation=(await verificationPool.query<{operation_id:string}>(`SELECT operation_id
+      FROM pilot_notification_events WHERE related_entity_id=$1 AND event_type='requested'`,[id])).rows[0].operation_id;
+    await deliverRouteNotices(requestedOperation,'requested',[f.driver.id]);
+    await deliverRouteNotices(operation,'accepted_driver',[f.driver.id]);
     const notices=async(token:string)=>{
       const response=await request(f.app).get('/v1/notifications/durable').set('Authorization',`Bearer ${token}`);
       expect(response.status).toBe(200);expect(response.headers['cache-control']).toContain('no-store');
@@ -5784,6 +5788,7 @@ describe('ticket 10 isolated posted route preparation',()=>{
       const incident=await active.call(passenger.token,`${path}/allocations/${seat}/incidents`,{
         kind:'safety',reason:'Synthetic missed contact while trip remains active'});
       expect(incident.status,JSON.stringify(incident.body)).toBe(200);
+      await deliverRouteNotices(incident.body.operation_id,'incident_report',[active.driver.id,passenger.id]);
       expect((await active.call(passenger.token,`${path}/incidents/${incident.body.incident_id}/resolve`,{
         reason:'Participant cannot resolve an operator incident',evidence_refs:[]})).status).toBe(403);
       await onDuty.resume('aal1');
@@ -5799,6 +5804,7 @@ describe('ticket 10 isolated posted route preparation',()=>{
         reason:'Synthetic fallback reconciliation; no real receipt or independent escalation claimed',
         evidence_refs:[`urgent-outreach:${recorded.body.id}`]});
       expect(resolution.status,JSON.stringify(resolution.body)).toBe(200);
+      await deliverRouteNotices(resolution.body.operation_id,'operator_incident',[active.driver.id,passenger.id]);
       expect((await verificationPool.query('SELECT evidence_refs FROM posted_route_incidents WHERE id=$1',
         [incident.body.incident_id])).rows[0].evidence_refs).toEqual([`urgent-outreach:${recorded.body.id}`]);
       // Reconciliation must be possible while new commitments and unsupported departures stay paused.
@@ -5825,6 +5831,8 @@ describe('ticket 10 isolated posted route preparation',()=>{
         expect(visible).toHaveLength(recipient===outsider?0:1);
       }
       expect(events.every(item=>item.ready_at!==null)).toBe(true);
+      // Cancellation is sent through the failure adapter below; deliver the other real producer events here.
+      if(event!=='passenger_cancel')await deliverRouteNotices(response.body.operation_id as string,event,recipients.map(item=>item.id));
     };
     const rejected=await f.ask(passenger);
     await observe(await f.call(f.driver.token,`${path}/requests/${rejected}/reject`,{}),'rejected',[passenger]);
@@ -5863,6 +5871,110 @@ describe('ticket 10 isolated posted route preparation',()=>{
       'payment_claim',[f.driver,fresh]);
     await observe(await f.call(f.driver.token,`${path}/allocations/${freshSeat}/receipt`,{}),
       'receipt',[f.driver,fresh]);
+  });
+  async function deliverRouteNotices(operation:string,event:string,recipients:string[]){
+    const events=(await verificationPool.query<{id:string;recipient_id:string;email:string}>(`
+      SELECT e.id,e.recipient_id,u.email FROM pilot_notification_events e JOIN users u ON u.id=e.recipient_id
+      WHERE e.operation_id=$1 AND e.event_type=$2 AND e.ready_at IS NOT NULL`,[operation,event])).rows;
+    expect(events.map(item=>item.recipient_id).sort()).toEqual([...recipients].sort());
+    await verificationPool.query("UPDATE pilot_email_jobs SET due_at=now()+interval '1 day'");
+    await verificationPool.query('UPDATE pilot_email_jobs SET due_at=now() WHERE event_id=ANY($1::uuid[])',
+      [events.map(item=>item.id)]);
+    const {processDueEmail}=await import('../../../worker/src/jobs/durable-email.job');
+    const sent:{eventId:string;to:string;subject:string;body:string}[]=[];
+    for(const _event of events)expect(await processDueEmail(verificationPool,{send:async message=>{sent.push(message);}})).toBe(true);
+    expect(await processDueEmail(verificationPool,{send:async()=>{throw new Error('Duplicate send');}})).toBe(false);
+    expect(sent.map(item=>item.to).sort()).toEqual(events.map(item=>item.email).sort());
+    expect(sent.map(item=>item.eventId).sort()).toEqual(events.map(item=>item.id).sort());
+    expect(sent.map(item=>item.body).join(' ')).not.toMatch(/Private support evidence|77\.75|MH-/);
+    const jobs=await verificationPool.query(`SELECT status,attempts FROM pilot_email_jobs WHERE event_id=ANY($1::uuid[])`,
+      [events.map(item=>item.id)]);
+    expect(jobs.rows).toEqual(events.map(()=>({status:'sent',attempts:1})));
+  }
+  it('ticket 09 requires MFA for every operator outcome notice producer',async()=>{
+    const onDuty=await seatRecoveryOperator();
+    try{
+      await onDuty.resume('aal1');
+      for(const suffix of [`${randomUUID()}/hold`,`${randomUUID()}/release-hold`,
+        `allocations/${randomUUID()}/resolve-journey`,`allocations/${randomUUID()}/resolve-settlement`]){
+        const denied=await request(createApp()).post(`${path}/${suffix}`).set('Cookie',onDuty.cookie)
+          .set('Origin','http://localhost:3000').set('X-CSRF-Token',onDuty.csrf)
+          .set('Idempotency-Key',randomUUID()).send({reason:'Private support evidence'});
+        expect(denied.body.error.code,suffix).toBe('MFA_REQUIRED');
+      }
+    }finally{await clearSeatRecoveryOperator();}
+  });
+  it('ticket 09 delivers hold, release, cancellation, replacement and expiry notices from their producers',async()=>{
+    const f=await bookingFixture(),passenger=await participant(),pending=await participant();
+    const id=await f.ask(passenger);await f.ask(pending);
+    expect((await f.call(f.driver.token,`${path}/requests/${id}/accept`,{})).status).toBe(200);
+    const onDuty=await seatRecoveryOperator();
+    try{
+      for(const [suffix,event] of [['hold','hold'],['release-hold','release_hold']]){
+        const key=randomUUID();
+        const perform=()=>request(f.app).post(`${path}/${f.offer}/${suffix}`).set('Cookie',onDuty.cookie)
+          .set('Origin','http://localhost:3000').set('X-CSRF-Token',onDuty.csrf)
+          .set('Idempotency-Key',key).send({reason:'Private support evidence'});
+        const response=await perform();expect(response.status,JSON.stringify(response.body)).toBe(200);
+        expect((await perform()).body.operation_id).toBe(response.body.operation_id);
+        await deliverRouteNotices(response.body.operation_id,event,[f.driver.id,passenger.id]);
+      }
+    }finally{await clearSeatRecoveryOperator();}
+    const cancelled=await f.call(f.driver.token,`${path}/${f.offer}/cancel`,{reason:'Private support evidence'});
+    expect(cancelled.status).toBe(200);
+    await deliverRouteNotices(cancelled.body.operation_id,'driver_cancel',[f.driver.id,passenger.id,pending.id]);
+    const replacement=await f.call(f.driver.token,path,{vehicle_id:f.driver.vehicle,mode:'car',
+      origin:f.selection.pickup,destination:f.selection.dropoff,departure_at:departure(),capacity:1,replaces_offer_id:f.offer});
+    expect(replacement.status).toBe(201);
+    const prepared=(await verificationPool.query<{operation_id:string}>(`SELECT operation_id FROM pilot_notification_events
+      WHERE related_entity_id=$1 AND event_type='prepared'`,[replacement.body.offer.id])).rows[0];
+    await deliverRouteNotices(prepared.operation_id,'prepared',[f.driver.id]);
+    const fresh=await f.call(passenger.token,`${path}/${replacement.body.offer.id}/requests`,f.selection);
+    expect(fresh.status).toBe(201);
+    await verificationPool.query("UPDATE posted_route_seat_requests SET decision_deadline_at=now()-interval '1 second' WHERE id=$1",[fresh.body.request.id]);
+    expect((await expirePilotSeatRequests(verificationPool)).expired).toBe(1);
+    await deliverRouteNotices(fresh.body.request.id,'expired',[f.driver.id,passenger.id]);
+    expect((await expirePilotSeatRequests(verificationPool)).expired).toBe(0);
+    const visible=await request(f.app).get('/v1/notifications/durable').set('Authorization',`Bearer ${passenger.token}`);
+    expect(visible.body.notifications.some((item:{event_type:string;related_entity_id:string})=>
+      item.event_type==='expired'&&item.related_entity_id===fresh.body.request.id)).toBe(true);
+  });
+  it('ticket 09 delivers private journey review, UPI dispute and settlement decision notices',async()=>{
+    const f=await bookingFixture(2),passenger=await participant(),other=await participant();
+    const id=await f.ask(passenger),otherId=await f.ask(other);
+    const seat=(await f.call(f.driver.token,`${path}/requests/${id}/accept`,{})).body.booking.id as string;
+    const otherSeat=(await f.call(f.driver.token,`${path}/requests/${otherId}/accept`,{})).body.booking.id as string;
+    await verificationPool.query(`UPDATE posted_route_offers SET departure_at=now(),
+      request_cutoff_at=now()-interval '60 minutes',acceptance_cutoff_at=now()-interval '30 minutes' WHERE id=$1`,[f.offer]);
+    expect((await f.call(f.driver.token,`${path}/${f.offer}/depart`,{boarded_ids:[seat,otherSeat]})).status).toBe(200);
+    expect((await f.call(f.driver.token,`${path}/allocations/${seat}/driver-journey`,{travelled:true,completed:true})).status).toBe(200);
+    expect((await f.call(passenger.token,`${path}/allocations/${seat}/passenger-journey`,{travelled:true,completed:false})).status).toBe(200);
+    const onDuty=await seatRecoveryOperator();
+    const decide=(suffix:string,body:unknown)=>request(f.app).post(`${path}/allocations/${seat}/${suffix}`)
+      .set('Cookie',onDuty.cookie).set('Origin','http://localhost:3000').set('X-CSRF-Token',onDuty.csrf)
+      .set('Idempotency-Key',randomUUID()).send(body);
+    try{
+      const journey=await decide('resolve-journey',{outcome:'travelled',reason:'Private support evidence'});
+      expect(journey.status,JSON.stringify(journey.body)).toBe(200);
+      await deliverRouteNotices(journey.body.operation_id,'operator_journey',[f.driver.id,passenger.id]);
+      await clearSeatRecoveryOperator();
+      const claim=await f.call(passenger.token,`${path}/allocations/${seat}/payment-claim`,{method:'upi'});
+      expect(claim.status).toBe(200);
+      await deliverRouteNotices(claim.body.operation_id,'payment_claim',[f.driver.id,passenger.id]);
+      const dispute=await f.call(f.driver.token,`${path}/allocations/${seat}/dispute`,{});
+      expect(dispute.status).toBe(200);
+      await deliverRouteNotices(dispute.body.operation_id,'dispute',[f.driver.id,passenger.id]);
+      await onDuty.resume();
+      const settlement=await decide('resolve-settlement',{receipt_established:false,reason:'Private support evidence'});
+      expect(settlement.status,JSON.stringify(settlement.body)).toBe(200);
+      await deliverRouteNotices(settlement.body.operation_id,'operator_settlement',[f.driver.id,passenger.id]);
+      await clearSeatRecoveryOperator();
+      const unrelated=await request(f.app).get('/v1/notifications/durable').set('Authorization',`Bearer ${other.token}`);
+      expect(unrelated.body.notifications.filter((item:{event_type:string})=>
+        ['operator_journey','payment_claim','dispute','operator_settlement'].includes(item.event_type))).toEqual([]);
+      expect((await verificationPool.query(`SELECT receipt_established FROM posted_route_settlement_reviews r
+        JOIN posted_route_obligations o ON o.id=r.obligation_id WHERE o.allocation_id=$1`,[seat])).rows[0].receipt_established).toBe(false);
+    }finally{await clearSeatRecoveryOperator();}
   });
   it('shows an unanswered request as expired at its deadline even before a worker sweep',async()=>{
     const f=await bookingFixture(),passenger=await participant(),id=await f.ask(passenger);

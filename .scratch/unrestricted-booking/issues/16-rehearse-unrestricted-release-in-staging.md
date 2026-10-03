@@ -27,3 +27,7 @@ Ticket 04's policy-only resolution transfers unperformed production evidence her
 ## Ticket 09 support update — 2026-10-03
 
 The maintainer has accepted monitored support/receipt/response/fallback and independent active-trip escalation/missed-contact rehearsal as complete. Treat the support arrangement as accepted; do not repeat it as an unresolved staffing decision. No new identity/channel/timestamp artifacts were provided to the agent. This does not satisfy this ticket's actual-configuration tests: exercise the accepted arrangement with provider-backed booking notices, worker/monitor failure and recorded receipt in staging. Ticket 09 remains claimed for technical/integrated notice evidence. No deployment or real-booking activation is authorized.
+
+## Ticket 09 implementation completed — 2026-10-03
+
+Ticket 09 is resolved for support and notice implementation, with operational items accepted by the maintainer. This ticket still owns actual-configuration booking notice delivery/receipt, independent monitor-to-human routing, worker stoppage, fallback and privacy checks in staging. Synthetic worker sends are not live provider receipts. Retain evidence for ticket 18; no deployment or real-booking activation is authorized by this handoff.

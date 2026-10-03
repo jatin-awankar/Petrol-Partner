@@ -12,7 +12,7 @@ it('publishes controlled contacts with approved coverage and explicit prelaunch 
   expect(screen.getByText(/Monday–Friday, 09:00–18:00 IST/)).not.toBeNull();
   expect(screen.getByText(/within 15 minutes/)).not.toBeNull();
   expect(screen.getByText(/nine covered hours/)).not.toBeNull();
-  expect(screen.getByText(/No independent active-trip escalation arrangement is established/)).not.toBeNull();
+  expect(screen.getByText(/These two inboxes are not independent escalation channels/)).not.toBeNull();
   expect(screen.getByText(/real bookings remain disabled/)).not.toBeNull();
   expect(screen.queryByText(/support@pp.com/)).toBeNull();
 });

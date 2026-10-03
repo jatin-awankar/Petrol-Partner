@@ -4,13 +4,27 @@
 
 **Blocked by:** 04 (Approve operating and support policy).
 
-**Status:** claimed
+**Status:** resolved
 
 - [x] Publish the controlled contact and coverage in the relevant application views; verify it is monitored and test the fallback procedure.
-- [ ] Extend durable event and email work, retry and stalled-work visibility, and urgent outreach for the new policy without assuming delivery means receipt.
+- [x] Extend durable event and email work, retry and stalled-work visibility, and urgent outreach for the new policy without assuming delivery means receipt.
 - [x] Verify support privacy and failure behavior with synthetic events, including notification failure after a committed action; reuse applicable pilot-readiness 10 and 27 work.
 
+## Answer
+
+**Resolved for support and notice implementation — 2026-10-03.** The maintainer accepted monitored support/receipt/response/fallback and independent active-trip escalation as complete, then requested completion of this ticket. That acceptance is recorded as a human decision, not fabricated live telemetry. Controlled contacts, approved coverage, response targets and limitations are published in the application.
+
+The remaining implementation evidence now covers the existing route-booking producers through authenticated HTTP, PostgreSQL durable work and the real email worker with a synthetic external delivery adapter: requests/acceptance/rejection, passenger and driver cancellation, hold/release, replacement preparation, expiry, departure, journey/incident review, cash receipt, UPI claim/dispute and operator settlement outcome. Exact recipients, failed delivery after commit, bounded retry, idempotency, private reads, redacted errors and missed-contact reconciliation are evidenced across the ticket 09 tests and existing producer tests. The existing independent monitor and signed offline outreach infrastructure is reused from pilot-readiness 10/27. A sent notice is never treated as participant receipt.
+
+The completion pass added actual worker-delivery coverage for hold/release, cancellation affecting pending requests, replacement preparation, expiry, journey review, UPI dispute and settlement decisions. It also fixed missing HTTP MFA guards on their four operator producer endpoints. Support copy now reflects the accepted operational decision while retaining the shared-Gmail limitation and closed booking gate.
+
+All three acceptance criteria are satisfied at this ticket's implementation boundary. This closes the existing support/notice slice, **not** the release: no public-publication event can be tested before its producer exists, and no real-provider receipt is inferred from a synthetic adapter. Tickets 10/11 retain production publication/discovery/quote and updated-policy producer work; ticket 13 retains missing new-route delayed/silence/overdue producers; ticket 15 integrates the complete available journey; tickets 16/17 retain configured provider/monitor, staging and outage verification; ticket 18 retains the explicit launch decision. These requirements remain uncompleted in their owning tickets, with next tests in the evidence record. Do not introduce a circular dependency by making this implementation ticket wait for downstream release tickets that already depend on it.
+
+**Real bookings remain disabled. No deployment or external messaging occurred.** See [the evidence record](../../../docs/operations/evidence/ticket09-support-notices-2026-10-03.md#implementation-completion--2026-10-03) for the completed producer matrix, checks and review. Earlier claimed-status statements below are historical and superseded by this Answer.
+
 ## Current completion decision — 2026-10-03
+
+Historical decision, superseded by the resolved Answer above.
 
 The maintainer explicitly instructed: “consider 1 and 2 as done and update the docs as per that”. This refers to the follow-up resolution plan's **(1) monitored support, receipt/response and fallback rehearsal** and **(2) independent active-trip escalation and missed-contact rehearsal**, not acceptance criteria 1 and 2 above. These two operational items are accepted as complete for ticket tracking on the maintainer's authority. Acceptance criterion 1 is therefore checked; the booking-notice criterion remains partial.
 
@@ -49,3 +63,7 @@ Acceptance criterion 1 remains partial: application publication and simulated fa
 [Detailed evidence and next tests](../../../docs/operations/evidence/ticket09-support-notices-2026-10-03.md) distinguish existing evidence, new failures/fixes, simulated 15-minute and nine-covered-hour clocks, and unperformed live work. Exact dependencies: ticket 09 owner and pilot-readiness 27 for actual human receipt and independent escalation; tickets 10/11 for public publication/discovery/quote producers; tickets 12/13/15 for approved-policy integration and remaining event coverage; tickets 16/17 for real-provider staging/outage evidence; ticket 18 for the explicit launch decision. The current mutation fixtures retain operating snapshot `2026-09-29.1`; no existing records were silently moved to the new policy.
 
 Continuation checks: lint (zero errors, nine existing warnings), typecheck, three focused HTTP/PostgreSQL rehearsals, rendered support/coordination/operator tests, full tests and production builds passed. Final full suite: root 38 passed/10 skipped; API 363 passed/1 skipped; worker 19 passed. One intermediate full run timed out in an existing departure/cancellation race; isolated and final full reruns passed without weakening the test. Separate standards and spec reviews reported zero actionable findings. Phone/tablet/desktop support-page layout and keyboard access were inspected. No deployed data, external messages or real bookings were changed.
+
+## Completion verification — 2026-10-03
+
+Six ticket 09 HTTP/PostgreSQL scenarios pass, including real-worker delivery assertions for the enumerated existing producers. Final full suite: root 38 passed/10 skipped, API 366 passed/1 skipped, worker 19 passed. Typecheck, lint (zero errors), all builds, Markdown link checks and diff checks passed. Standards review had no findings; the spec review's overstated-delivery-coverage finding was fixed with additional worker assertions and passed re-review. The resolved Answer above is authoritative; earlier claimed-status entries remain historical.

@@ -27,3 +27,7 @@ Keep this ticket claimed: a representative sanitized deployed copy, historical c
 ## Ticket 09 support update — 2026-10-03
 
 The earlier statement that no public contact has been published is superseded: `/support` now exposes both controlled inboxes, coverage and prelaunch limits. The maintainer has accepted monitored support/fallback and independent active-trip escalation as complete for ticket tracking. This acceptance supplies no new live test artifacts and does not complete this ticket's integrated provider-backed support/notice scenario. Ticket 09 remains claimed for remaining booking-specific end-to-end evidence; publication/discovery/passenger quote and approved-policy integration remain producer dependencies. Representative-copy, recovery and launch gates above are unchanged.
+
+## Ticket 09 implementation completed — 2026-10-03
+
+Ticket 09 is resolved at its support/notice implementation boundary. Reuse its six HTTP/PostgreSQL scenarios and worker-backed event checks. This ticket still owns the full integrated journey when production publication/discovery/passenger-quote and approved-policy producers are available, alongside its existing representative-copy and recovery requirements. Do not infer production-provider evidence from the synthetic adapter or make ticket 09 wait on this downstream ticket. Status and real-booking gates remain unchanged.
