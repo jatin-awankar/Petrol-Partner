@@ -10,8 +10,10 @@ export function valhallaFixture(){
   const shape='_iszf@_nnhsC?owH?owH?owH';
   const route={trip:{status:0,units:'kilometers',locations:[{side_of_street:'left'},{side_of_street:'left'}],
     legs:[{shape,summary:{length:1.562,time:180.1}}]}};
-  const trace={shape,edges:[{begin_shape_index:0,end_shape_index:2,length:1.04,way_id:1,drive_on_right:false},
-    {begin_shape_index:2,end_shape_index:3,length:0.52,way_id:2,drive_on_right:false}]};
+  const trace:{shape:string;edges:Array<{begin_shape_index:number;end_shape_index:number;length:number;
+    way_id:number;drive_on_right:boolean;end_node?:{elapsed_time:number}}>}= {shape,edges:[
+    {begin_shape_index:0,end_shape_index:2,length:1.04,way_id:1,drive_on_right:false,end_node:{elapsed_time:120}},
+    {begin_shape_index:2,end_shape_index:3,length:0.52,way_id:2,drive_on_right:false,end_node:{elapsed_time:180.1}}]};
   const locate=[{edges:[{way_id:1,correlated_lon:77.75,correlated_lat:20.9}]},
     {edges:[{way_id:2,correlated_lon:77.765,correlated_lat:20.9}]}];
   const state={build:manifestDigest(manifest),status:200,route,trace,locate,calls:[] as Record<string,unknown>[],

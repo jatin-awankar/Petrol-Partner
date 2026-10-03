@@ -1,4 +1,5 @@
 import {valhallaFixture} from './valhalla-fixture';
+import {boundaryFixture,rectangle,setFixtureRoute} from './boundary-fixture';
 import {liveValhallaRehearsal} from './valhalla-live-rehearsal';
 import { createHash } from "node:crypto";
 import { randomUUID } from "node:crypto";
@@ -5358,6 +5359,7 @@ describe('ticket 10 isolated posted route preparation',()=>{
   afterEach(async()=>{
     (await routeModule()).setRoutingAdapterForTests(null);
     (await import('../modules/posted-routes/route-boundary')).setBoundaryCheckForTests(null);
+    (await import('../modules/posted-routes/route-boundary')).setBoundaryArtifactForTests(null);
     vi.unstubAllGlobals();
     delete process.env.VALHALLA_URL;delete process.env.VALHALLA_BUILD_MANIFEST;
     (await import('../modules/posted-routes/segment-quote')).setStopCheckForTests(null);
@@ -5400,8 +5402,7 @@ describe('ticket 10 isolated posted route preparation',()=>{
     return {actor,app,input,send};
   }
   async function syntheticBoundary(){
-    (await import('../modules/posted-routes/route-boundary')).setBoundaryCheckForTests(async()=>({
-      artifactSha256:'5'.repeat(64),policyVersion:'2026-10-03.2',outsideMetres:0,outsideSeconds:0}));
+    (await import('../modules/posted-routes/route-boundary')).setBoundaryArtifactForTests(boundaryFixture());
   }
   function confirmPreview(input:Record<string,unknown>,preview:{preview_digest:string;route:{geometry:{coordinates:number[][]}}}){
     return {...input,endpoint_confirmation:{preview_digest:preview.preview_digest,
@@ -5423,6 +5424,9 @@ describe('ticket 10 isolated posted route preparation',()=>{
       expect(route.cumulativeMeters.at(-1)).toBe(route.distanceMeters);
       expect(route.distanceMeters).toBeGreaterThan(4000);
       expect(route.cumulativeMeters.every((value:number,i:number,values:number[])=>i===0||value>values[i-1])).toBe(true);
+      const elapsed=route.verification.edges.map((edge:{end_node:{elapsed_time:number}})=>edge.end_node.elapsed_time);
+      expect(elapsed.every((value:number,i:number)=>Number.isFinite(value)&&value>(i===0?0:elapsed[i-1]))).toBe(true);
+      expect(Math.ceil(elapsed.at(-1))).toBe(route.durationSeconds);
       expect((await f.send(path,input)).body.error.code).toBe('ENDPOINT_CONFIRMATION_REQUIRED');
       const confirmed=confirmPreview(input,preview.body);
       const rejected=await f.send(path,confirmed);
@@ -5550,6 +5554,31 @@ describe('ticket 10 isolated posted route preparation',()=>{
     const outsider=await participant();
     expect((await request(f.app).get(`${path}/${id}`).set('Authorization',`Bearer ${outsider.token}`)).status).toBe(404);
   });
+  it('persists computed synthetic polygon evidence and keeps retries independent of boundary availability',async()=>{
+    const f=await valhallaInput(),provider=valhallaFixture(),artifact=boundaryFixture();
+    const boundary=await import('../modules/posted-routes/route-boundary');
+    boundary.setBoundaryArtifactForTests(artifact);
+    const confirmed=confirmPreview(f.input,(await f.send(`${path}/preview`)).body),key=randomUUID();
+    const created=await f.send(path,confirmed,key);
+    expect(created.status,JSON.stringify(created.body)).toBe(201);
+    const saved=await request(f.app).get(`${path}/${created.body.offer.id}`).set('Authorization',`Bearer ${f.actor.token}`);
+    expect(saved.body.offer.route_verification.boundary).toMatchObject({
+      artifactSha256:artifact.geometrySha256,policyVersion:'2026-10-03.2',outsideMetres:0,outsideSeconds:0,
+      artifact:{datasetId:artifact.datasetId,archiveSha256:artifact.archiveSha256,normalizedCrs:'OGC:CRS84',uncertaintyMetres:10}});
+    boundary.setBoundaryArtifactForTests(null);provider.fail=true;
+    expect((await f.send(path,confirmed,key)).body.offer.operation_id).toBe(created.body.offer.operation_id);
+  });
+  it('measures a synthetic hole crossed between vertices using whole-segment distance and whole-edge time',async()=>{
+    const f=await valhallaInput();valhallaFixture();
+    const artifact=boundaryFixture([[rectangle(77.74,20.89,77.78,20.91),rectangle(77.756,20.899,77.759,20.901)]]);
+    (await import('../modules/posted-routes/route-boundary')).setBoundaryArtifactForTests(artifact);
+    const confirmed=confirmPreview(f.input,(await f.send(`${path}/preview`)).body);
+    const created=await f.send(path,confirmed);
+    expect(created.status,JSON.stringify(created.body)).toBe(201);
+    const saved=await request(f.app).get(`${path}/${created.body.offer.id}`).set('Authorization',`Bearer ${f.actor.token}`);
+    expect(saved.body.offer.route_verification.boundary).toMatchObject({outsideMetres:520,outsideSeconds:120,
+      outsideShapeSegments:[1],crossingCount:2,timingMethod:'whole-provider-edge-upper-bound'});
+  });
   it('enforces boundary evidence limits without claiming synthetic polygons verify Maharashtra',async()=>{
     const f=await valhallaInput();valhallaFixture();
     const confirmed=confirmPreview(f.input,(await f.send(`${path}/preview`)).body);
@@ -5561,6 +5590,135 @@ describe('ticket 10 isolated posted route preparation',()=>{
     boundary.setBoundaryCheckForTests(async()=>({artifactSha256:'5'.repeat(64),policyVersion:'2026-10-03.2',outsideMetres:5000,outsideSeconds:600}));
     expect((await f.send(path,confirmed)).status).toBe(201);
   });
+  it.each([
+    ['requested point outside',boundaryFixture([[rectangle(77.74,20.89,77.78,20.90005)]])],
+    ['routed point outside',boundaryFixture([[rectangle(77.74,20.90005,77.78,20.91)]])],
+    ['point exactly on boundary',boundaryFixture([[rectangle(77.75,20.89,77.78,20.91)]])],
+    ['point within uncertainty band',boundaryFixture([[rectangle(77.749995,20.89,77.78,20.91)]])],
+    ['point in hole',boundaryFixture([[rectangle(77.74,20.89,77.78,20.91),rectangle(77.749,20.899,77.751,20.901)]])],
+  ])('polygon boundary rejects %s without saving a route',async(_name,artifact)=>{
+    const f=await valhallaInput();valhallaFixture();
+    artifact.uncertaintyMetres=1;
+    (await import('../modules/posted-routes/route-boundary')).setBoundaryArtifactForTests(artifact);
+    const preview=await f.send(`${path}/preview`);expect(preview.status).toBe(200);
+    const result=await f.send(path,confirmPreview(f.input,preview.body));
+    expect(result.body.error.code,JSON.stringify(result.body)).toBe('BOUNDARY_INVALID');
+    expect((await verificationPool.query('SELECT count(*)::int AS n FROM posted_route_operations')).rows[0].n).toBe(0);
+    expect((await verificationPool.query('SELECT count(*)::int AS n FROM posted_route_offers')).rows[0].n).toBe(0);
+  });
+  it.each([
+    ['along a border',rectangle(77.756,20.9,77.759,20.902)],
+    ['near a border',rectangle(77.756,20.90005,77.759,20.902)],
+    ['through a vertex',[[77.756,20.902],[77.7575,20.9],[77.759,20.902],[77.756,20.902]] as [number,number][]],
+    ['narrow uncertain excursion',rectangle(77.756,20.899,77.7561,20.901)],
+  ])('polygon boundary rejects an uncertain crossing %s',async(_name,hole)=>{
+    const f=await valhallaInput();valhallaFixture();
+    (await import('../modules/posted-routes/route-boundary')).setBoundaryArtifactForTests(
+      boundaryFixture([[rectangle(77.74,20.89,77.78,20.91),hole]]));
+    const preview=await f.send(`${path}/preview`);
+    expect((await f.send(path,confirmPreview(f.input,preview.body))).body.error.code).toBe('BOUNDARY_INVALID');
+  });
+  it.each([
+    [4999,599,201],[5000,600,201],[5001,600,422],[5000,600.1,422],
+  ])('polygon boundary multipart excursion upper bounds %sm/%ss return %s',async(metres,seconds,status)=>{
+    const f=await valhallaInput(),provider=valhallaFixture();
+    setFixtureRoute(provider,[[77.75,20.9],[77.752,20.9],[77.8,20.9],[77.802,20.9]],[208,metres,208],[10,seconds,10]);
+    const input={...f.input,destination:[77.802,20.9001]};
+    const artifact=boundaryFixture([[rectangle(77.74,20.89,77.76,20.91)],[rectangle(77.79,20.89,77.81,20.91)]]);
+    (await import('../modules/posted-routes/route-boundary')).setBoundaryArtifactForTests(artifact);
+    const preview=await f.send(`${path}/preview`,input);expect(preview.status,JSON.stringify(preview.body)).toBe(200);
+    const result=await f.send(path,confirmPreview(input,preview.body));
+    expect(result.status,JSON.stringify(result.body)).toBe(status);
+    if(status===201){
+      const saved=await request(f.app).get(`${path}/${result.body.offer.id}`).set('Authorization',`Bearer ${f.actor.token}`);
+      expect(saved.body.offer.route_verification.boundary).toMatchObject({outsideMetres:metres,outsideSeconds:seconds,
+        outsideShapeSegments:[1],crossingCount:2});
+    }else expect(result.body.error.code).toBe('BOUNDARY_INVALID');
+  });
+  it.each([[2500,300,201],[2501,300,422],[2500,301,422]])(
+    'polygon boundary sums both excursions rather than accepting each individually (%s/%s)',async(metres,seconds,status)=>{
+      const f=await valhallaInput(),provider=valhallaFixture();
+      const coordinates:[number,number][]=[[77.75,20.9],[77.752,20.9],[77.776,20.9],[77.778,20.9],[77.802,20.9],[77.804,20.9]];
+      setFixtureRoute(provider,coordinates,[208,2500,208,metres,208],[10,300,10,seconds,10]);
+      const input={...f.input,destination:[77.804,20.9001]};
+      (await import('../modules/posted-routes/route-boundary')).setBoundaryArtifactForTests(boundaryFixture([
+        [rectangle(77.74,20.89,77.76,20.91)],[rectangle(77.77,20.89,77.785,20.91)],[rectangle(77.795,20.89,77.81,20.91)]]));
+      const preview=await f.send(`${path}/preview`,input);expect(preview.status,JSON.stringify(preview.body)).toBe(200);
+      const result=await f.send(path,confirmPreview(input,preview.body));
+      expect(result.status,JSON.stringify(result.body)).toBe(status);
+      if(status===201){
+        const saved=await request(f.app).get(`${path}/${result.body.offer.id}`).set('Authorization',`Bearer ${f.actor.token}`);
+        expect(saved.body.offer.route_verification.boundary).toMatchObject({outsideMetres:5000,outsideSeconds:600,crossingCount:4});
+      }
+    });
+  it('polygon boundary counts an edge once when it contains multiple outside shape segments',async()=>{
+    const f=await valhallaInput(),provider=valhallaFixture();
+    provider.trace.edges=[{begin_shape_index:0,end_shape_index:3,length:1.56,way_id:1,drive_on_right:false,end_node:{elapsed_time:180.1}}];
+    provider.locate[1].edges[0].way_id=1;
+    (await import('../modules/posted-routes/route-boundary')).setBoundaryArtifactForTests(boundaryFixture([
+      [rectangle(77.74,20.89,77.78,20.91),rectangle(77.751,20.899,77.754,20.901),rectangle(77.761,20.899,77.764,20.901)]]));
+    const preview=await f.send(`${path}/preview`);expect(preview.status).toBe(200);
+    const result=await f.send(path,confirmPreview(f.input,preview.body));expect(result.status,JSON.stringify(result.body)).toBe(201);
+    const saved=await request(f.app).get(`${path}/${result.body.offer.id}`).set('Authorization',`Bearer ${f.actor.token}`);
+    expect(saved.body.offer.route_verification.boundary).toMatchObject({outsideMetres:1040,outsideSeconds:181,outsideShapeSegments:[0,2],crossingCount:4});
+  });
+  it.each(['missing','nonmonotonic','mismatched total'])(
+    'polygon boundary rejects %s provider timing without deriving time from distance',async(kind)=>{
+      const f=await valhallaInput(),provider=valhallaFixture();
+      if(kind==='missing')delete provider.trace.edges[0].end_node;
+      if(kind==='nonmonotonic')provider.trace.edges[1].end_node={elapsed_time:100};
+      if(kind==='mismatched total')provider.trace.edges[1].end_node={elapsed_time:175};
+      await syntheticBoundary();
+      const preview=await f.send(`${path}/preview`);expect(preview.status).toBe(200);
+      expect((await f.send(path,confirmPreview(f.input,preview.body))).body.error.code).toBe('BOUNDARY_INVALID');
+    });
+  it('polygon boundary fails closed for malformed artifact provenance, checksums and topology',async()=>{
+    const f=await valhallaInput();valhallaFixture();
+    const confirmed=confirmPreview(f.input,(await f.send(`${path}/preview`)).body),base=boundaryFixture();
+    const invalidArtifacts=[{...base,geometrySha256:'0'.repeat(64)},{...base,archiveSha256:'missing'},
+      {...base,sourceCrs:''},{...base,normalizedCrs:'EPSG:7755'},{...base,topologyValidation:''},
+      {...base,reuseEvidence:''},{...base,uncertaintyMetres:0},{...base,policyVersion:'old'},
+      boundaryFixture([[[[77.74,20.89],[77.78,20.91],[77.74,20.91],[77.78,20.89],[77.74,20.89]]]]),
+      boundaryFixture([[rectangle(77.74,20.89,77.78,20.91).slice(0,-1)]]),
+      boundaryFixture([[rectangle(77.74,20.89,77.78,20.91),rectangle(77.79,20.89,77.8,20.9)]]),
+      boundaryFixture([[rectangle(77.74,20.89,77.78,20.91)],[rectangle(77.76,20.895,77.8,20.915)]]),
+      boundaryFixture([[rectangle(20.89,77.74,20.91,77.78)]])];
+    const boundary=await import('../modules/posted-routes/route-boundary');
+    for(const artifact of invalidArtifacts){
+      boundary.setBoundaryArtifactForTests(artifact);
+      const result=await f.send(path,confirmed);
+      expect(result.body.error.code,JSON.stringify(result.body)).toBe('BOUNDARY_UNAVAILABLE');
+    }
+    expect((await verificationPool.query('SELECT count(*)::int AS n FROM posted_route_offers')).rows[0].n).toBe(0);
+  });
+  it('polygon boundary cannot be supplied by a client or retained as production approval',async()=>{
+    const f=await valhallaInput();valhallaFixture();await syntheticBoundary();
+    const confirmed=confirmPreview(f.input,(await f.send(`${path}/preview`)).body);
+    expect((await f.send(path,{...confirmed,boundary:boundaryFixture()})).status).toBe(400);
+    vi.stubEnv('NODE_ENV','production');
+    try{
+      const boundary=await import('../modules/posted-routes/route-boundary');
+      expect(()=>boundary.setBoundaryArtifactForTests(boundaryFixture())).toThrow('test only');
+      expect((await f.send(path,confirmed)).body.error.code).toBe('BOUNDARY_UNAVAILABLE');
+    }finally{vi.unstubAllEnvs();}
+    expect((await verificationPool.query('SELECT count(*)::int AS n FROM posted_route_offers')).rows[0].n).toBe(0);
+  });
+  it('polygon boundary rejects a pathological artifact within the topology work budget',async()=>{
+    const f=await valhallaInput();valhallaFixture();
+    const polygons=boundaryFixture().geometry.coordinates;
+    // Disjoint detailed squares defeat an intersection-only work counter:
+    // containment must also visit their many ring edges for each pair.
+    for(let i=0;i<900;i++){
+      const corners=rectangle(78+i*0.001,21,78.0005+i*0.001,21.0005),ring:[number,number][]=[];
+      for(let edge=0;edge<4;edge++)for(let j=0;j<25;j++)
+        ring.push([corners[edge][0]+(corners[edge+1][0]-corners[edge][0])*j/25,
+          corners[edge][1]+(corners[edge+1][1]-corners[edge][1])*j/25]);
+      ring.push(ring[0]);polygons.push([ring]);
+    }
+    (await import('../modules/posted-routes/route-boundary')).setBoundaryArtifactForTests(boundaryFixture(polygons));
+    const preview=await f.send(`${path}/preview`);
+    expect((await f.send(path,confirmPreview(f.input,preview.body))).body.error?.code).toBe('BOUNDARY_UNAVAILABLE');
+  },15000);
   it('requires confirmation of a Valhalla preview and fails closed without boundary evidence',async()=>{
     const a=await participant(),app=createApp();
     const input={vehicle_id:a.vehicle,mode:'car',origin:[77.75,20.9],destination:[77.8,20.95],departure_at:departure(),capacity:2};

@@ -6,52 +6,42 @@
 
 **Status:** claimed
 
-- [ ] The server owns and versions the posted route and rejects invalid geometry, mode, vehicle, schedule, support window, and overlapping commitments.
-- [ ] Publication, reads, and operator audit distinguish the new route policy from historical corridor offers; real-booking exposure stays disabled.
-- [ ] Authenticated HTTP/PostgreSQL tests cover authorization, idempotency, rollback, route-service failure, overlap, and recovery evidence.
+- [ ] The server owns and versions the posted route and rejects invalid geometry, mode, vehicle, schedule, support window, and overlapping commitments. Implementation and synthetic checks pass; actual SOI artifact adoption remains below.
+- [x] Publication, reads, and operator audit distinguish the new route policy from historical corridor offers; real-booking exposure stays disabled.
+- [x] Authenticated HTTP/PostgreSQL tests cover authorization, idempotency, rollback, route-service failure, overlap, and recovery evidence.
 
-## Implementation note
+## Implementation — 2026-10-04
 
-Ticket 10 has an isolated, versioned server-owned route preparation model and driver-only read API on `codex/10-server-verified-routes`. The synthetic adapter is test-only. Live route publication and real-booking discovery remain disabled until the selected ticket 02 Valhalla policy is implemented and rehearsed, ticket 04 approves Maharashtra boundary enforcement and support coverage, and the migration/release gates are complete. The migration is committed as forward-only source but is not deployed.
+The work continues on `codex/10-valhalla-route-publication` in draft [PR #83](https://github.com/jatin-awankar/Petrol-Partner/pull/83). The maintainer explicitly authorized implementing boundary rules against synthetic polygon fixtures while retaining fail-closed production behavior. This is not approval of the actual SOI artifact or a scope amendment resolving the ticket.
 
-### Remaining acceptance blockers
+Implemented and exercised through authenticated HTTP/PostgreSQL:
 
-1. Ticket 02 selects self-hosted Valhalla/OSM (`auto` for cars, `motorcycle` for bikes/scooters). The adapter and confirmed snaps within 30 m, provenance, edge-distance normalization and bounded failures are now implemented and tested with controlled HTTP responses under `unrestricted-route-contribution-2026-10-03.2`. Local actual-provider compatibility now passes opt-in tests for all three modes with a pinned, inventoried graph; no live production provider or immutable build-attesting gateway has been evidenced. Hosting and staging retain their existing owners.
-2. Ticket 04 has resolved operating-policy selection as `2026-10-03.2`, including the selected SOI boundary source. The complete archive, Maharashtra attributes and initial topology/CRS checks are now recorded. Reuse rights, a deployable derived artifact, uncertainty band, endpoint containment and route-crossing timing remain unavailable or unimplemented. The preparatory endpoint therefore fails closed on missing boundary evidence. This is an implementation blocker, not an unresolved policy choice.
-3. Ticket 05's deployed-data migration decision and ticket 06's legacy boundary closure require release evidence before migration 0037 can be deployed or any offer exposed to booking. Ticket 18 still controls real-booking activation.
-4. Published participant discovery, request and acceptance against a posted route, safe stopping-place checks, and replacement/version transition remain unavailable. Those flows need the approved provider and policy; driver-only prepared reads are the implemented scope.
-5. Recovery restoration is exercised in a local PostgreSQL test, but staging restoration and an independently configured production receipt store remain launch evidence.
+- Self-hosted Valhalla `auto` for cars and `motorcycle` for bikes/scooters; route/engine/graph provenance, cumulative integer metres, bounded failures and explicit safe endpoint confirmation within 30 m. Local real-engine rehearsals pass for all three categories, including the provider elapsed-time field.
+- Polygon and multipart containment of requested and confirmed endpoints, preservation of holes, uncertainty clearance, rejection of ambiguous/tangent/collinear/near-border crossings, and cumulative outside-state bounds across the saved route.
+- Conservative excursion accounting: charge the entire saved shape-segment distance for a segment that travels outside, and the entire provider edge elapsed-time delta for any affected edge, counted once and rounded up. Reject totals above 5,000 m or 600 s. Missing, nonmonotonic or duration-inconsistent timing rejects verification; no time is inferred from distance.
+- Artifact shape, normalized coordinate order/extent, checksum, provenance fields, topology and bounded computation checks. Test fixtures are invented geometry; passing these checks does not grant SOI reuse rights or install production data.
+- Immutable boundary provenance and calculation version in the existing route verification snapshot, audit-linked operation and signed receipt. Successful retries and recovery preserve their original evidence. Historical rows, policy versions and receipt formats remain unchanged.
 
+New routes retain policy versions `unrestricted-route-contribution-2026-10-03.2` and `2026-10-03.2`. Production publication still returns `BOUNDARY_UNAVAILABLE`, including when a test artifact was previously retained in memory. No client payload, environment approval flag or test metadata can enable it. Real bookings remain disabled.
 
-## Ticket 02 implementation handoff — 2026-10-03
+## Remaining acceptance checks — artifact-dependent only
 
-- [ ] Implement the selected Valhalla adapter and graph/engine/costing/normalization provenance without modifying historical route versions.
-- [ ] Store requested and driver-confirmed routed endpoints separately; reject over-30-m, wrong-side and ambiguous snaps. Require a confirmed safe stopping place and preserve passenger matching rules.
-- [ ] Test exact edge boundaries, sub-edge interpolation/rounding, repeated geometry, all intended modes, invalid or unavailable provider responses, timeout, concurrency limits, idempotency, audit and recovery via authenticated HTTP/PostgreSQL.
-- [ ] Keep production and real-booking exposure closed until actual hosting, licence-compliance, staging and release evidence passes tickets 16–18 and pilot-readiness 07.
+1. Establish applicable reuse rights for the selected `SOI/ABDB/VECTOR/50000/2025/STATE/INDIA` artifact and its derived, retained server-side geometry. The authorized SOI request was sent on 2026-10-03; sending is not permission. Retain the resulting licence/permission reference with the artifact.
+2. Adopt a pinned deployable artifact: independently verify the complete archive and normalized-geometry SHA-256, Maharashtra attributes, actual source CRS and transformation to longitude/latitude, and full topology. The recorded local inspection is preliminary, not production adoption. Derive and justify its uncertainty band from verified accuracy; the fixtures' bands are not Maharashtra accuracy claims.
+3. Load only that reviewed artifact through a production integration with fixed provenance, then run the authenticated endpoint, hole, multipart, border, crossing and cumulative distance/time cases against the actual detailed geometry and representative saved routes. Verify its topology/work bounds and uncertainty behavior at real artifact scale. Missing or mismatched artifact evidence must remain unavailable. Only this completed evidence can satisfy the remaining acceptance criterion.
 
-Ticket 02's policy resolution does not resolve this implementation ticket. TomTom is no longer a dependency.
+Hosting, immutable production gateway, staging, external operation/rate review, release migration, deployed recovery and real-booking approval keep their existing owners; they are not added to ticket 10's remaining checklist. Passenger discovery, segment quotes, requests/acceptance and outcomes retain their existing tickets and production gates.
 
-## Operating-policy evidence handoff — ticket 04, 2026-10-03
+## Evidence and history
 
-Ticket 04 resolves policy selection only. Before production use, obtain and hash the selected SOI `SOI/ABDB/VECTOR/50000/2025/STATE/INDIA` artifact, validate CRS/transformation, topology and Maharashtra attributes, select and justify the boundary uncertainty band, and retain provenance in immutable route terms. Test fail-closed endpoint and confirmed-snap containment, border uncertainty, holes/multipart geometry and cumulative outside-state limits of 5 km/10 minutes within 50 km/90 minutes. Missing boundary data or outside-state timing rejects verification. Enforce the approved support/schedule policy through authenticated API/PostgreSQL tests. Ticket 16 owns production reuse evidence. This supersedes awaiting ticket 04 policy selection, not the missing implementation/validation. Status and live gates stay unchanged.
+- [Adapter and boundary implementation contract](../../../docs/operations/valhalla-route-preparation.md).
+- [Synthetic boundary implementation and validation](../../../docs/operations/evidence/ticket10-synthetic-boundary-2026-10-04.md).
+- [Complete local SOI inspection, pinned Valhalla build and SOI request send record](../../../docs/operations/evidence/ticket10-local-artifacts-2026-10-03.md).
 
-## Continuation — Valhalla adapter, 2026-10-03
+The original isolated route preparation, migration 0043, endpoint repeated-pass correction and dense-geometry regression remain in branch history. Earlier numeric boundary stubs established only limits; the 2026-10-04 tests now execute polygon geometry. Neither those tests nor the preliminary SOI inspection resolve actual-artifact adoption. Ticket 10 remains **claimed**.
 
-Status remains **claimed**. The adapter, explicit preview/endpoint confirmation, immutable provenance, cumulative edge metres and forward-only migration 0043 are implemented on `codex/10-valhalla-route-publication`. New preparations use route policy `unrestricted-route-contribution-2026-10-03.2` and operating policy `2026-10-03.2`. Historical rows and signed snapshot formats are preserved. Driver-private preparation, audit, notices, idempotency and independent receipt recovery remain in place; real bookings remain disabled.
+## Final validation — 2026-10-04
 
-[Implementation contract and exact blockers](../../../docs/operations/valhalla-route-preparation.md) supersede the earlier notes that provider/policy selection is still undecided. The complete SOI artifact and initial topology/CRS inspection are now recorded in the continuation below; derived reuse remains unresolved. No approved uncertainty band, endpoint containment or cumulative outside-state crossing/timing implementation can be claimed. Production preparation fails closed with `BOUNDARY_UNAVAILABLE`. Synthetic evidence-limit tests are not Maharashtra boundary tests. No reliable production Valhalla host or immutable build-attesting gateway has been validated; hosting and staging remain with their existing tickets.
+`npm test` passed with the opt-in local Valhalla environment: **38 script checks, 407 API tests (all 208 authenticated HTTP/PostgreSQL cases), and 19 worker tests**. Ten script checks and one unrelated API live-provider check were skipped. The local graph is identified by the previously recorded immutable manifest; all database tests used a newly created disposable PostgreSQL 16 database. No deployed data was used.
 
-Do not check off all acceptance criteria or resolve this ticket on the strength of controlled provider fixtures. Its outstanding boundary implementation and production provider evidence remain explicit; broader hosting, external review, staging and booking approval have not been absorbed into ticket 10 or marked complete.
-
-Separate Standards and Spec reviews found and cleared endpoint ambiguity and dense-geometry regressions. Passenger matching is unchanged. Typechecking, API build and whitespace checks pass; lint has no errors and nine existing warnings. All PostgreSQL execution used a newly created disposable local database. The complete final test result is recorded in the linked implementation contract; none of these fixture checks supplies the missing SOI artifact or actual-host evidence.
-
-Before the local-artifact continuation, `npm test`: **38 script checks + 379 API tests + 19 worker tests passed**, including all 180 HTTP/PostgreSQL cases; 11 checks skipped. Final typecheck/API build/lint/whitespace checks passed (lint retains nine existing warnings). Both review axes have zero remaining actionable findings; missing boundary and actual-provider evidence remain explicitly open. Status stays **claimed** and all three top-level acceptance checkboxes remain unchecked rather than implying production boundary verification.
-
-## Local artifact and provider continuation
-
-The [dated evidence](../../../docs/operations/evidence/ticket10-local-artifacts-2026-10-03.md) records the full official SOI archive checksum, Maharashtra multipart/hole topology and actual-WKT transformation checks, and an inventoried local Valhalla 3.9 graph. The maintainer explicitly confirmed no existing SOI permission. The prepared permission request was subsequently sent with explicit maintainer authorization; the dated evidence contains the send record. Permission remains pending. Source/derived geometry remains outside the application; the production boundary check stays closed. Optional authenticated HTTP/PostgreSQL tests now exercise real local engine responses with a test-only build attestation, without substituting boundary approval. This does not satisfy production gateway or hosting evidence. Ticket 10 remains **claimed**, pending reusable boundary evidence and the boundary implementation/tests above.
-
-Final continuation validation: `npm test` with the opt-in local Valhalla environment passed **38 script checks, 382 API tests (including all 183 authenticated HTTP/PostgreSQL cases), and 19 worker tests**; ten script checks and one unrelated API live-provider check were skipped. Root typechecking, API build and whitespace checks passed; lint passed with nine pre-existing warnings. The preceding full run encountered one `ECONNRESET` in an existing acceptance test; that case passed in isolation and the complete final rerun exited zero. Standards and Spec continuation reviews each reported zero actionable findings. The reviewers inspected code/evidence but did not independently reproduce the artifact build. Ticket 10 remains claimed and real bookings remain disabled.
-
-SOI request sent on 2026-10-03, approximately 18:26 UTC; Gmail confirmed `SENT`. See the [send record](../../../docs/operations/evidence/ticket10-local-artifacts-2026-10-03.md#permission-request-send-record). Sending does not satisfy reusable-artifact evidence or resolve this ticket.
+`npm run typecheck`, `npm run api:build` and `git diff --check` passed. `npm run lint` passed with nine pre-existing warnings. Standards review found one uncounted topology-work path, reproduced and fixed with an authenticated red/green regression; its final review has zero actionable findings. Spec review, including the updated artifact-only checklist, has zero actionable findings. Reviews did not independently recreate the external artifact build. Ticket 10 remains claimed and the PR remains draft.

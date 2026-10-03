@@ -17,7 +17,8 @@ export function manifestDigest(manifest:ValhallaManifest){
 const invalid=()=>new AppError(422,'Valhalla route cannot be verified','ROUTE_INVALID');
 const unavailable=()=>new AppError(503,'Routing provider unavailable','ROUTING_UNAVAILABLE');
 const edgeSchema=z.object({begin_shape_index:z.number().int().nonnegative(),end_shape_index:z.number().int().positive(),
-  length:z.number().positive(),way_id:z.number().int().positive().max(Number.MAX_SAFE_INTEGER),drive_on_right:z.boolean()});
+  length:z.number().positive(),way_id:z.number().int().positive().max(Number.MAX_SAFE_INTEGER),drive_on_right:z.boolean(),
+  end_node:z.object({elapsed_time:z.number().nonnegative().max(5400)}).optional()});
 const noWarnings=z.array(z.unknown()).max(0).optional();
 const routeSchema=z.object({warnings:noWarnings,trip:z.object({warnings:noWarnings,status:z.literal(0),units:z.literal('kilometers'),
   locations:z.array(z.object({side_of_street:z.enum(['left','right']).optional()})).length(2),
@@ -63,7 +64,7 @@ export function configuredValhalla():RoutingAdapter{
       const leg=routed.trip.legs[0];
       const trace=traceSchema.parse(await post('trace_attributes',{...options,encoded_polyline:leg.shape,
         shape_match:'edge_walk',filters:{action:'include',attributes:['shape','edge.length','edge.begin_shape_index',
-          'edge.end_shape_index','edge.way_id','edge.drive_on_right']}}));
+          'edge.end_shape_index','edge.way_id','edge.drive_on_right','node.elapsed_time']}}));
       const normalized=buildValhallaDistanceProgression({routeShape:leg.shape,routeLengthKm:leg.summary.length,trace});
       const located=locateSchema.parse(await post('locate',{...options,locations,verbose:false}));
       const endpoints=[normalized.geometry.coordinates[0],normalized.geometry.coordinates.at(-1)!];
