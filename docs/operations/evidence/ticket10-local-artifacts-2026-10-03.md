@@ -1,6 +1,6 @@
 # Ticket 10 local artifact inspection — 2026-10-03
 
-Ticket 10 remains claimed. This extends the earlier [ticket 04 evidence](ticket04-boundary-and-policy-evidence-2026-10-03.md), which records an incomplete download. No deployed data, historical route terms or real-booking gates were changed. No SOI permission request was sent.
+Ticket 10 remains claimed. This extends the earlier [ticket 04 evidence](ticket04-boundary-and-policy-evidence-2026-10-03.md), which records an incomplete download. No deployed data, historical route terms or real-booking gates were changed. The SOI permission request was sent after explicit maintainer authorization; see the send record below.
 
 ## SOI archive and geometry inspection
 
@@ -23,7 +23,7 @@ The temporary unsimplified GeoJSON inspection output hashes to `a806c513d628cc76
 
 The maintainer confirmed there is **no existing permission**. The [SOI website copyright policy](https://surveyofindia.gov.in/pages/copyright-policy) requires written permission for reproduction, while the [geospatial guidelines](https://onlinemaps.surveyofindia.gov.in/GeospatialGuidelines.aspx) discuss broader use and digital display/printing. Their applicability to this exact derived, server-side artifact has not been established. This is unresolved licence evidence, not a conclusion that all processing is legally prohibited. Public availability alone is not the required reusable-artifact evidence.
 
-Prepared request, **not sent**, for the publisher's metadata contact `ngdc.soi@gov.in`:
+Request sent to the publisher's metadata contact `ngdc.soi@gov.in` (send record below):
 
 > Please confirm the applicable licence or provide written permission for Petrol Partner to use SOI/ABDB/VECTOR/50000/2025/STATE/INDIA, metadata dated 2026-05-06. We need to retain the downloaded state boundary, extract Maharashtra, transform its supplied LCC–WGS84 coordinates to WGS84, and store that derived geometry in a private application deployment and backups for server-side point containment and route intersection checks. Please clarify whether distribution of the derived artifact with application source is permitted, any commercial-use restrictions, required attribution, update obligations and other conditions. We can retain the artifact privately if redistribution is not permitted. The archive SHA-256 is b8325e5d9dd0f04a6663d775363fe38cd2f23bd9dbae3fb7118b4e6e0ce0bcb7.
 
@@ -62,3 +62,7 @@ The first rehearsal used a rounded road-centre point that produced Valhalla warn
 Final continuation validation: `npm test` with the opt-in local Valhalla environment passed **38 script checks, 382 API tests (including all 183 authenticated HTTP/PostgreSQL cases), and 19 worker tests**; ten script checks and one unrelated API live-provider check were skipped. Root typechecking, API build and whitespace checks passed; lint passed with nine pre-existing warnings. The preceding full run encountered one `ECONNRESET` in an existing acceptance test; that case passed in isolation and the complete final rerun exited zero. Standards and Spec continuation reviews each reported zero actionable findings. The reviewers inspected code/evidence but did not independently reproduce the artifact build. Ticket 10 remains claimed and real bookings remain disabled.
 
 After verification, the three disposable build/serving/PostgreSQL containers and the test database volume were removed. Temporary downloaded artifacts and diagnostic logs remain outside the repository; no local provider is left running.
+
+## Permission-request send record
+
+On 2026-10-03 at approximately 18:26 UTC, following explicit maintainer authorization, Gmail confirmed the prepared request was sent from `jatinawankar02@gmail.com` to `ngdc.soi@gov.in`. Subject: “Request for boundary-data reuse clarification — Petrol Partner / SOI ABDB Maharashtra”. Gmail returned message/thread ID `1a10304c58765182` with the `SENT` label. This establishes sending, not delivery, a reply or permission. Reuse rights remain pending; ticket 10 stays claimed and real bookings remain disabled.
