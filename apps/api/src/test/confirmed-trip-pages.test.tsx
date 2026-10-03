@@ -43,13 +43,13 @@ const booking = {id:"booking",offer_id:"offer",contribution_paise:2500,currency:
   passenger_verified_name:"Verified Passenger",trip_state:"scheduled",boarded:null,started_at:null};
 
 describe("pilot coordination notice on offer and request pages",() => {
-  it("tells a driver before publication that operator support contact and hours are unpublished",async() => {
+  it("gives a driver the controlled prelaunch support contacts",async() => {
     render(<PostRide />);
-    expect(await screen.findByText(/Support contact and operating hours are not yet published/i)).not.toBeNull();
+    expect(await screen.findByRole("link",{name:"Help and support"})).not.toBeNull();
   });
-  it("tells a passenger before requesting that operator support contact and hours are unpublished",async() => {
+  it("gives a passenger the controlled prelaunch support contacts",async() => {
     render(<SearchRidesPage />);
-    expect(await screen.findByText(/Support contact and operating hours are not yet published/i)).not.toBeNull();
+    expect(await screen.findByRole("link",{name:"Help and support"})).not.toBeNull();
   });
   it("shows the confirmed passenger the verified driver and limited car details",async() => {
     session.bookings=[booking];

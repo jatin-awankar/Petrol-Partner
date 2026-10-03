@@ -23,3 +23,11 @@ The authenticated seam now includes two HTTP-registered accounts with synthetic 
 Checks on explicitly disposable local PostgreSQL databases: the four ticket 15 tests passed, targeted driver/car integration passed (3/3), typecheck and targeted ESLint passed, and `npm test` passed on fresh `pp15_full_test` (root scripts 41 passed/6 skipped, API 220 passed/1 skipped, worker 19 passed). The previous full-suite failures did not recur on this fresh target.
 
 Keep this ticket claimed: a representative sanitized deployed copy, historical cutover decision, and mixed-version provider-auth recovery remain ticket 14 gaps. Ticket 09 has not published a public support contact or approved a separately reachable active-trip escalation path, so an actual participant support-contact request cannot be exercised. The route race, rollback, failed-delivery, and recovery checks pass in separate PostgreSQL tests; they are not all repeated within the one account-to-settlement journey. Real booking activation remains disabled.
+
+## Ticket 09 support update — 2026-10-03
+
+The earlier statement that no public contact has been published is superseded: `/support` now exposes both controlled inboxes, coverage and prelaunch limits. The maintainer has accepted monitored support/fallback and independent active-trip escalation as complete for ticket tracking. This acceptance supplies no new live test artifacts and does not complete this ticket's integrated provider-backed support/notice scenario. Ticket 09 remains claimed for remaining booking-specific end-to-end evidence; publication/discovery/passenger quote and approved-policy integration remain producer dependencies. Representative-copy, recovery and launch gates above are unchanged.
+
+## Ticket 09 implementation completed — 2026-10-03
+
+Ticket 09 is resolved at its support/notice implementation boundary. Reuse its six HTTP/PostgreSQL scenarios and worker-backed event checks. This ticket still owns the full integrated journey when production publication/discovery/passenger-quote and approved-policy producers are available, alongside its existing representative-copy and recovery requirements. Do not infer production-provider evidence from the synthetic adapter or make ticket 09 wait on this downstream ticket. Status and real-booking gates remain unchanged.

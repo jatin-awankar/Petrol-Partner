@@ -1,6 +1,6 @@
 import {Router} from 'express';
 import {z} from 'zod';
-import {requireAuth} from '../../middleware/auth';
+import {requireAdmin,requireAuth} from '../../middleware/auth';
 import {asyncHandler} from '../../shared/http/async-handler';
 import {AppError} from '../../shared/errors/app-error';
 import * as service from './posted-routes.service';
@@ -29,24 +29,24 @@ function outcome(action:Parameters<typeof postedRouteOutcomesService.mutate>[2],
 }
 postedRouteRouter.get('/outcome-operations/:id',asyncHandler(async(req,res)=>res.json({operation:
   await postedRouteOutcomesService.operation(req.user!.userId,z.uuid().parse(req.params.id))})));
-postedRouteRouter.get('/incidents',asyncHandler(async(req,res)=>res.json({incidents:
+postedRouteRouter.get('/incidents',requireAdmin,asyncHandler(async(req,res)=>res.json({incidents:
   await postedRouteOutcomesService.incidents(req.user!.userId)})));
-postedRouteRouter.post('/incidents/:id/resolve',outcome('operator_incident',reason.extend({
+postedRouteRouter.post('/incidents/:id/resolve',requireAdmin,outcome('operator_incident',reason.extend({
   evidence_refs:z.array(z.string().trim().min(1).max(200)).max(20)})));
 postedRouteRouter.post('/allocations/:id/cancel',outcome('passenger_cancel',z.strictObject({reason:z.string().max(1000).optional()})));
 postedRouteRouter.post('/allocations/:id/incidents',outcome('incident_report',reason.extend({
   kind:z.enum(['absence','interruption','safety','disagreement'])})));
 postedRouteRouter.post('/:id/cancel',outcome('driver_cancel',reason));
-postedRouteRouter.post('/:id/hold',outcome('hold',reason));
-postedRouteRouter.post('/:id/release-hold',outcome('release_hold',reason));
+postedRouteRouter.post('/:id/hold',requireAdmin,outcome('hold',reason));
+postedRouteRouter.post('/:id/release-hold',requireAdmin,outcome('release_hold',reason));
 postedRouteRouter.post('/:id/depart',outcome('depart',boarding));
 postedRouteRouter.post('/allocations/:id/driver-journey',outcome('driver_journey',journey));
 postedRouteRouter.post('/allocations/:id/passenger-journey',outcome('passenger_journey',journey));
 postedRouteRouter.post('/allocations/:id/payment-claim',outcome('payment_claim',method));
 postedRouteRouter.post('/allocations/:id/receipt',outcome('receipt',z.strictObject({})));
 postedRouteRouter.post('/allocations/:id/dispute',outcome('dispute',z.strictObject({})));
-postedRouteRouter.post('/allocations/:id/resolve-journey',outcome('operator_journey',journeyDecision));
-postedRouteRouter.post('/allocations/:id/resolve-settlement',outcome('operator_settlement',settlementDecision));
+postedRouteRouter.post('/allocations/:id/resolve-journey',requireAdmin,outcome('operator_journey',journeyDecision));
+postedRouteRouter.post('/allocations/:id/resolve-settlement',requireAdmin,outcome('operator_settlement',settlementDecision));
 postedRouteRouter.get('/seat-operations/:id',asyncHandler(async(req,res)=>res.json({operation:
   await postedRouteSeatService.operation(req.user!.userId,z.uuid().parse(req.params.id))})));
 postedRouteRouter.get('/requests/:id',asyncHandler(async(req,res)=>res.json({request:

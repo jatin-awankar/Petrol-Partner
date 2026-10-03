@@ -144,7 +144,7 @@ export default function LandingPage() {
       </section>
 
       <section className={styles.cta} aria-labelledby="cta-heading"><span className={styles.ctaSun} aria-hidden="true">✳</span><div><p className={styles.kicker}>GOOD RIDES START SOMEWHERE</p><h2 id="cta-heading">LET&apos;S GO<br /><span>TOGETHER.</span></h2></div><div className={styles.ctaRight}><p>Create an account and explore what&apos;s taking shape. Real ride bookings are not live yet.</p><Link href="/register">Create an account <ArrowUpRight size={20} /></Link></div></section>
-      <footer className={styles.footer}><span>petrol partner<span>.</span></span><small>For the route you&apos;re already taking.</small><div><Link href="/login">Sign in</Link><a href="#hero-heading">Back to top ↑</a></div></footer>
+      <footer className={styles.footer}><span>petrol partner<span>.</span></span><small>For the route you&apos;re already taking.</small><div><Link href="/support">Help and support</Link><Link href="/login">Sign in</Link><a href="#hero-heading">Back to top ↑</a></div></footer>
     </div>
   );
 }
