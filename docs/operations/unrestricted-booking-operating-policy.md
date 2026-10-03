@@ -60,3 +60,9 @@ The PRMITR fixed corridor, its six proposed stop pairs and landmarks, verified-s
 ## Resolution authority
 
 Jatin Awankar explicitly approved the scope amendment in [ticket 04 Answer](../../.scratch/unrestricted-booking/issues/04-approve-operating-and-support-policy.md#answer) on 2026-10-03. The policy is complete for implementation under that amended scope. A sole-operator personal-project demo does not require hiring or appointing a backup. Independent active-trip escalation and all named external/provider/retention/recovery evidence remain mandatory real-booking gates; approving this document neither establishes them nor waives them.
+
+## Support completion update — 2026-10-03
+
+Following ticket 09's implementation and synthetic rehearsals, Jatin Awankar explicitly directed that monitored support/receipt/response/fallback and independent active-trip escalation/missed-contact rehearsal be considered complete. Record this as maintainer-accepted operational completion, superseding earlier statements in this document that these support arrangements are still awaiting completion. This does not change policy version `2026-10-03.2` or its response targets. No new escalation identity, channel or rehearsal artifacts were supplied; the agent has not independently verified them and must not invent an appointment or contact detail.
+
+Ticket 09 remains claimed for booking-specific end-to-end notice evidence and configured provider/monitor integration. Tickets 10–13/15–17 retain their technical and rehearsal requirements. This update does not authorize deployment or real bookings; ticket 18's explicit launch decision remains required. See [ticket 09's current decision](../../.scratch/unrestricted-booking/issues/09-provide-monitored-support-and-notices.md#current-completion-decision--2026-10-03).

@@ -6,11 +6,21 @@
 
 **Status:** claimed
 
-- [ ] Publish the controlled contact and coverage in the relevant application views; verify it is monitored and test the fallback procedure.
+- [x] Publish the controlled contact and coverage in the relevant application views; verify it is monitored and test the fallback procedure.
 - [ ] Extend durable event and email work, retry and stalled-work visibility, and urgent outreach for the new policy without assuming delivery means receipt.
 - [x] Verify support privacy and failure behavior with synthetic events, including notification failure after a committed action; reuse applicable pilot-readiness 10 and 27 work.
 
-## Answer
+## Current completion decision — 2026-10-03
+
+The maintainer explicitly instructed: “consider 1 and 2 as done and update the docs as per that”. This refers to the follow-up resolution plan's **(1) monitored support, receipt/response and fallback rehearsal** and **(2) independent active-trip escalation and missed-contact rehearsal**, not acceptance criteria 1 and 2 above. These two operational items are accepted as complete for ticket tracking on the maintainer's authority. Acceptance criterion 1 is therefore checked; the booking-notice criterion remains partial.
+
+Evidence classification: **maintainer-accepted completion**, not an independently observed agent test. No new message timestamps, escalation contact identity/channel, paging receipt or rehearsal artifacts were supplied in this instruction. Do not invent those details, rewrite the earlier synthetic test results as live results, or infer authorization to enable bookings. Retain the operational record references for the release review when available.
+
+**Remaining item 3: booking-specific end-to-end evidence.** Existing synthetic request/acceptance, cancellation, journey/payment notice, failure/retry, privacy and incident tests pass. Complete the remaining existing-producer event matrix now where possible; production publication/discovery/passenger quote and updated-policy producers remain dependencies of tickets 10–13. Ticket 15 owns the integrated journey; tickets 16–17 retain actual-provider staging and outage validation. Independent monitor-to-human delivery through the configured provider remains an integration check, distinct from accepting the support arrangement itself. The detailed evidence document names the next tests and the existing ticket 13 MFA follow-up.
+
+**Status remains claimed solely for the unfinished technical/integrated notice evidence. Real bookings remain disabled.** Ticket 18's explicit launch decision is unchanged. Earlier statements below about support items 1 and 2 being open are historical and superseded by this decision; recorded observations and technical gaps remain unchanged.
+
+## Historical implementation answer
 
 The protected operator console now shows the two nominated inboxes, proposed monitoring window, and explicit pending fallback and active-trip escalation status. This is an internal preparation view; public contact and coverage remain unpublished. The same console distinguishes durable work by origin, event, and related entity without exposing notification message bodies, and warns that send status is not participant receipt. A synthetic unrestricted-booking notification exercises recovery readiness, failed email after notification commit, and retry with one durable event. The existing protected operator test verifies event visibility, redacted errors, and safe retry.
 
