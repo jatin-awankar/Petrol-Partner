@@ -1,8 +1,9 @@
+import {pointMetres,singleEndpointPass} from './endpoint-position';
 import {createHash} from 'node:crypto';
 import {z} from 'zod';
 import {AppError} from '../../shared/errors/app-error';
 import {buildValhallaDistanceProgression} from './valhalla-distance';
-import type {Point,RoutingAdapter,VerifiedRoute} from './routing';
+import type {RoutingAdapter,VerifiedRoute} from './routing';
 
 const hash=z.string().regex(/^[a-f0-9]{64}$/);
 const manifestSchema=z.strictObject({engineVersion:z.string().min(1).max(100),imageDigest:hash,
@@ -12,10 +13,6 @@ export type ValhallaManifest=z.infer<typeof manifestSchema>;
 export const NORMALIZATION_VERSION='valhalla-edge-metres-2026-10-03.1';
 export function manifestDigest(manifest:ValhallaManifest){
   return createHash('sha256').update(JSON.stringify(manifestSchema.parse(manifest))).digest('hex');
-}
-export function pointMetres(a:Point,b:Point){
-  const rad=Math.PI/180,lat=(a[1]+b[1])*rad/2;
-  return Math.hypot((a[0]-b[0])*rad*6371000*Math.cos(lat),(a[1]-b[1])*rad*6371000);
 }
 const invalid=()=>new AppError(422,'Valhalla route cannot be verified','ROUTE_INVALID');
 const unavailable=()=>new AppError(503,'Routing provider unavailable','ROUTING_UNAVAILABLE');
@@ -88,6 +85,10 @@ export function configuredValhalla():RoutingAdapter{
         verification:{manifest,manifestDigest:digest,costing,costingOptions:options.costing_options,
           normalizationVersion:NORMALIZATION_VERSION,edges:trace.edges,requested:{origin:input.origin,destination:input.destination},
           routed:{origin:endpoints[0],destination:endpoints[1]}}};
+      if(!singleEndpointPass(normalized.geometry.coordinates,endpoints[0],false)||
+        !singleEndpointPass(normalized.geometry.coordinates,input.origin,false)||
+        !singleEndpointPass(normalized.geometry.coordinates,endpoints[1],true)||
+        !singleEndpointPass(normalized.geometry.coordinates,input.destination,true))throw invalid();
       return result;
     }catch(error){if(error instanceof AppError)throw error;
       if(error instanceof z.ZodError||error instanceof SyntaxError||

@@ -5449,6 +5449,25 @@ describe('ticket 10 isolated posted route preparation',()=>{
     expect((await f.send(path,confirmed)).body.error.code).toBe('ENDPOINT_CONFIRMATION_REQUIRED');
     expect((await verificationPool.query('SELECT count(*)::int AS n FROM posted_route_offers')).rows[0].n).toBe(0);
   });
+  it('accepts a single straight endpoint pass with short first and last shape segments',async()=>{
+    const f=await valhallaInput(),provider=valhallaFixture();
+    const shape="_iszf@_nnhsC?gE?gqH?owH?gqH?gE";
+    provider.route.trip.legs[0].shape=shape;provider.trace.shape=shape;
+    provider.trace.edges=[0.01,0.51,0.52,0.51,0.01].map((length,i)=>({begin_shape_index:i,
+      end_shape_index:i+1,length,way_id:i===4?2:1,drive_on_right:false}));
+    const preview=await f.send(`${path}/preview`);
+    expect(preview.status,JSON.stringify(preview.body)).toBe(200);
+    expect(preview.body.route.cumulativeMeters).toEqual([0,10,520,1040,1550,1560]);
+  });
+  it('rejects repeated route passes at an endpoint even when locate returns one physical way',async()=>{
+    const f=await valhallaInput(),provider=valhallaFixture();
+    const shape='_iszf@_nnhsC?owH?owH?nwH?nwH?owH?owH?owH';
+    provider.route.trip.legs[0].shape=shape;provider.trace.shape=shape;
+    provider.route.trip.legs[0].summary.length=3.64;
+    provider.trace.edges=Array.from({length:7},(_,i)=>({begin_shape_index:i,end_shape_index:i+1,
+      length:0.52,way_id:i===6?2:1,drive_on_right:false}));
+    expect((await f.send(`${path}/preview`)).body.error.code).toBe('ROUTE_INVALID');
+  });
   it('fails closed on malformed, unavailable, graph-mismatched and inconsistent Valhalla responses',async()=>{
     const f=await valhallaInput(),provider=valhallaFixture();
     provider.fail=true;expect((await f.send(`${path}/preview`)).body.error.code).toBe('ROUTING_UNAVAILABLE');
