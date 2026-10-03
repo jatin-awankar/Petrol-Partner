@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately).
 
-**Status:** ready-for-human (provider gate outstanding)
+**Status:** claimed (provider gate outstanding)
 
 - [ ] Decide routing provider and travel modes, route identity and version, ordered point matching tolerances, safe pickup and drop-off checks, trip limits, and route-change behavior.
 - [x] Decide distance source, segment measurement along the posted route, integer-paise rounding, ₹5/km bike and scooter and ₹7/km car passenger rates, and zero additional charges.
@@ -12,7 +12,7 @@
 
 ## Decision record — confirmed, provider gate outstanding
 
-**Decision date:** 2026-09-28. **Policy version:** `unrestricted-route-contribution-2026-09-28.1`. **Reviewer:** Project maintainer (role supplied by the decision maker; personal name not supplied). The maintainer confirmed this record on 2026-09-28. It defines product rules for implementation; it does not approve a routing provider or enable real bookings.
+**Decision date:** 2026-09-28, amended 2026-10-03. **Original policy version:** `unrestricted-route-contribution-2026-09-28.1`. **Proposed revised version for future routes:** `unrestricted-route-contribution-2026-10-03.1`. **Reviewer:** Jatin Awankar, project maintainer. The maintainer confirmed the original route and contribution rules on 2026-09-28, selected a Maharashtra launch boundary on 2026-09-29, and selected one TomTom routing mode for bikes and scooters on 2026-10-03. Existing synthetic route records and the code constant still identify the original version; this amendment is not retroactive or deployed. It does not by itself approve a provider or enable real bookings.
 
 ### Route provider and vehicle modes
 
@@ -20,9 +20,11 @@ No provider is approved. Evaluate bike, scooter, and car independently; differen
 
 HERE is a candidate, not an approval: its `scooter` mode covers scooters and motorcycles, but the Limited Plan excludes broadly defined Asset Management, and the platform terms constrain storage of results beyond 30 days except for stated purposes whose application to this product is unresolved. Its no-payment-information plan lists 1,000 daily requests and 10 requests per second for scooter and car routing; that is not evidence of a production SLA or a guaranteed hard spending cap. Review exact use, retention, attribution, and display rights before selecting it. [HERE scooter routing](https://docs.here.com/routing/docs/routing-v8-scooter-routing), [HERE Limited Plan restrictions](https://www.here.com/get-started/pricing/limited-plan-restrictions), [HERE plan limits](https://www.here.com/get-started/pricing/rps-limits-excluded-use-cases), [HERE Platform Terms](https://legal.here.com/us-en/terms/here-platform-terms).
 
-TomTom is also a candidate, not an approval. Its v1 routing API documents `motorcycle` (beta) and `car`, India coverage, a no-card free allowance, and `429` on exhausted free quota. Scooter equivalence, durable route-result retention, display on the existing Mapbox map, and full failure-mode rehearsal remain unverified. See [TomTom provider research](../../../docs/operations/evidence/ticket02-tomtom-provider-research-2026-09-28.md).
+TomTom is **not approved for the current immutable-route design** under its published standard terms. The Portal Terms define route information as API Results and clause 11.4 prohibits storing those Results beyond a narrow client-cache exception. The v1 Calculate Route response does not provide a positive cache lifetime. The present server schema persists provider geometry, cumulative distances, distance, and duration as route versions, so using TomTom output there would conflict with the published terms. A separate written agreement granting this exact retention, including backup copies for the required audit period, would be needed to reconsider TomTom without changing the design. The product owner selected TomTom `motorcycle` for both bike and scooter route calculations while keeping the categories separate, but this choice does not establish scooter-specific Routing API support or complete beta restriction data. [Current TomTom terms assessment](../../../docs/operations/evidence/ticket02-tomtom-terms-2026-10-03.md). The [earlier candidate research](../../../docs/operations/evidence/ticket02-tomtom-provider-research-2026-09-28.md) is superseded on the storage and display questions.
 
-A [synthetic TomTom route rehearsal](../../../docs/operations/evidence/ticket02-tomtom-synthetic-rehearsal-2026-09-28.md) returned car and motorcycle routes with distance progression. It did not establish provider licence rights, scooter coverage, display permission, or quota-failure behavior. TomTom remains unapproved.
+A [synthetic TomTom route rehearsal](../../../docs/operations/evidence/ticket02-tomtom-synthetic-rehearsal-2026-09-28.md) returned car and motorcycle routes with distance progression. It did not establish retention permission, scooter coverage, quota-failure behavior, or suitability for real bookings. TomTom's v1 introduction documents displaying a route on another supplier's map, subject to attribution; that display use does not remove the storage restriction. The production adapter remains disabled.
+
+Self-hosted [Valhalla](https://valhalla.github.io/valhalla/) is a candidate for a separate feasibility check: its own demo lists car, motorcycle, and motor-scooter routing, and the software is MIT-licensed. Its underlying OpenStreetMap data is ODbL-licensed with attribution requirements. Neither a reliable ₹0 host for this service nor route quality, operating cost, attribution, and durable-output treatment for this application has been validated. A hosted Valhalla API may impose different terms; for example, [Stadia Maps' free plan forbids commercial use](https://stadiamaps.com/pricing). Do not treat open-source engine availability as an approved production arrangement.
 
 ### Posted route, segment, and safe stops
 
@@ -32,7 +34,7 @@ Pickup and drop-off are specific stopping places confirmed by the driver. They m
 
 ### Trip, schedule, and commitment limits
 
-There is no restriction on which geographic area a trip starts in. One posted trip is limited to 50 km and 90 minutes of server-verified routed travel; these are provisional operating limits, not a corridor. Post from 2 hours to 7 days before departure. Requests close 60 minutes before departure; driver acceptance closes 30 minutes before departure. Recheck declarations, restrictions, and support coverage at acceptance and departure. For driver, vehicle, and passenger, reject conflicting confirmed commitments over the interval from departure through verified expected arrival plus one 30-minute buffer. The 90-minute trip limit excludes that buffer; no separate 15-minute gap applies.
+The Maharashtra launch boundary selected on 2026-09-29 supersedes the original unrestricted-start decision. Both pickup and drop-off must lie inside the operator-approved, versioned state boundary; brief travel outside it may occur only on the verified posted route. The authoritative boundary dataset and server-side enforcement remain open under ticket 04. One posted trip is limited to 50 km and 90 minutes of server-verified routed travel; these are provisional operating limits, not a corridor. Post from 2 hours to 7 days before departure. Requests close 60 minutes before departure; driver acceptance closes 30 minutes before departure. Recheck declarations, restrictions, and support coverage at acceptance and departure. For driver, vehicle, and passenger, reject conflicting confirmed commitments over the interval from departure through verified expected arrival plus one 30-minute buffer. The 90-minute trip limit excludes that buffer; no separate 15-minute gap applies.
 
 ### Distance, contribution, and failure
 
@@ -46,10 +48,11 @@ Once any request exists, a change to route geometry, origin, destination, schedu
 
 ### Outstanding gates
 
-**Ticket 02 remains unresolved:** provider selection and its production mode, route-data retention, display, quota, and controlled no-payment-information rehearsal evidence are outstanding. The first acceptance criterion is incomplete; do not mark this ticket resolved until it is evidenced for the vehicle categories intended for launch. The technical route and contribution decisions above answer the remaining policy questions, subject to that provider gate.
+**Ticket 02 remains unresolved:** provider selection and its production mode, route-data retention, display, quota, and controlled no-payment-information rehearsal evidence are outstanding. The first acceptance criterion is incomplete. The next viable paths are (a) an explicit TomTom licence exception for the current immutable server record, followed by the remaining mode and failure rehearsals, or (b) a separately reviewed routing implementation and operating arrangement whose terms permit that record. Do not mark the ticket resolved until the chosen path is evidenced for each vehicle category intended for launch. The technical route and contribution decisions above answer the remaining policy questions, subject to that provider gate.
 
 **Separate real-booking blocker:** Ticket 03 must document the cost basis and external permissibility of the proposed ₹5/km bike/scooter and ₹7/km per-car-passenger rates, including the possible ₹21/km aggregate for three car passengers and the broader operation. This policy does not settle those questions. Real bookings remain disabled pending that review and all other launch gates.
 
 ## Comments
 
 - 2026-09-29: The project maintainer reported submitting a TomTom support case asking about production booking use, scooter coverage, route-result retention, display over Mapbox, and applicable restrictions. The case response and identifier have not been provided; no provider permission is inferred from submission.
+- 2026-10-03: First-party TomTom terms review found clause 11.4 incompatible with persisting TomTom route Results under the present design. The maintainer does not have a separate retention clause or written exception. TomTom is rejected as the production provider for that design under the reviewed standard terms; ticket remains claimed.

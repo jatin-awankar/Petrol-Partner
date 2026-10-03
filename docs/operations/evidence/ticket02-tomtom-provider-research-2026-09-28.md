@@ -1,5 +1,7 @@
 # Ticket 02: TomTom routing provider research (2026-09-28)
 
+**Superseded on retention and display:** The [2026-10-03 review of TomTom's published terms](ticket02-tomtom-terms-2026-10-03.md) found a prohibition on server storage of routing Results under the standard terms and documented cross-provider map display. Read the later assessment before considering TomTom for production.
+
 **Decision: not approved for real bookings.** This is a document review, not an account or API rehearsal. It establishes a plausible technical candidate but does not establish the licence needed to retain an auditable route snapshot or display it on the existing Mapbox map.
 
 ## Findings
