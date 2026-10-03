@@ -46,6 +46,7 @@ export default function ParticipantShell() {
       {open && <nav id="participant-menu" aria-label="Participant menu" className="participant-menu">
         <div className="participant-mobile-links">{destinations.map(({label,href,icon:Icon,available}) => <Link key={label} href={href} onClick={() => setOpen(false)}><Icon size={18}/>{label}{!available && <span className="nav-gate">Later</span>}</Link>)}</div>
         <p className="participant-menu-title">Your account</p>
+        <Link href="/support" onClick={() => setOpen(false)}>Help and support</Link>
         <Link href="/notifications" onClick={() => setOpen(false)}><Bell size={18}/>Notifications</Link>
         <Link href="/profile-settings" onClick={() => setOpen(false)}><CircleUserRound size={18}/>Account settings</Link>
         <Link href="/adult-declaration" onClick={() => setOpen(false)}><ShieldCheck size={18}/>Adult declaration</Link>

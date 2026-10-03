@@ -8,7 +8,7 @@
 
 - [ ] Publish the controlled contact and coverage in the relevant application views; verify it is monitored and test the fallback procedure.
 - [ ] Extend durable event and email work, retry and stalled-work visibility, and urgent outreach for the new policy without assuming delivery means receipt.
-- [ ] Verify support privacy and failure behavior with synthetic events, including notification failure after a committed action; reuse applicable pilot-readiness 10 and 27 work.
+- [x] Verify support privacy and failure behavior with synthetic events, including notification failure after a committed action; reuse applicable pilot-readiness 10 and 27 work.
 
 ## Answer
 
@@ -27,3 +27,15 @@ Checks: `npm run typecheck`, focused worker PostgreSQL test (5 passed), focused 
 ## Operating-policy evidence handoff — ticket 04, 2026-10-03
 
 Ticket 04 is now resolved for implementation under its explicit scope amendment. Implement the approved `2026-10-03.2` sole-operator policy and both Gmail contacts, retaining their shared-failure limitation. Rehearse personal urgent acknowledgement within 15 minutes, routine response within nine covered hours, missed-contact pause, unsupported-departure blocking and incident reconciliation. Synthetic escalation may be simulated and must be labelled as such. Public operational claims and real-trip readiness still require receipt evidence, an independently reachable active-trip escalation arrangement and missed-contact rehearsal. No backup has been appointed. This supersedes references above to ticket 04 awaiting policy approval; all unperformed support evidence remains open. Keep status claimed.
+
+## Continuation — 2026-10-03
+
+Resumed from updated `main` (`6c28595`) on `codex/09-complete-support-notices`, preserving the existing implementation and claim. This request supersedes the earlier deferral of application contact publication. Ticket 04 policy `2026-10-03.2` is approved for implementation, not launch.
+
+Published controlled support contacts, coverage and explicit prelaunch limitations in `/support`, linked from public/auth/participant/historical views and reused in the operator console. Three actual booking-mutation HTTP/PostgreSQL rehearsals now cover acceptance retry exhaustion, recipient privacy, cancellation delivery failure, journey/payment notices, and missed-contact pause/incident reconciliation. Fixed excessive outcome recipients, incident reconciliation while paused, nonempty evidence-reference serialization and missing MFA guards on incident reads/resolution. Existing notification, worker, monitor and offline fallback infrastructure is reused.
+
+Acceptance criterion 1 remains partial: application publication and simulated fallback/missed-contact behavior are evidenced, but live monitored receipt and independent active-trip escalation are not. Criterion 2 remains partial: local durable work, worker failure/retry and coded outreach pass; independent paging and every production booking-specific flow remain unevidenced. Criterion 3's synthetic verification is evidenced. **Status stays claimed. Real bookings remain disabled.**
+
+[Detailed evidence and next tests](../../../docs/operations/evidence/ticket09-support-notices-2026-10-03.md) distinguish existing evidence, new failures/fixes, simulated 15-minute and nine-covered-hour clocks, and unperformed live work. Exact dependencies: ticket 09 owner and pilot-readiness 27 for actual human receipt and independent escalation; tickets 10/11 for public publication/discovery/quote producers; tickets 12/13/15 for approved-policy integration and remaining event coverage; tickets 16/17 for real-provider staging/outage evidence; ticket 18 for the explicit launch decision. The current mutation fixtures retain operating snapshot `2026-09-29.1`; no existing records were silently moved to the new policy.
+
+Continuation checks: lint (zero errors, nine existing warnings), typecheck, three focused HTTP/PostgreSQL rehearsals, rendered support/coordination/operator tests, full tests and production builds passed. Final full suite: root 38 passed/10 skipped; API 363 passed/1 skipped; worker 19 passed. One intermediate full run timed out in an existing departure/cancellation race; isolated and final full reruns passed without weakening the test. Separate standards and spec reviews reported zero actionable findings. Phone/tablet/desktop support-page layout and keyboard access were inspected. No deployed data, external messages or real bookings were changed.

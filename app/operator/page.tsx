@@ -1,5 +1,7 @@
 "use client";
 
+import { SupportNotice } from "@/components/support/SupportNotice";
+
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api/client";
@@ -355,11 +357,7 @@ export default function OperatorPage() {
     <label className="block">Decision reason<input className="mt-1 block w-full rounded border p-2" value={reason} onChange={(event) => setReason(event.target.value)} maxLength={500} /></label>
     <section className="operator-panel space-y-3"><h2 className="font-semibold">Pause controls</h2><p>Proposed action: pause or resume the named historical capability. Impact: server permission changes, but the booking launch gate remains closed.</p>{status?.capabilities.map((item) => <div key={item.capability} className="operator-case"><span>{item.capability}: {item.paused ? "paused" : "open"}{item.pending ? " (pending)" : ""}</span><div className="flex flex-wrap gap-3"><button disabled={busy || !!controlAttempt || reason.trim().length < 8} onClick={() => decide(item.capability, true)}>Pause</button><button disabled={busy || !!controlAttempt || reason.trim().length < 8} onClick={() => decide(item.capability, false)}>Resume</button></div></div>)}</section>
     <section className="operator-panel"><h2 className="font-semibold">Unknown and pending decisions</h2>{pending.length ? pending.map((item) => <div key={item.id} className="operator-case"><p>{item.id} · {item.capability} · {item.paused ? "pause" : "resume"} · {item.state}</p><p>Original reason: {item.reason}</p><p>Actor: operator · deadline: before protected writes reopen · outcome: pending durable confirmation.</p><div className="flex flex-wrap gap-3"><button disabled={busy || reason.trim().length < 8} onClick={() => resumePending(item.id)}>Complete pending decision</button><button disabled={busy} onClick={() => checkPendingStatus(item.id)}>Check status</button></div></div>) : <p>No pending operator decisions recorded.</p>}</section>
-    <section className="space-y-2 rounded border p-4"><h2 className="font-semibold">Unrestricted support preparation</h2>
-      <p>Proposed contact: jatinawankar23@gmail.com. Nominated fallback inbox: supportpp@gmail.com.</p>
-      <p>Both inboxes depend on Gmail and the same operator. Separately reachable fallback and active-trip escalation are pending approval. This is an internal plan, not published service coverage. Real bookings remain disabled.</p>
-      <p>Proposed monitoring: Monday–Friday, 09:00–18:00 IST and until every active trip is resolved. Pause new commitments whenever coverage is unavailable.</p>
-    </section>
+    <section className="operator-panel space-y-3"><h2 className="font-semibold">Approved prelaunch support</h2><SupportNotice /></section>
     <section id="delivery" className="operator-panel space-y-3"><div className="operator-panel-head"><span>04 / DELIVERY</span><h2>Notification delivery</h2><p>Investigate failed sends and act before their due time. A sent email is not proof that anyone received or read it.</p></div>
       <p>A sent email or recorded outreach is not proof that a participant received or read a notice. Confirm urgent contact independently and record its outcome.</p>
       <p>Due: {delivery?.health.due ?? "—"} · Stalled over five minutes: {delivery?.health.stalled ?? "—"} · Expired leases: {delivery?.health.expired_leases ?? "—"} · Exhausted: {delivery?.health.exhausted ?? "—"}</p>

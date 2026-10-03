@@ -114,7 +114,7 @@ export async function resolveIncident(db:PoolClient,id:string,actor:string,opera
   reason:string,evidenceRefs:string[]){return (await db.query(`UPDATE posted_route_incidents
   SET status='resolved',resolved_by=$2,resolution_operation_id=$3,resolution_reason=$4,
     evidence_refs=$5,resolved_at=now() WHERE id=$1 AND status='open' RETURNING id`,
-  [id,actor,operation,reason,evidenceRefs])).rowCount;}
+  [id,actor,operation,reason,JSON.stringify(evidenceRefs)])).rowCount;}
 export const hasAudit=async(db:Db,id:string)=>Boolean((await db.query(
   "SELECT 1 FROM audit_logs WHERE metadata->>'operationId'=$1",[id])).rowCount);
 export const notifiedRecipients=async(db:Db,row:Operation,pending:boolean)=>(await db.query<{

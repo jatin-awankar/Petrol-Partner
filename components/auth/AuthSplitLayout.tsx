@@ -46,6 +46,7 @@ export default function AuthSplitLayout({
           {children}
           <div className="mt-6 border-t border-border/80 pt-4 text-sm text-muted-foreground [&_a]:inline-flex [&_a]:min-h-11 [&_a]:items-center">
             {footer}
+            <Link href="/support" className="underline underline-offset-4">Help and support</Link>
           </div>
         </section>
 

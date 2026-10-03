@@ -176,7 +176,8 @@ export class PostedRouteOutcomesService{
   }
   async mutate(actor:string,key:string,action:repo.Action,id:string,payload:OutcomePayload={}){
     boundary();
-    if(!['driver_cancel','passenger_cancel','incident_report'].includes(action))
+    // Incident reconciliation must remain available while unsupported departures are paused.
+    if(!['driver_cancel','passenger_cancel','incident_report','operator_incident'].includes(action))
       await pauseService.assertAvailable('booking');
     const guard=await repo.acquireMutationGuard(this.db);
     try{return await this.mutateLocked(actor,key,action,id,payload);}
@@ -213,7 +214,11 @@ export class PostedRouteOutcomesService{
       const seats=await repo.seats(client,offerId,true);
       const seat=preview?seats.find(item=>item.id===preview.id):undefined;
       if(preview&&!seat)throw new AppError(409,'Booking changed','BOOKING_CHANGED');
-      let recipients=[offer.driver_id,...seats.map(item=>item.passenger_id)];
+      // Seat-specific outcomes are private to that passenger and the driver.
+      // Offer-wide changes reach only currently affected allocations.
+      let recipients=seat?[offer.driver_id,seat.passenger_id]:
+        [offer.driver_id,...seats.filter(item=>['confirmed','held'].includes(item.status))
+          .map(item=>item.passenger_id)];
       const result:Record<string,unknown>={offer_id:offerId,allocation_id:seat?.id??null};
       if(action==='passenger_cancel'){
         if(seat!.passenger_id!==actor)throw new AppError(403,'Passenger only','FORBIDDEN');

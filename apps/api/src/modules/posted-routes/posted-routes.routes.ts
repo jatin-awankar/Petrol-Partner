@@ -1,6 +1,6 @@
 import {Router} from 'express';
 import {z} from 'zod';
-import {requireAuth} from '../../middleware/auth';
+import {requireAdmin,requireAuth} from '../../middleware/auth';
 import {asyncHandler} from '../../shared/http/async-handler';
 import {AppError} from '../../shared/errors/app-error';
 import * as service from './posted-routes.service';
@@ -29,9 +29,9 @@ function outcome(action:Parameters<typeof postedRouteOutcomesService.mutate>[2],
 }
 postedRouteRouter.get('/outcome-operations/:id',asyncHandler(async(req,res)=>res.json({operation:
   await postedRouteOutcomesService.operation(req.user!.userId,z.uuid().parse(req.params.id))})));
-postedRouteRouter.get('/incidents',asyncHandler(async(req,res)=>res.json({incidents:
+postedRouteRouter.get('/incidents',requireAdmin,asyncHandler(async(req,res)=>res.json({incidents:
   await postedRouteOutcomesService.incidents(req.user!.userId)})));
-postedRouteRouter.post('/incidents/:id/resolve',outcome('operator_incident',reason.extend({
+postedRouteRouter.post('/incidents/:id/resolve',requireAdmin,outcome('operator_incident',reason.extend({
   evidence_refs:z.array(z.string().trim().min(1).max(200)).max(20)})));
 postedRouteRouter.post('/allocations/:id/cancel',outcome('passenger_cancel',z.strictObject({reason:z.string().max(1000).optional()})));
 postedRouteRouter.post('/allocations/:id/incidents',outcome('incident_report',reason.extend({
