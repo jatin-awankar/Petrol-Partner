@@ -4,13 +4,17 @@
 
 **Blocked by:** None (can start immediately).
 
-**Status:** claimed (provider gate outstanding)
+**Status:** resolved
 
-- [ ] Decide routing provider and travel modes, route identity and version, ordered point matching tolerances, safe pickup and drop-off checks, trip limits, and route-change behavior.
+Resolution covers the policy decision under the scope amendment in Answer; implementation and launch evidence remain gated elsewhere.
+
+- [x] Decide routing provider and travel modes, route identity and version, ordered point matching tolerances, safe pickup and drop-off checks, trip limits, and route-change behavior.
 - [x] Decide distance source, segment measurement along the posted route, integer-paise rounding, ₹5/km bike and scooter and ₹7/km car passenger rates, and zero additional charges.
 - [x] Define routing failure behavior, schedule and overlap buffers, and which changes require cancellation and replacement. An unverifiable route or segment never yields an accepted price.
 
-## Decision record — confirmed, provider gate outstanding
+## Decision record — superseded provider assessment
+
+The assessment below preserves the earlier evidence and reasoning. The 2026-10-03 Answer supersedes its unresolved provider selection and scope; it does not retroactively approve previous trial outputs or deployments.
 
 **Decision date:** 2026-09-28, amended 2026-10-03. **Original policy version:** `unrestricted-route-contribution-2026-09-28.1`. **Proposed revised version for future routes:** `unrestricted-route-contribution-2026-10-03.1`. **Reviewer:** Jatin Awankar, project maintainer. The maintainer confirmed the original route and contribution rules on 2026-09-28, selected a Maharashtra launch boundary on 2026-09-29, and selected one TomTom routing mode for bikes and scooters on 2026-10-03. Existing synthetic route records and the code constant still identify the original version; this amendment is not retroactive or deployed. It does not by itself approve a provider or enable real bookings.
 
@@ -50,7 +54,7 @@ Once any request exists, a change to route geometry, origin, destination, schedu
 
 ### Outstanding gates
 
-**Ticket 02 remains unresolved:** provider selection and its production mode, route-data retention, display, quota, and controlled no-payment-information rehearsal evidence are outstanding. The first acceptance criterion is incomplete. The next viable paths are (a) an explicit TomTom licence exception for the current immutable server record, followed by the remaining mode and failure rehearsals, or (b) a separately reviewed routing implementation and operating arrangement whose terms permit that record. Do not mark the ticket resolved until the chosen path is evidenced for each vehicle category intended for launch. The technical route and contribution decisions above answer the remaining policy questions, subject to that provider gate.
+**Superseded scope:** this ticket formerly also required production provider rehearsals before resolution. Under the delegated decision recorded below, provider selection is complete; unperformed adapter, licence-compliance, operating and failure rehearsals are explicitly assigned to tickets 10, 16, 17, 18 and pilot-readiness 07. Their requirements have not passed merely because this policy ticket is resolved.
 
 **Separate real-booking blocker:** Ticket 03 must document the cost basis and external permissibility of the proposed ₹5/km bike/scooter and ₹7/km per-car-passenger rates, including the possible ₹21/km aggregate for three car passengers and the broader operation. This policy does not settle those questions. Real bookings remain disabled pending that review and all other launch gates.
 
@@ -60,3 +64,30 @@ Once any request exists, a change to route geometry, origin, destination, schedu
 - 2026-10-03: First-party TomTom terms review found clause 11.4 incompatible with persisting TomTom route Results under the present design. The maintainer does not have a separate retention clause or written exception. TomTom is rejected as the production provider for that design under the reviewed standard terms; ticket remains claimed.
 - 2026-10-03: A local synthetic Valhalla build answered car, motorcycle, and motor-scooter routes. Distance reconciliation, attribution/retention treatment, road-level mode validation, and reliable zero-cost hosting remain open; ticket remains claimed.
 - 2026-10-03: A [local distance progression proof](../../../docs/operations/evidence/ticket02-valhalla-distance-proof-2026-10-03.md) reconciled real Valhalla edge lengths with a saved-route integer-metre calculation and passed synthetic authenticated HTTP/PostgreSQL quote and rejection tests. The real route snapped endpoints about 49 m and 37 m from requested points, so the current exact-endpoint validator cannot consume it. This is candidate code only; production integration, provider rights, hosting, and the remaining ticket 02 gates are still open.
+
+
+## Answer
+
+**Decision:** select self-hosted Valhalla with a versioned OpenStreetMap graph. Use `auto` for cars and `motorcycle` for both bikes and scooters, while keeping their posted vehicle categories separate. Do not use `motor_scooter` as an interchangeable fallback, or TomTom, HERE, commercial routing results, or public demo servers as a fallback. The nine local route/mode checks and saved-distance tests establish enough technical feasibility to select this implementation direction; they do not establish road-level suitability or production availability.
+
+**Authority and scope amendment (2026-10-03):** Jatin Awankar asked the agent to make the remaining choices and resolve the ticket. The choices here were made by the agent under that delegation. Ticket 02 now closes the routing and contribution **policy decision only**. Its former requirement for completed production provider rehearsals is transferred, uncompleted, to the named implementation and release tickets below. This is an explicit scope amendment, not a claim that the old completion gate passed. No spending, deployment, real-booking activation or data migration is authorized.
+
+**Policy version:** `unrestricted-route-contribution-2026-10-03.2` for future implementation. Existing policy versions and frozen records remain unchanged. The implementation must persist engine version/image digest, OSM extract date/checksum, graph build/configuration identifier, costing mode/options, route geometry, edge-to-shape correspondence, cumulative integer metres and normalization version. A graph update creates new route versions; it cannot recalculate an accepted booking.
+
+**Distance choice:** use summed rounded Valhalla edge metres, allocated along the matching saved polyline by the tested normalizer; do not price from truncated per-shape length sums. Adopt the current precision guards as a versioned initial implementation rule: summary reconciliation bounded by `min(20, ceil(edge_count/2) + 1)` metres; each edge's geometry discrepancy bounded by `max(5 metres, 2% of edge metres)`. Reject responses outside those bounds. This remains an estimate with measured rounding, not surveyed road distance. Freeze the resulting segment metres and the existing integer-paise rules. Broader edge-boundary, rounding and route tests remain required in ticket 10.
+
+**Endpoint choice:** never silently move a meeting point. An unambiguous provider snap up to 30 m may be shown to the driver, who must confirm the actual routed point and stopping place before publication. Store requested and confirmed routed coordinates separately; use the confirmed routed point as the route endpoint. A snap over 30 m, wrong-side or ambiguous snap is rejected with a request to choose a new point. The observed 37–229 m offsets therefore remain rejected. Passenger points retain the existing 30 m ordered matching, 500 m segment minimum, direction and safe-stop rules. Map matching does not certify stopping safety.
+
+**Availability choice:** the server calls an operator-controlled Valhalla endpoint with a 10-second timeout and an initial maximum of two simultaneous routing jobs per routing instance. Excess work returns a visible retryable unavailable result instead of an unbounded queue. A retry uses the existing idempotency contract; there is no automatic external-provider fallback. Timeout, invalid output, overload, graph mismatch or unavailable routing prevents new publication/quotes/acceptance requiring verification, without repricing an accepted booking. These limits must be measured in staging before adjustment.
+
+**Licence and display choice:** select the open-source engine and data licences, rather than a hosted vendor's caching exception. Valhalla's [MIT licence](https://raw.githubusercontent.com/valhalla/valhalla/master/COPYING) permits software use and modification subject to retaining notices. [ODbL 3.1](https://opendatacommons.org/licenses/odbl/1-0/) grants commercial use, permanent reproduction and display of OSM data subject to its conditions; it does not impose a 30-day route-cache expiry. Adopt ODbL attribution and applicable share-alike/access duties for OSM-derived graph/data; do not assume all stored route collections are exempt Produced Works. The implementation must document that classification and provide any required derivative-database or transformation access before public exposure. Personal account, booking and settlement data must remain private; separating it from map-derived data is a design requirement, not a blanket legal exemption. Keep the existing Mapbox display, preserve its attribution, and add visible [OpenStreetMap attribution](https://www.openstreetmap.org/copyright). Mapbox account/display terms and storage permissions for any geocoding results must be checked separately in staging. Retain route evidence according to the approved privacy/incident retention policy, not indefinitely just because the data licence permits copying.
+
+**Uncompleted work and owners:**
+
+- Ticket 10: production adapter, endpoint confirmation, route/graph provenance, precision and safe-stop enforcement; API/PostgreSQL tests for all modes, invalid responses, retries and failures. It remains claimed.
+- Pilot-readiness 07: actual ₹0 routing host as part of the complete topology, capacity, storage, monitoring and cost controls. OrbStack is a development tool, not an approved production dependency. It remains claimed.
+- Ticket 16: actual-provider synthetic staging, licence/attribution and privacy implementation, local motorcycle restrictions, timeouts/overload, zero-cost operating limits and integration evidence.
+- Ticket 17: graph/service rebuild and restoration, preserved frozen prices, outage reconciliation and failure notices.
+- Ticket 18: review the above evidence and all other gates, including ticket 03's external/rate review and ticket 04's support/boundary policy, before a separate real-booking activation decision.
+
+All three policy acceptance criteria are now answered under this amended scope. Real bookings remain disabled. The [distance proof](../../../docs/operations/evidence/ticket02-valhalla-distance-proof-2026-10-03.md) retains its original limitations; no further TomTom response is required to implement the selected Valhalla direction.
