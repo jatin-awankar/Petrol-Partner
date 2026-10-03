@@ -1,3 +1,4 @@
+import {valhallaFixture} from './valhalla-fixture';
 import { createHash } from "node:crypto";
 import { randomUUID } from "node:crypto";
 import { signAccessToken } from "../shared/jwt/tokens";
@@ -37,7 +38,7 @@ import { setBackupObjectProbeForTests } from "../modules/operator/backup-status"
 import { setStudentReviewAfterCommitHookForTests } from "../modules/verification/student-review.service";
 
 const verificationPool = new Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
-const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql", "0006_operator_allowlist.sql", "0007_operator_pause.sql", "0008_operator_intent_handoff.sql", "0009_durable_notifications.sql", "0010_email_retry_operations.sql", "0011_backup_attempts.sql", "0012_student_adult_review.sql", "0013_student_review_cycles.sql", "0014_student_review_operations.sql", "0015_student_evidence_access.sql", "0016_student_evidence_deletion_outcomes.sql", "0017_student_evidence_retry_schedule.sql", "0018_driver_car_approval.sql", "0019_ride_departures.sql", "0020_corridor_offers.sql", "0021_corridor_offer_recovery.sql", "0022_pilot_seat_requests.sql", "0023_pilot_seat_acceptance.sql", "0024_pilot_cancellations.sql", "0025_pilot_departure.sql", "0026_revocation_holds_incidents.sql", "0027_pilot_journeys.sql", "0028_journey_review_decisions.sql", "0029_direct_settlement.sql", "0030_settlement_dispute_resolution.sql", "0031_reviewed_account_restrictions.sql", "0032_stalled_work_outreach.sql", "0033_account_closure.sql", "0034_closure_recovery.sql", "0035_adult_declarations.sql", "0036_driver_vehicle_declarations.sql", "0037_posted_route_offers.sql", "0038_posted_route_seats.sql", "0039_posted_route_seat_expiry.sql", "0040_posted_route_outcomes.sql", "0041_posted_route_replacements.sql", "0042_posted_route_incidents.sql"];
+const migrations = ["0001_init.sql", "0002_profile_settings.sql", "0003_chat.sql", "0004_acknowledgement_prototype.sql", "0005_managed_auth_identities.sql", "0006_operator_allowlist.sql", "0007_operator_pause.sql", "0008_operator_intent_handoff.sql", "0009_durable_notifications.sql", "0010_email_retry_operations.sql", "0011_backup_attempts.sql", "0012_student_adult_review.sql", "0013_student_review_cycles.sql", "0014_student_review_operations.sql", "0015_student_evidence_access.sql", "0016_student_evidence_deletion_outcomes.sql", "0017_student_evidence_retry_schedule.sql", "0018_driver_car_approval.sql", "0019_ride_departures.sql", "0020_corridor_offers.sql", "0021_corridor_offer_recovery.sql", "0022_pilot_seat_requests.sql", "0023_pilot_seat_acceptance.sql", "0024_pilot_cancellations.sql", "0025_pilot_departure.sql", "0026_revocation_holds_incidents.sql", "0027_pilot_journeys.sql", "0028_journey_review_decisions.sql", "0029_direct_settlement.sql", "0030_settlement_dispute_resolution.sql", "0031_reviewed_account_restrictions.sql", "0032_stalled_work_outreach.sql", "0033_account_closure.sql", "0034_closure_recovery.sql", "0035_adult_declarations.sql", "0036_driver_vehicle_declarations.sql", "0037_posted_route_offers.sql", "0038_posted_route_seats.sql", "0039_posted_route_seat_expiry.sql", "0040_posted_route_outcomes.sql", "0041_posted_route_replacements.sql", "0042_posted_route_incidents.sql", "0043_posted_route_verification.sql"];
 
 function fakeProvider(identity: ProviderIdentity): AuthProvider {
   const session = { accessToken: "provider-access", refreshToken: "provider-refresh", expiresIn: 900, identity };
@@ -5355,6 +5356,9 @@ describe('ticket 10 isolated posted route preparation',()=>{
   });
   afterEach(async()=>{
     (await routeModule()).setRoutingAdapterForTests(null);
+    (await import('../modules/posted-routes/route-boundary')).setBoundaryCheckForTests(null);
+    vi.unstubAllGlobals();
+    delete process.env.VALHALLA_URL;delete process.env.VALHALLA_BUILD_MANIFEST;
     (await import('../modules/posted-routes/segment-quote')).setStopCheckForTests(null);
     for(const name of ['PILOT_RECEIPT_PATH','PILOT_RECEIPT_SECRET','ROUTE_SUPPORT_WINDOW_START','ROUTE_SUPPORT_WINDOW_END','ROUTE_SUPPORT_WINDOW_APPROVED'])delete process.env[name];
     await rm(directory,{recursive:true,force:true});
@@ -5386,6 +5390,140 @@ describe('ticket 10 isolated posted route preparation',()=>{
       const scheduled=new Date(`${date}T10:00:00+05:30`);
       if(scheduled.getTime()>now.getTime()+2*3600000)return scheduled.toISOString();
     }}throw new Error('No weekday');}
+  async function valhallaInput(mode:'car'|'bike'|'scooter'='car'){
+    const actor=await participant(mode),app=createApp();
+    const input={vehicle_id:actor.vehicle,mode,origin:[77.75,20.9001],destination:[77.765,20.9001],
+      departure_at:departure(),capacity:1};
+    const send=(url:string,body:unknown=input,key=randomUUID(),token=actor.token)=>request(app).post(url)
+      .set('Authorization',`Bearer ${token}`).set('Idempotency-Key',key).send(body);
+    return {actor,app,input,send};
+  }
+  async function syntheticBoundary(){
+    (await import('../modules/posted-routes/route-boundary')).setBoundaryCheckForTests(async()=>({
+      artifactSha256:'5'.repeat(64),policyVersion:'2026-10-03.2',outsideMetres:0,outsideSeconds:0}));
+  }
+  function confirmPreview(input:Record<string,unknown>,preview:{preview_digest:string;route:{geometry:{coordinates:number[][]}}}){
+    return {...input,endpoint_confirmation:{preview_digest:preview.preview_digest,
+      origin:preview.route.geometry.coordinates[0],destination:preview.route.geometry.coordinates.at(-1),
+      safe_stopping_places:true,correct_side_and_direction:true,helmet_space:true}};
+  }
+  it.each(['car','bike','scooter'] as const)('persists confirmed %s Valhalla provenance and retries without routing again',async(mode)=>{
+    const f=await valhallaInput(mode),provider=valhallaFixture();
+    const preview=await f.send(`${path}/preview`);
+    expect(preview.status,JSON.stringify(preview.body)).toBe(200);
+    expect(preview.body.route).toMatchObject({source:'valhalla',distanceMeters:1560,durationSeconds:181,
+      cumulativeMeters:[0,520,1040,1560],verification:{costing:mode==='car'?'auto':'motorcycle'}});
+    expect(provider.calls.every(call=>call.costing===(mode==='car'?'auto':'motorcycle'))).toBe(true);
+    expect((await f.send(path)).body.error.code).toBe('ENDPOINT_CONFIRMATION_REQUIRED');
+    const confirmed=confirmPreview(f.input,preview.body);
+    expect((await f.send(path,confirmed)).body.error.code).toBe('BOUNDARY_UNAVAILABLE');
+    await syntheticBoundary();
+    const key=randomUUID(),created=await f.send(path,confirmed,key);
+    expect(created.status,JSON.stringify(created.body)).toBe(201);
+    expect(created.body.offer).toMatchObject({policy_version:'unrestricted-route-contribution-2026-10-03.2',
+      operating_policy_version:'2026-10-03.2',real_bookings_enabled:false});
+    provider.fail=true;
+    expect((await f.send(path,confirmed,key)).body.offer.operation_id).toBe(created.body.offer.operation_id);
+    expect((await f.send(path,{...confirmed,capacity:2},key)).body.error.code).toBe('IDEMPOTENCY_PAYLOAD_MISMATCH');
+    const saved=await request(f.app).get(`${path}/${created.body.offer.id}`).set('Authorization',`Bearer ${f.actor.token}`);
+    expect(saved.body.offer.route_verification).toMatchObject({requested:{origin:f.input.origin},
+      routed:{origin:[77.75,20.9]},normalizationVersion:'valhalla-edge-metres-2026-10-03.1',
+      confirmation:confirmed.endpoint_confirmation,manifest:{graphBuildId:'synthetic-only'}});
+    const operation=(await verificationPool.query('SELECT offer_snapshot FROM posted_route_operations WHERE id=$1',
+      [created.body.offer.operation_id])).rows[0];
+    expect(operation.offer_snapshot.route_verification).toEqual(saved.body.offer.route_verification);
+    expect((await verificationPool.query("SELECT count(*)::int AS n FROM audit_logs WHERE action='posted_route_prepared' AND entity_id=$1",
+      [created.body.offer.id])).rows[0].n).toBe(1);
+  });
+  it('rejects over-30-m, ambiguous and wrong-side Valhalla snaps and changed confirmations',async()=>{
+    const f=await valhallaInput(),provider=valhallaFixture();
+    const preview=await f.send(`${path}/preview`),confirmed=confirmPreview(f.input,preview.body);
+    expect((await f.send(`${path}/preview`,{...f.input,origin:[77.75,20.900271]})).body.error.code).toBe('ROUTE_INVALID');
+    expect((await f.send(`${path}/preview`,{...f.input,origin:[77.75,20.900269]})).status).toBe(200);
+    provider.locate[0].edges.push({way_id:3,correlated_lon:77.75,correlated_lat:20.9});
+    expect((await f.send(`${path}/preview`)).body.error.code).toBe('ROUTE_INVALID');
+    provider.locate[0].edges.pop();provider.route.trip.locations[0].side_of_street='right';
+    expect((await f.send(`${path}/preview`)).body.error.code).toBe('ROUTE_INVALID');
+    provider.route.trip.locations[0].side_of_street='left';
+    provider.route.trip.legs[0].summary.time=200;
+    expect((await f.send(path,confirmed)).body.error.code).toBe('ENDPOINT_CONFIRMATION_REQUIRED');
+    expect((await verificationPool.query('SELECT count(*)::int AS n FROM posted_route_offers')).rows[0].n).toBe(0);
+  });
+  it('fails closed on malformed, unavailable, graph-mismatched and inconsistent Valhalla responses',async()=>{
+    const f=await valhallaInput(),provider=valhallaFixture();
+    provider.fail=true;expect((await f.send(`${path}/preview`)).body.error.code).toBe('ROUTING_UNAVAILABLE');
+    provider.fail=false;provider.status=429;expect((await f.send(`${path}/preview`)).status).toBe(503);
+    provider.status=200;const build=provider.build;provider.build='wrong';
+    expect((await f.send(`${path}/preview`)).body.error.code).toBe('ROUTING_UNAVAILABLE');
+    provider.build=build;provider.malformed=true;expect((await f.send(`${path}/preview`)).body.error.code).toBe('ROUTE_INVALID');
+    provider.malformed=false;provider.trace.edges[0].length=1.1;
+    expect((await f.send(`${path}/preview`)).body.error.code).toBe('ROUTE_INVALID');
+    provider.trace.edges[0].length=1.04;provider.trace.shape+='?owH';
+    expect((await f.send(`${path}/preview`)).body.error.code).toBe('ROUTE_INVALID');
+  });
+  it('bounds Valhalla jobs to two and releases both slots after the ten-second deadline',async()=>{
+    const f=await valhallaInput(),provider=valhallaFixture();provider.wait=true;
+    const first=f.send(`${path}/preview`).then(response=>response);
+    const second=f.send(`${path}/preview`).then(response=>response);
+    await vi.waitFor(()=>expect(provider.calls).toHaveLength(2),{timeout:2000});
+    expect((await f.send(`${path}/preview`)).body.error.code).toBe('ROUTING_UNAVAILABLE');
+    expect(provider.calls).toHaveLength(2);
+    const failed=await Promise.all([first,second]);
+    expect(failed.map(response=>response.body.error.code)).toEqual(['ROUTING_UNAVAILABLE','ROUTING_UNAVAILABLE']);
+    provider.wait=false;expect((await f.send(`${path}/preview`)).status).toBe(200);
+  },15000);
+  it('authorizes Valhalla previews before contacting the provider and rejects unsafe confirmation',async()=>{
+    const f=await valhallaInput('bike'),other=await participant(),provider=valhallaFixture();
+    expect((await request(f.app).post(`${path}/preview`).send(f.input)).status).toBe(401);
+    expect((await f.send(`${path}/preview`,f.input,randomUUID(),other.token)).body.error.code).toBe('VEHICLE_NOT_FOUND');
+    expect(provider.calls).toHaveLength(0);
+    const confirmed=confirmPreview(f.input,(await f.send(`${path}/preview`)).body);
+    expect((await f.send(path,{...confirmed,endpoint_confirmation:{...confirmed.endpoint_confirmation,helmet_space:undefined}})).body.error.code)
+      .toBe('ENDPOINT_CONFIRMATION_REQUIRED');
+    expect((await f.send(path,{...confirmed,endpoint_confirmation:{...confirmed.endpoint_confirmation,origin:f.input.origin}})).body.error.code)
+      .toBe('ENDPOINT_CONFIRMATION_REQUIRED');
+    expect((await f.send(path,{...confirmed,endpoint_confirmation:{...confirmed.endpoint_confirmation,safe_stopping_places:false}})).status).toBe(400);
+  });
+  it('rolls back Valhalla publication on audit or notice failure and serializes overlapping confirmations',async()=>{
+    const f=await valhallaInput();valhallaFixture();await syntheticBoundary();
+    const confirmed=confirmPreview(f.input,(await f.send(`${path}/preview`)).body);
+    for(const [table,condition] of [['audit_logs',"NEW.action='posted_route_prepared'"],
+      ['pilot_notification_events',"NEW.origin_type='posted_route'"]]){
+      await verificationPool.query(`CREATE FUNCTION ticket10_fail_verified() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN IF ${condition} THEN RAISE EXCEPTION 'ticket10 rollback'; END IF; RETURN NEW; END $$`);
+      await verificationPool.query(`CREATE TRIGGER ticket10_fail_verified BEFORE INSERT ON ${table}
+        FOR EACH ROW EXECUTE FUNCTION ticket10_fail_verified()`);
+      try{expect((await f.send(path,confirmed)).status).toBe(503);}finally{
+        await verificationPool.query(`DROP TRIGGER ticket10_fail_verified ON ${table}`);
+        await verificationPool.query('DROP FUNCTION ticket10_fail_verified()');}
+      expect((await verificationPool.query('SELECT count(*)::int AS n FROM posted_route_offers')).rows[0].n).toBe(0);
+      expect((await verificationPool.query('SELECT count(*)::int AS n FROM posted_route_operations')).rows[0].n).toBe(0);
+    }
+    const results=await Promise.all([f.send(path,confirmed),f.send(path,confirmed)]);
+    expect(results.map(result=>result.status).sort()).toEqual([201,409]);
+    const id=results.find(result=>result.status===201)!.body.offer.id;
+    const outsider=await participant();
+    expect((await request(f.app).get(`${path}/${id}`).set('Authorization',`Bearer ${outsider.token}`)).status).toBe(404);
+  });
+  it('enforces boundary evidence limits without claiming synthetic polygons verify Maharashtra',async()=>{
+    const f=await valhallaInput();valhallaFixture();
+    const confirmed=confirmPreview(f.input,(await f.send(`${path}/preview`)).body);
+    const boundary=await import('../modules/posted-routes/route-boundary');
+    for(const [outsideMetres,outsideSeconds] of [[5001,600],[5000,601],[5000,NaN]]){
+      boundary.setBoundaryCheckForTests(async()=>({artifactSha256:'5'.repeat(64),policyVersion:'2026-10-03.2',outsideMetres,outsideSeconds}));
+      expect((await f.send(path,confirmed)).body.error.code).toBe('BOUNDARY_INVALID');
+    }
+    boundary.setBoundaryCheckForTests(async()=>({artifactSha256:'5'.repeat(64),policyVersion:'2026-10-03.2',outsideMetres:5000,outsideSeconds:600}));
+    expect((await f.send(path,confirmed)).status).toBe(201);
+  });
+  it('requires confirmation of a Valhalla preview and fails closed without boundary evidence',async()=>{
+    const a=await participant(),app=createApp();
+    const input={vehicle_id:a.vehicle,mode:'car',origin:[77.75,20.9],destination:[77.8,20.95],departure_at:departure(),capacity:2};
+    const response=await request(app).post(`${path}/preview`).set('Authorization',`Bearer ${a.token}`).send(input);
+    expect(response.status).toBe(503);
+    expect(response.body.error.code).toBe('ROUTING_UNAVAILABLE');
+    expect((await verificationPool.query('SELECT count(*)::int AS n FROM posted_route_offers')).rows[0].n).toBe(0);
+  });
   it('rejects invalid provider answers and rolls back when notification work cannot be recorded',async()=>{
     const a=await participant(),app=createApp();
     const input={vehicle_id:a.vehicle,mode:'car',origin:[77.75,20.9],destination:[77.8,20.95],departure_at:departure(),capacity:2};
@@ -5426,16 +5564,24 @@ describe('ticket 10 isolated posted route preparation',()=>{
     expect([one.status,two.status].sort()).toEqual([201,409]);
     expect((await verificationPool.query('SELECT count(*)::int AS n FROM posted_route_offers')).rows[0].n).toBe(1);
   });
-  it('restores a prepared route, audit, and suppressed notice from independent receipt',async()=>{
+  it.each([false,true])('restores route evidence, audit and suppressed notice (Valhalla=%s)',async(useValhalla)=>{
     const a=await participant(),app=createApp();
     const input={vehicle_id:a.vehicle,mode:'car',origin:[77.75,20.9],destination:[77.8,20.95],departure_at:departure(),capacity:2};
     (await routeModule()).setRoutingAdapterForTests({verify:async()=>({source:'synthetic-test',mode:'car',
       geometry:{type:'LineString',coordinates:[input.origin,input.destination]},
       cumulativeMeters:[0,6000],distanceMeters:6000,durationSeconds:900})});
+    let publishInput:unknown=input;
+    if(useValhalla){
+      (await routeModule()).setRoutingAdapterForTests(null);valhallaFixture();await syntheticBoundary();
+      input.origin=[77.75,20.9001];input.destination=[77.765,20.9001];
+      const preview=await request(app).post(`${path}/preview`).set('Authorization',`Bearer ${a.token}`).send(input);
+      publishInput=confirmPreview(input,preview.body);
+    }
     const created=await request(app).post(path).set('Authorization',`Bearer ${a.token}`)
-      .set('Idempotency-Key',randomUUID()).send(input);
+      .set('Idempotency-Key',randomUUID()).send(publishInput);
     expect(created.status,JSON.stringify(created.body)).toBe(201);
     const operationId=created.body.offer.operation_id,offerId=created.body.offer.id;
+    const original=(await verificationPool.query('SELECT route_verification FROM posted_route_offers WHERE id=$1',[offerId])).rows[0];
     expect((await verificationPool.query('SELECT state FROM posted_route_operations WHERE id=$1',[operationId])).rows[0].state).toBe('acknowledged');
     await verificationPool.query(`DELETE FROM pilot_email_jobs WHERE event_id IN
       (SELECT id FROM pilot_notification_events WHERE origin_type='posted_route' AND operation_id=$1)`,[operationId]);
@@ -5450,8 +5596,9 @@ describe('ticket 10 isolated posted route preparation',()=>{
     const recovery=(await import('../modules/posted-routes/posted-routes.service')).postedRouteRecovery;
     await expect(recovery.reconcileReceipts(operator)).resolves.toBeGreaterThan(0);
     expect((await verificationPool.query('SELECT state FROM posted_route_operations WHERE id=$1',[operationId])).rows[0].state).toBe('recovered');
+    expect((await verificationPool.query('SELECT route_verification FROM posted_route_offers WHERE id=$1',[offerId])).rows[0]).toEqual(original);
     expect((await verificationPool.query('SELECT route_version,policy_version FROM posted_route_offers WHERE id=$1',[offerId])).rows[0])
-      .toMatchObject({route_version:1,policy_version:'unrestricted-route-contribution-2026-09-28.1'});
+      .toMatchObject({route_version:1,policy_version:'unrestricted-route-contribution-2026-10-03.2'});
     expect((await verificationPool.query("SELECT count(*)::int AS n FROM audit_logs WHERE metadata->>'operationId'=$1",[operationId])).rows[0].n).toBe(1);
     expect((await verificationPool.query("SELECT count(*)::int AS n FROM pilot_email_jobs WHERE status='exhausted' AND event_id IN (SELECT id FROM pilot_notification_events WHERE origin_type='posted_route' AND operation_id=$1)",[operationId])).rows[0].n).toBe(1);
   });
@@ -6040,7 +6187,7 @@ describe('ticket 10 isolated posted route preparation',()=>{
     expect(accepted.body.booking.accepted_terms).toMatchObject({route_id:f.offer,route_version:1,
       pickup:f.selection.pickup,dropoff:f.selection.dropoff,segment_meters:1005,
       distance_source:'saved_posted_route',vehicle_category:'car',rate_paise_per_km:700,
-      rounding_rule:'nearest_paise_half_up',policy_version:'unrestricted-route-contribution-2026-09-28.1',
+      rounding_rule:'nearest_paise_half_up',policy_version:'unrestricted-route-contribution-2026-10-03.2',
       currency:'INR',total_paise:704,additional_charges_paise:0});
     expect((await verificationPool.query('SELECT count(*)::int AS n FROM posted_route_seat_allocations WHERE offer_id=$1',[f.offer])).rows[0].n).toBe(1);
     expect((await verificationPool.query("SELECT count(*)::int AS n FROM pilot_notification_events WHERE origin_type='posted_route_seat' AND ready_at IS NOT NULL")).rows[0].n).toBe(3);
@@ -6803,7 +6950,7 @@ describe('ticket 10 isolated posted route preparation',()=>{
     const seat=accept.body.booking.id as string;
     expect(accept.body.booking.accepted_terms).toMatchObject({route_id:f.offer,route_version:1,
       segment_meters:1005,total_paise:704,currency:'INR',
-      policy_version:'unrestricted-route-contribution-2026-09-28.1'});
+      policy_version:'unrestricted-route-contribution-2026-10-03.2'});
     const notices=await request(f.app).get('/v1/notifications/durable')
       .set(bearer(passenger.token));
     expect(notices.status).toBe(200);
@@ -6822,7 +6969,7 @@ describe('ticket 10 isolated posted route preparation',()=>{
     const obligation=(await verificationPool.query(`SELECT amount_paise,currency,policy_version
       FROM posted_route_obligations WHERE allocation_id=$1`,[seat])).rows[0];
     expect(obligation).toMatchObject({amount_paise:704,currency:'INR',
-      policy_version:'unrestricted-route-contribution-2026-09-28.1'});
+      policy_version:'unrestricted-route-contribution-2026-10-03.2'});
     const claim=await f.call(passenger.token,`${path}/allocations/${seat}/payment-claim`,{method:'upi'});
     expect(claim.status).toBe(200);
     expect((await f.call(f.driver.token,`${path}/allocations/${seat}/dispute`,{})).status).toBe(200);

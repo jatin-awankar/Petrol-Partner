@@ -1,6 +1,7 @@
+import {configuredValhalla,type ValhallaManifest} from './valhalla';
 import { AppError } from '../../shared/errors/app-error';
 export type Point=[number,number];
-export type VerifiedRoute={source:string;mode:'bike'|'scooter'|'car';geometry:{type:'LineString';coordinates:Point[]};cumulativeMeters:number[];distanceMeters:number;durationSeconds:number};
+export type VerifiedRoute={source:string;mode:'bike'|'scooter'|'car';geometry:{type:'LineString';coordinates:Point[]};cumulativeMeters:number[];distanceMeters:number;durationSeconds:number;verification?:{manifest:ValhallaManifest;manifestDigest:string;costing:string;costingOptions:Record<string,unknown>;normalizationVersion:string;edges:unknown[];requested:{origin:Point;destination:Point};routed:{origin:Point;destination:Point}}};
 export type RoutingAdapter={verify(input:{origin:Point;destination:Point;mode:'bike'|'scooter'|'car'}):Promise<VerifiedRoute>};
 const validPoint=(p:unknown):p is Point=>Array.isArray(p)&&p.length===2&&p.every((n)=>typeof n==='number'&&Number.isFinite(n))&&Math.abs(p[0])<=180&&Math.abs(p[1])<=90;
 export function isVerifiedRouteShape(value:unknown):value is VerifiedRoute{
@@ -17,19 +18,19 @@ export function isVerifiedRouteShape(value:unknown):value is VerifiedRoute{
     route.durationSeconds>=1&&route.durationSeconds<=5400;
 }
 let adapter:RoutingAdapter|null=null;
-// Test-only seam. Production has no selected provider and fails closed.
+// Synthetic adapters are inaccessible outside the test runtime.
 export function setRoutingAdapterForTests(value:RoutingAdapter|null){
   if(process.env.NODE_ENV!=='test')throw new Error('Synthetic routing is test only');
   adapter=value;
 }
 export async function verifyRoute(input:{origin:Point;destination:Point;mode:'bike'|'scooter'|'car'}){
-  if(!adapter)throw new AppError(503,'Routing provider unavailable','ROUTING_UNAVAILABLE');
+  const selected=adapter??configuredValhalla();
   let route:VerifiedRoute;
-  try{route=await adapter.verify(input);}catch{throw new AppError(503,'Routing provider unavailable','ROUTING_UNAVAILABLE');}
-  if(!isVerifiedRouteShape(route)||route.source!=='synthetic-test'||route.mode!==input.mode||
+  try{route=await selected.verify(input);}catch(error){if(error instanceof AppError)throw error;throw new AppError(503,'Routing provider unavailable','ROUTING_UNAVAILABLE');}
+  if(!isVerifiedRouteShape(route)||!['synthetic-test','valhalla'].includes(route.source)||route.mode!==input.mode||
     JSON.stringify(input.origin)===JSON.stringify(input.destination)||
-    JSON.stringify(route.geometry.coordinates[0])!==JSON.stringify(input.origin)||
-    JSON.stringify(route.geometry.coordinates.at(-1))!==JSON.stringify(input.destination))
+    (route.source==='synthetic-test'&&(JSON.stringify(route.geometry.coordinates[0])!==JSON.stringify(input.origin)||
+    JSON.stringify(route.geometry.coordinates.at(-1))!==JSON.stringify(input.destination))))
     throw new AppError(422,'Route verification failed','ROUTE_INVALID');
   return route;
 }
