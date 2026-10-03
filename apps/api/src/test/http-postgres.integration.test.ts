@@ -5540,6 +5540,45 @@ describe('ticket 10 isolated posted route preparation',()=>{
     expect((await send(a.token,body)).body.error.code).toBe('ROUTE_VERSION_STALE');
     expect((await verificationPool.query('SELECT count(*)::int AS n FROM ride_offers')).rows[0].n).toBe(0);
   });
+  it('prices a saved segment from Valhalla edge metres rather than shorter shape-length totals',async()=>{
+    const a=await participant(),app=createApp();
+    const origin:[number,number]=[77.75,20.9],pickupEnd:[number,number]=[77.76,20.9],
+      destination:[number,number]=[77.765,20.9];
+    const {buildValhallaDistanceProgression}=await import('../modules/posted-routes/valhalla-distance');
+    const routeShape='_iszf@_nnhsC?owH?owH?owH';
+    const distance=buildValhallaDistanceProgression({routeShape,
+      routeLengthKm:1.562,trace:{shape:routeShape,
+        edges:[{begin_shape_index:0,end_shape_index:2,length:1.04},
+          {begin_shape_index:2,end_shape_index:3,length:0.52}],
+        shape_attributes:{length:[0.5,0.5,0.5]}}});
+    (await routeModule()).setRoutingAdapterForTests({verify:async()=>({source:'synthetic-test',mode:'car',
+      ...distance,durationSeconds:180})});
+    (await import('../modules/posted-routes/segment-quote')).setStopCheckForTests(safeStopForKind);
+    const created=await request(app).post(path).set('Authorization',`Bearer ${a.token}`)
+      .set('Idempotency-Key',randomUUID()).send({vehicle_id:a.vehicle,mode:'car',origin,destination,
+        departure_at:departure(),capacity:2});
+    expect(created.status,JSON.stringify(created.body)).toBe(201);
+    const quoted=await request(app).post(`${path}/${created.body.offer.id}/quote`)
+      .set('Authorization',`Bearer ${a.token}`).send({route_version:1,pickup:origin,dropoff:pickupEnd});
+    expect(quoted.status,JSON.stringify(quoted.body)).toBe(200);
+    expect(quoted.body.quote).toMatchObject({segment_meters:1040,total_paise:728,
+      distance_source:'saved_posted_route',real_bookings_enabled:false});
+  });
+  it('does not prepare a route whose Valhalla edge distance contradicts its geometry',async()=>{
+    const a=await participant(),app=createApp();
+    const origin:[number,number]=[77.75,20.9],destination:[number,number]=[77.75001,20.9];
+    const routeShape='_iszf@_nnhsC?S';
+    const {buildValhallaDistanceProgression}=await import('../modules/posted-routes/valhalla-distance');
+    (await routeModule()).setRoutingAdapterForTests({verify:async()=>({source:'synthetic-test',mode:'car',
+      ...buildValhallaDistanceProgression({routeShape,routeLengthKm:1.005,
+        trace:{shape:routeShape,edges:[{begin_shape_index:0,end_shape_index:1,length:1.005}]}}),
+      durationSeconds:180})});
+    const response=await request(app).post(path).set('Authorization',`Bearer ${a.token}`)
+      .set('Idempotency-Key',randomUUID()).send({vehicle_id:a.vehicle,mode:'car',origin,destination,
+        departure_at:departure(),capacity:2});
+    expect(response.body.error.code).toBe('ROUTING_UNAVAILABLE');
+    expect((await verificationPool.query('SELECT count(*)::int AS n FROM posted_route_offers')).rows[0].n).toBe(0);
+  });
   it('rejects repeated-pass ambiguity even when the requested point is within tolerance',async()=>{
     const a=await participant(),app=createApp();
     const origin:[number,number]=[77.75,20.9],turn:[number,number]=[77.76,20.9],
