@@ -1,4 +1,5 @@
 import {valhallaFixture} from './valhalla-fixture';
+import {liveValhallaRehearsal} from './valhalla-live-rehearsal';
 import { createHash } from "node:crypto";
 import { randomUUID } from "node:crypto";
 import { signAccessToken } from "../shared/jwt/tokens";
@@ -5407,6 +5408,31 @@ describe('ticket 10 isolated posted route preparation',()=>{
       origin:preview.route.geometry.coordinates[0],destination:preview.route.geometry.coordinates.at(-1),
       safe_stopping_places:true,correct_side_and_direction:true,helmet_space:true}};
   }
+  it.skipIf(!process.env.VALHALLA_REHEARSAL_URL).each(['car','bike','scooter'] as const)(
+    'rehearses actual local Valhalla %s responses while boundary publication stays closed',async(mode)=>{
+      const f=await valhallaInput(mode),manifest=await liveValhallaRehearsal();
+      // OSM-derived road points for compatibility only, not approved stops.
+      const input={...f.input,origin:[77.749113,20.901176],destination:[77.728694,20.857541]};
+      const preview=await f.send(`${path}/preview`,input);
+      expect(preview.status,JSON.stringify(preview.body)).toBe(200);
+      expect(preview.body).toMatchObject({boundary_verified:false,real_bookings_enabled:false,
+        route:{source:'valhalla',verification:{manifest,costing:mode==='car'?'auto':'motorcycle'}}});
+      const route=preview.body.route;
+      expect(route.cumulativeMeters).toHaveLength(route.geometry.coordinates.length);
+      expect(route.cumulativeMeters[0]).toBe(0);
+      expect(route.cumulativeMeters.at(-1)).toBe(route.distanceMeters);
+      expect(route.distanceMeters).toBeGreaterThan(4000);
+      expect(route.cumulativeMeters.every((value:number,i:number,values:number[])=>i===0||value>values[i-1])).toBe(true);
+      expect((await f.send(path,input)).body.error.code).toBe('ENDPOINT_CONFIRMATION_REQUIRED');
+      const confirmed=confirmPreview(input,preview.body);
+      const rejected=await f.send(path,confirmed);
+      expect(rejected.body.error.code,JSON.stringify(rejected.body)).toBe('BOUNDARY_UNAVAILABLE');
+      expect((await verificationPool.query('SELECT count(*)::int AS n FROM posted_route_offers')).rows[0].n).toBe(0);
+      const ambiguous=await f.send(`${path}/preview`,{...input,origin:[77.758589,20.94062]});
+      expect(ambiguous.body.error.code,JSON.stringify(ambiguous.body)).toBe('ROUTE_INVALID');
+      const sideFallback=await f.send(`${path}/preview`,{...input,origin:[77.749063,20.901176]});
+      expect(sideFallback.body.error.code,JSON.stringify(sideFallback.body)).toBe('ROUTE_INVALID');
+    },30000);
   it.each(['car','bike','scooter'] as const)('persists confirmed %s Valhalla provenance and retries without routing again',async(mode)=>{
     const f=await valhallaInput(mode),provider=valhallaFixture();
     const preview=await f.send(`${path}/preview`);
