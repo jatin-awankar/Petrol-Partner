@@ -31,3 +31,7 @@ Ticket 10 has an isolated, versioned server-owned route preparation model and dr
 - [ ] Keep production and real-booking exposure closed until actual hosting, licence-compliance, staging and release evidence passes tickets 16–18 and pilot-readiness 07.
 
 Ticket 02's policy resolution does not resolve this implementation ticket. TomTom is no longer a dependency.
+
+## Operating-policy evidence handoff — ticket 04, 2026-10-03
+
+Ticket 04 resolves policy selection only. Before production use, obtain and hash the selected SOI `SOI/ABDB/VECTOR/50000/2025/STATE/INDIA` artifact, validate CRS/transformation, topology and Maharashtra attributes, select and justify the boundary uncertainty band, and retain provenance in immutable route terms. Test fail-closed endpoint and confirmed-snap containment, border uncertainty, holes/multipart geometry and cumulative outside-state limits of 5 km/10 minutes within 50 km/90 minutes. Missing boundary data or outside-state timing rejects verification. Enforce the approved support/schedule policy through authenticated API/PostgreSQL tests. Ticket 16 owns production reuse evidence. This supersedes awaiting ticket 04 policy selection, not the missing implementation/validation. Status and live gates stay unchanged.

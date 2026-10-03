@@ -15,3 +15,7 @@
 
 - [ ] Restore/rebuild the pinned Valhalla graph and configuration from recorded source/version evidence, reconcile graph identifiers, and exercise routing downtime and recovery under the selected topology.
 - [ ] Demonstrate that accepted route snapshots and prices remain unchanged across a graph update or restore, and no unavailable or stale provider result is accepted as a new verified route.
+
+## Operating-policy evidence handoff — ticket 04, 2026-10-03
+
+Under ticket 04 policy `2026-10-03.2`, rehearse primary-inbox/Gmail/sole-operator failure distinctly, unsupported-departure and new-commitment pause, preserved active-trip visibility, fallback incident recording and explicit reconciliation before reopening. Label any simulated independent escalation; it does not establish real operator availability. Prove backup/acknowledgement-receipt horizon compatibility with finite retention, provider deletion retry and independently held suppression of deleted data before reopening an older snapshot. Include onboarding's shorter copy lifetime and held historical records. All this evidence remains unperformed by ticket 04; status unchanged.

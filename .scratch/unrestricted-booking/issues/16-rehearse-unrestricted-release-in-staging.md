@@ -19,3 +19,7 @@
 - [ ] Measure memory/disk, graph build/update, cold start, request latency, availability and usage costs on the actual host. No paid account, public demo dependency or operator-laptop production dependency is authorized by ticket 02.
 
 These requirements are transferred uncompleted. Ticket 02 is a completed policy decision; its resolution does not satisfy this rehearsal or authorize real bookings.
+
+## Operating-policy evidence handoff — ticket 04, 2026-10-03
+
+Ticket 04's policy-only resolution transfers unperformed production evidence here: reconcile reuse terms for the actual selected SOI boundary/derived geometry; exercise versioned boundary and crossing checks; validate both Gmail support channels, response targets and missed-contact behavior; inspect real provider copies, finite retention and actual deletion outcomes under policy `2026-10-03.2`. Coordinate retention implementation with pilot-readiness 28. Synthetic staging may demonstrate and record a missing independent escalation path, but cannot treat that as real-trip readiness. Ticket 18 must retain that blocker. No staging deployment is authorized by this handoff; this ticket's status is unchanged.
