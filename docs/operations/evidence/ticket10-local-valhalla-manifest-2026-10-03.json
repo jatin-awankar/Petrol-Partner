@@ -1,0 +1,9 @@
+{
+  "engineVersion": "3.9.0-53e00619f",
+  "imageDigest": "1bfd648c6140ed64d488eb1505bbff608749b39ea81be3f87d1220d253c200c0",
+  "osmExtractDate": "2026-10-02",
+  "osmExtractSha256": "33218f1796d7d7b44e759403d12cc51b46d9e1debdb1ad7477f2360208bb95b7",
+  "graphBuildId": "ticket10-local-2026-10-03",
+  "graphSha256": "b3b9e359de8bcd87596671ea210cd4d313b497cd71938dc904e8cb6b1c4c6635",
+  "configSha256": "3c480f41c0f0d07e596463f633d92b6198aa82d9dbb6c268c2f3e824acdcc5e4"
+}

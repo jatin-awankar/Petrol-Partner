@@ -1,3 +1,4 @@
+import {verifyRouteBoundary} from './route-boundary';
 import {createHash} from 'node:crypto';
 import {pool} from '../../db/pool';
 import {AppError} from '../../shared/errors/app-error';
@@ -9,11 +10,12 @@ import {backupStatus} from '../operator/backup-status';
 import {recordDurableNotification} from '../notifications/contract.repo';
 import {assertCurrentDriverVehicle} from '../driver-vehicle-declaration/driver-vehicle-declaration.service';
 import {lockCommitmentActors,lockVehicleRegistration} from '../rides/commitment.repo';
-import {verifyRoute,type Point} from './routing';
+import {verifyRoute,type VerifiedRoute,type Point} from './routing';
 import * as repo from './posted-routes.repo';
 import {ROUTE_POLICY_VERSION,ROUTE_OPERATING_POLICY_VERSION} from './policy';
 import {quoteSegment} from './segment-quote';
-export type Input={vehicle_id:string;mode:'bike'|'scooter'|'car';origin:Point;destination:Point;departure_at:string;capacity:number;replaces_offer_id?:string};
+export type Input={vehicle_id:string;mode:'bike'|'scooter'|'car';origin:Point;destination:Point;departure_at:string;capacity:number;replaces_offer_id?:string;endpoint_confirmation?:EndpointConfirmation};
+export type EndpointConfirmation={preview_digest:string;origin:Point;destination:Point;safe_stopping_places:true;correct_side_and_direction:true;helmet_space?:true};
 type Receipt={operationId:string;actorId:string;key:string;digest:string;offerId:string;result:Record<string,unknown>;snapshot:Record<string,unknown>;createdAt:string};
 const store=()=>pilotReceiptStore<Receipt>('posted-route','Posted route recovery evidence unavailable');
 const receipt=(row:repo.Operation):Receipt=>({operationId:row.id,actorId:row.actor_id,key:row.idempotency_key,digest:row.payload_digest,
@@ -63,6 +65,33 @@ export async function quote(actor:string,id:string,version:number,pickup:Point,d
 export async function operation(actor:string,id:string){const row=await repo.byId(pool,id);
   if(!row||row.actor_id!==actor)throw new AppError(404,'Operation not found','OPERATION_NOT_FOUND');
   return {operation_id:row.id,state:row.state,...row.result};}
+function previewDigest(route:VerifiedRoute){return createHash('sha256').update(JSON.stringify(route)).digest('hex');}
+async function checkDriver(actor:string,input:Input){
+  await inProtectedTransaction(pool,async client=>{
+    const declaration=await assertCurrentDriverVehicle(client,actor,input.vehicle_id,input.capacity);
+    if(declaration.category!==input.mode)throw new AppError(400,'Routing mode differs from declared vehicle','ROUTE_MODE_INVALID');
+  });
+}
+export async function preview(actor:string,input:Input){
+  await checkDriver(actor,input);
+  schedule(new Date(input.departure_at),new Date());
+  const route=await verifyRoute(input);
+  return {route,preview_digest:previewDigest(route),real_bookings_enabled:false,
+    boundary_verified:false,confirmation_required:true};
+}
+async function publicationEvidence(route:VerifiedRoute,input:Input){
+  // Preserve the pre-existing synthetic seam for historical lifecycle tests.
+  if(route.source==='synthetic-test'&&process.env.NODE_ENV==='test')return null;
+  const confirmation=input.endpoint_confirmation;
+  if(!route.verification||!confirmation||confirmation.preview_digest!==previewDigest(route)||
+    JSON.stringify(confirmation.origin)!==JSON.stringify(route.geometry.coordinates[0])||
+    JSON.stringify(confirmation.destination)!==JSON.stringify(route.geometry.coordinates.at(-1))||
+    confirmation.safe_stopping_places!==true||confirmation.correct_side_and_direction!==true||
+    (input.mode!=='car'&&confirmation.helmet_space!==true))
+    throw new AppError(422,'Confirm the safe routed endpoints from a fresh preview','ENDPOINT_CONFIRMATION_REQUIRED');
+  const boundary=await verifyRouteBoundary(route);
+  return {...route.verification,confirmation,boundary};
+}
 export async function prepare(actor:string,key:string,input:Input){
   const digest=createHash('sha256').update(JSON.stringify(input)).digest('hex');
   const existing=await repo.byKey(pool,actor,key);
@@ -73,8 +102,10 @@ export async function prepare(actor:string,key:string,input:Input){
     await postedRouteOutcomesService.verifyEvidence();
   }
   if(existing)return operation(actor,existing.id);
+  await checkDriver(actor,input);
   const departure=new Date(input.departure_at);schedule(departure,new Date());
   const route=await verifyRoute({origin:input.origin,destination:input.destination,mode:input.mode});
+  const verification=await publicationEvidence(route,input);
   const until=new Date(departure.getTime()+route.durationSeconds*1000+30*60000);
   schedule(departure,new Date(),until);
   const row=await inProtectedTransaction(pool,async client=>{
@@ -100,7 +131,7 @@ export async function prepare(actor:string,key:string,input:Input){
     schedule(departure,new Date(),until);
     if(await repo.conflict(client,actor,input.vehicle_id,departure,until))throw new AppError(409,'Overlapping commitment','COMMITMENT_CONFLICT');
     const saved=await repo.save(client,{driver:actor,vehicle:input.vehicle_id,route,departure,until,
-      capacity:input.capacity,policy:ROUTE_POLICY_VERSION,replacesOfferId:input.replaces_offer_id});
+      capacity:input.capacity,verification,policy:ROUTE_POLICY_VERSION,replacesOfferId:input.replaces_offer_id});
     const snapshot=await repo.snapshot(client,saved.id);
     const result={id:saved.id,route_version:1,policy_version:ROUTE_POLICY_VERSION,operating_policy_version:ROUTE_OPERATING_POLICY_VERSION,status:'prepared',real_bookings_enabled:false,
       ...(input.replaces_offer_id?{replaces_offer_id:input.replaces_offer_id}:{})};
