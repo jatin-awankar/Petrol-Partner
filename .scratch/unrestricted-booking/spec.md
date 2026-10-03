@@ -79,3 +79,8 @@ The following decisions and launch blockers remain open:
 4. Approve request, acceptance, departure, cancellation, incident, retention, and support policies for the broader geography. The corridor's weekday 09:00–18:00 IST window and fixed landmarks do not automatically apply.
 5. Provide and test a monitored public support contact. Complete provider capacity, notification, backup, restore, privacy, staging, and real-trip launch evidence.
 6. Complete the forward migration and server-side implementation, pass critical PostgreSQL tests, then make an explicit launch decision before enabling real bookings.
+
+
+## Routing decision scope amendment — 2026-10-03
+
+Under the maintainer's delegation to make the remaining ticket 02 choices, [ticket 02](issues/02-approve-route-and-contribution-rules.md#answer) resolves the policy decision using self-hosted Valhalla/OSM, `auto` for cars and `motorcycle` for bikes and scooters. Future implementation uses policy version `unrestricted-route-contribution-2026-10-03.2`; existing frozen records are not rewritten. Its Answer defines distance normalization, explicitly confirmed endpoint snaps within 30 m, attribution, retention and failure rules. The former ticket-02 production evidence prerequisite moves intact to ticket 10 (adapter correctness), pilot-readiness 07 (actual zero-cost hosting), ticket 16 (live synthetic provider and licence-compliance rehearsal), ticket 17 (recovery), and ticket 18 (launch decision). Resolution of the policy ticket authorizes implementation work, not real-booking activation or automatic resolution of dependent tickets.
