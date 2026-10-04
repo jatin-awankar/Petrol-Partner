@@ -1,0 +1,73 @@
+{
+  "evaluationOnly": true,
+  "sourceSha256": "47aa0acb6f69868daee49143276f3ce323f18905ba7d38d0a86816b405028736",
+  "geometrySha256": "71ed889b914ce89fb134533c8c9f209dfbbc46f403db10744cca530906f7667d",
+  "properties": {
+    "shapeName": "Mahārāshtra",
+    "shapeISO": "IN-MH",
+    "shapeID": "1811400B15614733245507",
+    "shapeGroup": "IND",
+    "shapeType": "ADM1"
+  },
+  "parts": 3,
+  "holes": 0,
+  "vertices": 72274,
+  "probes": [
+    {
+      "hypotheticalBandMetres": 10,
+      "compileMs": 32.06875000000002,
+      "denseSyntheticSegmentsCompleted": 4999,
+      "budgetRejected": false,
+      "discrepancyEligibility": {
+        "soiHole0": true,
+        "soiHole1": true,
+        "gbDetachedPart2": true,
+        "absentSoiPart66": false,
+        "coastalGbOnly": true,
+        "coastalSoiOnly": false
+      },
+      "absentHoleSyntheticSegment": {
+        "outside": false,
+        "crossings": 0
+      }
+    },
+    {
+      "hypotheticalBandMetres": 100,
+      "compileMs": 29.50145900000001,
+      "denseSyntheticSegmentsCompleted": 4999,
+      "budgetRejected": false,
+      "discrepancyEligibility": {
+        "soiHole0": true,
+        "soiHole1": true,
+        "gbDetachedPart2": true,
+        "absentSoiPart66": false,
+        "coastalGbOnly": true,
+        "coastalSoiOnly": false
+      },
+      "absentHoleSyntheticSegment": {
+        "outside": false,
+        "crossings": 0
+      }
+    },
+    {
+      "hypotheticalBandMetres": 1000,
+      "compileMs": 21.923708000000033,
+      "denseSyntheticSegmentsCompleted": 4999,
+      "budgetRejected": false,
+      "discrepancyEligibility": {
+        "soiHole0": true,
+        "soiHole1": true,
+        "gbDetachedPart2": false,
+        "absentSoiPart66": false,
+        "coastalGbOnly": true,
+        "coastalSoiOnly": false
+      },
+      "absentHoleSyntheticSegment": {
+        "outside": false,
+        "crossings": 0
+      }
+    }
+  ],
+  "syntheticHoleCrossingAndAmbiguity": "passed",
+  "accuracyValidated": false
+}

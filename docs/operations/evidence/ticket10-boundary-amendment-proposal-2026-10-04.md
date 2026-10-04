@@ -1,5 +1,7 @@
 # Ticket 10 boundary source amendment — proposed, not approved
 
+The maintainer subsequently approved geoBoundaries for **candidate evaluation only**, explicitly withholding production adoption and any accuracy/completeness waiver. The [follow-up assessment](ticket10-boundary-adoption-assessment-2026-10-04.md) fails the adoption evidence gate; the replacement text below remains unapplied.
+
 This proposal changes source selection only. It is **not ready for unconditional artifact adoption**. No evaluated alternative currently meets the approved accuracy requirement. Approval must not be recorded as completion of ticket 10 or as unblocking ticket 11.
 
 ## Exact proposed policy text
