@@ -1,6 +1,6 @@
 # Proposal: Amravati core service area v1
 
-**Implementation and local validation approved by the maintainer on 2026-10-04. Operator coverage review remains pending.** This is one proposed replacement for the initial statewide geography contract, not an alternative Maharashtra boundary dataset. Ticket 10 remains claimed. All [statewide research and discrepancy evidence](../evidence/ticket10-boundary-adoption-assessment-2026-10-04.md) remains intact and unresolved for statewide use.
+**Implementation and local validation approved by the maintainer on 2026-10-04. Actual operator map review and final local acceptance checks are now recorded.** This is one proposed replacement for the initial statewide geography contract, not an alternative Maharashtra boundary dataset. Ticket 10 is resolved for this approved local scope; see the implementation follow-through below. All [statewide research and discrepancy evidence](../evidence/ticket10-boundary-adoption-assessment-2026-10-04.md) remains intact and unresolved for statewide use.
 
 ## Approved implementation decision
 
@@ -97,3 +97,5 @@ The original numeric ring's byte count/hash, orientation, locality-anchor inclus
 ## Implementation follow-through
 
 The [local implementation evidence](../evidence/ticket10-amravati-implementation-2026-10-04.md) records the applied amendment, packaged artifact, validation and single combined operator checklist. Implementation approval is recorded separately from the still-pending actual coverage review.
+
+The [actual operator review and final validation](../evidence/ticket10-amravati-actual-review-2026-10-04.md) now complete ticket 10. This is map-based review only, with no field visit asserted. Earlier pending language describes the approval sequence, not the current ticket status. No deployment or real-booking approval is implied.

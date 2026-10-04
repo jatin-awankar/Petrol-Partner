@@ -5348,6 +5348,8 @@ describe('ticket 10 isolated posted route preparation',()=>{
     correctDirection:true,helmetSpace:true};
   const safeStopForKind=async(_point:unknown,kind:'pickup'|'dropoff')=>({...safeStop,placeId:`synthetic-${kind}`});
   beforeEach(async()=>{
+    // Explicit unavailable-approval fixture; the packaged real review is now approved.
+    setServiceAreaApprovalForTests({status:'pending'});
     await verificationPool.query('TRUNCATE users CASCADE');
     await verificationPool.query('UPDATE pilot_pause_state SET paused=false');
     await verificationPool.query(`INSERT INTO pilot_recovery_state(singleton,mode) VALUES(true,'open')
@@ -5405,8 +5407,8 @@ describe('ticket 10 isolated posted route preparation',()=>{
       .set('Authorization',`Bearer ${token}`).set('Idempotency-Key',key).send(body);
     return {actor,app,input,send};
   }
-  async function syntheticBoundary(){
-    setServiceAreaApprovalForTests(serviceAreaApprovalFixture());
+  async function approvedServiceArea(){
+    setServiceAreaApprovalForTests(null);
   }
   function confirmPreview(input:Record<string,unknown>,preview:{preview_digest:string;route:{geometry:{coordinates:number[][]}}}){
     return {...input,endpoint_confirmation:{preview_digest:preview.preview_digest,
@@ -5424,12 +5426,12 @@ describe('ticket 10 isolated posted route preparation',()=>{
       expect(preview.body.route.geometry).toEqual(expected.geometry);
       const confirmed=confirmPreview(input,preview.body);
       expect((await f.send(path,confirmed)).body.error.code).toBe('BOUNDARY_UNAVAILABLE');
-      setServiceAreaApprovalForTests(serviceAreaApprovalFixture());
+      setServiceAreaApprovalForTests(null);
       const created=await f.send(path,confirmed);
       expect(created.status,JSON.stringify(created.body)).toBe(201);
       const stored=(await verificationPool.query('SELECT route_verification FROM posted_route_offers WHERE id=$1',[created.body.offer.id])).rows[0];
       expect(created.body.offer.real_bookings_enabled).toBe(false);
-      expect(stored.route_verification.boundary).toMatchObject({artifact:SERVICE_AREA,outsideMetres:0,outsideSeconds:0});
+      expect(stored.route_verification.boundary).toMatchObject({artifact:SERVICE_AREA,outsideMetres:0,outsideSeconds:0,approvalEvidenceKind:'recorded-operator-review',approval:{reviewedAt:'2026-10-04T06:30:00.000Z'}});
     },30000);
   it('Amravati publication leaves complete historical booking rows and old terms unchanged',async()=>{
     const f=await valhallaInput(),passenger=await participant();valhallaFixture();
@@ -5442,10 +5444,10 @@ describe('ticket 10 isolated posted route preparation',()=>{
     const snapshot=async()=>({offer:(await verificationPool.query('SELECT to_jsonb(r) AS row FROM ride_offers r WHERE id=$1',[offer])).rows[0],
       booking:(await verificationPool.query('SELECT to_jsonb(b) AS row FROM bookings b WHERE id=$1',[booking])).rows[0]});
     const before=await snapshot();
-    setServiceAreaApprovalForTests(serviceAreaApprovalFixture());
+    setServiceAreaApprovalForTests(null);
     const confirmed=confirmPreview(f.input,(await f.send(`${path}/preview`)).body),key=randomUUID();
     const created=await f.send(path,confirmed,key);expect(created.status).toBe(201);
-    setServiceAreaApprovalForTests(null);expect((await f.send(path,confirmed,key)).status).toBe(201);
+    setServiceAreaApprovalForTests({status:'pending'});expect((await f.send(path,confirmed,key)).status).toBe(201);
     expect(await snapshot()).toEqual(before);
   });
   it.each(['car','bike','scooter'] as const)('Amravati pinned artifact persists %s with synthetic review only',async(mode)=>{
@@ -5510,7 +5512,11 @@ describe('ticket 10 isolated posted route preparation',()=>{
     }
     setServiceAreaApprovalForTests(serviceAreaApprovalFixture());
     const previous=process.env.NODE_ENV;process.env.NODE_ENV='production';
-    try{expect((await f.send(path,confirmed)).body.error.code).toBe('BOUNDARY_UNAVAILABLE');}
+    try{
+      const created=await f.send(path,confirmed);expect(created.status).toBe(201);
+      const saved=(await verificationPool.query('SELECT route_verification FROM posted_route_offers WHERE id=$1',[created.body.offer.id])).rows[0];
+      expect(saved.route_verification.boundary.approvalEvidenceKind).toBe('recorded-operator-review');
+    }
     finally{process.env.NODE_ENV=previous;}
   });
   it.skipIf(!process.env.VALHALLA_REHEARSAL_URL).each(['car','bike','scooter'] as const)(
@@ -5551,7 +5557,7 @@ describe('ticket 10 isolated posted route preparation',()=>{
     expect((await f.send(path)).body.error.code).toBe('ENDPOINT_CONFIRMATION_REQUIRED');
     const confirmed=confirmPreview(f.input,preview.body);
     expect((await f.send(path,confirmed)).body.error.code).toBe('BOUNDARY_UNAVAILABLE');
-    await syntheticBoundary();
+    await approvedServiceArea();
     const key=randomUUID(),created=await f.send(path,confirmed,key);
     expect(created.status,JSON.stringify(created.body)).toBe(201);
     expect(created.body.offer).toMatchObject({policy_version:'unrestricted-route-contribution-2026-10-04.1',
@@ -5638,7 +5644,7 @@ describe('ticket 10 isolated posted route preparation',()=>{
     expect((await f.send(path,{...confirmed,endpoint_confirmation:{...confirmed.endpoint_confirmation,safe_stopping_places:false}})).status).toBe(400);
   });
   it('rolls back Valhalla publication on audit or notice failure and serializes overlapping confirmations',async()=>{
-    const f=await valhallaInput();valhallaFixture();await syntheticBoundary();
+    const f=await valhallaInput();valhallaFixture();await approvedServiceArea();
     const confirmed=confirmPreview(f.input,(await f.send(`${path}/preview`)).body);
     for(const [table,condition] of [['audit_logs',"NEW.action='posted_route_prepared'"],
       ['pilot_notification_events',"NEW.origin_type='posted_route'"]]){
@@ -5772,7 +5778,7 @@ describe('ticket 10 isolated posted route preparation',()=>{
       if(kind==='missing')delete provider.trace.edges[0].end_node;
       if(kind==='nonmonotonic')provider.trace.edges[1].end_node={elapsed_time:100};
       if(kind==='mismatched total')provider.trace.edges[1].end_node={elapsed_time:175};
-      await syntheticBoundary();
+      await approvedServiceArea();
       const preview=await f.send(`${path}/preview`);expect(preview.status).toBe(200);
       expect((await f.send(path,confirmPreview(f.input,preview.body))).body.error.code).toBe('BOUNDARY_INVALID');
     });
@@ -5796,16 +5802,18 @@ describe('ticket 10 isolated posted route preparation',()=>{
     expect((await verificationPool.query('SELECT count(*)::int AS n FROM posted_route_offers')).rows[0].n).toBe(0);
   });
   it('polygon boundary cannot be supplied by a client or retained as production approval',async()=>{
-    const f=await valhallaInput();valhallaFixture();await syntheticBoundary();
+    const f=await valhallaInput();valhallaFixture();await approvedServiceArea();
     const confirmed=confirmPreview(f.input,(await f.send(`${path}/preview`)).body);
     expect((await f.send(path,{...confirmed,boundary:boundaryFixture()})).status).toBe(400);
     vi.stubEnv('NODE_ENV','production');
     try{
       const boundary=await import('../modules/posted-routes/route-boundary');
       expect(()=>boundary.setBoundaryArtifactForTests(boundaryFixture())).toThrow('test only');
-      expect((await f.send(path,confirmed)).body.error.code).toBe('BOUNDARY_UNAVAILABLE');
+      const created=await f.send(path,confirmed);expect(created.status).toBe(201);
+      const saved=(await verificationPool.query('SELECT route_verification FROM posted_route_offers WHERE id=$1',[created.body.offer.id])).rows[0];
+      expect(saved.route_verification.boundary.approvalEvidenceKind).toBe('recorded-operator-review');
     }finally{vi.unstubAllEnvs();}
-    expect((await verificationPool.query('SELECT count(*)::int AS n FROM posted_route_offers')).rows[0].n).toBe(0);
+    expect((await verificationPool.query('SELECT count(*)::int AS n FROM posted_route_offers')).rows[0].n).toBe(1);
   });
   it('polygon boundary rejects a pathological artifact within the topology work budget',async()=>{
     const f=await valhallaInput();valhallaFixture();
@@ -5879,7 +5887,7 @@ describe('ticket 10 isolated posted route preparation',()=>{
       cumulativeMeters:[0,6000],distanceMeters:6000,durationSeconds:900})});
     let publishInput:unknown=input;
     if(useValhalla){
-      (await routeModule()).setRoutingAdapterForTests(null);valhallaFixture();await syntheticBoundary();
+      (await routeModule()).setRoutingAdapterForTests(null);valhallaFixture();await approvedServiceArea();
       input.origin=[77.75,20.9001];input.destination=[77.765,20.9001];
       const preview=await request(app).post(`${path}/preview`).set('Authorization',`Bearer ${a.token}`).send(input);
       publishInput=confirmPreview(input,preview.body);
@@ -5889,6 +5897,7 @@ describe('ticket 10 isolated posted route preparation',()=>{
     expect(created.status,JSON.stringify(created.body)).toBe(201);
     const operationId=created.body.offer.operation_id,offerId=created.body.offer.id;
     const original=(await verificationPool.query('SELECT route_verification FROM posted_route_offers WHERE id=$1',[offerId])).rows[0];
+    if(useValhalla)expect(original.route_verification.boundary.approvalEvidenceKind).toBe('recorded-operator-review');
     expect((await verificationPool.query('SELECT state FROM posted_route_operations WHERE id=$1',[operationId])).rows[0].state).toBe('acknowledged');
     await verificationPool.query(`DELETE FROM pilot_email_jobs WHERE event_id IN
       (SELECT id FROM pilot_notification_events WHERE origin_type='posted_route' AND operation_id=$1)`,[operationId]);

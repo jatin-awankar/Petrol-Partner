@@ -70,3 +70,7 @@ The [operator has now explicitly approved and marked the checklist reviewed](tic
 ## Latest clarification — synthetic sample only
 
 The latest [user submission](ticket10-amravati-synthetic-review-sample-2026-10-04.md) is explicitly synthetic and states that all real-world locations and route suitability remain unverified. It does not satisfy actual operator evidence or merely complete its metadata. The original pinned artifact and review-bundle hashes remain unchanged. Ticket 10 stays claimed; publication remains unavailable and real bookings disabled.
+
+## Actual map review supplied subsequently
+
+Jatin has now supplied the [actual map-based review](ticket10-amravati-actual-review-2026-10-04.md), dated 4 October 2026 at 12:00 PM IST, naming Google Maps, all five places, category/edge findings and approval. No field visit is asserted. This supersedes earlier statements that real review evidence remains missing; synthetic samples remain separately labelled and unused as real evidence. The actual packaged record passed its final local acceptance checks; ticket 10 is now resolved for Amravati core. See the linked actual-review evidence.

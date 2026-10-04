@@ -1,4 +1,18 @@
 {
-  "status": "pending",
-  "reason": "Latest submission is explicitly SYNTHETIC SAMPLE — NOT OPERATOR EVIDENCE; all real-world locations and route suitability remain unverified. Actual operator review evidence is still required. See docs/operations/evidence/ticket10-amravati-synthetic-review-sample-2026-10-04.md."
+  "status": "approved",
+  "approver": "Jatin Awankar",
+  "reviewedAt": "2026-10-04T06:30:00.000Z",
+  "areaId": "amravati-core-v1",
+  "geometrySha256": "b342438fbb8aecf2e3f5cf82cf1ddfa2ea7d6ae02343e3319a41220b1d4eb42c",
+  "calculationVersion": "amravati-convex-microdegree-envelope-2026-10-04.1",
+  "evidenceSha256": "facb093f9b25e7ea2a6bb883d5c5cbe7549a950702acf679f951cc65cad034c2",
+  "modes": [
+    "car",
+    "bike",
+    "scooter"
+  ],
+  "coverageAndMeetingPlacesReviewed": true,
+  "completeRoutesReviewed": true,
+  "authorshipAndLimitationsAcknowledged": true,
+  "reviewNotes": "Actual operator review supplied by Jatin Awankar. Review time: 4 October 2026, 12:00 PM IST (06:30 UTC). Map used: Google Maps. Review basis: map review; no field visit asserted.\nCoverage: Includes the intended journeys. No concerns reported.\nM1: Rahat Hospital. M2: New Prabhat Colony. M3: Futka Talao. M4: Gajanan Maharaj Mandir. M5: Camp Road.\nCar, motorcycle (application bike category) and scooter routes: reviewed; no concerns reported.\nEdge examples 1–4: all match the intended coverage rules. Remaining unverified items: none reported by the operator. Decision: Approved.\nThis completes the actual-review supplement to the earlier exact-hash checklist approval, including rules reviewed. Place names and suitability are operator-reported map observations, not independent agent geocoding or field verification. No physical-location, lawful-stopping or administrative-boundary certification is asserted; no deployment or real-booking activation is authorized."
 }

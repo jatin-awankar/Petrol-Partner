@@ -2,7 +2,7 @@
 
 - **Implementation policy version:** `2026-10-04.1` (Amravati core successor; prior versions remain historical; not activated)
 - **Decision dates:** 2026-09-29; response-target commitment 2026-10-03
-- **Status:** Approved for implementation under the Amravati core scope amendment below; actual operator coverage evidence and ticket 10 acceptance remain required. Not approved for live operation. Real bookings remain disabled.
+- **Status:** Approved for implementation under the Amravati core scope amendment below; actual operator map-review evidence and ticket 10 local acceptance are now recorded. Not approved for live operation. Real bookings remain disabled.
 - **Policy approver:** Jatin Awankar.
 - **Sole on-duty operator chosen for the personal project:** Jatin Awankar during published hours and until active trips are resolved. On 2026-10-03 the maintainer declined backup staffing for the current personal-project phase. No independent active-trip escalation operator is appointed; real-trip readiness remains incomplete.
 
@@ -72,3 +72,7 @@ Ticket 09 is resolved for existing support/notice implementation after the booki
 The approved successor implementation scope is **Amravati core (`amravati-core-v1`)**, the independently authored WGS84 rectangle west/east 77.73/77.83 E and south/north 20.89/20.97 N. Geometry SHA-256: `b342438fbb8aecf2e3f5cf82cf1ddfa2ea7d6ae02343e3319a41220b1d4eb42c`. Both requested and confirmed endpoints and the entire saved route must pass the exact coordinate-precision rule in the [scope decision](proposals/amravati-core-service-area-2026-10-04.md); **zero outside-area travel** is allowed. This verifies a business service area, not municipal/state boundaries or actual-ground location accuracy. Retain 50 km/90 minutes and all other eligibility, provider, rates, schedule, support, audit/recovery and real-booking gates. New implementation versions are route `unrestricted-route-contribution-2026-10-04.1` and operating `2026-10-04.1`; old terms remain frozen. This dated successor supersedes prior statewide source/accuracy/transit requirements for new local routes only; it does not establish that statewide research passed.
 
 Earlier Maharashtra/SOI decisions and version `2026-10-03.2` remain historical evidence. This amendment changes the new service-area promise; it does not validate or repair an administrative dataset. Operator map/route review results must be recorded rather than inferred from policy approval.
+
+## Ticket 10 local acceptance completed
+
+The [actual Amravati review and validation](evidence/ticket10-amravati-actual-review-2026-10-04.md) complete ticket 10's artifact, review and enforcement requirements. Jatin's review was map-based using Google Maps, not a field visit. This supersedes the ticket-10 pending item above; ticket 16 must still rehearse its actual configuration. All independent live-operation and launch gates remain. No policy limits, rollout or booking-enablement settings change.

@@ -43,5 +43,10 @@ document.getElementById('prepare').addEventListener('click',()=>{const lines=['O
 </script></html>'''
 corners=' · '.join(link(p,label) for p,label in [([77.73,20.89],'SW corner'),([77.83,20.89],'SE corner'),([77.83,20.97],'NE corner'),([77.73,20.97],'NW corner')])
 for key,val in {'POINTS':points,'EDGES':edges,'ROUTE_LIST':reviewroutes,'CORNERS':corners,'ROUTE_DATA':json.dumps(route_data),'POINT_DATA':json.dumps(d['points']),'GEOMETRY_HASH':d['area']['geometrySha256'],'EVIDENCE_HASH':digest}.items(): template=template.replace(key,val)
+approval=json.loads(Path('apps/api/src/modules/posted-routes/service-area/operator-review.json').read_text())
+if approval.get('status')=='approved':
+ start=template.index('<p class="pending">'); end=template.index('</p>',start)+4
+ banner='<div class="panel"><b>Actual operator map review recorded.</b><p>'+esc(approval['approver'])+' · '+esc(approval['reviewedAt'])+' (4 October 2026, 12:00 PM IST). Google Maps review; no field visit asserted.</p><p>M1: Rahat Hospital · M2: New Prabhat Colony · M3: Futka Talao · M4: Gajanan Maharaj Mandir · M5: Camp Road.</p><p>Coverage, all category previews and all four edge examples approved by the operator. No unverified items reported by the operator. This is not independent field, safety or legal verification. No deployment or real-booking activation is authorized. The form below is retained as a review template; it does not change the recorded approval.</p></div>'
+ template=template[:start]+banner+template[end:]
 Path('docs/operations/evidence/ticket10-amravati-operator-review-2026-10-04.html').write_text(template)
 print(digest)

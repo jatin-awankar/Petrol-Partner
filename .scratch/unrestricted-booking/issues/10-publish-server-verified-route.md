@@ -4,9 +4,9 @@
 
 **Blocked by:** 02 (Approve route and contribution rules); 04 (Approve operating and support policy); 05 (Inventory deployed data and plan the migration); 06 (Close legacy booking and payment entry points); 08 (Register individual driver–vehicle declarations).
 
-**Status:** claimed
+**Status:** resolved
 
-- [ ] The server owns and versions the posted route and rejects invalid geometry, mode, vehicle, schedule, support window, and overlapping commitments. The pinned Amravati core and no-exit implementation are present; actual operator review and its final checks remain below.
+- [x] The server owns and versions the posted route and rejects invalid geometry, mode, vehicle, schedule, support window, and overlapping commitments. The pinned Amravati core, actual operator map review and final authenticated checks are complete; see Answer below.
 - [x] Publication, reads, and operator audit distinguish the new route policy from historical corridor offers; real-booking exposure stays disabled.
 - [x] Authenticated HTTP/PostgreSQL tests cover authorization, idempotency, rollback, route-service failure, overlap, and recovery evidence.
 
@@ -26,7 +26,7 @@ Implemented and exercised through authenticated HTTP/PostgreSQL:
 
 New routes retain policy versions `unrestricted-route-contribution-2026-10-03.2` and `2026-10-03.2`. Production publication still returns `BOUNDARY_UNAVAILABLE`, including when a test artifact was previously retained in memory. No client payload, environment approval flag or test metadata can enable it. Real bookings remain disabled.
 
-## Remaining acceptance checks — Amravati core scope
+## Amravati core acceptance checklist — completed by Answer below
 
 1. The approved original `amravati-core-v1` geometry is now packaged exactly, with pinned SHA-256, CRS84 order, one-shell/no-hole definition and original authorship/rights. **Pending:** retain the actual operator coverage-review approval bound to the exact hash, rule and review bundle; a synthetic approval fixture or environment flag is insufficient.
 2. The implementation now enforces the scope decision's strict endpoint and complete-route containment using validated coordinate-precision envelopes. Reject every outside segment, exit/re-entry, touch or ambiguity; preserve requested/confirmed endpoint checks, 30 m confirmation, timing integrity, 50 km/90-minute caps and existing business controls. Do not install SOI/geoBoundaries or assert administrative/physical-location accuracy.
@@ -87,3 +87,11 @@ Jatin supplied an explicit overall approval bound to the exact geometry/evidence
 ## Synthetic sample received — actual evidence still pending
 
 The user explicitly labelled the latest [review sample](../../../docs/operations/evidence/ticket10-amravati-synthetic-review-sample-2026-10-04.md) **SYNTHETIC SAMPLE — NOT OPERATOR EVIDENCE**, approving only simulated checks and stating that all real-world locations and route suitability remain unverified. Preserve earlier correspondence, but do not use this sample to fill or satisfy the actual-review record. The outstanding requirement is actual operator evidence, not merely replacing sample names or adding a date. Ticket 10 remains **claimed** and the publication gate remains pending. No deployed state or booking capability changes.
+
+## Answer
+
+**Resolved for the approved Amravati core release scope.** Jatin Awankar supplied actual Google Maps review at **4 October 2026, 12:00 PM IST**, named all five meeting places, accepted coverage, all three category previews and all edge examples, and reported no remaining unverified items. The basis is **map review, not a field visit**; no independent stopping-safety, physical-position or legal certification is inferred. The earlier synthetic sample remains separately preserved and is not used as actual evidence.
+
+The [actual review and final acceptance evidence](../../../docs/operations/evidence/ticket10-amravati-actual-review-2026-10-04.md) binds the real operator record to the unchanged exact geometry, review-bundle and calculation hashes. The authored artifact, coordinate-precision/whole-route rule and real review are packaged. **114 authenticated HTTP/PostgreSQL cases and 26 service-area unit checks passed**, including actual local-engine car/bike/scooter publication, requested/routed endpoint and whole-route rejection, precision, unchanged historical booking rows, idempotency, concurrency, audit/notice rollback and receipt restoration. Actual-engine and recovery success cases freeze `recorded-operator-review`, not a synthetic approval. Typecheck, API build, built-artifact production-mode smoke and source/build hash comparison passed.
+
+All three remaining artifact/approval/enforcement acceptance items above are satisfied in this ticket. The actual operator record supersedes their historical pending statements. New eligible driver-private route preparation can pass the area gate; real-booking exposure remains disabled. Statewide research is preserved, not repaired or adopted. Keep 50 km/90 minutes and the approved zero-exit rule. No ticket-10 acceptance item is transferred to ticket 11 or staging. No ticket 11 work, deployment, merge, external contact or real-booking activation occurred. Independent hosting/gateway, staging, external review, migration/recovery and launch gates retain their existing owners and requirements.

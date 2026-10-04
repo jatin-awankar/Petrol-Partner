@@ -41,3 +41,7 @@ The packaged publication gate remains pending while this required record is inco
 ## Subsequent synthetic submission
 
 The user subsequently supplied an explicitly [synthetic review sample](ticket10-amravati-synthetic-review-sample-2026-10-04.md), stating that all real-world locations and route suitability remain unverified and real operator evidence is pending. That explicit limitation governs ticket completion. The earlier message above remains historical correspondence; the sample is not a real-evidence supplement and does not complete the actual operator-review requirement.
+
+## Actual map review supplied subsequently
+
+Jatin has now supplied the [actual map-based review](ticket10-amravati-actual-review-2026-10-04.md), dated 4 October 2026 at 12:00 PM IST, naming Google Maps, all five places, category/edge findings and approval. No field visit is asserted. This supersedes earlier statements that real review evidence remains missing; synthetic samples remain separately labelled and unused as real evidence. The actual packaged record passed its final local acceptance checks; ticket 10 is now resolved for Amravati core. See the linked actual-review evidence.
