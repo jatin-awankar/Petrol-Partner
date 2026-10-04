@@ -1,6 +1,8 @@
 # Ticket 10 Valhalla route preparation
 
-Implementation uses route policy `unrestricted-route-contribution-2026-10-03.2` and operating policy `2026-10-03.2` for newly prepared routes only. It does not enable discovery or real bookings. Ticket 10 remains claimed: actual Maharashtra boundary enforcement cannot yet be evidenced.
+The approved successor implementation target is route policy `unrestricted-route-contribution-2026-10-04.1`, operating `2026-10-04.1` and `amravati-core-v1`. The runtime now packages the original service geometry and enforces coordinate-precision containment and zero route exit. Actual operator coverage review remains pending, so normal publication stays unavailable. See the [implementation evidence and combined operator checklist](evidence/ticket10-amravati-implementation-2026-10-04.md) and [local scope contract](proposals/amravati-core-service-area-2026-10-04.md). It does not enable discovery or real bookings; ticket 10 stays claimed.
+
+The sections below record the existing `.2` implementation and its historical SOI/synthetic evidence. Their state-artifact and 5 km/600 s requirements are superseded for the new local version by the linked contract, not claimed complete. Retain those historical checks and evidence for their original versions; do not relabel them as tests of the successor.
 
 ## Provider contract
 

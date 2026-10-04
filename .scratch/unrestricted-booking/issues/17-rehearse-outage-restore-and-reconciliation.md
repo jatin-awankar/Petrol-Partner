@@ -19,3 +19,7 @@
 ## Operating-policy evidence handoff — ticket 04, 2026-10-03
 
 Under ticket 04 policy `2026-10-03.2`, rehearse primary-inbox/Gmail/sole-operator failure distinctly, unsupported-departure and new-commitment pause, preserved active-trip visibility, fallback incident recording and explicit reconciliation before reopening. Label any simulated independent escalation; it does not establish real operator availability. Prove backup/acknowledgement-receipt horizon compatibility with finite retention, provider deletion retry and independently held suppression of deleted data before reopening an older snapshot. Include onboarding's shorter copy lifetime and held historical records. All this evidence remains unperformed by ticket 04; status unchanged.
+
+## Amravati core scope amendment — 2026-10-04
+
+Restore the exact approved Amravati core artifact and operator approval reference alongside the pinned routing graph/configuration. Missing/mismatched/revoked area evidence must keep new area-dependent actions closed; reconcile later acknowledged operations and preserve their original area/policy/hash after an older database restore. Do not transform prior state-boundary evidence into local service-area evidence. Retain all existing receipt, deletion, support and explicit reopening requirements. The new scope does not authorize a rehearsal deployment or production restore; status unchanged.

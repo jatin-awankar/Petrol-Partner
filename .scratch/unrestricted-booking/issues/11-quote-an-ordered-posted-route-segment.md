@@ -16,6 +16,10 @@ The saved, versioned synthetic route now supports a driver-private test quote. T
 
 ### Remaining acceptance blockers
 
-1. Ticket 02 has no approved production routing provider or mode-specific retention, display, quota, and failure evidence. The test-only stop checker is not a production source of driver-confirmed, legal, correctly sided, helmet-ready stopping places.
-2. Ticket 10 has no live route publication or passenger-visible read. Its prepared offers remain driver-private and synthetic-only.
-3. A versioned route replacement and accepted booking flow do not exist. Ticket 12 must revalidate and freeze this quote inside its protected acceptance transaction; a preview alone cannot authorize a commitment.
+1. Ticket 02 selects Valhalla/OSM and the Amravati core successor rules. This ticket still needs production passenger point matching, explicit stop confirmation and saved-route segment verification; a test-only stop checker is insufficient.
+2. Ticket 10 must complete the actual approved Amravati core artifact and route preparation evidence. Its driver-private preparation does not establish passenger discovery/read exposure or this ticket's passenger quote acceptance.
+3. Ticket 12 must revalidate and freeze the quote inside protected acceptance; a preview alone cannot authorize a commitment. Existing version/replacement/launch gates remain.
+
+## Amravati core scope amendment — 2026-10-04
+
+Check both requested passenger pickup/drop-off and their matched saved-route positions against the route's pinned `amravati-core-v1` identity/hash, current approval and coordinate-precision rule. Preserve order, 30 m matching, 500 m minimum, safe-stop declarations and exact saved-route distance/price rules. Unavailable/revoked/mismatched area evidence rejects a new quote; historical frozen results remain unchanged. Add authenticated PostgreSQL boundary/snap/stale-area cases when implementing this ticket. Ticket 10 dependency and claimed status remain; no implementation or passenger exposure is implied by the scope amendment.

@@ -20,3 +20,7 @@
 ## Ticket 09 notice handoff — 2026-10-03
 
 Ticket 09 now verifies notice delivery for existing outcome producers. Its completion pass added HTTP MFA guards and AAL1 regression coverage for hold, release-hold, resolve-journey and resolve-settlement, so the earlier missing-MFA follow-up is completed. This ticket still owns any absent new-route delayed-departure, silent-journey and overdue-payment producers and their notice generation. Next tests: advance each cutoff, run its actual producer, pass resulting durable events through the existing worker, assert exact recipients and no invented travel/debt/receipt. Ticket 09 resolution does not resolve this ticket or enable bookings.
+
+## Amravati core scope amendment — 2026-10-04
+
+For an Amravati core scope withdrawal or material area update, use existing audited holds and cancellation/replacement for affected future commitments. Preserve original area/version and accepted terms in journey/settlement records; do not silently reclassify them under a new polygon. Active trips retain visibility and incident support rather than automatic cancellation or location-based enforcement. Recheck applicable holds/approval at departure without rewriting the route. Test revocation/departure races and receipt restoration in this ticket; no live tracking or scope-activation authority is added. Status remains unchanged.

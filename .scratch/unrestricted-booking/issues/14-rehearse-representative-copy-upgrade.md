@@ -13,3 +13,7 @@
 ## Rehearsal progress (2026-09-29)
 
 See `docs/operations/ticket14-representative-upgrade-rehearsal.md`. A wholly synthetic, isolated PostgreSQL rehearsal preserved historical rows through migrations 0035–0042, verified the exact ledger and explicit owner/money/status comparisons, exercised runner rollback, and restored its baseline into a second local database. A newer synthetic acknowledged operation was reconciled from a local receipt while writes remained restricted. Existing posted-route HTTP/PostgreSQL scenarios passed separately. This remains partial evidence: an approved sanitized copy of the verified live shape, separate roles, mixed-version application behavior on that copy, and protected provider Auth recovery are unevidenced. Keep this ticket claimed and real booking writes disabled.
+
+## Amravati core scope amendment — 2026-10-04
+
+Include historical corridor records, prior unrestricted `.2` route evidence and new `amravati-core-v1`/`.1` successor records in the existing authorized-copy rehearsal. Compare frozen terms, geometry, area/policy identifiers and signed receipt formats before/after migration and restore. Do not backfill old records with the new area or treat old state checks as local-area approvals. Scope approval supplies no data-reset or deployed migration authorization; status and existing copy-evidence requirements remain unchanged.

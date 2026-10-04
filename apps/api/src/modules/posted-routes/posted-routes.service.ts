@@ -1,3 +1,4 @@
+import {SERVICE_AREA} from './service-area';
 import {verifyRouteBoundary} from './route-boundary';
 import {createHash} from 'node:crypto';
 import {pool} from '../../db/pool';
@@ -65,7 +66,7 @@ export async function quote(actor:string,id:string,version:number,pickup:Point,d
 export async function operation(actor:string,id:string){const row=await repo.byId(pool,id);
   if(!row||row.actor_id!==actor)throw new AppError(404,'Operation not found','OPERATION_NOT_FOUND');
   return {operation_id:row.id,state:row.state,...row.result};}
-function previewDigest(route:VerifiedRoute){return createHash('sha256').update(JSON.stringify(route)).digest('hex');}
+function previewDigest(route:VerifiedRoute){return createHash('sha256').update(JSON.stringify({route,serviceArea:SERVICE_AREA})).digest('hex');}
 async function checkDriver(actor:string,input:Input){
   await inProtectedTransaction(pool,async client=>{
     const declaration=await assertCurrentDriverVehicle(client,actor,input.vehicle_id,input.capacity);
@@ -77,7 +78,7 @@ export async function preview(actor:string,input:Input){
   schedule(new Date(input.departure_at),new Date());
   const route=await verifyRoute(input);
   return {route,preview_digest:previewDigest(route),real_bookings_enabled:false,
-    boundary_verified:false,confirmation_required:true};
+    boundary_verified:false,service_area:SERVICE_AREA,confirmation_required:true};
 }
 async function publicationEvidence(route:VerifiedRoute,input:Input){
   // Preserve the pre-existing synthetic seam for historical lifecycle tests.

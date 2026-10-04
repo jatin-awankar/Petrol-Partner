@@ -7,7 +7,7 @@ type Input={routeShape:string;routeLengthKm:number;trace:Trace};
 // Frozen normalization rule selected by route policy 2026-10-03.2.
 function invalid():never{throw new Error('Valhalla route distance cannot be verified');}
 
-function decodePolyline6(shape:string):Point[]{
+export function decodePolyline6(shape:string):Point[]{
   if(typeof shape!=='string'||!shape||shape.length>200000)invalid();
   const coordinates:Point[]=[];
   let latitude=0,longitude=0,index=0;

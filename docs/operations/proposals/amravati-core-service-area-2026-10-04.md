@@ -1,8 +1,8 @@
 # Proposal: Amravati core service area v1
 
-**For approval only. Not adopted.** This is one proposed replacement for the initial statewide geography contract, not an alternative Maharashtra boundary dataset. Ticket 10 remains claimed. All [statewide research and discrepancy evidence](../evidence/ticket10-boundary-adoption-assessment-2026-10-04.md) remains intact and unresolved for statewide use.
+**Implementation and local validation approved by the maintainer on 2026-10-04. Operator coverage review remains pending.** This is one proposed replacement for the initial statewide geography contract, not an alternative Maharashtra boundary dataset. Ticket 10 remains claimed. All [statewide research and discrepancy evidence](../evidence/ticket10-boundary-adoption-assessment-2026-10-04.md) remains intact and unresolved for statewide use.
 
-## Decision requested
+## Approved implementation decision
 
 Approve an independently authored **Amravati core service area**, limited to the rectangle below, with **both endpoints and the entire saved route inside**. Outside-area travel allowance becomes **zero**. Keep the **50 km / 90-minute** trip limits and all existing eligibility, contribution, schedule, support, recovery and launch gates. Approval would authorize the documented implementation and local verification work; it would not attest that operator checks have happened, resolve ticket 10, deploy anything or enable real bookings.
 
@@ -26,7 +26,7 @@ On approval, generate this exact geometry from the four limits, with no reprojec
 {"type":"MultiPolygon","coordinates":[[[[77.73,20.89],[77.83,20.89],[77.83,20.97],[77.73,20.97],[77.73,20.89]]]]}
 ```
 
-These 113 bytes hash to SHA-256 **`b342438fbb8aecf2e3f5cf82cf1ddfa2ea7d6ae02343e3319a41220b1d4eb42c`**. The ring is counterclockwise and closed, with one component and no holes by definition. This is a proposal pin, not an installed or approved artifact. [RFC 7946](https://www.rfc-editor.org/rfc/rfc7946.html) defines WGS84 longitude/latitude GeoJSON and distinguishes coordinate precision from uncertainty.
+These 113 bytes hash to SHA-256 **`b342438fbb8aecf2e3f5cf82cf1ddfa2ea7d6ae02343e3319a41220b1d4eb42c`**. The ring is counterclockwise and closed, with one component and no holes by definition. This pin is now installed for the approved local implementation; actual operator coverage approval remains pending. [RFC 7946](https://www.rfc-editor.org/rfc/rfc7946.html) defines WGS84 longitude/latitude GeoJSON and distinguishes coordinate precision from uncertainty.
 
 Lawful acquisition consists of original numeric authoring and the operator's recorded adoption/rights statement permitting Petrol Partner to use, transform, retain, back up and redistribute this configuration. No third-party boundary geometry is incorporated, so adoption does not depend on its unresolved reuse permission. Record the authoring method and that independent origin; do not claim another dataset's licence applies. Applicable software, basemap and route-data licences remain separate. If the operator uses an OSM background for orientation, keep attribution/ODbL notices and do not trace it into the service shape; the [OSMF independent-layer guideline](https://osmfoundation.org/wiki/Licence/Community_Guidelines/Horizontal_Map_Layers_-_Guideline) describes this distinction. Existing Mapbox terms still apply to its display.
 
@@ -65,7 +65,7 @@ Proposal approval authorizes preparation of this evidence and implementation. Ti
 
 ## Exact document/ticket changes after approval
 
-The accompanying [unapplied document patch](amravati-core-service-area-2026-10-04.patch) provides the proposed text against this branch. **It has not been applied.** New-route policy identifiers would be `unrestricted-route-contribution-2026-10-04.1` and operating `2026-10-04.1`; area identity is separate. Prior versions remain unchanged. Historical statewide decisions and findings remain readable and explicitly superseded only for this new local scope.
+The accompanying [approved document patch](amravati-core-service-area-2026-10-04.patch) provides the proposed text against this branch. **It was applied following explicit implementation approval on 2026-10-04.** New-route policy identifiers would be `unrestricted-route-contribution-2026-10-04.1` and operating `2026-10-04.1`; area identity is separate. Prior versions remain unchanged. Historical statewide decisions and findings remain readable and explicitly superseded only for this new local scope.
 
 - **Specification:** make open account eligibility independent of residence, but new first-release rides local; add the exact area/rules/limitations and retain all launch gates.
 - **Operating policy:** replace the first four Area paragraphs (Maharashtra/SOI/accuracy/brief transit) with this authored-area contract; replace the outstanding SOI adoption item with ticket 10's approval/pin/enforcement evidence. Preserve 50 km/90 minutes, schedule, support and all unrelated controls.
@@ -75,7 +75,7 @@ The accompanying [unapplied document patch](amravati-core-service-area-2026-10-0
 - **Ticket 11:** area-check requested and matched passenger points on the saved approved route; retain ticket 10 dependency. **Ticket 12:** recheck area/version/approval availability during new requests/acceptance and freeze evidence in the protected transaction; preserve existing retries. **Ticket 13:** handle area revocation/replacement under existing hold/cancellation/incident rules, preserving active trips and frozen obligations.
 - **Tickets 14 and 15:** add old/new policy coexistence and end-to-end local-area cases. **Ticket 16:** rehearse the adopted local artifact and independent authorship/licence record rather than require SOI permission; all OSM/Mapbox/provider rights and existing release gates remain. **Ticket 17:** restore pinned area and approval alongside routing provenance. **Ticket 18:** require completed local-area evidence and limit any eventual authorization to this area; retain separate launch/activation approval.
 
-No dependent ticket is started or resolved in preparing this patch. No code constants change now. Implementation would need a distinct service-area artifact/rule type rather than mislabelling original coordinates as SOI/geoBoundaries or fabricating their uncertainty fields. No historical-data migration is assumed safe without the existing inventory/rehearsal requirements.
+No dependent ticket is started or resolved in preparing this patch. Code constants now carry the successor versions. Implementation would need a distinct service-area artifact/rule type rather than mislabelling original coordinates as SOI/geoBoundaries or fabricating their uncertainty fields. No historical-data migration is assumed safe without the existing inventory/rehearsal requirements.
 
 ## Acceptance with obtainable evidence
 
@@ -93,3 +93,7 @@ All listed tests are **planned, not reported as passing implementation tests**. 
 ## Proposal-only validation
 
 The original numeric ring's byte count/hash, orientation, locality-anchor inclusion and approximate dimensions were computed locally using Node/Python and WGS84 geodesic calculations. Those checks validate the proposal's numbers, not road coverage, operator approval or runtime enforcement. The document patch was checked for applicability in an isolated temporary copy; no target document was modified by it. No database tests, deployment, booking activation or external communication were performed for this proposal.
+
+## Implementation follow-through
+
+The [local implementation evidence](../evidence/ticket10-amravati-implementation-2026-10-04.md) records the applied amendment, packaged artifact, validation and single combined operator checklist. Implementation approval is recorded separately from the still-pending actual coverage review.
