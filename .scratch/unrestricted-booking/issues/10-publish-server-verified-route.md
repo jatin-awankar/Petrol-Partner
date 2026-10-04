@@ -45,3 +45,11 @@ The original isolated route preparation, migration 0043, endpoint repeated-pass 
 `npm test` passed with the opt-in local Valhalla environment: **38 script checks, 407 API tests (all 208 authenticated HTTP/PostgreSQL cases), and 19 worker tests**. Ten script checks and one unrelated API live-provider check were skipped. The local graph is identified by the previously recorded immutable manifest; all database tests used a newly created disposable PostgreSQL 16 database. No deployed data was used.
 
 `npm run typecheck`, `npm run api:build` and `git diff --check` passed. `npm run lint` passed with nine pre-existing warnings. Standards review found one uncounted topology-work path, reproduced and fixed with an authenticated red/green regression; its final review has zero actionable findings. Spec review, including the updated artifact-only checklist, has zero actionable findings. Reviews did not independently recreate the external artifact build. Ticket 10 remains claimed and the PR remains draft.
+
+## Alternative-boundary investigation — 2026-10-04
+
+PR #83 is now merged according to GitHub; its earlier draft wording is historical. This does not satisfy the remaining artifact criterion. Work continues on the existing ticket branch.
+
+[Primary-source research](../../../docs/operations/evidence/ticket10-boundary-alternatives-research-2026-10-04.md) identifies geoBoundaries gbOpen/DataMeet as the strongest conditional reuse candidate. [Pinned local evaluation](../../../docs/operations/evidence/ticket10-boundary-candidate-evaluation-2026-10-04.md) passes topology/processing probes, but its unquantified positional shift and island/hole differences leave accuracy/completeness unresolved. No alternative currently satisfies the unchanged policy.
+
+A [concrete source amendment](../../../docs/operations/evidence/ticket10-boundary-amendment-proposal-2026-10-04.md) is proposed for maintainer approval, not applied. It preserves the accuracy gate and all actual-artifact checks in this ticket. No arbitrary uncertainty band, replacement adoption, ticket-11 work, deployment or real-booking activation is authorized by this research. Status remains **claimed**.
