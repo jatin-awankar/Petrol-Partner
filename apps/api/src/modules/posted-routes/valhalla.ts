@@ -3,7 +3,7 @@ import {createHash} from 'node:crypto';
 import {z} from 'zod';
 import {AppError} from '../../shared/errors/app-error';
 import {buildValhallaDistanceProgression} from './valhalla-distance';
-import type {RoutingAdapter,VerifiedRoute} from './routing';
+import type {Point,RoutingAdapter,VerifiedRoute} from './routing';
 
 const hash=z.string().regex(/^[a-f0-9]{64}$/);
 const manifestSchema=z.strictObject({engineVersion:z.string().min(1).max(100),imageDigest:hash,
@@ -97,4 +97,48 @@ export function configuredValhalla():RoutingAdapter{
       throw unavailable();
     }finally{clearTimeout(timer);activeJobs--;}
   }};
+}
+
+// Verify road identity at confirmed stops without requesting a new route or distance.
+// Safety, side, direction and helmet space remain explicit driver declarations.
+export async function verifySavedStopPositions(route:VerifiedRoute,stops:{requested:Point;matched:Point;along:number}[]){
+  const verification=route.verification;
+  let base:URL,manifest:ValhallaManifest;
+  try{
+    manifest=manifestSchema.parse(JSON.parse(process.env.VALHALLA_BUILD_MANIFEST??''));
+    base=new URL(process.env.VALHALLA_URL??'');
+    if(base.username||base.password||base.search||base.hash||
+      !(base.protocol==='https:'||(base.protocol==='http:'&&['127.0.0.1','localhost','[::1]'].includes(base.hostname)))||
+      !verification||manifestDigest(manifest)!==verification.manifestDigest||
+      manifestDigest(verification.manifest)!==verification.manifestDigest||
+      verification.costing!==(route.mode==='car'?'auto':'motorcycle')||
+      verification.normalizationVersion!==NORMALIZATION_VERSION)throw unavailable();
+  }catch{throw unavailable();}
+  if(activeJobs>=2)throw unavailable();
+  activeJobs++;
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),10000);
+  try{
+    const response=await fetch(new URL('locate',base.href.endsWith('/')?base.href:`${base.href}/`),{
+      method:'POST',headers:{'Content-Type':'application/json'},signal:controller.signal,redirect:'error',
+      body:JSON.stringify({costing:verification.costing,costing_options:verification.costingOptions,
+        locations:stops.map(s=>({lon:s.requested[0],lat:s.requested[1],radius:30,search_cutoff:30})),verbose:false})});
+    if(!response.ok||response.headers.get('x-petrol-routing-build')!==verification.manifestDigest||!response.body)throw unavailable();
+    const reader=response.body.getReader(),chunks:Uint8Array[]=[];let size=0;
+    try{while(true){const {done,value}=await reader.read();if(done)break;
+      size+=value.byteLength;if(size>2_000_000)throw unavailable();chunks.push(value);}}
+    finally{await reader.cancel();}
+    const located=locateSchema.element.array().length(stops.length).parse(JSON.parse(Buffer.concat(chunks).toString('utf8')));
+    const edges=z.array(edgeSchema).parse(verification.edges);
+    for(let i=0;i<stops.length;i++){
+      const stop=stops[i],candidates=located[i].edges;
+      const ways=new Set(edges.filter(e=>stop.along>=route.cumulativeMeters[e.begin_shape_index]&&
+        stop.along<=route.cumulativeMeters[e.end_shape_index]).map(e=>e.way_id));
+      const matches=new Set(candidates.map(e=>JSON.stringify([e.way_id,
+        Number(e.correlated_lon.toFixed(6)),Number(e.correlated_lat.toFixed(6))])));
+      if(matches.size!==1||candidates.some(e=>!ways.has(e.way_id)||
+        pointMetres([e.correlated_lon,e.correlated_lat],stop.matched)>0.2))
+        throw new AppError(422,'Stopping place has ambiguous road position','POINT_AMBIGUOUS');
+    }
+  }catch(error){if(error instanceof AppError)throw error;throw unavailable();}
+  finally{clearTimeout(timer);activeJobs--;}
 }

@@ -92,3 +92,7 @@ The new posted-route incident read and resolution routes are test-gated in `post
 ## Approved local service-area successor — 2026-10-04
 
 When implementing the new local policy, label coverage “Amravati core service area — selected endpoints and the planned route must stay inside. Not a city or state boundary.” Use the exact original rectangle and approval from `docs/operations/proposals/amravati-core-service-area-2026-10-04.md`; do not use a statewide/municipal outline or a geocoder label to imply coverage. Explain an outside/border/ambiguous selection without silently moving it. Preserve explicit safe-stop confirmation and all prelaunch/private-preparation states. No code/UI rollout or booking activation is implied by the documentation decision.
+
+## Ticket 11 passenger API follow-through — 2026-10-05
+
+The gated server slice now provides opt-in publication with driver-confirmed stopping places, passenger discovery, a separate `/v1/posted-routes/published/:id` detail read and passenger-authorized quotes. Owner reads remain owner-only, and preparation alone remains private. See [the API workflow](operations/posted-route-quotes.md). This supersedes earlier statements that the passenger seam is absent, but does not connect or activate the synthetic browser walkthrough. Production passenger exposure and bookings remain disabled; ticket 12 owns acceptance and ticket 15 owns integrated flow validation.

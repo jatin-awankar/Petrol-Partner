@@ -1,3 +1,6 @@
+import type {PoolClient} from 'pg';
+import {assertPassengerPreviewEnabled,previewStoppingPlaces,confirmedPublication,verifiedPublication,passengerView,passengerQuote,type PassengerPublication} from './passenger-routes';
+import {assertCurrentAdultDeclaration} from '../adult-declaration/adult-declaration.service';
 import {SERVICE_AREA} from './service-area';
 import {verifyRouteBoundary} from './route-boundary';
 import {createHash} from 'node:crypto';
@@ -10,12 +13,12 @@ import {assertCurrentOperator} from '../operator/operator.authorization';
 import {backupStatus} from '../operator/backup-status';
 import {recordDurableNotification} from '../notifications/contract.repo';
 import {assertCurrentDriverVehicle} from '../driver-vehicle-declaration/driver-vehicle-declaration.service';
-import {lockCommitmentActors,lockVehicleRegistration} from '../rides/commitment.repo';
+import {lockCommitmentActors,lockVehicleRegistration,lockStudentActor} from '../rides/commitment.repo';
 import {verifyRoute,type VerifiedRoute,type Point} from './routing';
 import * as repo from './posted-routes.repo';
 import {ROUTE_POLICY_VERSION,ROUTE_OPERATING_POLICY_VERSION} from './policy';
 import {quoteSegment} from './segment-quote';
-export type Input={vehicle_id:string;mode:'bike'|'scooter'|'car';origin:Point;destination:Point;departure_at:string;capacity:number;replaces_offer_id?:string;endpoint_confirmation?:EndpointConfirmation};
+export type Input={vehicle_id:string;mode:'bike'|'scooter'|'car';origin:Point;destination:Point;departure_at:string;capacity:number;stop_points?:Point[];passenger_publication?:PassengerPublication;replaces_offer_id?:string;endpoint_confirmation?:EndpointConfirmation};
 export type EndpointConfirmation={preview_digest:string;origin:Point;destination:Point;safe_stopping_places:true;correct_side_and_direction:true;helmet_space?:true};
 type Receipt={operationId:string;actorId:string;key:string;digest:string;offerId:string;result:Record<string,unknown>;snapshot:Record<string,unknown>;createdAt:string};
 const store=()=>pilotReceiptStore<Receipt>('posted-route','Posted route recovery evidence unavailable');
@@ -46,12 +49,75 @@ export async function verifyEvidence(retry?:{actor:string;key:string}){
     if((await repo.pending(pool)).some(row=>!retry||row.actor_id!==retry.actor||row.idempotency_key!==retry.key))throw new Error('Operation pending');
   }catch{await restrictProtectedWrites(pool,'posted_route_evidence_unavailable');throw new AppError(503,'Posted route recovery evidence unavailable','RECOVERY_UNAVAILABLE');}
 }
+async function lockPassengerRead(client:PoolClient,actor:string,rows:repo.PassengerRoute[],quotes=false){
+  const state=await repo.lockPassengerState(client,quotes);
+  if(!state.open)throw new AppError(503,'Route state awaits recovery','RECOVERY_RESTRICTED');
+  if(state.paused)throw new AppError(503,'Booking activity paused','PILOT_PAUSED');
+  for(const id of [...new Set([actor,...rows.map(r=>r.driver_id)])].sort())await lockStudentActor(client,id);
+}
+async function passengerAccess(client:PoolClient,actor:string){
+  assertPassengerPreviewEnabled();
+  await assertCurrentAdultDeclaration(client,actor);
+  const recovery=await operatorQuery<{mode:string}>(client,'recoveryMode');
+  if(recovery.rows[0]?.mode!=='open')throw new AppError(503,'Route state awaits recovery','RECOVERY_RESTRICTED');
+}
+async function eligiblePassengerRoute(client:PoolClient,row:repo.PassengerRoute){
+  if(row.status!=='prepared'||row.request_cutoff_at<=new Date())
+    throw new AppError(404,'Posted route not found','ROUTE_NOT_FOUND');
+  const driver=await assertCurrentDriverVehicle(client,row.driver_id,row.vehicle_declaration_id,row.capacity);
+  if(driver.category!==row.routing_mode)throw new AppError(409,'Vehicle category changed','ROUTE_MODE_INVALID');
+  const start=Date.parse(process.env.ROUTE_SUPPORT_WINDOW_START??''),end=Date.parse(process.env.ROUTE_SUPPORT_WINDOW_END??'');
+  if(process.env.ROUTE_SUPPORT_WINDOW_APPROVED!=='true'||!Number.isFinite(start)||!Number.isFinite(end)||
+    Date.now()<start||Date.now()>=end||row.departure_at.getTime()<start||row.commitment_until.getTime()>=end)
+    throw new AppError(503,'Support coverage unavailable','SUPPORT_WINDOW_UNAVAILABLE');
+  return verifiedPublication(row);
+}
+export async function discover(actor:string){
+  return inProtectedTransaction(pool,async client=>{
+    const candidates=await repo.published(client);
+    await lockPassengerRead(client,actor,candidates);
+    await passengerAccess(client,actor);
+    const offers=[];
+    for(const candidate of candidates){
+      if(candidate.driver_id===actor)continue;
+      const [row]=await repo.published(client,candidate.id,true);
+      if(!row)continue;
+      try{offers.push(passengerView(row,await eligiblePassengerRoute(client,row)));}
+      catch(error){if(!(error instanceof AppError))throw error;}
+    }
+    return offers;
+  });
+}
 export async function mine(actor:string){return repo.mine(pool,actor);}
-export async function read(actor:string,id:string){const row=await repo.owned(pool,actor,id);
-  if(!row)throw new AppError(404,'Posted route not found','ROUTE_NOT_FOUND');return row;}
+export async function read(actor:string,id:string){
+  const owned=await repo.owned(pool,actor,id);
+  if(!owned)throw new AppError(404,'Posted route not found','ROUTE_NOT_FOUND');return owned;
+}
+export async function passengerRead(actor:string,id:string){
+  // Preserve the private-route 404 without disclosing its existence or contents.
+  const [row]=await repo.published(pool,id);
+  if(!row)throw new AppError(404,'Posted route not found','ROUTE_NOT_FOUND');
+  return inProtectedTransaction(pool,async client=>{
+    await lockPassengerRead(client,actor,[row]);
+    await passengerAccess(client,actor);
+    const [current]=await repo.published(client,id,true);
+    if(!current)throw new AppError(404,'Posted route not found','ROUTE_NOT_FOUND');
+    return passengerView(current,await eligiblePassengerRoute(client,current));
+  });
+}
 export async function quote(actor:string,id:string,version:number,pickup:Point,dropoff:Point){
-  // Prepared routes are driver-private. Production cannot expose a passenger quote yet.
+  // Real-booking activation remains a separate, explicit release decision.
   if(process.env.NODE_ENV!=='test')throw new AppError(503,'Route quotes are not available','ROUTE_QUOTES_DISABLED');
+  const [published]=await repo.published(pool,id);
+  if(published){await verifyEvidence();return inProtectedTransaction(pool,async client=>{
+    await lockPassengerRead(client,actor,[published],true);
+    await passengerAccess(client,actor);
+    const [current]=await repo.published(client,id,true);
+    if(!current)throw new AppError(404,'Posted route not found','ROUTE_NOT_FOUND');
+    if(published.driver_id===actor)throw new AppError(403,'Choose another driver’s offer','SELF_QUOTE_FORBIDDEN');
+    await eligiblePassengerRoute(client,current);
+    return passengerQuote(current,version,pickup,dropoff);
+  });}
   const row=await repo.ownedForQuote(pool,actor,id);
   if(!row)throw new AppError(404,'Posted route not found','ROUTE_NOT_FOUND');
   if(row.status!=='prepared')throw new AppError(409,'Route is unavailable','ROUTE_UNAVAILABLE');
@@ -77,12 +143,13 @@ export async function preview(actor:string,input:Input){
   await checkDriver(actor,input);
   schedule(new Date(input.departure_at),new Date());
   const route=await verifyRoute(input);
-  return {route,preview_digest:previewDigest(route),real_bookings_enabled:false,
+  const stop_previews=input.stop_points?await previewStoppingPlaces(route,input.stop_points):undefined;
+  return {...(stop_previews?{stop_previews}:{}),route,preview_digest:previewDigest(route),real_bookings_enabled:false,
     boundary_verified:false,service_area:SERVICE_AREA,confirmation_required:true};
 }
 async function publicationEvidence(route:VerifiedRoute,input:Input){
   // Preserve the pre-existing synthetic seam for historical lifecycle tests.
-  if(route.source==='synthetic-test'&&process.env.NODE_ENV==='test')return null;
+  if(route.source==='synthetic-test'&&process.env.NODE_ENV==='test'&&!input.passenger_publication)return null;
   const confirmation=input.endpoint_confirmation;
   if(!route.verification||!confirmation||confirmation.preview_digest!==previewDigest(route)||
     JSON.stringify(confirmation.origin)!==JSON.stringify(route.geometry.coordinates[0])||
@@ -91,9 +158,12 @@ async function publicationEvidence(route:VerifiedRoute,input:Input){
     (input.mode!=='car'&&confirmation.helmet_space!==true))
     throw new AppError(422,'Confirm the safe routed endpoints from a fresh preview','ENDPOINT_CONFIRMATION_REQUIRED');
   const boundary=await verifyRouteBoundary(route);
-  return {...route.verification,confirmation,boundary};
+  const passengerPublication=input.passenger_publication?await confirmedPublication(route,input.passenger_publication):undefined;
+  if(input.passenger_publication)await previewStoppingPlaces(route,input.passenger_publication.stops.map(s=>s.point));
+  return {...route.verification,confirmation,boundary,...(passengerPublication?{passengerPublication}:{})};
 }
 export async function prepare(actor:string,key:string,input:Input){
+  if(input.passenger_publication)assertPassengerPreviewEnabled();
   const digest=createHash('sha256').update(JSON.stringify(input)).digest('hex');
   const existing=await repo.byKey(pool,actor,key);
   if(existing&&existing.payload_digest!==digest)throw new AppError(409,'Idempotency payload mismatch','IDEMPOTENCY_PAYLOAD_MISMATCH');
@@ -134,13 +204,13 @@ export async function prepare(actor:string,key:string,input:Input){
     const saved=await repo.save(client,{driver:actor,vehicle:input.vehicle_id,route,departure,until,
       capacity:input.capacity,verification,policy:ROUTE_POLICY_VERSION,replacesOfferId:input.replaces_offer_id});
     const snapshot=await repo.snapshot(client,saved.id);
-    const result={id:saved.id,route_version:1,policy_version:ROUTE_POLICY_VERSION,operating_policy_version:ROUTE_OPERATING_POLICY_VERSION,status:'prepared',real_bookings_enabled:false,
+    const result={id:saved.id,route_version:1,policy_version:ROUTE_POLICY_VERSION,operating_policy_version:ROUTE_OPERATING_POLICY_VERSION,status:'prepared',real_bookings_enabled:false,...(input.passenger_publication?{visibility:'published'}:{}),
       ...(input.replaces_offer_id?{replaces_offer_id:input.replaces_offer_id}:{})};
     const created=await repo.insertOperation(client,{actor,key,digest,offerId:saved.id,result,snapshot});
     await repo.audit(client,created);
     await recordDurableNotification(client,{originType:'posted_route',operationId:created.id,recipientId:actor,
       eventType:'prepared',relatedEntityType:'posted_route_offer',relatedEntityId:saved.id,
-      title:'Route prepared',body:'Your draft route is available to you. It is not open for bookings.'});
+      ...routeNotice(created.result)});
     return created;
   });
   if(row.state!=='committed')return operation(actor,row.id);
@@ -152,6 +222,12 @@ export async function prepare(actor:string,key:string,input:Input){
   }catch{await restrictProtectedWrites(pool,'posted_route_evidence_pending');
     throw new AppError(503,'Route committed; acknowledgement pending','OPERATION_PENDING',{operationId:row.id});}
   return {operation_id:row.id,state:'acknowledged',...row.result};
+}
+
+function routeNotice(result:Record<string,unknown>){
+  return result.visibility==='published'?{title:'Route published for preview',
+    body:'Eligible passengers can preview your route and confirmed stopping places. Real bookings remain disabled.'}:
+    {title:'Route prepared',body:'Your draft route is available to you. It is not open for bookings.'};
 }
 
 export const postedRouteRecovery={verifyEvidence,receipts:()=>store().list(),pending:()=>repo.pending(pool),
@@ -172,7 +248,7 @@ export const postedRouteRecovery={verifyEvidence,receipts:()=>store().list(),pen
       await repo.restoreAudit(client,row);
       await recordDurableNotification(client,{originType:'posted_route',operationId:row.id,recipientId:row.actor_id,
         eventType:'prepared',relatedEntityType:'posted_route_offer',relatedEntityId:row.offer_id,
-        title:'Route prepared',body:'Your draft route is available to you. It is not open for bookings.'});
+        ...routeNotice(row.result)});
       await repo.acknowledge(client,row.id);
       await repo.suppressRestoredNotification(client,row.id);
     });
