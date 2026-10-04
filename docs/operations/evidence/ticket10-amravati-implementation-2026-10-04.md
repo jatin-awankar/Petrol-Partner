@@ -62,3 +62,7 @@ All database execution uses the newly created, disposable `petrol-ticket10-amrav
 ## Exact next action
 
 Jatin reviews the **single operator checklist**, returns actual per-place/per-route/edge notes and a decision bound to the displayed hashes. After a satisfactory actual review is recorded, bind that record to the exact evidence bundle, rerun the authenticated gate/recovery checks, and resolve ticket 10 only if every remaining criterion passes. A generic implementation approval cannot substitute for that review. No deployment, real-booking activation, ticket-11 implementation or external contact is part of this work.
+
+## Subsequent operator attestation
+
+The [operator has now explicitly approved and marked the checklist reviewed](ticket10-amravati-operator-attestation-2026-10-04.md). This supersedes the earlier statement that no actual operator review was attested. Required review metadata remains incomplete (date, contextual map/provider, M1–M5 names and review basis), so the packaged gate remains pending and ticket 10 claimed. Approval itself need not be repeated.
