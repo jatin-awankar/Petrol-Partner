@@ -4,7 +4,7 @@ type Edge={begin_shape_index:number;end_shape_index:number;length:number};
 type Trace={shape:string;edges:Edge[];shape_attributes?:{length?:number[]}};
 type Input={routeShape:string;routeLengthKm:number;trace:Trace};
 
-// Candidate normalization proof only. No production Valhalla adapter is selected or enabled.
+// Frozen normalization rule selected by route policy 2026-10-03.2.
 function invalid():never{throw new Error('Valhalla route distance cannot be verified');}
 
 function decodePolyline6(shape:string):Point[]{

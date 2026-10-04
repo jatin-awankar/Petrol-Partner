@@ -41,16 +41,16 @@ export async function conflict(db:PoolClient,driver:string,vehicle:string,depart
       AND departure_at<$3 AND commitment_until>$2 LIMIT 1`,[driver,departure,until])).rowCount;
   return Boolean(route||legacy||accepted||legacyPassenger);
 }
-export async function save(db:PoolClient,input:{driver:string;vehicle:string;route:VerifiedRoute;departure:Date;until:Date;capacity:number;policy:string;replacesOfferId?:string}){
+export async function save(db:PoolClient,input:{driver:string;vehicle:string;route:VerifiedRoute;departure:Date;until:Date;capacity:number;verification:Record<string,unknown>|null;policy:string;replacesOfferId?:string}){
   return (await db.query<{id:string}>(`INSERT INTO posted_route_offers(driver_id,vehicle_declaration_id,policy_version,operating_policy_version,routing_source,routing_mode,
-    geometry,cumulative_meters,distance_meters,duration_seconds,departure_at,commitment_until,request_cutoff_at,acceptance_cutoff_at,capacity,replaces_offer_id)
-    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::timestamptz,$12::timestamptz,$11::timestamptz-interval '60 minutes',$11::timestamptz-interval '30 minutes',$13,$14) RETURNING id`,
+    geometry,cumulative_meters,distance_meters,duration_seconds,departure_at,commitment_until,request_cutoff_at,acceptance_cutoff_at,capacity,replaces_offer_id,route_verification)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::timestamptz,$12::timestamptz,$11::timestamptz-interval '60 minutes',$11::timestamptz-interval '30 minutes',$13,$14,$15) RETURNING id`,
     [input.driver,input.vehicle,input.policy,ROUTE_OPERATING_POLICY_VERSION,input.route.source,input.route.mode,JSON.stringify(input.route.geometry),
       JSON.stringify(input.route.cumulativeMeters),input.route.distanceMeters,input.route.durationSeconds,input.departure,input.until,input.capacity,
-      input.replacesOfferId??null])).rows[0];
+      input.replacesOfferId??null,input.verification])).rows[0];
 }
 export async function snapshot(db:PoolClient,id:string){return (await db.query<{snapshot:Record<string,unknown>}>(
-  'SELECT to_jsonb(r) AS snapshot FROM posted_route_offers r WHERE id=$1',[id])).rows[0].snapshot;}
+  "SELECT CASE WHEN r.route_verification IS NULL THEN to_jsonb(r)-'route_verification' ELSE to_jsonb(r) END AS snapshot FROM posted_route_offers r WHERE id=$1",[id])).rows[0].snapshot;}
 export async function insertOperation(db:PoolClient,input:{actor:string;key:string;digest:string;offerId:string;result:Record<string,unknown>;snapshot:Record<string,unknown>}){
   return (await db.query<Operation>(`INSERT INTO posted_route_operations(actor_id,idempotency_key,payload_digest,offer_id,result,offer_snapshot,state)
     VALUES($1,$2,$3,$4,$5,$6,'committed') RETURNING *`,[input.actor,input.key,input.digest,input.offerId,input.result,input.snapshot])).rows[0];}
