@@ -66,3 +66,7 @@ Jatin reviews the **single operator checklist**, returns actual per-place/per-ro
 ## Subsequent operator attestation
 
 The [operator has now explicitly approved and marked the checklist reviewed](ticket10-amravati-operator-attestation-2026-10-04.md). This supersedes the earlier statement that no actual operator review was attested. Required review metadata remains incomplete (date, contextual map/provider, M1–M5 names and review basis), so the packaged gate remains pending and ticket 10 claimed. Approval itself need not be repeated.
+
+## Latest clarification — synthetic sample only
+
+The latest [user submission](ticket10-amravati-synthetic-review-sample-2026-10-04.md) is explicitly synthetic and states that all real-world locations and route suitability remain unverified. It does not satisfy actual operator evidence or merely complete its metadata. The original pinned artifact and review-bundle hashes remain unchanged. Ticket 10 stays claimed; publication remains unavailable and real bookings disabled.

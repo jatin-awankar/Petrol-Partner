@@ -37,3 +37,7 @@ The approved [operator verification contract](../proposals/amravati-core-service
 Request only the missing details: actual review date/time (approximate if necessary), contextual map/provider, and M1–M5 local names plus the basis used to assess them. The operator should identify any items that remain unverified rather than the agent filling them in. This records the approval already given without fabricating evidence or treating the omission as a new scope decision.
 
 The packaged publication gate remains pending while this required record is incomplete. Ticket 10 stays **claimed**. After completion, freeze this actual attestation and its supplement in the approval evidence, run the authenticated actual-approval/recovery checks, and resolve only if all criteria pass. No deployment or real-booking activation is authorized.
+
+## Subsequent synthetic submission
+
+The user subsequently supplied an explicitly [synthetic review sample](ticket10-amravati-synthetic-review-sample-2026-10-04.md), stating that all real-world locations and route suitability remain unverified and real operator evidence is pending. That explicit limitation governs ticket completion. The earlier message above remains historical correspondence; the sample is not a real-evidence supplement and does not complete the actual operator-review requirement.

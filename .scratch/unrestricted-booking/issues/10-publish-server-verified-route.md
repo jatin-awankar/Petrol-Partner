@@ -83,3 +83,7 @@ Final local validation: **38 script checks, 451 API tests including all 226 auth
 ## Operator approval received — review record supplement needed
 
 Jatin supplied an explicit overall approval bound to the exact geometry/evidence/calculation hashes and marked all checklist items reviewed. The [attestation record](../../../docs/operations/evidence/ticket10-amravati-operator-attestation-2026-10-04.md) preserves the supplied notes and interprets the final approval as overriding the generated pending label. Do not request approval again. The required actual review date, contextual map/provider and M1–M5 local names/review bases were not supplied; request that record supplement without inventing it. Packaged verification remains pending, and ticket 10 remains **claimed** until the record is complete and actual-approval integration checks pass.
+
+## Synthetic sample received — actual evidence still pending
+
+The user explicitly labelled the latest [review sample](../../../docs/operations/evidence/ticket10-amravati-synthetic-review-sample-2026-10-04.md) **SYNTHETIC SAMPLE — NOT OPERATOR EVIDENCE**, approving only simulated checks and stating that all real-world locations and route suitability remain unverified. Preserve earlier correspondence, but do not use this sample to fill or satisfy the actual-review record. The outstanding requirement is actual operator evidence, not merely replacing sample names or adding a date. Ticket 10 remains **claimed** and the publication gate remains pending. No deployed state or booking capability changes.
