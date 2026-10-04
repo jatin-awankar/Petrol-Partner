@@ -1,3 +1,4 @@
+import {verifyServiceArea} from './service-area';
 import {createHash} from 'node:crypto';
 import {z} from 'zod';
 import {AppError} from '../../shared/errors/app-error';
@@ -73,9 +74,9 @@ function polygonEvidence(route:VerifiedRoute,raw:unknown){
   }catch{throw invalid();}
 }
 export async function verifyRouteBoundary(route:VerifiedRoute){
-  // No production artifact is installed. Metadata strings or environment flags
-  // cannot assert SOI approval. Even retained test fixtures fail in production.
-  if(process.env.NODE_ENV!=='test'||(!testArtifact&&!testCheck))throw unavailable();
+  // Historical synthetic geometry probes remain test-only. All normal calls use
+  // the pinned business area and require the separately recorded operator review.
+  if(process.env.NODE_ENV!=='test'||(!testArtifact&&!testCheck))return verifyServiceArea(route);
   if(testArtifact)return polygonEvidence(route,testArtifact);
   const result=await testCheck!(route);
   if(!/^[a-f0-9]{64}$/.test(result.artifactSha256)||result.policyVersion!=='2026-10-03.2'||

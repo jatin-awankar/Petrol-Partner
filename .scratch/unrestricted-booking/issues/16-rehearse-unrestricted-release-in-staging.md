@@ -22,7 +22,7 @@ These requirements are transferred uncompleted. Ticket 02 is a completed policy 
 
 ## Operating-policy evidence handoff — ticket 04, 2026-10-03
 
-Ticket 04's policy-only resolution transfers unperformed production evidence here: reconcile reuse terms for the actual selected SOI boundary/derived geometry; exercise versioned boundary and crossing checks; validate both Gmail support channels, response targets and missed-contact behavior; inspect real provider copies, finite retention and actual deletion outcomes under policy `2026-10-03.2`. Coordinate retention implementation with pilot-readiness 28. Synthetic staging may demonstrate and record a missing independent escalation path, but cannot treat that as real-trip readiness. Ticket 18 must retain that blocker. No staging deployment is authorized by this handoff; this ticket's status is unchanged.
+Ticket 04's policy-only resolution transfers unperformed production evidence here: verify the actual approved Amravati core artifact, operator approval, independent authorship/rights record and pinned hash; exercise strict no-exit and precision checks; validate both Gmail support channels, response targets and missed-contact behavior; inspect real provider copies, finite retention and actual deletion outcomes under policy `2026-10-03.2`. Coordinate retention implementation with pilot-readiness 28. Synthetic staging may demonstrate and record a missing independent escalation path, but cannot treat that as real-trip readiness. Ticket 18 must retain that blocker. No staging deployment is authorized by this handoff; this ticket's status is unchanged.
 
 ## Ticket 09 support update — 2026-10-03
 
@@ -31,3 +31,7 @@ The maintainer has accepted monitored support/receipt/response/fallback and inde
 ## Ticket 09 implementation completed — 2026-10-03
 
 Ticket 09 is resolved for support and notice implementation, with operational items accepted by the maintainer. This ticket still owns actual-configuration booking notice delivery/receipt, independent monitor-to-human routing, worker stoppage, fallback and privacy checks in staging. Synthetic worker sends are not live provider receipts. Retain evidence for ticket 18; no deployment or real-booking activation is authorized by this handoff.
+
+## Amravati core scope amendment — 2026-10-04
+
+Use route policy `unrestricted-route-contribution-2026-10-04.1`, operating `2026-10-04.1` and the completed ticket 10 artifact/approval in the eventual authorized staging configuration. Validate all supported modes and representative interior/edge routes with the actual providers, attribution, retention and support behavior. SOI/geoBoundaries reuse evidence is not a prerequisite for original numerical service geometry; their unresolved research remains archived for statewide use. OSM/Mapbox/graph/route-data licence obligations and all other release gates remain. No ticket 10 checks are transferred here, and no staging deployment is authorized by the scope decision. Status unchanged.

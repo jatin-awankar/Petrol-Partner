@@ -31,3 +31,7 @@ The earlier statement that no public contact has been published is superseded: `
 ## Ticket 09 implementation completed — 2026-10-03
 
 Ticket 09 is resolved at its support/notice implementation boundary. Reuse its six HTTP/PostgreSQL scenarios and worker-backed event checks. This ticket still owns the full integrated journey when production publication/discovery/passenger-quote and approved-policy producers are available, alongside its existing representative-copy and recovery requirements. Do not infer production-provider evidence from the synthetic adapter or make ticket 09 wait on this downstream ticket. Status and real-booking gates remain unchanged.
+
+## Amravati core scope amendment — 2026-10-04
+
+Add the approved local scope to the integrated journey: an interior route and ordered passenger points proceed only in the synthetic harness; outside selection, cross-edge snap, route exit/re-entry, stale area hash, revoked approval and unavailable artifact fail before new commitments. Verify old/new policy coexistence, audit/recovery evidence and honest local-area UI language. Keep runtime booking gates closed and retain all existing races/provider/copy requirements. This does not stand in for ticket 10's own artifact acceptance; status is unchanged.

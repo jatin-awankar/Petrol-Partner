@@ -91,3 +91,9 @@ Once any request exists, a change to route geometry, origin, destination, schedu
 - Ticket 18: review the above evidence and all other gates, including ticket 03's external/rate review and ticket 04's support/boundary policy, before a separate real-booking activation decision.
 
 All three policy acceptance criteria are now answered under this amended scope. Real bookings remain disabled. The [distance proof](../../../docs/operations/evidence/ticket02-valhalla-distance-proof-2026-10-03.md) retains its original limitations; no further TomTom response is required to implement the selected Valhalla direction.
+
+## Amravati core scope amendment — 2026-10-04
+
+The approved successor implementation scope is **Amravati core (`amravati-core-v1`)**, the independently authored WGS84 rectangle west/east 77.73/77.83 E and south/north 20.89/20.97 N. Geometry SHA-256: `b342438fbb8aecf2e3f5cf82cf1ddfa2ea7d6ae02343e3319a41220b1d4eb42c`. Both requested and confirmed endpoints and the entire saved route must pass the exact coordinate-precision rule in the [scope decision](../../../docs/operations/proposals/amravati-core-service-area-2026-10-04.md); **zero outside-area travel** is allowed. This verifies a business service area, not municipal/state boundaries or actual-ground location accuracy. Retain 50 km/90 minutes and all other eligibility, provider, rates, schedule, support, audit/recovery and real-booking gates. New implementation versions are route `unrestricted-route-contribution-2026-10-04.1` and operating `2026-10-04.1`; old terms remain frozen. This dated successor supersedes prior statewide source/accuracy/transit requirements for new local routes only; it does not establish that statewide research passed.
+
+Keep this policy ticket’s existing status; earlier Answers describe their dated scope. The successor decision does not resolve ticket 10, any dependent ticket or real-booking readiness.

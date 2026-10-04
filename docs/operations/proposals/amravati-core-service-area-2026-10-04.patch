@@ -1,0 +1,273 @@
+--- a/.scratch/unrestricted-booking/spec.md
++++ b/.scratch/unrestricted-booking/spec.md
+@@ -6,7 +6,7 @@
+
+ ## Problem Statement
+
+-Petrol Partner's controlled pilot contract restricts participation to verified adult PRMITR students, approved cars, and fixed corridor stops. The intended product is open to people who declare that they are adults, regardless of college affiliation or geography. Drivers post routes; passengers choose pickup and drop-off points on those routes. Bikes, scooters, and cars are intended vehicle categories. The existing pilot contract, API gates, and fixed-pair contribution policy cannot safely govern those bookings.
++Petrol Partner's controlled pilot contract restricts participation to verified adult PRMITR students, approved cars, and fixed corridor stops. Account eligibility is open to people who declare that they are adults, regardless of college affiliation or residence. The first route-booking release is limited to the approved Amravati core service area; account eligibility does not imply geographic trip eligibility. Drivers post routes; passengers choose pickup and drop-off points on those routes. Bikes, scooters, and cars are intended vehicle categories. The existing pilot contract, API gates, and fixed-pair contribution policy cannot safely govern those bookings.
+
+ ## Solution
+
+@@ -88,3 +88,9 @@
+ ## Operating-policy scope amendment — 2026-10-03
+
+ The maintainer explicitly approved [ticket 04](issues/04-approve-operating-and-support-policy.md#answer) as a policy-selection ticket, version `2026-10-03.2`. Its operating/support and retention rules are approved for implementation, with a sole-operator personal-project demo and both tested Gmail contacts. Boundary validation, provider-copy/deletion verification and support/recovery rehearsals remain uncompleted with tickets 09, 10, 16, 17 and pilot-readiness 28. Ticket 18 must require their evidence, a resolved historical-retention decision and an independently reachable active-trip escalation arrangement before real bookings. Ticket 03 external review remains required. Resolution authorizes implementation and synthetic testing, not public operational readiness, deletion of existing data, deployment or real-booking activation.
++
++## Amravati core service-area amendment — 2026-10-04
++
++The approved successor implementation scope is **Amravati core (`amravati-core-v1`)**, the independently authored WGS84 rectangle west/east 77.73/77.83 E and south/north 20.89/20.97 N. Geometry SHA-256: `b342438fbb8aecf2e3f5cf82cf1ddfa2ea7d6ae02343e3319a41220b1d4eb42c`. Both requested and confirmed endpoints and the entire saved route must pass the exact coordinate-precision rule in the [scope decision](../../docs/operations/proposals/amravati-core-service-area-2026-10-04.md); **zero outside-area travel** is allowed. This verifies a business service area, not municipal/state boundaries or actual-ground location accuracy. Retain 50 km/90 minutes and all other eligibility, provider, rates, schedule, support, audit/recovery and real-booking gates. New implementation versions are route `unrestricted-route-contribution-2026-10-04.1` and operating `2026-10-04.1`; old terms remain frozen. This dated successor supersedes prior statewide source/accuracy/transit requirements for new local routes only; it does not establish that statewide research passed.
++
++The authored rectangle has no administrative positional-accuracy claim. Boundary ambiguity is handled by the linked outward-rounded microdegree rule for recorded selections and polyline6 vertices, not an invented geographic buffer. The operator must approve the exact coordinates/hash and record coverage-review evidence. Ticket 10 must complete actual artifact/approval integration and authenticated PostgreSQL checks before resolution. The SOI/geoBoundaries research remains evidence of unresolved statewide suitability and is not adopted as a fallback. No runtime fallback, deployment or real-booking activation is authorized by this scope decision. Existing independent release/external review gates remain required.
+--- a/docs/operations/unrestricted-booking-operating-policy.md
++++ b/docs/operations/unrestricted-booking-operating-policy.md
+@@ -1,8 +1,8 @@
+ # Unrestricted route booking operating policy
+
+-- **Implementation policy version:** `2026-10-03.2` (supersedes working revision `2026-10-03.1`; not activated)
++- **Implementation policy version:** `2026-10-04.1` (Amravati core successor; prior versions remain historical; not activated)
+ - **Decision dates:** 2026-09-29; response-target commitment 2026-10-03
+-- **Status:** Approved for implementation under the maintainer-approved ticket 04 scope amendment; not approved for live operation. Real bookings remain disabled.
++- **Status:** Approved for implementation under the Amravati core scope amendment below; actual operator coverage evidence and ticket 10 acceptance remain required. Not approved for live operation. Real bookings remain disabled.
+ - **Policy approver:** Jatin Awankar.
+ - **Sole on-duty operator chosen for the personal project:** Jatin Awankar during published hours and until active trips are resolved. On 2026-10-03 the maintainer declined backup staffing for the current personal-project phase. No independent active-trip escalation operator is appointed; real-trip readiness remains incomplete.
+
+@@ -10,10 +10,10 @@
+
+ ## Area, schedule, and commitments
+
+-- Jatin Awankar selected Maharashtra as the first-release service area on 2026-09-29, replacing the proposed Amravati-area limit. Both pickup and drop-off must be inside the state; brief travel outside may occur only along the server-verified posted route. The authoritative source is selected below; the production geometry artifact, reuse evidence and server-side enforcement remain unverified before activation. Ticket 02's resolved decision already incorporates this Maharashtra restriction; its original unrestricted-start choice is historical.
+-- Select Survey of India ABDB as the authoritative source for the implementation plan, subject to validation of its actual state geometry and applicable reuse terms. The current metadata identifies the 2025 state dataset, unlike the older 1:1 million product listing. The exact production artifact is still unverified; see [ticket 04 boundary evidence](evidence/ticket04-boundary-and-policy-evidence-2026-10-03.md). Do not substitute an OSM administrative polygon, bounding box or geocoder label as sole authority. Missing, invalid or unapproved geometry blocks new publication, requests and acceptance requiring the area check.
+-- The engineering contract is a versioned server-side polygon check of every confirmed driver endpoint and passenger pickup/drop-off, including the actual routed point after ticket 02's explicitly confirmed snap. Do not snap across the state boundary to make a point eligible. Store source dataset identifier, edition, archive and normalized-geometry SHA-256, coordinate system and transformation, validation results, reuse evidence and effective policy version. Check polygon topology and coordinate order; reject points on the boundary or within an uncertainty band derived from validated source accuracy. The 30 m route-matching tolerance is not boundary accuracy. No band is approved until the actual geometry is validated. Preserve holes and multipart geometry. Boundary updates apply to new terms; hold affected future commitments for recorded resolution instead of silently moving points or cancelling active trips.
+-- Brief cross-state travel remains allowed only on the saved verified route, with no outside-state pickup or drop-off. For the initial implementation, define “brief” conservatively as at most 5 km and 10 minutes in total outside Maharashtra across the whole saved route, within the existing 50 km/90-minute caps. This is an agent-selected operating limit under the delegated routine choices, not external approval. Measure all excursions cumulatively from saved route geometry and timing; reject uncertain crossings or missing segment timing. No route extension or detour is authorized. Do not infer cross-state permissibility from map data; ticket 03 must review it.
++- The first-release service area is **Amravati core / `amravati-core-v1`**: west 77.73 E, east 77.83 E, south 20.89 N, north 20.97 N. These independently authored numerical limits define an operational service choice; they are not the Amravati municipal boundary or an authoritative Maharashtra boundary. Accounts remain open regardless of residence. Coverage of a named place, college or every road is not implied.
++- Adopt only the exact original 113-byte MultiPolygon specified in the [scope decision](proposals/amravati-core-service-area-2026-10-04.md), SHA-256 `b342438fbb8aecf2e3f5cf82cf1ddfa2ea7d6ae02343e3319a41220b1d4eb42c`, after recording operator approval of its coordinates/hash, authorship/rights and coverage-review evidence. No SOI, geoBoundaries or geocoder geometry is used as fallback. Missing, invalid, mismatched or unapproved area evidence blocks new protected actions that require it. The statewide research remains valid evidence of unresolved statewide adoption, not this polygon's provenance.
++- Check every requested and confirmed routed driver endpoint, passenger selection/matched position and every saved route segment. Preserve the existing explicitly confirmed 30 m snap/match limits; never snap an outside selection into eligibility. Apply the exact outward-rounded microdegree envelope and strict interior rule in the scope decision. This allowance addresses representation precision only, not physical GPS/map accuracy; an unsupported encoding, unresolved stop location or uncertain classification rejects. Preserve immutable area/hash/calculation/approval provenance with the route, audit-linked operation and recovery receipt. Area changes create new versions and use existing hold/cancellation/incident rules without silently rewriting accepted or active-trip terms.
++- **No outside-area travel is allowed.** Reject exits, re-entry, boundary touches, edge overlap and ambiguous cases on the complete saved route, even if both endpoints are inside. The old cumulative 5 km/10-minute outside-state allowance does not apply to this version. Do not clip geometry or reroute without fresh preview/confirmation. This verifies planned coordinate containment only; no live tracking, stopping-rights certification or state-border determination is implied. Preserve all provider timing-integrity checks and ticket 03 external review.
+ - A posted ride may cover at most 50 km and 90 minutes of server-verified routed travel. The 30-minute overlap buffer follows expected arrival and is separate from the 90-minute trip cap. The driver may post from 2 hours to 7 days before departure.
+ - Departures may be scheduled Monday–Friday, 09:00–18:00 IST. No cross-timezone trip is supported at launch. The primary operator must monitor the published support channel during the entire operating window and remain available until every active trip has an explicit outcome or documented handoff. Pause new bookings whenever primary coverage is unavailable. An on-duty operator may act outside published hours for an active-trip incident.
+ - Requests close 60 minutes before scheduled departure. The driver must accept or reject by 30 minutes before departure. Unanswered pending requests expire at that cutoff and never become confirmed bookings. Acceptance rechecks current declarations, restrictions, holds, route and vehicle terms, seat capacity, overlap, and support coverage in the protected server transaction. One accepted passenger occupies one seat for the whole ride; no segment reuse.
+@@ -51,7 +51,7 @@
+
+ ## Uncompleted implementation and launch evidence
+
+-1. Ticket 10 validates the selected SOI state dataset artifact, hashes, transformation, topology, uncertainty band and endpoint/route-crossing enforcement; ticket 16 records applicable reuse evidence. The resolved ticket 02 already agrees on Maharashtra; no geographic conflict remains.
++1. Ticket 10 must complete the actual Amravati core artifact, original-coordinate provenance, operator coverage approval, precision/no-exit enforcement and authenticated PostgreSQL/receipt evidence. Ticket 16 rehearses that same artifact and approval in its actual configuration; it does not inherit incomplete ticket 10 acceptance work. No SOI reuse permission is required for independently authored geometry, while route/basemap licences and all other launch gates remain required.
+ 2. The maintainer-attested inbox test is supplemented by a separately reachable fallback and active-trip escalation path despite the sole-operator constraint; the committed response targets and missed-contact behavior are rehearsed before publication. The maintainer has declined backup staffing for the personal-project phase, so independent active-trip escalation remains a real-trip blocker, not a prerequisite to synthetic development.
+ 3. Complete ticket 02's transferred production evidence in ticket 10 (adapter), pilot-readiness 07 (hosting), ticket 16 (staging and licence compliance), and ticket 17 (recovery); ticket 03's external operation, insurance, and rate review remains required.
+ 4. Ticket 05 resolved the dated deployed database/Auth inventory, not all provider lifecycles. Complete the provider-copy inventory and detailed retention and deletion schedule, including historical payment records, recovery receipts, backups, and incident holds, with a tested restoration-safe deletion process.
+@@ -66,3 +66,9 @@
+ Following ticket 09's implementation and synthetic rehearsals, Jatin Awankar explicitly directed that monitored support/receipt/response/fallback and independent active-trip escalation/missed-contact rehearsal be considered complete. Record this as maintainer-accepted operational completion, superseding earlier statements in this document that these support arrangements are still awaiting completion. This does not change policy version `2026-10-03.2` or its response targets. No new escalation identity, channel or rehearsal artifacts were supplied; the agent has not independently verified them and must not invent an appointment or contact detail.
+
+ Ticket 09 is resolved for existing support/notice implementation after the booking-producer matrix passed. Tickets 10–13/15–17 retain missing production producers, updated-policy integration and configured provider/monitor and release rehearsals. Ticket 09 resolution does not establish those release results. This update does not authorize deployment or real bookings; ticket 18's explicit launch decision remains required. See [ticket 09's current decision](../../.scratch/unrestricted-booking/issues/09-provide-monitored-support-and-notices.md#current-completion-decision--2026-10-03).
++
++## Amravati core scope decision — 2026-10-04
++
++The approved successor implementation scope is **Amravati core (`amravati-core-v1`)**, the independently authored WGS84 rectangle west/east 77.73/77.83 E and south/north 20.89/20.97 N. Geometry SHA-256: `b342438fbb8aecf2e3f5cf82cf1ddfa2ea7d6ae02343e3319a41220b1d4eb42c`. Both requested and confirmed endpoints and the entire saved route must pass the exact coordinate-precision rule in the [scope decision](proposals/amravati-core-service-area-2026-10-04.md); **zero outside-area travel** is allowed. This verifies a business service area, not municipal/state boundaries or actual-ground location accuracy. Retain 50 km/90 minutes and all other eligibility, provider, rates, schedule, support, audit/recovery and real-booking gates. New implementation versions are route `unrestricted-route-contribution-2026-10-04.1` and operating `2026-10-04.1`; old terms remain frozen. This dated successor supersedes prior statewide source/accuracy/transit requirements for new local routes only; it does not establish that statewide research passed.
++
++Earlier Maharashtra/SOI decisions and version `2026-10-03.2` remain historical evidence. This amendment changes the new service-area promise; it does not validate or repair an administrative dataset. Operator map/route review results must be recorded rather than inferred from policy approval.
+--- a/.scratch/unrestricted-booking/issues/02-approve-route-and-contribution-rules.md
++++ b/.scratch/unrestricted-booking/issues/02-approve-route-and-contribution-rules.md
+@@ -91,3 +91,9 @@
+ - Ticket 18: review the above evidence and all other gates, including ticket 03's external/rate review and ticket 04's support/boundary policy, before a separate real-booking activation decision.
+
+ All three policy acceptance criteria are now answered under this amended scope. Real bookings remain disabled. The [distance proof](../../../docs/operations/evidence/ticket02-valhalla-distance-proof-2026-10-03.md) retains its original limitations; no further TomTom response is required to implement the selected Valhalla direction.
++
++## Amravati core scope amendment — 2026-10-04
++
++The approved successor implementation scope is **Amravati core (`amravati-core-v1`)**, the independently authored WGS84 rectangle west/east 77.73/77.83 E and south/north 20.89/20.97 N. Geometry SHA-256: `b342438fbb8aecf2e3f5cf82cf1ddfa2ea7d6ae02343e3319a41220b1d4eb42c`. Both requested and confirmed endpoints and the entire saved route must pass the exact coordinate-precision rule in the [scope decision](../../../docs/operations/proposals/amravati-core-service-area-2026-10-04.md); **zero outside-area travel** is allowed. This verifies a business service area, not municipal/state boundaries or actual-ground location accuracy. Retain 50 km/90 minutes and all other eligibility, provider, rates, schedule, support, audit/recovery and real-booking gates. New implementation versions are route `unrestricted-route-contribution-2026-10-04.1` and operating `2026-10-04.1`; old terms remain frozen. This dated successor supersedes prior statewide source/accuracy/transit requirements for new local routes only; it does not establish that statewide research passed.
++
++Keep this policy ticket’s existing status; earlier Answers describe their dated scope. The successor decision does not resolve ticket 10, any dependent ticket or real-booking readiness.
+--- a/.scratch/unrestricted-booking/issues/04-approve-operating-and-support-policy.md
++++ b/.scratch/unrestricted-booking/issues/04-approve-operating-and-support-policy.md
+@@ -62,3 +62,9 @@
+ ### Scope-amendment verification
+
+ `git diff main...HEAD --check` passed. All 19 local Markdown link targets across the ten amendment files resolve. A tracker check confirmed the resolved Answer and three checked policy criteria for ticket 04, with every edited dependent ticket's status unchanged. Separate standards and spec reviews of the amendment both found zero actionable defects. Application code is unchanged; the earlier passing typecheck and test limitations above still apply. The full suite was not rerun for this additional documentation-only amendment. All edits are ticket 04 decisions or the explicitly authorized dependent-ticket/spec cross-references; existing untracked worktrees remain untouched.
++
++## Amravati core scope amendment — 2026-10-04
++
++The approved successor implementation scope is **Amravati core (`amravati-core-v1`)**, the independently authored WGS84 rectangle west/east 77.73/77.83 E and south/north 20.89/20.97 N. Geometry SHA-256: `b342438fbb8aecf2e3f5cf82cf1ddfa2ea7d6ae02343e3319a41220b1d4eb42c`. Both requested and confirmed endpoints and the entire saved route must pass the exact coordinate-precision rule in the [scope decision](../../../docs/operations/proposals/amravati-core-service-area-2026-10-04.md); **zero outside-area travel** is allowed. This verifies a business service area, not municipal/state boundaries or actual-ground location accuracy. Retain 50 km/90 minutes and all other eligibility, provider, rates, schedule, support, audit/recovery and real-booking gates. New implementation versions are route `unrestricted-route-contribution-2026-10-04.1` and operating `2026-10-04.1`; old terms remain frozen. This dated successor supersedes prior statewide source/accuracy/transit requirements for new local routes only; it does not establish that statewide research passed.
++
++Keep this policy ticket’s existing status; earlier Answers describe their dated scope. The successor decision does not resolve ticket 10, any dependent ticket or real-booking readiness.
+--- a/.scratch/unrestricted-booking/issues/10-publish-server-verified-route.md
++++ b/.scratch/unrestricted-booking/issues/10-publish-server-verified-route.md
+@@ -6,7 +6,7 @@
+
+ **Status:** claimed
+
+-- [ ] The server owns and versions the posted route and rejects invalid geometry, mode, vehicle, schedule, support window, and overlapping commitments. Implementation and synthetic checks pass; actual SOI artifact adoption remains below.
++- [ ] The server owns and versions the posted route and rejects invalid geometry, mode, vehicle, schedule, support window, and overlapping commitments. Existing checks remain evidence; actual Amravati core artifact, operator approval and revised no-exit checks remain below.
+ - [x] Publication, reads, and operator audit distinguish the new route policy from historical corridor offers; real-booking exposure stays disabled.
+ - [x] Authenticated HTTP/PostgreSQL tests cover authorization, idempotency, rollback, route-service failure, overlap, and recovery evidence.
+
+@@ -24,11 +24,13 @@
+
+ New routes retain policy versions `unrestricted-route-contribution-2026-10-03.2` and `2026-10-03.2`. Production publication still returns `BOUNDARY_UNAVAILABLE`, including when a test artifact was previously retained in memory. No client payload, environment approval flag or test metadata can enable it. Real bookings remain disabled.
+
+-## Remaining acceptance checks — artifact-dependent only
++## Remaining acceptance checks — Amravati core scope
+
+-1. Establish applicable reuse rights for the selected `SOI/ABDB/VECTOR/50000/2025/STATE/INDIA` artifact and its derived, retained server-side geometry. The authorized SOI request was sent on 2026-10-03; sending is not permission. Retain the resulting licence/permission reference with the artifact.
+-2. Adopt a pinned deployable artifact: independently verify the complete archive and normalized-geometry SHA-256, Maharashtra attributes, actual source CRS and transformation to longitude/latitude, and full topology. The recorded local inspection is preliminary, not production adoption. Derive and justify its uncertainty band from verified accuracy; the fixtures' bands are not Maharashtra accuracy claims.
+-3. Load only that reviewed artifact through a production integration with fixed provenance, then run the authenticated endpoint, hole, multipart, border, crossing and cumulative distance/time cases against the actual detailed geometry and representative saved routes. Verify its topology/work bounds and uncertainty behavior at real artifact scale. Missing or mismatched artifact evidence must remain unavailable. Only this completed evidence can satisfy the remaining acceptance criterion.
++1. Generate the approved original `amravati-core-v1` geometry exactly, pin its source/normalized bytes and SHA-256, record CRS84 coordinate order, one-shell/no-hole definition and original authorship/rights. Retain the actual operator coverage-review approval bound to the exact hash and rule; a synthetic approval fixture or environment flag is insufficient.
++2. Implement the scope decision's strict endpoint and complete-route containment using validated coordinate-precision envelopes. Reject every outside segment, exit/re-entry, touch or ambiguity; preserve requested/confirmed endpoint checks, 30 m confirmation, timing integrity, 50 km/90-minute caps and existing business controls. Do not install SOI/geoBoundaries or assert administrative/physical-location accuracy.
++3. Integrate only that pinned artifact and approval through a fail-closed production boundary path, keeping real bookings disabled. Run authenticated HTTP/PostgreSQL cases for interior/border/outside/precision/snap cases, all modes, failures, version/hash tampering, authorization, idempotency, concurrency, audit/notice rollback and receipt recovery. Preserve old snapshots/policy versions and reject unavailable/mismatched evidence for new operations.
++
++The exact scope, numerical rule, operator review and acceptance matrix are in the [Amravati core decision](../../../docs/operations/proposals/amravati-core-service-area-2026-10-04.md). The administrative-state dataset requirement is superseded only for new local routes by an explicit product-scope change. Statewide research is retained unresolved; none of these three acceptance checks is transferred to ticket 11 or staging. Status remains **claimed** until all pass.
+
+ Hosting, immutable production gateway, staging, external operation/rate review, release migration, deployed recovery and real-booking approval keep their existing owners; they are not added to ticket 10's remaining checklist. Passenger discovery, segment quotes, requests/acceptance and outcomes retain their existing tickets and production gates.
+
+@@ -59,3 +61,9 @@
+ The maintainer approved geoBoundaries for evaluation only and required evidence before any policy replacement or production integration. [The follow-up assessment](../../../docs/operations/evidence/ticket10-boundary-adoption-assessment-2026-10-04.md) finds two absent internal exclusions assigned to Karnataka in SOI, 81 entirely absent SOI components, an extra component substantially assigned to a union territory, and substantial coastal/outline differences. Primary administrative sources support enclave concerns, but no defensible candidate uncertainty band or complete corrected geometry was established.
+
+ Pinned comparison and direct checker probes pass as diagnostics; both absent-hole samples remain eligible even with a hypothetical 1,000 m band. This is evidence against adopting the candidate unchanged, not acceptance evidence. No replacement or buffer was approved or installed. Positional/completeness evidence and rights-cleared corrections remain required within ticket 10; otherwise an explicit product-scope/assurance decision is needed before further implementation. Ticket 10 remains **claimed**.
++
++## Amravati core successor decision — 2026-10-04
++
++The approved successor implementation scope is **Amravati core (`amravati-core-v1`)**, the independently authored WGS84 rectangle west/east 77.73/77.83 E and south/north 20.89/20.97 N. Geometry SHA-256: `b342438fbb8aecf2e3f5cf82cf1ddfa2ea7d6ae02343e3319a41220b1d4eb42c`. Both requested and confirmed endpoints and the entire saved route must pass the exact coordinate-precision rule in the [scope decision](../../../docs/operations/proposals/amravati-core-service-area-2026-10-04.md); **zero outside-area travel** is allowed. This verifies a business service area, not municipal/state boundaries or actual-ground location accuracy. Retain 50 km/90 minutes and all other eligibility, provider, rates, schedule, support, audit/recovery and real-booking gates. New implementation versions are route `unrestricted-route-contribution-2026-10-04.1` and operating `2026-10-04.1`; old terms remain frozen. This dated successor supersedes prior statewide source/accuracy/transit requirements for new local routes only; it does not establish that statewide research passed.
++
++Historical SOI and geoBoundaries findings above retain their original meaning. The current implementation uses the prior version until this ticket implements the successor; policy approval is not artifact adoption or test evidence.
+--- a/.scratch/unrestricted-booking/issues/03-obtain-external-operation-and-rate-review.md
++++ b/.scratch/unrestricted-booking/issues/03-obtain-external-operation-and-rate-review.md
+@@ -9,3 +9,7 @@
+ - [ ] Obtain and record applicable external review for vehicle categories, unrestricted geography, insurance, and operating conditions under the chosen self-declaration policy without pre-booking age, licence, registration, insurance, or permission document review.
+ - [ ] Review the proposed ₹7/km per-car-passenger amount, possible ₹21 per vehicle-kilometre aggregate, and documented cost basis; do not infer approval from the chosen rate.
+ - [ ] Record unresolved conditions as launch blockers without treating this review as a prerequisite for synthetic staging.
++
++## Amravati core scope amendment — 2026-10-04
++
++For new local operation, interpret the geographic review criterion as the exact [Amravati core scope](../../../docs/operations/proposals/amravati-core-service-area-2026-10-04.md), with zero planned outside-area travel and no administrative-border or physical-location guarantee. Review applicable vehicle, insurance, self-declaration, rate, geospatial/entity and operating conditions for that actual scope. This narrower service choice does not itself settle external review or authorize operation. Status and other acceptance criteria are unchanged.
+--- a/.scratch/unrestricted-booking/issues/09-provide-monitored-support-and-notices.md
++++ b/.scratch/unrestricted-booking/issues/09-provide-monitored-support-and-notices.md
+@@ -67,3 +67,7 @@
+ ## Completion verification — 2026-10-03
+
+ Six ticket 09 HTTP/PostgreSQL scenarios pass, including real-worker delivery assertions for the enumerated existing producers. Final full suite: root 38 passed/10 skipped, API 366 passed/1 skipped, worker 19 passed. Typecheck, lint (zero errors), all builds, Markdown link checks and diff checks passed. Standards review had no findings; the spec review's overstated-delivery-coverage finding was fixed with additional worker assertions and passed re-review. The resolved Answer above is authoritative; earlier claimed-status entries remain historical.
++
++## Amravati core scope amendment — 2026-10-04
++
++When implementing the [Amravati core successor](../../../docs/operations/proposals/amravati-core-service-area-2026-10-04.md), update current service/support copy to the exact local footprint and its planned-coordinate limitation. Use “Amravati core service area”; do not promise statewide, all-city, verified-ground-position or universally safe-stop coverage. Preserve the accepted support arrangement and all response/schedule targets. This is a geographic copy follow-up, not reopening staffing decisions or asserting actual-configuration evidence; status and unrelated acceptance remain unchanged.
+--- a/.scratch/unrestricted-booking/issues/11-quote-an-ordered-posted-route-segment.md
++++ b/.scratch/unrestricted-booking/issues/11-quote-an-ordered-posted-route-segment.md
+@@ -16,6 +16,10 @@
+
+ ### Remaining acceptance blockers
+
+-1. Ticket 02 has no approved production routing provider or mode-specific retention, display, quota, and failure evidence. The test-only stop checker is not a production source of driver-confirmed, legal, correctly sided, helmet-ready stopping places.
+-2. Ticket 10 has no live route publication or passenger-visible read. Its prepared offers remain driver-private and synthetic-only.
+-3. A versioned route replacement and accepted booking flow do not exist. Ticket 12 must revalidate and freeze this quote inside its protected acceptance transaction; a preview alone cannot authorize a commitment.
++1. Ticket 02 selects Valhalla/OSM and the Amravati core successor rules. This ticket still needs production passenger point matching, explicit stop confirmation and saved-route segment verification; a test-only stop checker is insufficient.
++2. Ticket 10 must complete the actual approved Amravati core artifact and route preparation evidence. Its driver-private preparation does not establish passenger discovery/read exposure or this ticket's passenger quote acceptance.
++3. Ticket 12 must revalidate and freeze the quote inside protected acceptance; a preview alone cannot authorize a commitment. Existing version/replacement/launch gates remain.
++
++## Amravati core scope amendment — 2026-10-04
++
++Check both requested passenger pickup/drop-off and their matched saved-route positions against the route's pinned `amravati-core-v1` identity/hash, current approval and coordinate-precision rule. Preserve order, 30 m matching, 500 m minimum, safe-stop declarations and exact saved-route distance/price rules. Unavailable/revoked/mismatched area evidence rejects a new quote; historical frozen results remain unchanged. Add authenticated PostgreSQL boundary/snap/stale-area cases when implementing this ticket. Ticket 10 dependency and claimed status remain; no implementation or passenger exposure is implied by the scope amendment.
+--- a/.scratch/unrestricted-booking/issues/12-request-and-accept-one-priced-seat.md
++++ b/.scratch/unrestricted-booking/issues/12-request-and-accept-one-priced-seat.md
+@@ -18,5 +18,9 @@
+
+ 1. Existing-commitment hold, cancellation, departure, and journey transitions for these new allocations are not yet integrated. Ticket 13 owns the route-booking lifecycle; this ticket's first criterion remains open until the hold behavior is evidenced across those transitions.
+ 2. A historical vehicle stores only a registration suffix, while the new declaration stores a full identifier with no verified identity mapping. Overlapping historical offers with a matching suffix now conservatively block new requests and acceptances, including for different driver IDs; this may reject distinct vehicles with the same suffix. Resolve identity and false positives during representative-copy migration before the second criterion is closed. Same-registration new declarations are serialized and conflict checked.
+-3. Ticket 02 still lacks an approved production routing and stopping-place source. Ticket 04's authoritative Maharashtra boundary and full support coverage remain open. The HTTP boundary therefore rejects every request and decision outside synthetic tests.
++3. Ticket 02 selects Valhalla/OSM and the local Amravati core successor. Ticket 10 actual artifact/approval integration and ticket 11 passenger matching/stop confirmation remain prerequisites. Provider/release gates remain open; the HTTP boundary still rejects every request and decision outside synthetic tests.
+ 4. Real route publication, passenger discovery, representative-copy migration rehearsal, provider-backed independent receipt durability, and launch approval remain open. No real trips or deployed migrations are enabled by this branch.
++
++## Amravati core scope amendment — 2026-10-04
++
++New request and acceptance must recheck the immutable route area ID/hash and current approval/pause state, plus requested and matched passenger points under the approved precision rule, in the protected workflow. Freeze area evidence with the accepted route/segment terms. Race approval revocation or scope pause against acceptance using separate PostgreSQL connections; reject new commitments after revocation and preserve same-key acknowledged retries and original terms. Do not reprice or reinterpret historical records. These remain this ticket's checks after ticket 10; its status is unchanged.
+--- a/.scratch/unrestricted-booking/issues/13-carry-route-bookings-through-outcomes.md
++++ b/.scratch/unrestricted-booking/issues/13-carry-route-bookings-through-outcomes.md
+@@ -20,3 +20,7 @@
+ ## Ticket 09 notice handoff — 2026-10-03
+
+ Ticket 09 now verifies notice delivery for existing outcome producers. Its completion pass added HTTP MFA guards and AAL1 regression coverage for hold, release-hold, resolve-journey and resolve-settlement, so the earlier missing-MFA follow-up is completed. This ticket still owns any absent new-route delayed-departure, silent-journey and overdue-payment producers and their notice generation. Next tests: advance each cutoff, run its actual producer, pass resulting durable events through the existing worker, assert exact recipients and no invented travel/debt/receipt. Ticket 09 resolution does not resolve this ticket or enable bookings.
++
++## Amravati core scope amendment — 2026-10-04
++
++For an Amravati core scope withdrawal or material area update, use existing audited holds and cancellation/replacement for affected future commitments. Preserve original area/version and accepted terms in journey/settlement records; do not silently reclassify them under a new polygon. Active trips retain visibility and incident support rather than automatic cancellation or location-based enforcement. Recheck applicable holds/approval at departure without rewriting the route. Test revocation/departure races and receipt restoration in this ticket; no live tracking or scope-activation authority is added. Status remains unchanged.
+--- a/.scratch/unrestricted-booking/issues/14-rehearse-representative-copy-upgrade.md
++++ b/.scratch/unrestricted-booking/issues/14-rehearse-representative-copy-upgrade.md
+@@ -13,3 +13,7 @@
+ ## Rehearsal progress (2026-09-29)
+
+ See `docs/operations/ticket14-representative-upgrade-rehearsal.md`. A wholly synthetic, isolated PostgreSQL rehearsal preserved historical rows through migrations 0035–0042, verified the exact ledger and explicit owner/money/status comparisons, exercised runner rollback, and restored its baseline into a second local database. A newer synthetic acknowledged operation was reconciled from a local receipt while writes remained restricted. Existing posted-route HTTP/PostgreSQL scenarios passed separately. This remains partial evidence: an approved sanitized copy of the verified live shape, separate roles, mixed-version application behavior on that copy, and protected provider Auth recovery are unevidenced. Keep this ticket claimed and real booking writes disabled.
++
++## Amravati core scope amendment — 2026-10-04
++
++Include historical corridor records, prior unrestricted `.2` route evidence and new `amravati-core-v1`/`.1` successor records in the existing authorized-copy rehearsal. Compare frozen terms, geometry, area/policy identifiers and signed receipt formats before/after migration and restore. Do not backfill old records with the new area or treat old state checks as local-area approvals. Scope approval supplies no data-reset or deployed migration authorization; status and existing copy-evidence requirements remain unchanged.
+--- a/.scratch/unrestricted-booking/issues/15-verify-the-integrated-route-flow.md
++++ b/.scratch/unrestricted-booking/issues/15-verify-the-integrated-route-flow.md
+@@ -31,3 +31,7 @@
+ ## Ticket 09 implementation completed — 2026-10-03
+
+ Ticket 09 is resolved at its support/notice implementation boundary. Reuse its six HTTP/PostgreSQL scenarios and worker-backed event checks. This ticket still owns the full integrated journey when production publication/discovery/passenger-quote and approved-policy producers are available, alongside its existing representative-copy and recovery requirements. Do not infer production-provider evidence from the synthetic adapter or make ticket 09 wait on this downstream ticket. Status and real-booking gates remain unchanged.
++
++## Amravati core scope amendment — 2026-10-04
++
++Add the approved local scope to the integrated journey: an interior route and ordered passenger points proceed only in the synthetic harness; outside selection, cross-edge snap, route exit/re-entry, stale area hash, revoked approval and unavailable artifact fail before new commitments. Verify old/new policy coexistence, audit/recovery evidence and honest local-area UI language. Keep runtime booking gates closed and retain all existing races/provider/copy requirements. This does not stand in for ticket 10's own artifact acceptance; status is unchanged.
+--- a/.scratch/unrestricted-booking/issues/16-rehearse-unrestricted-release-in-staging.md
++++ b/.scratch/unrestricted-booking/issues/16-rehearse-unrestricted-release-in-staging.md
+@@ -22,7 +22,7 @@
+
+ ## Operating-policy evidence handoff — ticket 04, 2026-10-03
+
+-Ticket 04's policy-only resolution transfers unperformed production evidence here: reconcile reuse terms for the actual selected SOI boundary/derived geometry; exercise versioned boundary and crossing checks; validate both Gmail support channels, response targets and missed-contact behavior; inspect real provider copies, finite retention and actual deletion outcomes under policy `2026-10-03.2`. Coordinate retention implementation with pilot-readiness 28. Synthetic staging may demonstrate and record a missing independent escalation path, but cannot treat that as real-trip readiness. Ticket 18 must retain that blocker. No staging deployment is authorized by this handoff; this ticket's status is unchanged.
++Ticket 04's policy-only resolution transfers unperformed production evidence here: verify the actual approved Amravati core artifact, operator approval, independent authorship/rights record and pinned hash; exercise strict no-exit and precision checks; validate both Gmail support channels, response targets and missed-contact behavior; inspect real provider copies, finite retention and actual deletion outcomes under policy `2026-10-03.2`. Coordinate retention implementation with pilot-readiness 28. Synthetic staging may demonstrate and record a missing independent escalation path, but cannot treat that as real-trip readiness. Ticket 18 must retain that blocker. No staging deployment is authorized by this handoff; this ticket's status is unchanged.
+
+ ## Ticket 09 support update — 2026-10-03
+
+@@ -31,3 +31,7 @@
+ ## Ticket 09 implementation completed — 2026-10-03
+
+ Ticket 09 is resolved for support and notice implementation, with operational items accepted by the maintainer. This ticket still owns actual-configuration booking notice delivery/receipt, independent monitor-to-human routing, worker stoppage, fallback and privacy checks in staging. Synthetic worker sends are not live provider receipts. Retain evidence for ticket 18; no deployment or real-booking activation is authorized by this handoff.
++
++## Amravati core scope amendment — 2026-10-04
++
++Use route policy `unrestricted-route-contribution-2026-10-04.1`, operating `2026-10-04.1` and the completed ticket 10 artifact/approval in the eventual authorized staging configuration. Validate all supported modes and representative interior/edge routes with the actual providers, attribution, retention and support behavior. SOI/geoBoundaries reuse evidence is not a prerequisite for original numerical service geometry; their unresolved research remains archived for statewide use. OSM/Mapbox/graph/route-data licence obligations and all other release gates remain. No ticket 10 checks are transferred here, and no staging deployment is authorized by the scope decision. Status unchanged.
+--- a/.scratch/unrestricted-booking/issues/17-rehearse-outage-restore-and-reconciliation.md
++++ b/.scratch/unrestricted-booking/issues/17-rehearse-outage-restore-and-reconciliation.md
+@@ -19,3 +19,7 @@
+ ## Operating-policy evidence handoff — ticket 04, 2026-10-03
+
+ Under ticket 04 policy `2026-10-03.2`, rehearse primary-inbox/Gmail/sole-operator failure distinctly, unsupported-departure and new-commitment pause, preserved active-trip visibility, fallback incident recording and explicit reconciliation before reopening. Label any simulated independent escalation; it does not establish real operator availability. Prove backup/acknowledgement-receipt horizon compatibility with finite retention, provider deletion retry and independently held suppression of deleted data before reopening an older snapshot. Include onboarding's shorter copy lifetime and held historical records. All this evidence remains unperformed by ticket 04; status unchanged.
++
++## Amravati core scope amendment — 2026-10-04
++
++Restore the exact approved Amravati core artifact and operator approval reference alongside the pinned routing graph/configuration. Missing/mismatched/revoked area evidence must keep new area-dependent actions closed; reconcile later acknowledged operations and preserve their original area/policy/hash after an older database restore. Do not transform prior state-boundary evidence into local service-area evidence. Retain all existing receipt, deletion, support and explicit reopening requirements. The new scope does not authorize a rehearsal deployment or production restore; status unchanged.
+--- a/.scratch/unrestricted-booking/issues/18-decide-real-booking-readiness.md
++++ b/.scratch/unrestricted-booking/issues/18-decide-real-booking-readiness.md
+@@ -17,4 +17,8 @@
+
+ ## Operating-policy evidence handoff — ticket 04, 2026-10-03
+
+-Ticket 04 is resolved only for implementation under an explicitly approved scope amendment. Before any real-booking go decision require ticket 10 boundary artifact and enforcement evidence; ticket 16 actual SOI reuse and provider/support/retention evidence; pilot-readiness 28 historical-record retention decisions, provider deletion and finite-copy implementation; and ticket 17 restore suppression and outage reconciliation. Require a separately reachable active-trip escalation arrangement and missed-contact rehearsal despite the current sole-operator demo model. Both Gmail inboxes and the same sole operator do not satisfy that requirement. Retain ticket 03 external review, all other gates and separate activation authorization. These are open launch requirements, not satisfied evidence; status stays ready-for-human.
++Ticket 04 is resolved only for implementation under an explicitly approved scope amendment. Before any real-booking go decision require ticket 10 actual Amravati core artifact, operator approval and enforcement evidence; ticket 16 original service-geometry provenance and provider/support/retention evidence; pilot-readiness 28 historical-record retention decisions, provider deletion and finite-copy implementation; and ticket 17 restore suppression and outage reconciliation. Require a separately reachable active-trip escalation arrangement and missed-contact rehearsal despite the current sole-operator demo model. Both Gmail inboxes and the same sole operator do not satisfy that requirement. Retain ticket 03 external review, all other gates and separate activation authorization. These are open launch requirements, not satisfied evidence; status stays ready-for-human.
++
++## Amravati core scope amendment — 2026-10-04
++
++Any eventual go/no-go decision applies only to `amravati-core-v1`, the approved exact hash/rules, supported modes and 50 km/90-minute limits with zero planned outside-area travel. Require completed ticket 10 operator/artifact/HTTP-PostgreSQL evidence and all existing external/rate, provider, migration, staging, support, privacy and recovery gates. Do not describe local coordinate containment as statewide or authoritative state-border verification. Unresolved statewide research is retained but is not an implied future launch scope. A separate explicit activation authorization is still required; status remains ready-for-human.
+--- a/docs/operations/valhalla-route-preparation.md
++++ b/docs/operations/valhalla-route-preparation.md
+@@ -1,6 +1,8 @@
+ # Ticket 10 Valhalla route preparation
+
+-Implementation uses route policy `unrestricted-route-contribution-2026-10-03.2` and operating policy `2026-10-03.2` for newly prepared routes only. It does not enable discovery or real bookings. Ticket 10 remains claimed: actual Maharashtra boundary enforcement cannot yet be evidenced.
++The approved successor implementation target is route policy `unrestricted-route-contribution-2026-10-04.1`, operating `2026-10-04.1` and `amravati-core-v1`. Current runtime code remains on the prior implementation until ticket 10 completes the [local scope contract](proposals/amravati-core-service-area-2026-10-04.md): original pinned service geometry, actual operator approval, coordinate-precision containment, zero route exit and authenticated PostgreSQL/recovery evidence. It does not enable discovery or real bookings; ticket 10 stays claimed.
++
++The sections below record the existing `.2` implementation and its historical SOI/synthetic evidence. Their state-artifact and 5 km/600 s requirements are superseded for the new local version by the linked contract, not claimed complete. Retain those historical checks and evidence for their original versions; do not relabel them as tests of the successor.
+
+ ## Provider contract
+
+--- a/docs/frontend-redesign.md
++++ b/docs/frontend-redesign.md
+@@ -88,3 +88,7 @@
+ The workspace groups existing server-authorized historical queues for student evidence, restrictions, cancellation and departure signals, revocation holds and incidents, journey reviews, direct settlement cases, notification delivery, pause and recovery, and outreach history. Operator mutations still use their existing routes and policy checks. The client presents pending and unknown outcomes as unresolved until operation status or refreshed durable records confirm them. Historical fixed-corridor cases are labelled as such; no new route booking power or live support promise is exposed.
+
+ The new posted-route incident read and resolution routes are test-gated in `posted-routes/outcomes.service.ts`, so they cannot back a production queue. A cross-domain operator case feed and audit-history endpoint are also absent. Cancellation and departure queues are currently read-only signals; account restriction entry requires an operator-supplied reviewed source ID and evidence summary and cannot show the source record or affected active commitments in that form. The current screens link case-level history where the server provides it, and label other missing evidence or deadlines rather than inventing them. Source and impact previews, actionable cancellation and departure case reads, actor and deadline fields, a cross-domain audit feed, and a recovery lookup for every operator command need a separate reviewed API slice with deployed-data inventory and PostgreSQL authorization, idempotency, race, audit, notification-failure, and restore tests before the workspace can claim complete live-route coverage.
++
++## Approved local service-area successor — 2026-10-04
++
++When implementing the new local policy, label coverage “Amravati core service area — selected endpoints and the planned route must stay inside. Not a city or state boundary.” Use the exact original rectangle and approval from `docs/operations/proposals/amravati-core-service-area-2026-10-04.md`; do not use a statewide/municipal outline or a geocoder label to imply coverage. Explain an outside/border/ambiguous selection without silently moving it. Preserve explicit safe-stop confirmation and all prelaunch/private-preparation states. No code/UI rollout or booking activation is implied by the documentation decision.

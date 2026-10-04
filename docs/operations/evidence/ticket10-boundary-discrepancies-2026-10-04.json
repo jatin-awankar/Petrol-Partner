@@ -1,0 +1,2360 @@
+{
+  "purpose": "Diagnostic dataset disagreement, not accuracy or legal determination",
+  "versions": {
+    "shapely": "2.0.7",
+    "pyproj": "3.6.1",
+    "pyshp": "2.3.1"
+  },
+  "sourceHashes": {
+    "gbNormalized": "71ed889b914ce89fb134533c8c9f209dfbbc46f403db10744cca530906f7667d",
+    "soiInspection": "a806c513d628cc7643ad6259f69d142913931c94c5866c66d0c05d11017e269f",
+    "soiLayer": {
+      ".shp": "602505cbaa149c3aef1701e8bc69cfbda7d8a73c2c2c4d891892bb67ba95b779",
+      ".dbf": "e6afe169ff7055d02471a6ddae6536bed4c1dfb02c50765c0166ca2eb9a17ea0",
+      ".shx": "c1edfa5638ec217291460d871db6ef0772b249c075ef6d4b06ae35f6bac127fc",
+      ".prj": "4e0115a1711327038fc52f74a11a80ee1c399c8d84e8f0e5f54bf00b9fd20f16"
+    }
+  },
+  "metricCrs": "+proj=laea +lat_0=19 +lon_0=77 +datum=WGS84 +units=m +no_defs",
+  "metricLimit": "Equal-area diagnostic projection. Distances are approximate, not geodesic accuracy bounds.",
+  "gbAreaKm2": 307493.5378163102,
+  "soiAreaKm2": 307494.20019207883,
+  "soiComponentStatusCounts": {
+    "absent": 81,
+    "covered": 9,
+    "partial": 3
+  },
+  "absentSoiComponentsAreaKm2": 1.1994443464566582,
+  "soiComponents": [
+    {
+      "index": 0,
+      "areaM2": 24728.97560075676,
+      "boundsLonLat": [
+        72.97683222042639,
+        18.10280741988702,
+        72.97850763622417,
+        18.104713981125002
+      ],
+      "sampleLonLat": [
+        72.97770455622947,
+        18.103762793170382
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 427.8100190796534,
+      "soiEdgeDistanceMetresProjected": 62.38038410388565,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 1,
+      "areaM2": 58120.136858027676,
+      "boundsLonLat": [
+        72.96309239975913,
+        18.298809186460243,
+        72.96640680008657,
+        18.301165286120703
+      ],
+      "sampleLonLat": [
+        72.96441846551076,
+        18.299978065080584
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 534.0248383988292,
+      "soiEdgeDistanceMetresProjected": 106.34512343787465,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 2,
+      "areaM2": 8167.831133343588,
+      "boundsLonLat": [
+        72.93193400025761,
+        18.32146148558181,
+        72.93315409972492,
+        18.322698186367845
+      ],
+      "sampleLonLat": [
+        72.93269999262843,
+        18.32208863485452
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 2370.0723526345582,
+      "soiEdgeDistanceMetresProjected": 17.444690027749207,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 3,
+      "areaM2": 86839.09168517991,
+      "boundsLonLat": [
+        72.81232910045199,
+        18.70249268586356,
+        72.81492440021624,
+        18.706880685758
+      ],
+      "sampleLonLat": [
+        72.81367271542587,
+        18.70462046637784
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 4465.752019128102,
+      "soiEdgeDistanceMetresProjected": 52.33064805374315,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 4,
+      "areaM2": 13688.074158127005,
+      "boundsLonLat": [
+        72.84134689960976,
+        18.705584886307186,
+        72.84280979977696,
+        18.707849285831998
+      ],
+      "sampleLonLat": [
+        72.84213121603807,
+        18.70670176094933
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 1624.7338371256337,
+      "soiEdgeDistanceMetresProjected": 26.05848831169854,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 5,
+      "areaM2": 32107.402084963374,
+      "boundsLonLat": [
+        72.89832850090202,
+        18.829905620931477,
+        72.90041177076178,
+        18.832035922647158
+      ],
+      "sampleLonLat": [
+        72.89930307419155,
+        18.830981407053326
+      ],
+      "gbContainsSample": true,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 4619.867877125883,
+      "soiEdgeDistanceMetresProjected": 66.71818380033076,
+      "gbOverlapFraction": 1.0000000000000007,
+      "status": "covered"
+    },
+    {
+      "index": 6,
+      "areaM2": 3707.119530011306,
+      "boundsLonLat": [
+        72.8964307999276,
+        18.833515685858195,
+        72.8971657000557,
+        18.834490785866052
+      ],
+      "sampleLonLat": [
+        72.89684276113857,
+        18.834016676373327
+      ],
+      "gbContainsSample": true,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 4563.692982287476,
+      "soiEdgeDistanceMetresProjected": 10.93408358526623,
+      "gbOverlapFraction": 1.0,
+      "status": "covered"
+    },
+    {
+      "index": 7,
+      "areaM2": 9997.001742228946,
+      "boundsLonLat": [
+        72.82671669959387,
+        18.901591086255507,
+        72.82795690032744,
+        18.903003486254796
+      ],
+      "sampleLonLat": [
+        72.82744552401486,
+        18.90228855614439
+      ],
+      "gbContainsSample": true,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 1751.4602689284568,
+      "soiEdgeDistanceMetresProjected": 32.056380935894545,
+      "gbOverlapFraction": 1.0,
+      "status": "covered"
+    },
+    {
+      "index": 8,
+      "areaM2": 8461.325853178978,
+      "boundsLonLat": [
+        72.84720120035773,
+        18.918298185727455,
+        72.84839639988819,
+        18.919144786155922
+      ],
+      "sampleLonLat": [
+        72.84775533602934,
+        18.918740375550467
+      ],
+      "gbContainsSample": true,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 2338.857550647152,
+      "soiEdgeDistanceMetresProjected": 17.816006355339248,
+      "gbOverlapFraction": 0.9999999999999998,
+      "status": "covered"
+    },
+    {
+      "index": 9,
+      "areaM2": 13228.395185016821,
+      "boundsLonLat": [
+        72.85110859972026,
+        18.947389385615537,
+        72.85227890030951,
+        18.948692486075508
+      ],
+      "sampleLonLat": [
+        72.85170571211751,
+        18.94808199537314
+      ],
+      "gbContainsSample": true,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 3067.3408658728267,
+      "soiEdgeDistanceMetresProjected": 52.90330291786879,
+      "gbOverlapFraction": 1.0,
+      "status": "covered"
+    },
+    {
+      "index": 10,
+      "areaM2": 245583.09026879037,
+      "boundsLonLat": [
+        72.89988500040553,
+        18.95690468572662,
+        72.90618490022136,
+        18.963872685675106
+      ],
+      "sampleLonLat": [
+        72.90291476653285,
+        18.960449658766137
+      ],
+      "gbContainsSample": true,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 8628.922247081879,
+      "soiEdgeDistanceMetresProjected": 136.6770167909704,
+      "gbOverlapFraction": 1.0000000000000002,
+      "status": "covered"
+    },
+    {
+      "index": 11,
+      "areaM2": 2055231.673251967,
+      "boundsLonLat": [
+        72.92470410001495,
+        18.95266368603517,
+        72.94248940008491,
+        18.971677185929394
+      ],
+      "sampleLonLat": [
+        72.93191126236188,
+        18.962002723244456
+      ],
+      "gbContainsSample": true,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 11644.747618362608,
+      "soiEdgeDistanceMetresProjected": 562.0097586588975,
+      "gbOverlapFraction": 1.0000000000000002,
+      "status": "covered"
+    },
+    {
+      "index": 12,
+      "areaM2": 184271.72219197944,
+      "boundsLonLat": [
+        72.80739936259583,
+        19.073881478102223,
+        72.81161565474832,
+        19.079799808460365
+      ],
+      "sampleLonLat": [
+        72.80964560112842,
+        19.076766883488794
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 1221.5176017027952,
+      "soiEdgeDistanceMetresProjected": 94.39954179901042,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 13,
+      "areaM2": 18435.510569965616,
+      "boundsLonLat": [
+        72.7729792490722,
+        19.132874975896453,
+        72.7748583616608,
+        19.134077660888078
+      ],
+      "sampleLonLat": [
+        72.77392101084108,
+        19.1334430320995
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 1289.7929265693497,
+      "soiEdgeDistanceMetresProjected": 49.04204738671191,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 14,
+      "areaM2": 57170.09518146234,
+      "boundsLonLat": [
+        72.7804398996573,
+        19.13268568598849,
+        72.78322819981165,
+        19.135152885972772
+      ],
+      "sampleLonLat": [
+        72.78183688195948,
+        19.133923593432943
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 469.6410342120917,
+      "soiEdgeDistanceMetresProjected": 114.45236561879399,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 15,
+      "areaM2": 29214.53256354554,
+      "boundsLonLat": [
+        72.76594294656347,
+        19.23945739119918,
+        72.76804345064767,
+        19.242245194337407
+      ],
+      "sampleLonLat": [
+        72.76673025294753,
+        19.24078947624989
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 1344.6915886026554,
+      "soiEdgeDistanceMetresProjected": 50.20498659713915,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 16,
+      "areaM2": 5996.739798348769,
+      "boundsLonLat": [
+        72.75795959988213,
+        19.266625686310082,
+        72.75867510008347,
+        19.267681186156082
+      ],
+      "sampleLonLat": [
+        72.75830882687512,
+        19.267162991906932
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 2382.380160690413,
+      "soiEdgeDistanceMetresProjected": 27.194882630762635,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 17,
+      "areaM2": 5179.591206568835,
+      "boundsLonLat": [
+        72.76343389981261,
+        19.28410648623719,
+        72.76436800032096,
+        19.28500588552742
+      ],
+      "sampleLonLat": [
+        72.76402978355326,
+        19.28461919142403
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 1773.4567701230078,
+      "soiEdgeDistanceMetresProjected": 18.93664852751484,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 18,
+      "areaM2": 8767.391590819381,
+      "boundsLonLat": [
+        72.76945323942901,
+        19.308862830236734,
+        72.77054797168854,
+        19.309898843954073
+      ],
+      "sampleLonLat": [
+        72.77001589903996,
+        19.30938674754427
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 1693.2896858852887,
+      "soiEdgeDistanceMetresProjected": 38.58263968782342,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 19,
+      "areaM2": 18555.885796962553,
+      "boundsLonLat": [
+        72.77179832643782,
+        19.308333203023125,
+        72.77293906329105,
+        19.310748247377337
+      ],
+      "sampleLonLat": [
+        72.77250534426693,
+        19.30966832802827
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 1483.1506430851061,
+      "soiEdgeDistanceMetresProjected": 42.527615057460366,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 20,
+      "areaM2": 31738.598672388413,
+      "boundsLonLat": [
+        72.79234093769885,
+        19.32039412759533,
+        72.7951308365362,
+        19.321704582348694
+      ],
+      "sampleLonLat": [
+        72.79367452772327,
+        19.32107973972349
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 411.087654045092,
+      "soiEdgeDistanceMetresProjected": 64.89024359232195,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 21,
+      "areaM2": 8058.348958850689,
+      "boundsLonLat": [
+        72.76252490045255,
+        19.33517358555364,
+        72.76350590008704,
+        19.33619218575514
+      ],
+      "sampleLonLat": [
+        72.76299353880512,
+        19.335625287005392
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 2436.1301440558886,
+      "soiEdgeDistanceMetresProjected": 38.29058665510795,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 22,
+      "areaM2": 80787.6807331972,
+      "boundsLonLat": [
+        72.75463535078508,
+        19.342663936993727,
+        72.75725994219115,
+        19.34969662075005
+      ],
+      "sampleLonLat": [
+        72.75601473241252,
+        19.346233351868324
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 2171.732007166783,
+      "soiEdgeDistanceMetresProjected": 31.69429758923758,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 23,
+      "areaM2": 388928.1516685904,
+      "boundsLonLat": [
+        72.7282685996796,
+        19.459100985619145,
+        72.73646900045577,
+        19.46827248559756
+      ],
+      "sampleLonLat": [
+        72.73202871356695,
+        19.463818460593657
+      ],
+      "gbContainsSample": true,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 96.60758841546212,
+      "soiEdgeDistanceMetresProjected": 179.33660675567563,
+      "gbOverlapFraction": 0.886193353763823,
+      "status": "partial"
+    },
+    {
+      "index": 24,
+      "areaM2": 6390.996554087084,
+      "boundsLonLat": [
+        73.4585368996793,
+        15.886643986846428,
+        73.45928409968143,
+        15.887642287090564
+      ],
+      "sampleLonLat": [
+        73.45890955142585,
+        15.887159303569474
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 7822.470107779342,
+      "soiEdgeDistanceMetresProjected": 34.28363118703787,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 25,
+      "areaM2": 1018.784349618836,
+      "boundsLonLat": [
+        73.45771990041146,
+        15.887125886600362,
+        73.4579981996658,
+        15.887521987049897
+      ],
+      "sampleLonLat": [
+        73.45785594685799,
+        15.887339712711603
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 7888.336105330345,
+      "soiEdgeDistanceMetresProjected": 14.462106337738614,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 26,
+      "areaM2": 38657.28443622943,
+      "boundsLonLat": [
+        73.46184310014593,
+        15.88684738667759,
+        73.46444540034426,
+        15.890084386661279
+      ],
+      "sampleLonLat": [
+        73.46375956978633,
+        15.888403412602061
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 7364.116182475569,
+      "soiEdgeDistanceMetresProjected": 38.982052645763666,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 27,
+      "areaM2": 22258.18453984071,
+      "boundsLonLat": [
+        73.45496679962945,
+        15.887652486592398,
+        73.45667369959023,
+        15.88980948661616
+      ],
+      "sampleLonLat": [
+        73.45563722516866,
+        15.888708221489464
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 7956.327658710398,
+      "soiEdgeDistanceMetresProjected": 26.25253610091972,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 28,
+      "areaM2": 6113.160590517608,
+      "boundsLonLat": [
+        73.46264430033034,
+        15.92950108679613,
+        73.46341620036262,
+        15.930613286559133
+      ],
+      "sampleLonLat": [
+        73.46309926275045,
+        15.930040557992433
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 4923.731335819729,
+      "soiEdgeDistanceMetresProjected": 22.776528941238666,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 29,
+      "areaM2": 6457.492423868669,
+      "boundsLonLat": [
+        73.45841319964079,
+        15.985159986272272,
+        73.4594001001068,
+        15.985946586201063
+      ],
+      "sampleLonLat": [
+        73.45895494803494,
+        15.985598360892466
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 3294.5014132076426,
+      "soiEdgeDistanceMetresProjected": 34.02575636196308,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 30,
+      "areaM2": 2716.7547738772696,
+      "boundsLonLat": [
+        73.45932679986986,
+        15.986173186548761,
+        73.45986690033504,
+        15.986739686530743
+      ],
+      "sampleLonLat": [
+        73.45960658459086,
+        15.986436667676802
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 3215.0458631432252,
+      "soiEdgeDistanceMetresProjected": 25.71865136024401,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 31,
+      "areaM2": 2883.518908348586,
+      "boundsLonLat": [
+        73.45841980017315,
+        15.986519786958757,
+        73.45896000037398,
+        15.9870862862796
+      ],
+      "sampleLonLat": [
+        73.45869325011519,
+        15.986784703671058
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 3308.0905499928003,
+      "soiEdgeDistanceMetresProjected": 26.97195166079564,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 32,
+      "areaM2": 1225.2268664522203,
+      "boundsLonLat": [
+        73.45626160020127,
+        15.987293986479653,
+        73.45656870001885,
+        15.987733886571183
+      ],
+      "sampleLonLat": [
+        73.45641950358161,
+        15.987513940833828
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 3543.5302208093267,
+      "soiEdgeDistanceMetresProjected": 15.634440098153934,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 33,
+      "areaM2": 2026.4818049393714,
+      "boundsLonLat": [
+        73.45648339975824,
+        15.99330378666592,
+        73.45695609965485,
+        15.993748686331903
+      ],
+      "sampleLonLat": [
+        73.45672141676899,
+        15.99348211293282
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 3501.4380143484354,
+      "soiEdgeDistanceMetresProjected": 18.504378976611658,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 34,
+      "areaM2": 4093.7219284883026,
+      "boundsLonLat": [
+        73.45730229968247,
+        15.9933971869922,
+        73.4579288002218,
+        15.994083786627385
+      ],
+      "sampleLonLat": [
+        73.45761954976942,
+        15.993795382905354
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 3406.550474095006,
+      "soiEdgeDistanceMetresProjected": 27.586576842779166,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 35,
+      "areaM2": 2005.736087634948,
+      "boundsLonLat": [
+        73.45584589954466,
+        15.99353448631481,
+        73.45630760007631,
+        15.993968386395268
+      ],
+      "sampleLonLat": [
+        73.45608694311122,
+        15.993801076632378
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 3570.488323966484,
+      "soiEdgeDistanceMetresProjected": 18.233341255918255,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 36,
+      "areaM2": 2051.0706696174543,
+      "boundsLonLat": [
+        73.45507650010877,
+        15.993517986908598,
+        73.45552720020412,
+        15.993968386825403
+      ],
+      "sampleLonLat": [
+        73.45530460009806,
+        15.993728135858786
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 3653.872432139387,
+      "soiEdgeDistanceMetresProjected": 22.51994676238985,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 37,
+      "areaM2": 2045.9433614489037,
+      "boundsLonLat": [
+        73.45466990042848,
+        15.993913486485058,
+        73.45513700003619,
+        15.994380386484897
+      ],
+      "sampleLonLat": [
+        73.45490786213206,
+        15.994094613553472
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 3697.9373058284173,
+      "soiEdgeDistanceMetresProjected": 19.464201334695137,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 38,
+      "areaM2": 1709.3403440646096,
+      "boundsLonLat": [
+        73.45780354035325,
+        15.994482306258133,
+        73.45829841643956,
+        15.994898170822896
+      ],
+      "sampleLonLat": [
+        73.45803346725964,
+        15.99473541317292
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 3367.213327834804,
+      "soiEdgeDistanceMetresProjected": 15.460469183431126,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 39,
+      "areaM2": 4038.643599014997,
+      "boundsLonLat": [
+        73.44401080007044,
+        16.098190287006428,
+        73.44478269990432,
+        16.099269286779105
+      ],
+      "sampleLonLat": [
+        73.4444469361751,
+        16.09873793845451
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 1536.3588856147837,
+      "soiEdgeDistanceMetresProjected": 16.35525220042271,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 40,
+      "areaM2": 36915.40932820787,
+      "boundsLonLat": [
+        73.44235910020224,
+        16.0995431861129,
+        73.44415189975302,
+        16.102730386694724
+      ],
+      "sampleLonLat": [
+        73.44335638455543,
+        16.10107902283092
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 1631.1764283531193,
+      "soiEdgeDistanceMetresProjected": 59.841116590875075,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 41,
+      "areaM2": 3437.0947244944946,
+      "boundsLonLat": [
+        73.441520799547,
+        16.1030125865342,
+        73.44200220020768,
+        16.104191186870604
+      ],
+      "sampleLonLat": [
+        73.44167845924825,
+        16.103674922372463
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 1801.108076035005,
+      "soiEdgeDistanceMetresProjected": 13.966281608379088,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 42,
+      "areaM2": 2111.5953407404145,
+      "boundsLonLat": [
+        73.28303279994063,
+        16.957386186334574,
+        73.28355570007146,
+        16.957857186554442
+      ],
+      "sampleLonLat": [
+        73.28329950479383,
+        16.957630406307196
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 484.4889426701603,
+      "soiEdgeDistanceMetresProjected": 21.529588513949058,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 43,
+      "areaM2": 235.66679853085805,
+      "boundsLonLat": [
+        73.2854262109864,
+        16.98932459132009,
+        73.28559506149843,
+        16.989505719854492
+      ],
+      "sampleLonLat": [
+        73.28550809199685,
+        16.989390148055833
+      ],
+      "gbContainsSample": true,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 21.10471695071154,
+      "soiEdgeDistanceMetresProjected": 6.116644191051153,
+      "gbOverlapFraction": 1.0,
+      "status": "covered"
+    },
+    {
+      "index": 44,
+      "areaM2": 2903.1284173631334,
+      "boundsLonLat": [
+        73.11922153261153,
+        17.76552035719199,
+        73.12016890541716,
+        17.76655020169169
+      ],
+      "sampleLonLat": [
+        73.11946597832652,
+        17.76603568151746
+      ],
+      "gbContainsSample": true,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 15.410164102561604,
+      "soiEdgeDistanceMetresProjected": 12.794056370998637,
+      "gbOverlapFraction": 0.9514426432561774,
+      "status": "partial"
+    },
+    {
+      "index": 45,
+      "areaM2": 1464.5667118744707,
+      "boundsLonLat": [
+        73.10111675322693,
+        17.80405646246535,
+        73.1015684981118,
+        17.804713129714546
+      ],
+      "sampleLonLat": [
+        73.10133278281816,
+        17.804377659952078
+      ],
+      "gbContainsSample": true,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 47.69130626069564,
+      "soiEdgeDistanceMetresProjected": 10.152568840708579,
+      "gbOverlapFraction": 1.0000000000000002,
+      "status": "covered"
+    },
+    {
+      "index": 46,
+      "areaM2": 2611.300609375456,
+      "boundsLonLat": [
+        73.08734740039544,
+        17.80728168657402,
+        73.08785750037602,
+        17.807840385894544
+      ],
+      "sampleLonLat": [
+        73.08759493274823,
+        17.807554749706096
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 166.44499519440393,
+      "soiEdgeDistanceMetresProjected": 25.49525019875194,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 47,
+      "areaM2": 50372.82853765644,
+      "boundsLonLat": [
+        73.0827993000865,
+        17.814538386305,
+        73.08535950044633,
+        17.818279686276508
+      ],
+      "sampleLonLat": [
+        73.08462551270753,
+        17.816435523243168
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 513.7226547075728,
+      "soiEdgeDistanceMetresProjected": 48.860063698578664,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 48,
+      "areaM2": 5525.957100270394,
+      "boundsLonLat": [
+        73.46647089241081,
+        15.89368195653242,
+        73.46719742848451,
+        15.894543700380309
+      ],
+      "sampleLonLat": [
+        73.46684375394554,
+        15.89407909556918
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 6681.565361613606,
+      "soiEdgeDistanceMetresProjected": 34.80262452977388,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 49,
+      "areaM2": 3393.750801481525,
+      "boundsLonLat": [
+        73.46517009986007,
+        15.894707286790078,
+        73.46564639986178,
+        15.895733586333959
+      ],
+      "sampleLonLat": [
+        73.46541364997664,
+        15.895154460743699
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 6706.012437580271,
+      "soiEdgeDistanceMetresProjected": 18.091393939717967,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 50,
+      "areaM2": 2487.1553114174712,
+      "boundsLonLat": [
+        73.46603665812877,
+        15.895207296642763,
+        73.46661691733432,
+        15.895705328653612
+      ],
+      "sampleLonLat": [
+        73.46630493650328,
+        15.895482165634498
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 6612.414518761623,
+      "soiEdgeDistanceMetresProjected": 23.451489185687638,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 51,
+      "areaM2": 2431.648759112524,
+      "boundsLonLat": [
+        73.46651690033737,
+        15.898090386658444,
+        73.46709819954242,
+        15.898644486953653
+      ],
+      "sampleLonLat": [
+        73.4668163001016,
+        15.898357469921228
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 6353.5816361175575,
+      "soiEdgeDistanceMetresProjected": 20.205298927255125,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 52,
+      "areaM2": 5202.950083992454,
+      "boundsLonLat": [
+        73.46494350015267,
+        15.898535586425961,
+        73.46583939991878,
+        15.899629086217942
+      ],
+      "sampleLonLat": [
+        73.465625663091,
+        15.899072562051833
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 6395.1692137033115,
+      "soiEdgeDistanceMetresProjected": 18.44063674930334,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 53,
+      "areaM2": 576.7044004241885,
+      "boundsLonLat": [
+        73.4717980000558,
+        15.904683986580258,
+        73.4720740003562,
+        15.904913986749676
+      ],
+      "sampleLonLat": [
+        73.47193600017671,
+        15.904775986298961
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 5471.663366051995,
+      "soiEdgeDistanceMetresProjected": 10.18134823205445,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 54,
+      "areaM2": 2125.032228134949,
+      "boundsLonLat": [
+        73.46669199971831,
+        15.904591986871436,
+        73.46722099992706,
+        15.90509798670753
+      ],
+      "sampleLonLat": [
+        73.46694500024927,
+        15.904856486850784
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 5878.893467318258,
+      "soiEdgeDistanceMetresProjected": 18.598046756942928,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 55,
+      "areaM2": 4024.2098359857637,
+      "boundsLonLat": [
+        73.4724189996756,
+        15.914044986981578,
+        73.47313200045735,
+        15.914803986737592
+      ],
+      "sampleLonLat": [
+        73.47281109828724,
+        15.914458793935946
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 4755.459629514776,
+      "soiEdgeDistanceMetresProjected": 22.926111187975373,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 56,
+      "areaM2": 4622.829585673849,
+      "boundsLonLat": [
+        73.46558249960522,
+        15.92491948689625,
+        73.46637930015186,
+        15.925732886457677
+      ],
+      "sampleLonLat": [
+        73.4659801454315,
+        15.925334395673422
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 4927.917282743915,
+      "soiEdgeDistanceMetresProjected": 25.83124214214568,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 57,
+      "areaM2": 3957.7869839970626,
+      "boundsLonLat": [
+        73.46603320039412,
+        15.926146086292807,
+        73.466732300071,
+        15.926859186257756
+      ],
+      "sampleLonLat": [
+        73.46637988596879,
+        15.926480177329083
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 4827.086635297424,
+      "soiEdgeDistanceMetresProjected": 29.064339042461437,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 58,
+      "areaM2": 72.50685437432357,
+      "boundsLonLat": [
+        73.46293750022029,
+        15.931414986989882,
+        73.46304039951697,
+        15.931493786263967
+      ],
+      "sampleLonLat": [
+        73.46298931769263,
+        15.93145518893491
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 4862.499298017581,
+      "soiEdgeDistanceMetresProjected": 4.173673947590481,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 59,
+      "areaM2": 14641.80302633843,
+      "boundsLonLat": [
+        73.46289330033984,
+        15.931576087062599,
+        73.46446200027444,
+        15.932812786947652
+      ],
+      "sampleLonLat": [
+        73.46360606278779,
+        15.932211018322995
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 4766.422820648363,
+      "soiEdgeDistanceMetresProjected": 48.453594839868465,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 60,
+      "areaM2": 6731.865411450531,
+      "boundsLonLat": [
+        73.46028039957824,
+        15.986193186691121,
+        73.46114730023557,
+        15.98715968674318
+      ],
+      "sampleLonLat": [
+        73.46069794407609,
+        15.98665260487774
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 3096.344805362613,
+      "soiEdgeDistanceMetresProjected": 40.83246606993741,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 61,
+      "areaM2": 2820.9135568945508,
+      "boundsLonLat": [
+        73.46307260019867,
+        15.98862678669109,
+        73.46361269977308,
+        15.989206686294466
+      ],
+      "sampleLonLat": [
+        73.46333518774156,
+        15.988889947886253
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 2796.1072968625226,
+      "soiEdgeDistanceMetresProjected": 26.6540990534091,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 62,
+      "areaM2": 2948.888183920017,
+      "boundsLonLat": [
+        73.4641861995427,
+        15.990674586738741,
+        73.46475980040967,
+        15.991221186422578
+      ],
+      "sampleLonLat": [
+        73.46447477395608,
+        15.990931207460784
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 2668.3432976847807,
+      "soiEdgeDistanceMetresProjected": 27.305681060809388,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 63,
+      "areaM2": 7069.410876227944,
+      "boundsLonLat": [
+        73.46407588253422,
+        15.991298966490723,
+        73.46489319507388,
+        15.992939082063227
+      ],
+      "sampleLonLat": [
+        73.4643310593339,
+        15.99212689140537
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 2685.6359166172624,
+      "soiEdgeDistanceMetresProjected": 16.422671956869067,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 64,
+      "areaM2": 1616.5706751208459,
+      "boundsLonLat": [
+        73.46961739958095,
+        15.996641586905138,
+        73.47002420009905,
+        15.997094886440005
+      ],
+      "sampleLonLat": [
+        73.46982131206924,
+        15.996868548433614
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 2104.730932541193,
+      "soiEdgeDistanceMetresProjected": 21.04006105115688,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 65,
+      "areaM2": 1076.5169160358623,
+      "boundsLonLat": [
+        73.46002359990061,
+        16.02339958676842,
+        73.46033130021453,
+        16.023875186757095
+      ],
+      "sampleLonLat": [
+        73.46016621562234,
+        16.023632156087917
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 2613.8896274654207,
+      "soiEdgeDistanceMetresProjected": 11.488974371080255,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 66,
+      "areaM2": 188611.9871683249,
+      "boundsLonLat": [
+        73.45700029972328,
+        16.038969786199843,
+        73.46184750039299,
+        16.045684486173755
+      ],
+      "sampleLonLat": [
+        73.45948763554745,
+        16.042314034328147
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 917.9267304467941,
+      "soiEdgeDistanceMetresProjected": 124.4733536808727,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 67,
+      "areaM2": 6599.609148390572,
+      "boundsLonLat": [
+        73.4642002999492,
+        16.046086186487493,
+        73.46519300038693,
+        16.04706498697153
+      ],
+      "sampleLonLat": [
+        73.46463884312797,
+        16.046515212778203
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 245.41212748341357,
+      "soiEdgeDistanceMetresProjected": 23.97651678455673,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 68,
+      "areaM2": 3075.1668075757934,
+      "boundsLonLat": [
+        73.46116889956251,
+        16.051301386517636,
+        73.4615696996992,
+        16.05206668613472
+      ],
+      "sampleLonLat": [
+        73.46135912012058,
+        16.051712097047762
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 225.50904156920802,
+      "soiEdgeDistanceMetresProjected": 20.127803112710986,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 69,
+      "areaM2": 1250.1648518357288,
+      "boundsLonLat": [
+        73.46341915085226,
+        16.073624461619847,
+        73.46383465787794,
+        16.07400418668625
+      ],
+      "sampleLonLat": [
+        73.46362792437587,
+        16.073798768948425
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 272.5891189557419,
+      "soiEdgeDistanceMetresProjected": 16.233258337709884,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 70,
+      "areaM2": 1447.9410449991026,
+      "boundsLonLat": [
+        73.46361220133763,
+        16.07414131969822,
+        73.46410265512813,
+        16.074453870826012
+      ],
+      "sampleLonLat": [
+        73.4638604091614,
+        16.074308673348483
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 244.3496979553633,
+      "soiEdgeDistanceMetresProjected": 15.429329951703021,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 71,
+      "areaM2": 10198.287720686454,
+      "boundsLonLat": [
+        73.45655210000685,
+        16.08705168652441,
+        73.4583116995904,
+        16.089234586710266
+      ],
+      "sampleLonLat": [
+        73.45790959784654,
+        16.088212561797828
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 210.42549677864773,
+      "soiEdgeDistanceMetresProjected": 14.422092844860353,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 72,
+      "areaM2": 879.7967656631172,
+      "boundsLonLat": [
+        73.67094069955841,
+        15.728685186692244,
+        73.67124879975839,
+        15.729025186985313
+      ],
+      "sampleLonLat": [
+        73.67109510877243,
+        15.728858587630745
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 220.18837421148766,
+      "soiEdgeDistanceMetresProjected": 13.218397627979314,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 73,
+      "areaM2": 1418.3358601416128,
+      "boundsLonLat": [
+        73.64825449986503,
+        15.730879386764041,
+        73.64867259998972,
+        15.731336186366969
+      ],
+      "sampleLonLat": [
+        73.64844895871592,
+        15.731102419139674
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 1460.08126945571,
+      "soiEdgeDistanceMetresProjected": 15.090884249622471,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 74,
+      "areaM2": 6391.098531300083,
+      "boundsLonLat": [
+        73.65226970040553,
+        15.745908686902181,
+        73.65340490016165,
+        15.746516686686189
+      ],
+      "sampleLonLat": [
+        73.65284329713455,
+        15.746186644862991
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 114.72198708336929,
+      "soiEdgeDistanceMetresProjected": 29.166656600232688,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 75,
+      "areaM2": 19078.807493828368,
+      "boundsLonLat": [
+        73.649020000073,
+        15.745614986631821,
+        73.651590000121,
+        15.74663498667927
+      ],
+      "sampleLonLat": [
+        73.65030500008275,
+        15.746142491426124
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 345.8223356987728,
+      "soiEdgeDistanceMetresProjected": 21.87417545110529,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 76,
+      "areaM2": 1989.3400004645819,
+      "boundsLonLat": [
+        73.6426159001586,
+        15.747010486957961,
+        73.64307300016566,
+        15.747463986717229
+      ],
+      "sampleLonLat": [
+        73.64284585821052,
+        15.74725300058832
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 1146.0437264130364,
+      "soiEdgeDistanceMetresProjected": 21.94246216896233,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 77,
+      "areaM2": 2330.682841947152,
+      "boundsLonLat": [
+        73.65326000039803,
+        15.748044986396128,
+        73.65383999973848,
+        15.748724986881458
+      ],
+      "sampleLonLat": [
+        73.65370615791629,
+        15.748390094956097
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 93.53545990456558,
+      "soiEdgeDistanceMetresProjected": 13.169976735716165,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 78,
+      "areaM2": 1554.2535585146777,
+      "boundsLonLat": [
+        73.57849570007373,
+        15.909821786312474,
+        73.57910159954439,
+        15.910162086517811
+      ],
+      "sampleLonLat": [
+        73.57879865008414,
+        15.909991936814032
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 143.59381473981065,
+      "soiEdgeDistanceMetresProjected": 14.637130225909857,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 79,
+      "areaM2": 1372.7852043942544,
+      "boundsLonLat": [
+        73.47897698714343,
+        15.970459740224598,
+        73.47937401811124,
+        15.970848689573334
+      ],
+      "sampleLonLat": [
+        73.47916479028474,
+        15.970702556744241
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 1879.6053639829386,
+      "soiEdgeDistanceMetresProjected": 12.723184679116779,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 80,
+      "areaM2": 3138.8313637769247,
+      "boundsLonLat": [
+        73.47949528308563,
+        15.970838418050503,
+        73.48002874294673,
+        15.971813875663571
+      ],
+      "sampleLonLat": [
+        73.47979554188905,
+        15.971328064510972
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 1783.7307369358084,
+      "soiEdgeDistanceMetresProjected": 16.561663274336507,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 81,
+      "areaM2": 4854.3415477301,
+      "boundsLonLat": [
+        73.47904509963128,
+        15.97148248624145,
+        73.47975060013901,
+        15.972478486971154
+      ],
+      "sampleLonLat": [
+        73.4794796426761,
+        15.971902920309244
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 1772.1819282337444,
+      "soiEdgeDistanceMetresProjected": 15.537073713537865,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 82,
+      "areaM2": 4737.016633886547,
+      "boundsLonLat": [
+        73.47536300004138,
+        15.990979986249593,
+        73.4761909998681,
+        15.991600986761208
+      ],
+      "sampleLonLat": [
+        73.47576931632207,
+        15.991263516261744
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 1460.131617663727,
+      "soiEdgeDistanceMetresProjected": 31.3784146568066,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 83,
+      "areaM2": 5223.0810864587975,
+      "boundsLonLat": [
+        73.47086440043047,
+        15.993155586741684,
+        73.47161129985143,
+        15.993908786741553
+      ],
+      "sampleLonLat": [
+        73.47123807959218,
+        15.993538841370572
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 1949.1466266396385,
+      "soiEdgeDistanceMetresProjected": 39.446988023965,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 84,
+      "areaM2": 1520.5303846009947,
+      "boundsLonLat": [
+        73.47187800026738,
+        15.993822186521392,
+        73.47227819963172,
+        15.994228686810306
+      ],
+      "sampleLonLat": [
+        73.47207027590315,
+        15.994051941686708
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 1864.264840743261,
+      "soiEdgeDistanceMetresProjected": 18.510086457263743,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 85,
+      "areaM2": 2688.7182488562803,
+      "boundsLonLat": [
+        73.47047099977682,
+        15.9939554868888,
+        73.47099779976853,
+        15.994468686335784
+      ],
+      "sampleLonLat": [
+        73.47073215697802,
+        15.994195344912544
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 2008.3356548329505,
+      "soiEdgeDistanceMetresProjected": 25.982916905654193,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 86,
+      "areaM2": 2581.8568706777196,
+      "boundsLonLat": [
+        73.46977739992879,
+        15.9939554869019,
+        73.4702975996698,
+        15.99447538627145
+      ],
+      "sampleLonLat": [
+        73.47003965941671,
+        15.994192126825308
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 2082.149753801665,
+      "soiEdgeDistanceMetresProjected": 25.898704201684087,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 87,
+      "areaM2": 1568.9298804836876,
+      "boundsLonLat": [
+        73.47151790008873,
+        15.99462868662844,
+        73.47194469969384,
+        15.995035286400679
+      ],
+      "sampleLonLat": [
+        73.47172645133158,
+        15.994845681172254
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 1901.7306028853757,
+      "soiEdgeDistanceMetresProjected": 19.663987779823056,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 88,
+      "areaM2": 2766.4880037921184,
+      "boundsLonLat": [
+        73.47081110025756,
+        15.994541986857607,
+        73.47137120003232,
+        15.995081886924567
+      ],
+      "sampleLonLat": [
+        73.47108947055654,
+        15.994823678615342
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 1969.9305139479823,
+      "soiEdgeDistanceMetresProjected": 27.726703036083283,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 89,
+      "areaM2": 6770.936016534825,
+      "boundsLonLat": [
+        73.4696907001638,
+        15.994821986166235,
+        73.47052430033703,
+        15.995788486771515
+      ],
+      "sampleLonLat": [
+        73.47010714047482,
+        15.995201289287875
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 2074.4387875618027,
+      "soiEdgeDistanceMetresProjected": 36.79869622417562,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 90,
+      "areaM2": 1523.4409379579167,
+      "boundsLonLat": [
+        73.47094440029846,
+        15.99536188638465,
+        73.47136459953305,
+        15.99576178633467
+      ],
+      "sampleLonLat": [
+        73.47115614941463,
+        15.995607980985776
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 1961.5238151815433,
+      "soiEdgeDistanceMetresProjected": 16.686698506762763,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 91,
+      "areaM2": 3684.6414149352,
+      "boundsLonLat": [
+        73.47108244108614,
+        15.997327668576583,
+        73.47171860617946,
+        15.998214978717598
+      ],
+      "sampleLonLat": [
+        73.47138525822822,
+        15.997780817110394
+      ],
+      "gbContainsSample": false,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 1934.3047749110428,
+      "soiEdgeDistanceMetresProjected": 10.683165563740756,
+      "gbOverlapFraction": 0.0,
+      "status": "absent"
+    },
+    {
+      "index": 92,
+      "areaM2": 307490238900.2109,
+      "boundsLonLat": [
+        72.64199056980553,
+        15.606085171236378,
+        80.89768431780948,
+        22.03026935917911
+      ],
+      "sampleLonLat": [
+        75.46829697004011,
+        18.833234093599106
+      ],
+      "gbContainsSample": true,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 151105.72912791008,
+      "soiEdgeDistanceMetresProjected": 151104.9588665804,
+      "gbOverlapFraction": 0.9989401606584075,
+      "status": "partial"
+    }
+  ],
+  "soiHoles": [
+    {
+      "part": 92,
+      "ring": 0,
+      "areaM2": 16403470.448095303,
+      "boundsLonLat": [
+        74.26149634944406,
+        15.787280384107014,
+        74.3134143277434,
+        15.83213784224308
+      ],
+      "sampleLonLat": [
+        74.28428955224615,
+        15.809464492516021
+      ],
+      "gbContainsSample": true,
+      "soiContainsSample": false,
+      "gbEdgeDistanceMetresProjected": 5823.26225054294,
+      "soiEdgeDistanceMetresProjected": 1777.325695757929,
+      "gbOverlapFraction": 1.000000000000001,
+      "soiOtherStateOverlapFractions": {
+        "DADRA & NAGAR HAVELI & DAMAN & DIU": 0.0,
+        "KARNATAKA": 0.9999999999999266
+      }
+    },
+    {
+      "part": 92,
+      "ring": 1,
+      "areaM2": 6710305.833716896,
+      "boundsLonLat": [
+        77.26747356653343,
+        18.453596979908657,
+        77.30043360703735,
+        18.4777264523076
+      ],
+      "sampleLonLat": [
+        77.28536635872084,
+        18.465504155528354
+      ],
+      "gbContainsSample": true,
+      "soiContainsSample": false,
+      "gbEdgeDistanceMetresProjected": 3432.083570874099,
+      "soiEdgeDistanceMetresProjected": 992.0095562447433,
+      "gbOverlapFraction": 1.0000000000000009,
+      "soiOtherStateOverlapFractions": {
+        "DADRA & NAGAR HAVELI & DAMAN & DIU": 0.0,
+        "KARNATAKA": 0.9999999999998258
+      }
+    }
+  ],
+  "gbComponents": [
+    {
+      "index": 0,
+      "areaM2": 307485898235.61523,
+      "boundsLonLat": [
+        72.6546083840756,
+        15.606134135514614,
+        80.89835690879893,
+        22.033931060306976
+      ],
+      "sampleLonLat": [
+        75.40695389499753,
+        18.834806924406042
+      ],
+      "gbContainsSample": true,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 152164.5712900538,
+      "soiEdgeDistanceMetresProjected": 152163.48741838295,
+      "soiOtherStateOverlapFractions": {
+        "DADRA & NAGAR HAVELI & DAMAN & DIU": 3.2188670888966698e-06,
+        "KARNATAKA": 8.841480317408132e-05
+      }
+    },
+    {
+      "index": 1,
+      "areaM2": 412991.9422400526,
+      "boundsLonLat": [
+        72.72884586073947,
+        19.459169394225725,
+        72.73685380071157,
+        19.469236894122158
+      ],
+      "sampleLonLat": [
+        72.7323375326273,
+        19.46426450965691
+      ],
+      "gbContainsSample": true,
+      "soiContainsSample": true,
+      "gbEdgeDistanceMetresProjected": 152.56236817709055,
+      "soiEdgeDistanceMetresProjected": 196.29122313593987,
+      "soiOtherStateOverlapFractions": {
+        "DADRA & NAGAR HAVELI & DAMAN & DIU": 0.0,
+        "KARNATAKA": 0.0
+      }
+    },
+    {
+      "index": 2,
+      "areaM2": 7226588.752691315,
+      "boundsLonLat": [
+        72.95265751063523,
+        20.29710286451767,
+        72.98317222621465,
+        20.33226888447575
+      ],
+      "sampleLonLat": [
+        72.96608072701848,
+        20.314629348445777
+      ],
+      "gbContainsSample": true,
+      "soiContainsSample": false,
+      "gbEdgeDistanceMetresProjected": 951.8249841969885,
+      "soiEdgeDistanceMetresProjected": 11069.28789291654,
+      "soiOtherStateOverlapFractions": {
+        "DADRA & NAGAR HAVELI & DAMAN & DIU": 0.9541078015785152,
+        "KARNATAKA": 0.0
+      }
+    }
+  ],
+  "gbOnly": {
+    "areaKm2": 326.4717244889108,
+    "componentCount": 2719,
+    "largestTen": [
+      {
+        "areaM2": 222160574.87628865,
+        "boundsLonLat": [
+          72.81063744627525,
+          18.77301779555929,
+          72.99929189499866,
+          19.02193642878428
+        ],
+        "sampleLonLat": [
+          72.85766503090417,
+          18.895811560437924
+        ],
+        "gbContainsSample": true,
+        "soiContainsSample": false,
+        "gbEdgeDistanceMetresProjected": 4300.253074554353,
+        "soiEdgeDistanceMetresProjected": 2684.714657774066
+      },
+      {
+        "areaM2": 16403470.448095322,
+        "boundsLonLat": [
+          74.26149634944406,
+          15.787280384107014,
+          74.3134143277434,
+          15.83213784224308
+        ],
+        "sampleLonLat": [
+          74.28428955224615,
+          15.809464492516021
+        ],
+        "gbContainsSample": true,
+        "soiContainsSample": false,
+        "gbEdgeDistanceMetresProjected": 5823.26225054294,
+        "soiEdgeDistanceMetresProjected": 1777.325695757929
+      },
+      {
+        "areaM2": 7226588.752691313,
+        "boundsLonLat": [
+          72.95265751063523,
+          20.29710286451767,
+          72.98317222621465,
+          20.33226888447575
+        ],
+        "sampleLonLat": [
+          72.96608072701848,
+          20.314629348445777
+        ],
+        "gbContainsSample": true,
+        "soiContainsSample": false,
+        "gbEdgeDistanceMetresProjected": 951.8249841969885,
+        "soiEdgeDistanceMetresProjected": 11069.28789291654
+      },
+      {
+        "areaM2": 6710305.833716903,
+        "boundsLonLat": [
+          77.26747356653343,
+          18.453596979908657,
+          77.30043360703735,
+          18.4777264523076
+        ],
+        "sampleLonLat": [
+          77.28536635872084,
+          18.465504155528354
+        ],
+        "gbContainsSample": true,
+        "soiContainsSample": false,
+        "gbEdgeDistanceMetresProjected": 3432.083570874099,
+        "soiEdgeDistanceMetresProjected": 992.0095562447433
+      },
+      {
+        "areaM2": 4907608.221292857,
+        "boundsLonLat": [
+          80.59351916736341,
+          19.61212665379092,
+          80.67968518719351,
+          19.74047758368145
+        ],
+        "sampleLonLat": [
+          80.67513341657529,
+          19.675497817910895
+        ],
+        "gbContainsSample": true,
+        "soiContainsSample": false,
+        "gbEdgeDistanceMetresProjected": 391.8348080711496,
+        "soiEdgeDistanceMetresProjected": 389.3918404336983
+      },
+      {
+        "areaM2": 4320919.797150528,
+        "boundsLonLat": [
+          72.7961542697562,
+          19.3133539679144,
+          72.8308494796232,
+          19.335719621800912
+        ],
+        "sampleLonLat": [
+          72.81801830351894,
+          19.324591370402537
+        ],
+        "gbContainsSample": true,
+        "soiContainsSample": false,
+        "gbEdgeDistanceMetresProjected": 1978.6652986475258,
+        "soiEdgeDistanceMetresProjected": 410.5318380429221
+      },
+      {
+        "areaM2": 4187992.345489744,
+        "boundsLonLat": [
+          80.39475180920286,
+          20.240606008370552,
+          80.62635710279702,
+          20.332596259736682
+        ],
+        "sampleLonLat": [
+          80.53678846917462,
+          20.286123244031728
+        ],
+        "gbContainsSample": true,
+        "soiContainsSample": false,
+        "gbEdgeDistanceMetresProjected": 4.934894463291768,
+        "soiEdgeDistanceMetresProjected": 5.107245340493683
+      },
+      {
+        "areaM2": 3720495.802712304,
+        "boundsLonLat": [
+          80.79559676570405,
+          19.380264603259125,
+          80.82789318531387,
+          19.433551476487807
+        ],
+        "sampleLonLat": [
+          80.81192960683009,
+          19.406762241592286
+        ],
+        "gbContainsSample": true,
+        "soiContainsSample": false,
+        "gbEdgeDistanceMetresProjected": 9.924340744895785,
+        "soiEdgeDistanceMetresProjected": 8.103867547603159
+      },
+      {
+        "areaM2": 2505737.210604579,
+        "boundsLonLat": [
+          73.79534941060277,
+          20.985106971615526,
+          73.86898515615087,
+          21.04450847916261
+        ],
+        "sampleLonLat": [
+          73.83085123394336,
+          21.014809659443298
+        ],
+        "gbContainsSample": true,
+        "soiContainsSample": false,
+        "gbEdgeDistanceMetresProjected": 362.69457411471865,
+        "soiEdgeDistanceMetresProjected": 476.64939970906005
+      },
+      {
+        "areaM2": 2399192.675086263,
+        "boundsLonLat": [
+          73.69370502891627,
+          15.719756650735162,
+          73.76016412230462,
+          15.736574918815077
+        ],
+        "sampleLonLat": [
+          73.70871432450181,
+          15.72775461193237
+        ],
+        "gbContainsSample": true,
+        "soiContainsSample": false,
+        "gbEdgeDistanceMetresProjected": 317.004392505834,
+        "soiEdgeDistanceMetresProjected": 151.10780553841676
+      }
+    ]
+  },
+  "soiOnly": {
+    "areaKm2": 327.1341002561278,
+    "componentCount": 2798,
+    "largestTen": [
+      {
+        "areaM2": 86085438.3420172,
+        "boundsLonLat": [
+          72.96679007168804,
+          18.13991436836284,
+          73.11300012245285,
+          18.33670444975597
+        ],
+        "sampleLonLat": [
+          73.05200666469771,
+          18.237321556370066
+        ],
+        "gbContainsSample": false,
+        "soiContainsSample": true,
+        "gbEdgeDistanceMetresProjected": 1511.9947954963475,
+        "soiEdgeDistanceMetresProjected": 8341.388202708013
+      },
+      {
+        "areaM2": 84272300.25464281,
+        "boundsLonLat": [
+          72.64199056980553,
+          19.32476619782024,
+          72.79999732256847,
+          19.910766304035267
+        ],
+        "sampleLonLat": [
+          72.77093853963726,
+          19.618452397898626
+        ],
+        "gbContainsSample": false,
+        "soiContainsSample": true,
+        "gbEdgeDistanceMetresProjected": 384.84473101694437,
+        "soiEdgeDistanceMetresProjected": 4864.317088714421
+      },
+      {
+        "areaM2": 38570831.085057534,
+        "boundsLonLat": [
+          72.71060303025644,
+          19.88190124558737,
+          72.77670231841851,
+          19.989282497670132
+        ],
+        "sampleLonLat": [
+          72.74522137569943,
+          19.935520491933197
+        ],
+        "gbContainsSample": false,
+        "soiContainsSample": true,
+        "gbEdgeDistanceMetresProjected": 1447.1768380271585,
+        "soiEdgeDistanceMetresProjected": 4474.268059311718
+      },
+      {
+        "areaM2": 17090426.981352996,
+        "boundsLonLat": [
+          72.85105234872151,
+          18.53068809392452,
+          72.93386162156774,
+          18.804352797231378
+        ],
+        "sampleLonLat": [
+          72.86298138080689,
+          18.667038248502934
+        ],
+        "gbContainsSample": false,
+        "soiContainsSample": true,
+        "gbEdgeDistanceMetresProjected": 155.1760704559948,
+        "soiEdgeDistanceMetresProjected": 158.59346175347696
+      },
+      {
+        "areaM2": 8941151.532382362,
+        "boundsLonLat": [
+          73.36648674979934,
+          16.37615522251215,
+          73.49937546960456,
+          16.43918814765918
+        ],
+        "sampleLonLat": [
+          73.42715233838013,
+          16.407732267536606
+        ],
+        "gbContainsSample": false,
+        "soiContainsSample": true,
+        "gbEdgeDistanceMetresProjected": 162.77366773423233,
+        "soiEdgeDistanceMetresProjected": 6289.630331216422
+      },
+      {
+        "areaM2": 8570204.907312404,
+        "boundsLonLat": [
+          77.31113908780053,
+          18.421233393297708,
+          77.34525871368211,
+          18.458838404266448
+        ],
+        "sampleLonLat": [
+          77.32607668465756,
+          18.4399477000657
+        ],
+        "gbContainsSample": false,
+        "soiContainsSample": true,
+        "gbEdgeDistanceMetresProjected": 993.5823284581861,
+        "soiEdgeDistanceMetresProjected": 1022.1980676290079
+      },
+      {
+        "areaM2": 6719994.06251373,
+        "boundsLonLat": [
+          74.35478101381132,
+          16.26164930864038,
+          74.38502952500606,
+          16.29649102097779
+        ],
+        "sampleLonLat": [
+          74.37468209808203,
+          16.27920107644718
+        ],
+        "gbContainsSample": false,
+        "soiContainsSample": true,
+        "gbEdgeDistanceMetresProjected": 879.499519748188,
+        "soiEdgeDistanceMetresProjected": 1072.7468227837123
+      },
+      {
+        "areaM2": 5361769.047223683,
+        "boundsLonLat": [
+          73.13678476653959,
+          17.5398606522645,
+          73.17705617363659,
+          17.598054504262368
+        ],
+        "sampleLonLat": [
+          73.15846734582352,
+          17.56909215689114
+        ],
+        "gbContainsSample": false,
+        "soiContainsSample": true,
+        "gbEdgeDistanceMetresProjected": 131.73297998369964,
+        "soiEdgeDistanceMetresProjected": 1041.2340633877736
+      },
+      {
+        "areaM2": 3885125.778528567,
+        "boundsLonLat": [
+          79.13447822604267,
+          21.629876326576714,
+          79.22390582416224,
+          21.66117489524637
+        ],
+        "sampleLonLat": [
+          79.153765671874,
+          21.645387691247045
+        ],
+        "gbContainsSample": false,
+        "soiContainsSample": true,
+        "gbEdgeDistanceMetresProjected": 110.4578376098575,
+        "soiEdgeDistanceMetresProjected": 749.3780884232191
+      },
+      {
+        "areaM2": 3780080.717005619,
+        "boundsLonLat": [
+          76.11015705447286,
+          21.107727205103163,
+          76.15413421364286,
+          21.166952587136468
+        ],
+        "sampleLonLat": [
+          76.13363610150206,
+          21.137607405487003
+        ],
+        "gbContainsSample": false,
+        "soiContainsSample": true,
+        "gbEdgeDistanceMetresProjected": 478.3416581626209,
+        "soiEdgeDistanceMetresProjected": 494.82247126505393
+      }
+    ]
+  }
+}

@@ -67,3 +67,7 @@ Continuation checks: lint (zero errors, nine existing warnings), typecheck, thre
 ## Completion verification — 2026-10-03
 
 Six ticket 09 HTTP/PostgreSQL scenarios pass, including real-worker delivery assertions for the enumerated existing producers. Final full suite: root 38 passed/10 skipped, API 366 passed/1 skipped, worker 19 passed. Typecheck, lint (zero errors), all builds, Markdown link checks and diff checks passed. Standards review had no findings; the spec review's overstated-delivery-coverage finding was fixed with additional worker assertions and passed re-review. The resolved Answer above is authoritative; earlier claimed-status entries remain historical.
+
+## Amravati core scope amendment — 2026-10-04
+
+When implementing the [Amravati core successor](../../../docs/operations/proposals/amravati-core-service-area-2026-10-04.md), update current service/support copy to the exact local footprint and its planned-coordinate limitation. Use “Amravati core service area”; do not promise statewide, all-city, verified-ground-position or universally safe-stop coverage. Preserve the accepted support arrangement and all response/schedule targets. This is a geographic copy follow-up, not reopening staffing decisions or asserting actual-configuration evidence; status and unrelated acceptance remain unchanged.
