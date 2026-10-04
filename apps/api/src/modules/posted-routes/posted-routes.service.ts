@@ -186,6 +186,8 @@ export async function prepare(actor:string,key:string,input:Input){
     if(prior){if(prior.payload_digest!==digest)throw new AppError(409,'Idempotency payload mismatch','IDEMPOTENCY_PAYLOAD_MISMATCH');return prior;}
     if(recovery.rows[0]?.mode!=='open')throw new AppError(503,'Protected writes restricted','RECOVERY_RESTRICTED');
     store();
+    if(input.passenger_publication&&await repo.publicationPaused(client))
+      throw new AppError(503,'Publication paused','PILOT_PAUSED');
     await lockCommitmentActors(client,actor,input.vehicle_id,[]);
     if(input.replaces_offer_id){
       const source=await repo.replacementSource(client,input.replaces_offer_id);

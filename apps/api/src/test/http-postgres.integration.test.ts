@@ -5647,6 +5647,35 @@ describe('ticket 10 isolated posted route preparation',()=>{
     expect(quoted.body.quote).toMatchObject({segment_meters:1045,total_paise:732,
       pickup_route_meters:0,dropoff_route_meters:1045,distance_source:'saved_posted_route'});
   });
+  it('ticket 11 rejects outside passenger points even when their matched route lies within 30 metres',async()=>{
+    const f=await valhallaInput(),provider=valhallaFixture();await approvedServiceArea();
+    const origin:[number,number]=[77.730002,20.9],destination:[number,number]=[77.74,20.9];
+    setFixtureRoute(provider,[origin,destination],[1038],[180]);
+    const input={...f.input,origin,destination};
+    const preview=await f.send(`${path}/preview`,{...input,stop_points:[origin,destination]});
+    expect(preview.status,JSON.stringify(preview.body)).toBe(200);
+    const stops=[origin,destination].map((point,i)=>({id:`place-${i}`,name:`Confirmed place ${i}`,
+      point,matched_point:point,safe_stopping_place:true,legal_stopping:true,correct_side:true,correct_direction:true}));
+    const created=await f.send(path,{...confirmPreview(input,preview.body),passenger_publication:{stops}});
+    expect(created.status,JSON.stringify(created.body)).toBe(201);
+    const passenger=await participant();
+    for(const pickup of [[77.729999,20.9],[77.730001,20.9]]){
+      const response=await f.send(`${path}/${created.body.offer.id}/quote`,{route_version:1,pickup,dropoff:destination},randomUUID(),passenger.token);
+      expect(response.body.error.code).toBe('BOUNDARY_INVALID');
+    }
+  });
+  it('ticket 11 stops quotes if independent publication evidence is missing',async()=>{
+    const f=await passengerPublication(),original=process.env.PILOT_RECEIPT_PATH;
+    try{process.env.PILOT_RECEIPT_PATH=resolve(directory,'missing-receipts');
+      expect((await f.quote()).body.error.code).toBe('RECOVERY_UNAVAILABLE');
+    }finally{process.env.PILOT_RECEIPT_PATH=original;}
+  });
+  it('ticket 11 pauses new passenger publication while preserving idempotent retries',async()=>{
+    const f=await passengerPublication();
+    await verificationPool.query("UPDATE pilot_pause_state SET paused=true WHERE capability='offers'");
+    expect((await f.send(path,f.publicationInput)).body.error.code).toBe('PILOT_PAUSED');
+    expect((await f.send(path,f.publicationInput,f.publicationKey)).body.offer.operation_id).toBe(f.publicationOperation);
+  });
   it('ticket 11 passenger discovery never exposes private preparation',async()=>{
     const f=await valhallaInput();valhallaFixture();await approvedServiceArea();
     const preview=await f.send(`${path}/preview`);

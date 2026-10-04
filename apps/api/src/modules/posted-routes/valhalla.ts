@@ -28,33 +28,40 @@ const locateSchema=z.array(z.object({warnings:noWarnings,edges:z.array(z.object(
   correlated_lon:z.number().min(-180).max(180),correlated_lat:z.number().min(-90).max(90)})).min(1).max(100)})).length(2);
 let activeJobs=0;
 
-// The build header is supplied by an operator-controlled immutable deployment gateway,
-// not by stock Valhalla. It binds every response to the independently pinned manifest.
-export function configuredValhalla():RoutingAdapter{
-  let manifest:ValhallaManifest,base:URL;
+// The build header comes from the operator-controlled immutable gateway.
+function connection(){
   try{
-    manifest=manifestSchema.parse(JSON.parse(process.env.VALHALLA_BUILD_MANIFEST??''));
-    base=new URL(process.env.VALHALLA_URL??'');
+    const manifest=manifestSchema.parse(JSON.parse(process.env.VALHALLA_BUILD_MANIFEST??''));
+    const base=new URL(process.env.VALHALLA_URL??'');
     if(base.username||base.password||base.search||base.hash||
       !(base.protocol==='https:'||(base.protocol==='http:'&&['127.0.0.1','localhost','[::1]'].includes(base.hostname))))throw unavailable();
+    return {base,manifest,digest:manifestDigest(manifest)};
   }catch{throw unavailable();}
-  const digest=manifestDigest(manifest);
+}
+type Post=(path:string,payload:unknown)=>Promise<unknown>;
+async function routingJob<T>(config:ReturnType<typeof connection>,oversized:()=>AppError,work:(post:Post)=>Promise<T>){
+  if(activeJobs>=2)throw unavailable();
+  activeJobs++;
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),10000);
+  try{
+    const post:Post=async(path,payload)=>{
+      const response=await fetch(new URL(path,config.base.href.endsWith('/')?config.base.href:`${config.base.href}/`),{
+        method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),
+        signal:controller.signal,redirect:'error'});
+      if(!response.ok||response.headers.get('x-petrol-routing-build')!==config.digest||!response.body)throw unavailable();
+      const reader=response.body.getReader();let size=0;const chunks:Uint8Array[]=[];
+      try{while(true){const {done,value}=await reader.read();if(done)break;
+        size+=value.byteLength;if(size>2_000_000)throw oversized();chunks.push(value);}}
+      finally{await reader.cancel();}
+      return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    };
+    return await work(post);
+  }finally{clearTimeout(timer);activeJobs--;}
+}
+export function configuredValhalla():RoutingAdapter{
+  const config=connection(),{manifest,digest}=config;
   return {async verify(input){
-    if(activeJobs>=2)throw unavailable();
-    activeJobs++;
-    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),10000);
-    try{
-      const post=async(path:string,payload:unknown):Promise<unknown>=>{
-        const response=await fetch(new URL(path,base.href.endsWith('/')?base.href:`${base.href}/`),{
-          method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),
-          signal:controller.signal,redirect:'error'});
-        if(!response.ok||response.headers.get('x-petrol-routing-build')!==digest||!response.body)throw unavailable();
-        const reader=response.body.getReader();let size=0;const chunks:Uint8Array[]=[];
-        try{while(true){const {done,value}=await reader.read();if(done)break;
-          size+=value.byteLength;if(size>2_000_000)throw invalid();chunks.push(value);}}
-        finally{await reader.cancel();}
-        return JSON.parse(Buffer.concat(chunks).toString('utf8'));
-      };
+    try{return await routingJob(config,invalid,async post=>{
       const costing=input.mode==='car'?'auto':'motorcycle';
       const options={costing,costing_options:{[costing]:{}},units:'kilometers'};
       const locations=[input.origin,input.destination].map(([lon,lat])=>({lon,lat,type:'break',
@@ -91,11 +98,11 @@ export function configuredValhalla():RoutingAdapter{
         !singleEndpointPass(normalized.geometry.coordinates,endpoints[1],true)||
         !singleEndpointPass(normalized.geometry.coordinates,input.destination,true))throw invalid();
       return result;
-    }catch(error){if(error instanceof AppError)throw error;
+    });}catch(error){if(error instanceof AppError)throw error;
       if(error instanceof z.ZodError||error instanceof SyntaxError||
         (error instanceof Error&&error.message==='Valhalla route distance cannot be verified'))throw invalid();
       throw unavailable();
-    }finally{clearTimeout(timer);activeJobs--;}
+    }
   }};
 }
 
@@ -103,31 +110,16 @@ export function configuredValhalla():RoutingAdapter{
 // Safety, side, direction and helmet space remain explicit driver declarations.
 export async function verifySavedStopPositions(route:VerifiedRoute,stops:{requested:Point;matched:Point;along:number}[]){
   const verification=route.verification;
-  let base:URL,manifest:ValhallaManifest;
+  const config=connection();
   try{
-    manifest=manifestSchema.parse(JSON.parse(process.env.VALHALLA_BUILD_MANIFEST??''));
-    base=new URL(process.env.VALHALLA_URL??'');
-    if(base.username||base.password||base.search||base.hash||
-      !(base.protocol==='https:'||(base.protocol==='http:'&&['127.0.0.1','localhost','[::1]'].includes(base.hostname)))||
-      !verification||manifestDigest(manifest)!==verification.manifestDigest||
+    if(!verification||config.digest!==verification.manifestDigest||
       manifestDigest(verification.manifest)!==verification.manifestDigest||
       verification.costing!==(route.mode==='car'?'auto':'motorcycle')||
       verification.normalizationVersion!==NORMALIZATION_VERSION)throw unavailable();
-  }catch{throw unavailable();}
-  if(activeJobs>=2)throw unavailable();
-  activeJobs++;
-  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),10000);
-  try{
-    const response=await fetch(new URL('locate',base.href.endsWith('/')?base.href:`${base.href}/`),{
-      method:'POST',headers:{'Content-Type':'application/json'},signal:controller.signal,redirect:'error',
-      body:JSON.stringify({costing:verification.costing,costing_options:verification.costingOptions,
-        locations:stops.map(s=>({lon:s.requested[0],lat:s.requested[1],radius:30,search_cutoff:30})),verbose:false})});
-    if(!response.ok||response.headers.get('x-petrol-routing-build')!==verification.manifestDigest||!response.body)throw unavailable();
-    const reader=response.body.getReader(),chunks:Uint8Array[]=[];let size=0;
-    try{while(true){const {done,value}=await reader.read();if(done)break;
-      size+=value.byteLength;if(size>2_000_000)throw unavailable();chunks.push(value);}}
-    finally{await reader.cancel();}
-    const located=locateSchema.element.array().length(stops.length).parse(JSON.parse(Buffer.concat(chunks).toString('utf8')));
+    await routingJob(config,unavailable,async post=>{
+    const located=locateSchema.element.array().length(stops.length).parse(await post('locate',{
+      costing:verification.costing,costing_options:verification.costingOptions,
+      locations:stops.map(s=>({lon:s.requested[0],lat:s.requested[1],radius:30,search_cutoff:30})),verbose:false}));
     const edges=z.array(edgeSchema).parse(verification.edges);
     for(let i=0;i<stops.length;i++){
       const stop=stops[i],candidates=located[i].edges;
@@ -139,6 +131,6 @@ export async function verifySavedStopPositions(route:VerifiedRoute,stops:{reques
         pointMetres([e.correlated_lon,e.correlated_lat],stop.matched)>0.2))
         throw new AppError(422,'Stopping place has ambiguous road position','POINT_AMBIGUOUS');
     }
+    });
   }catch(error){if(error instanceof AppError)throw error;throw unavailable();}
-  finally{clearTimeout(timer);activeJobs--;}
 }

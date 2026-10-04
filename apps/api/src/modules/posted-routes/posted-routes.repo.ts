@@ -101,3 +101,9 @@ export async function lockPassengerState(db:PoolClient,quotes=false){
     "SELECT paused FROM pilot_pause_state WHERE capability IN ('booking','requests') FOR SHARE")).rows:[];
   return {open:recovery?.mode==='open',paused:quotes&&(pauses.length!==2||pauses.some(p=>p.paused))};
 }
+
+export async function publicationPaused(db:PoolClient){
+  const rows=(await db.query<{paused:boolean}>(
+    "SELECT paused FROM pilot_pause_state WHERE capability IN ('booking','offers') FOR SHARE")).rows;
+  return rows.length!==2||rows.some(row=>row.paused);
+}
