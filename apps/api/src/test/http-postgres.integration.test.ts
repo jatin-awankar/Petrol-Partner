@@ -5415,6 +5415,281 @@ describe('ticket 10 isolated posted route preparation',()=>{
       origin:preview.route.geometry.coordinates[0],destination:preview.route.geometry.coordinates.at(-1),
       safe_stopping_places:true,correct_side_and_direction:true,helmet_space:true}};
   }
+  async function passengerPublication(mode:'car'|'bike'|'scooter'='car',configure?:(provider:ReturnType<typeof valhallaFixture>)=>void){
+    const f=await valhallaInput(mode),provider=valhallaFixture();configure?.(provider);await approvedServiceArea();
+    const preview=await f.send(`${path}/preview`);
+    expect(preview.status,JSON.stringify(preview.body)).toBe(200);
+    const stops=[{id:'origin',name:'Driver selected origin',point:f.input.origin},
+      {id:'destination',name:'Driver selected destination',point:f.input.destination}].map(stop=>({...stop,
+        matched_point:[stop.point[0],20.9],safe_stopping_place:true,legal_stopping:true,correct_side:true,correct_direction:true,helmet_space:true}));
+    const input={...confirmPreview(f.input,preview.body),passenger_publication:{stops}};
+    const publicationKey=randomUUID();
+    const published=await f.send(path,input,publicationKey);
+    expect(published.status,JSON.stringify(published.body)).toBe(201);
+    const passenger=await participant();
+    const id=published.body.offer.id;
+    const selection={route_version:1,pickup:f.input.origin,dropoff:f.input.destination};
+    return {...f,provider,passenger,id,selection,publicationKey,publicationOperation:published.body.offer.operation_id,publicationInput:input,
+      quote:(payload:unknown=selection,token=passenger.token)=>f.send(`${path}/${id}/quote`,payload,randomUUID(),token)};
+  }
+  it('ticket 11 publishes confirmed stopping places for passenger discovery, detail and saved-route quotes',async()=>{
+    const f=await passengerPublication();
+    const list=await request(f.app).get(path).set('Authorization',`Bearer ${f.passenger.token}`);
+    expect(list.status,JSON.stringify(list.body)).toBe(200);
+    expect(list.body.offers).toHaveLength(1);
+    expect(list.body.offers[0]).toMatchObject({id:f.id,route_version:1,visibility:'published',real_bookings_enabled:false});
+    const detail=await request(f.app).get(`${path}/published/${f.id}`).set('Authorization',`Bearer ${f.passenger.token}`);
+    expect(detail.status,JSON.stringify(detail.body)).toBe(200);
+    expect(detail.body.offer.stops).toHaveLength(2);
+    expect(detail.body.offer).not.toHaveProperty('driver_id');
+    expect(detail.body.offer).not.toHaveProperty('vehicle_declaration_id');
+    expect(detail.body.offer).not.toHaveProperty('route_verification');
+    const quote=await f.quote();
+    expect(quote.status,JSON.stringify(quote.body)).toBe(200);
+    expect(quote.body.quote).toMatchObject({route_id:f.id,route_version:1,segment_meters:1560,
+      vehicle_category:'car',rate_paise_per_km:700,total_paise:1092,currency:'INR',
+      rounding_rule:'nearest_paise_half_up',additional_charges_paise:0,distance_source:'saved_posted_route',
+      real_bookings_enabled:false,preview_only:true});
+    expect((await verificationPool.query('SELECT count(*)::int AS n FROM posted_route_seat_requests')).rows[0].n).toBe(0);
+    expect((await verificationPool.query('SELECT count(*)::int AS n FROM posted_route_seat_allocations')).rows[0].n).toBe(0);
+  });
+  it('ticket 11 refuses quotes when provider verification is unavailable or graph identity changes',async()=>{
+    const f=await passengerPublication();
+    f.provider.fail=true;
+    expect((await f.quote()).body.error?.code).toBe('ROUTING_UNAVAILABLE');
+    f.provider.fail=false;f.provider.build='0'.repeat(64);
+    expect((await f.quote()).body.error?.code).toBe('ROUTING_UNAVAILABLE');
+  });
+  it('ticket 11 rejects new quotes while booking activity is paused',async()=>{
+    const f=await passengerPublication();
+    await verificationPool.query("UPDATE pilot_pause_state SET paused=true WHERE capability='booking'");
+    expect((await f.quote()).body.error?.code).toBe('PILOT_PAUSED');
+  });
+  it('ticket 11 matches one continuous pass in dense saved geometry',async()=>{
+    const f=await valhallaInput();
+    const coordinates=Array.from({length:201},(_,i):[number,number]=>[77.75+i*0.00005,20.9]);
+    (await routeModule()).setRoutingAdapterForTests({verify:async()=>({source:'synthetic-test',mode:'car',
+      geometry:{type:'LineString',coordinates},cumulativeMeters:coordinates.map((_,i)=>i*5),
+      distanceMeters:1000,durationSeconds:180})});
+    (await import('../modules/posted-routes/segment-quote')).setStopCheckForTests(safeStopForKind);
+    const created=await f.send(path,{...f.input,origin:coordinates[0],destination:coordinates.at(-1)});
+    expect(created.status).toBe(201);
+    const quote=await f.send(`${path}/${created.body.offer.id}/quote`,{route_version:1,
+      pickup:coordinates[20],dropoff:coordinates[180]});
+    expect(quote.status,JSON.stringify(quote.body)).toBe(200);
+    expect(quote.body.quote).toMatchObject({segment_meters:800,total_paise:560});
+  });
+  it('ticket 11 previews matched stopping places and requires explicit confirmation of the actual points',async()=>{
+    const f=await valhallaInput();valhallaFixture();await approvedServiceArea();
+    const preview=await f.send(`${path}/preview`,{...f.input,stop_points:[f.input.origin,f.input.destination]});
+    expect(preview.status,JSON.stringify(preview.body)).toBe(200);
+    expect(preview.body.stop_previews).toEqual([
+      {requested:f.input.origin,matched:[77.75,20.9],route_meters:0},
+      {requested:f.input.destination,matched:[77.765,20.9],route_meters:1560}]);
+    const stops=preview.body.stop_previews.map((p:{requested:number[];matched:number[]},i:number)=>({
+      id:`stop-${i}`,name:`Driver place ${i}`,point:p.requested,matched_point:p.matched,
+      safe_stopping_place:true,legal_stopping:true,correct_side:true,correct_direction:true}));
+    stops[0].matched_point=[77.75001,20.9];
+    const failed=await f.send(path,{...confirmPreview(f.input,preview.body),passenger_publication:{stops}});
+    expect(failed.body.error?.code).toBe('STOP_CONFIRMATION_REQUIRED');
+  });
+  it.each(['bike','scooter'] as const)('ticket 11 quotes %s at 500 paise/km using real confirmation logic',async mode=>{
+    const f=await passengerPublication(mode);
+    expect((await f.quote()).body.quote).toMatchObject({vehicle_category:mode,segment_meters:1560,
+      rate_paise_per_km:500,total_paise:780,additional_charges_paise:0});
+  });
+  it('ticket 11 denies undeclared, withdrawn, restricted passengers and self quotes',async()=>{
+    const f=await passengerPublication();
+    expect((await f.quote(f.selection,f.actor.token)).status).toBe(403);
+    await verificationPool.query('DELETE FROM adult_declarations WHERE user_id=$1',[f.passenger.id]);
+    expect((await f.quote()).body.error.code).toBe('ADULT_DECLARATION_REQUIRED');
+    expect((await request(f.app).get(path).set('Authorization',`Bearer ${f.passenger.token}`)).status).toBe(403);
+    const other=await participant();
+    await verificationPool.query('UPDATE adult_declarations SET withdrawn_at=now() WHERE user_id=$1',[other.id]);
+    expect((await f.quote(f.selection,other.token)).body.error.code).toBe('ADULT_DECLARATION_REQUIRED');
+    await verificationPool.query("UPDATE users SET status='suspended' WHERE id=$1",[other.id]);
+    expect((await f.quote(f.selection,other.token)).status).toBe(403);
+  });
+  it('ticket 11 rejects stale versions, reversed, off-route, outside and unconfirmed passenger selections',async()=>{
+    const f=await passengerPublication();
+    for(const [selection,code] of [
+      [{...f.selection,route_version:2},'ROUTE_VERSION_STALE'],
+      [{...f.selection,pickup:f.selection.dropoff,dropoff:f.selection.pickup},'SEGMENT_REVERSED'],
+      [{...f.selection,pickup:[77.75,20.901]},'POINT_OFF_ROUTE'],
+      [{...f.selection,pickup:[77.73,20.9]},'BOUNDARY_INVALID'],
+      [{...f.selection,pickup:[77.730001,20.9]},'BOUNDARY_INVALID'],
+      [{...f.selection,pickup:[77.751,20.9]},'STOP_CONFIRMATION_REQUIRED'],
+    ] as const)expect((await f.quote(selection)).body.error?.code,code).toBe(code);
+    expect((await f.quote({...f.selection,total_paise:1})).status).toBe(400);
+    expect((await f.quote({...f.selection,safe_stopping_place:true})).status).toBe(400);
+  });
+  it('ticket 11 refuses expired offers, changed driver eligibility and restricted recovery',async()=>{
+    const f=await passengerPublication();
+    await verificationPool.query('UPDATE unrestricted_vehicle_declarations SET permission_to_use=false,revoked_at=now() WHERE id=$1',[f.actor.vehicle]);
+    expect((await f.quote()).body.error.code).toBe('VEHICLE_DECLARATION_REQUIRED');
+    expect((await request(f.app).get(path).set('Authorization',`Bearer ${f.passenger.token}`)).body.offers).toEqual([]);
+    await verificationPool.query('UPDATE unrestricted_vehicle_declarations SET permission_to_use=true,revoked_at=NULL WHERE id=$1',[f.actor.vehicle]);
+    await verificationPool.query("UPDATE pilot_recovery_state SET mode='restricted' WHERE singleton=true");
+    expect((await f.quote()).body.error.code).toBe('RECOVERY_RESTRICTED');
+    await verificationPool.query("UPDATE pilot_recovery_state SET mode='open' WHERE singleton=true");
+    await verificationPool.query("UPDATE posted_route_offers SET request_cutoff_at=now()-interval '1 second' WHERE id=$1",[f.id]);
+    expect((await f.quote()).status).toBe(404);
+  });
+  it('ticket 11 rejects unavailable, changed area approval and tampered saved geometry',async()=>{
+    const f=await passengerPublication();
+    setServiceAreaApprovalForTests({status:'revoked'});
+    expect((await f.quote()).body.error.code).toBe('BOUNDARY_UNAVAILABLE');
+    setServiceAreaApprovalForTests(serviceAreaApprovalFixture());
+    expect((await f.quote()).body.error.code).toBe('ROUTE_AREA_STALE');
+    setServiceAreaApprovalForTests(null);
+    await verificationPool.query("UPDATE posted_route_offers SET cumulative_meters='[0,1,2,1560]'::jsonb WHERE id=$1",[f.id]);
+    expect((await f.quote()).body.error.code).toBe('SEGMENT_UNVERIFIABLE');
+  });
+  it('ticket 11 rejects ambiguous road matches and malformed provider responses',async()=>{
+    const f=await passengerPublication();
+    f.provider.locate[0].edges.push({...f.provider.locate[0].edges[0],way_id:99});
+    expect((await f.quote()).body.error.code).toBe('POINT_AMBIGUOUS');
+    f.provider.locate[0].edges.pop();f.provider.malformed=true;
+    expect((await f.quote()).body.error.code).toBe('ROUTING_UNAVAILABLE');
+  });
+  it('ticket 11 keeps publication, discovery and quotes closed outside tests',async()=>{
+    const f=await passengerPublication(),previous=process.env.NODE_ENV;
+    try{process.env.NODE_ENV='production';
+      expect((await f.quote()).body.error.code).toBe('ROUTE_QUOTES_DISABLED');
+      expect((await request(f.app).get(path).set('Authorization',`Bearer ${f.passenger.token}`)).body.error.code).toBe('ROUTE_QUOTES_DISABLED');
+      expect((await request(f.app).get(`${path}/published/${f.id}`).set('Authorization',`Bearer ${f.passenger.token}`)).body.error.code).toBe('ROUTE_QUOTES_DISABLED');
+      expect((await f.send(path,f.publicationInput)).body.error.code).toBe('ROUTE_QUOTES_DISABLED');
+    }finally{process.env.NODE_ENV=previous;}
+  });
+  it.each([{metres:1564,paise:1095},{metres:1565,paise:1096},{metres:1566,paise:1096}])(
+    'ticket 11 rounds published $metres metres to $paise car paise without rerouting',async({metres,paise})=>{
+      const f=await passengerPublication('car',provider=>{
+        provider.trace.edges[0].length=(metres-520)/1000;provider.route.trip.legs[0].summary.length=metres/1000;
+      });
+      // If asked for a point-to-point route now, the provider would return a shorter distance.
+      f.provider.route.trip.legs[0].summary.length=0.6;
+      const calls=f.provider.calls.length;
+      const quote=await f.quote();
+      expect(quote.status,JSON.stringify(quote.body)).toBe(200);
+      expect(quote.body.quote).toMatchObject({segment_meters:metres,total_paise:paise});
+      expect(f.provider.calls.slice(calls)).toHaveLength(1);
+      expect(f.provider.calls.at(-1)).not.toHaveProperty('alternates');
+    });
+  it('ticket 11 rejects unsafe confirmations, duplicate places and missing helmet space',async()=>{
+    const f=await passengerPublication('bike');
+    const payload=structuredClone(f.publicationInput);
+    const stops=payload.passenger_publication.stops;
+    for(const field of ['safe_stopping_place','legal_stopping','correct_side','correct_direction','helmet_space'] as const){
+      const unsafe={...payload,passenger_publication:{stops:stops.map((stop,i)=>i?stop:{...stop,[field]:false})}};
+      expect((await f.send(path,unsafe)).status,field).toBe(400);
+    }
+    const {helmet_space:_,...withoutHelmet}=stops[0];
+    expect((await f.send(path,{...payload,passenger_publication:{stops:[withoutHelmet,stops[1]]}})).body.error.code).toBe('STOP_UNSAFE');
+    expect((await f.send(path,{...payload,passenger_publication:{stops:[stops[0],stops[0]]}})).body.error.code).toBe('STOP_UNSAFE');
+  });
+  it('ticket 11 publication retries preserve confirmed stops and receipt restoration',async()=>{
+    const f=await passengerPublication();
+    const original=await f.quote();
+    f.provider.fail=true;
+    expect((await f.send(path,f.publicationInput,f.publicationKey)).body.offer.operation_id).toBe(f.publicationOperation);
+    const changed=structuredClone(f.publicationInput);changed.passenger_publication.stops[0].name='Different meeting instructions';
+    expect((await f.send(path,changed,f.publicationKey)).body.error.code).toBe('IDEMPOTENCY_PAYLOAD_MISMATCH');
+    const recovery=(await import('../modules/posted-routes/posted-routes.service')).postedRouteRecovery;
+    const receipts=await recovery.receipts();
+    expect(receipts.find(r=>r.operationId===f.publicationOperation)?.snapshot.route_verification)
+      .toHaveProperty('passengerPublication.stops');
+    await verificationPool.query('DELETE FROM posted_route_operations WHERE id=$1',[f.publicationOperation]);
+    await verificationPool.query('DELETE FROM posted_route_offers WHERE id=$1',[f.id]);
+    const operator=await seatRecoveryOperator();
+    try{await recovery.reconcileReceipts(operator.id);}finally{await clearSeatRecoveryOperator();}
+    f.provider.fail=false;
+    const restored=await f.quote();
+    expect(restored.status,JSON.stringify(restored.body)).toBe(200);
+    expect(restored.body.quote).toEqual(original.body.quote);
+  });
+  it('ticket 11 waits for concurrent offer state changes before returning a quote',async()=>{
+    const f=await passengerPublication(),connection=await verificationPool.connect();
+    try{
+      await connection.query('BEGIN');
+      await connection.query("UPDATE posted_route_offers SET status='held' WHERE id=$1",[f.id]);
+      let completed=false;
+      const pending=f.quote().then(result=>{completed=true;return result;});
+      await new Promise(resolve=>setTimeout(resolve,100));
+      expect(completed).toBe(false);
+      await connection.query('COMMIT');
+      expect((await pending).status).toBe(404);
+    }finally{await connection.query('ROLLBACK');connection.release();}
+  });
+  it('ticket 11 measures an interior stop on the saved route, not an independent route',async()=>{
+    const f=await valhallaInput(),provider=valhallaFixture();await approvedServiceArea();
+    provider.trace.edges[0].length=1.045;provider.route.trip.legs[0].summary.length=1.565;
+    const fetcher=globalThis.fetch;
+    vi.stubGlobal('fetch',async(url:URL,init:RequestInit)=>{
+      const payload=JSON.parse(String(init.body));
+      if(url.pathname==='/locate'&&payload.locations[1].lon===77.76)
+        return new Response(JSON.stringify([provider.locate[0],{edges:[{way_id:1,correlated_lon:77.76,correlated_lat:20.9}]}]),
+          {headers:{'x-petrol-routing-build':provider.build}});
+      return fetcher(url,init);
+    });
+    const stopPoints=[f.input.origin,[77.76,20.9001]];
+    const preview=await f.send(`${path}/preview`,{...f.input,stop_points:stopPoints});
+    expect(preview.status,JSON.stringify(preview.body)).toBe(200);
+    const stops=preview.body.stop_previews.map((p:{requested:number[];matched:number[]},i:number)=>({
+      id:`place-${i}`,name:`Driver confirmed place ${i}`,point:p.requested,matched_point:p.matched,
+      safe_stopping_place:true,legal_stopping:true,correct_side:true,correct_direction:true}));
+    const created=await f.send(path,{...confirmPreview(f.input,preview.body),passenger_publication:{stops}});
+    expect(created.status,JSON.stringify(created.body)).toBe(201);
+    provider.route.trip.legs[0].summary.length=0.6;
+    const passenger=await participant();
+    const quoted=await f.send(`${path}/${created.body.offer.id}/quote`,{
+      route_version:1,pickup:stopPoints[0],dropoff:stopPoints[1]},randomUUID(),passenger.token);
+    expect(quoted.status,JSON.stringify(quoted.body)).toBe(200);
+    expect(quoted.body.quote).toMatchObject({segment_meters:1045,total_paise:732,
+      pickup_route_meters:0,dropoff_route_meters:1045,distance_source:'saved_posted_route'});
+  });
+  it('ticket 11 rejects outside passenger points even when their matched route lies within 30 metres',async()=>{
+    const f=await valhallaInput(),provider=valhallaFixture();await approvedServiceArea();
+    const origin:[number,number]=[77.730002,20.9],destination:[number,number]=[77.74,20.9];
+    setFixtureRoute(provider,[origin,destination],[1038],[180]);
+    const input={...f.input,origin,destination};
+    const preview=await f.send(`${path}/preview`,{...input,stop_points:[origin,destination]});
+    expect(preview.status,JSON.stringify(preview.body)).toBe(200);
+    const stops=[origin,destination].map((point,i)=>({id:`place-${i}`,name:`Confirmed place ${i}`,
+      point,matched_point:point,safe_stopping_place:true,legal_stopping:true,correct_side:true,correct_direction:true}));
+    const created=await f.send(path,{...confirmPreview(input,preview.body),passenger_publication:{stops}});
+    expect(created.status,JSON.stringify(created.body)).toBe(201);
+    const passenger=await participant();
+    for(const pickup of [[77.729999,20.9],[77.730001,20.9]]){
+      const response=await f.send(`${path}/${created.body.offer.id}/quote`,{route_version:1,pickup,dropoff:destination},randomUUID(),passenger.token);
+      expect(response.body.error.code).toBe('BOUNDARY_INVALID');
+    }
+  });
+  it('ticket 11 stops quotes if independent publication evidence is missing',async()=>{
+    const f=await passengerPublication(),original=process.env.PILOT_RECEIPT_PATH;
+    try{process.env.PILOT_RECEIPT_PATH=resolve(directory,'missing-receipts');
+      expect((await f.quote()).body.error.code).toBe('RECOVERY_UNAVAILABLE');
+    }finally{process.env.PILOT_RECEIPT_PATH=original;}
+  });
+  it('ticket 11 pauses new passenger publication while preserving idempotent retries',async()=>{
+    const f=await passengerPublication();
+    await verificationPool.query("UPDATE pilot_pause_state SET paused=true WHERE capability='offers'");
+    expect((await f.send(path,f.publicationInput)).body.error.code).toBe('PILOT_PAUSED');
+    expect((await f.send(path,f.publicationInput,f.publicationKey)).body.offer.operation_id).toBe(f.publicationOperation);
+  });
+  it('ticket 11 passenger discovery never exposes private preparation',async()=>{
+    const f=await valhallaInput();valhallaFixture();await approvedServiceArea();
+    const preview=await f.send(`${path}/preview`);
+    const prepared=await f.send(path,confirmPreview(f.input,preview.body));
+    expect(prepared.status,JSON.stringify(prepared.body)).toBe(201);
+    const passenger=await participant();
+    expect((await request(f.app).get(path)).status).toBe(401);
+    const list=await request(f.app).get(path).set('Authorization',`Bearer ${passenger.token}`);
+    expect(list.status,JSON.stringify(list.body)).toBe(200);
+    expect(list.body.offers).toEqual([]);
+    expect(list.headers['cache-control']).toBe('private, no-store');
+    expect((await request(f.app).get(`${path}/${prepared.body.offer.id}`)
+      .set('Authorization',`Bearer ${passenger.token}`)).status).toBe(404);
+  });
   it.skipIf(!process.env.VALHALLA_REHEARSAL_URL).each(['car','bike','scooter'] as const)(
     'Amravati actual pinned engine and authenticated PostgreSQL %s',async(mode)=>{
       const f=await valhallaInput(mode);await liveValhallaRehearsal();
@@ -5643,9 +5918,12 @@ describe('ticket 10 isolated posted route preparation',()=>{
       .toBe('ENDPOINT_CONFIRMATION_REQUIRED');
     expect((await f.send(path,{...confirmed,endpoint_confirmation:{...confirmed.endpoint_confirmation,safe_stopping_places:false}})).status).toBe(400);
   });
-  it('rolls back Valhalla publication on audit or notice failure and serializes overlapping confirmations',async()=>{
+  it.each([false,true])('rolls back Valhalla publication on audit or notice failure and serializes overlapping confirmations (passenger publication: %s)',async passengerPublished=>{
     const f=await valhallaInput();valhallaFixture();await approvedServiceArea();
-    const confirmed=confirmPreview(f.input,(await f.send(`${path}/preview`)).body);
+    const confirmed={...confirmPreview(f.input,(await f.send(`${path}/preview`)).body),
+      ...(passengerPublished?{passenger_publication:{stops:[f.input.origin,f.input.destination].map((point,i)=>({
+        id:`place-${i}`,name:`Confirmed place ${i}`,point,matched_point:[point[0],20.9],
+        safe_stopping_place:true,legal_stopping:true,correct_side:true,correct_direction:true}))}}:{})};
     for(const [table,condition] of [['audit_logs',"NEW.action='posted_route_prepared'"],
       ['pilot_notification_events',"NEW.origin_type='posted_route'"]]){
       await verificationPool.query(`CREATE FUNCTION ticket10_fail_verified() RETURNS trigger LANGUAGE plpgsql AS $$
@@ -6135,7 +6413,7 @@ describe('ticket 10 isolated posted route preparation',()=>{
     const login=await request(createApp()).post('/v1/auth/login').send({email,password:'synthetic-password'});
     expect(login.status).toBe(200);
     const cookies=login.headers['set-cookie'] as string[];
-    return {resume,cookie:cookies.map(item=>item.split(';',1)[0]).join('; '),
+    return {id:operator,resume,cookie:cookies.map(item=>item.split(';',1)[0]).join('; '),
       csrf:cookies.find(item=>item.startsWith('pp_csrf_token='))!.split(';',1)[0].split('=',2)[1]};
   }
   async function clearSeatRecoveryOperator(){

@@ -78,3 +78,32 @@ export async function pendingStateMatches(db:PoolClient,row:Operation){
   const live=await owned(db,row.actor_id,row.offer_id);
   return Boolean(live)&&JSON.stringify(await snapshot(db,row.offer_id))===JSON.stringify(row.offer_snapshot);
 }
+
+export type PassengerRoute=QuoteRoute&{driver_id:string;vehicle_declaration_id:string;capacity:number;
+  operating_policy_version:string;departure_at:Date;commitment_until:Date;request_cutoff_at:Date;
+  route_verification:NonNullable<VerifiedRoute['verification']>&{boundary:unknown;
+    passengerPublication?:Awaited<ReturnType<typeof import('./passenger-routes').confirmedPublication>>};
+  evidence_matches:boolean};
+const passengerSelect=`SELECT o.*, EXISTS(SELECT 1 FROM posted_route_operations p
+  WHERE p.offer_id=o.id AND p.state IN ('acknowledged','recovered') AND
+    p.offer_snapshot - ARRAY['status','departed_at','completed_at','cancelled_at','hold_reason'] =
+    to_jsonb(o) - ARRAY['status','departed_at','completed_at','cancelled_at','hold_reason']) AS evidence_matches
+  FROM posted_route_offers o`;
+export const published=async(db:Db,id?:string,lock=false)=>(await db.query<PassengerRoute>(`${passengerSelect}
+  WHERE o.route_verification->'passengerPublication' IS NOT NULL
+    AND ($1::uuid IS NULL OR o.id=$1)
+    AND ($1::uuid IS NOT NULL OR (o.status='prepared' AND o.request_cutoff_at>now()))
+    ORDER BY o.departure_at,o.id LIMIT 100 ${lock?'FOR SHARE OF o':''}`,[id??null])).rows;
+
+export async function lockPassengerState(db:PoolClient,quotes=false){
+  const recovery=(await db.query<{mode:string}>('SELECT mode FROM pilot_recovery_state WHERE singleton=true FOR SHARE')).rows[0];
+  const pauses=quotes?(await db.query<{paused:boolean}>(
+    "SELECT paused FROM pilot_pause_state WHERE capability IN ('booking','requests') FOR SHARE")).rows:[];
+  return {open:recovery?.mode==='open',paused:quotes&&(pauses.length!==2||pauses.some(p=>p.paused))};
+}
+
+export async function publicationPaused(db:PoolClient){
+  const rows=(await db.query<{paused:boolean}>(
+    "SELECT paused FROM pilot_pause_state WHERE capability IN ('booking','offers') FOR SHARE")).rows;
+  return rows.length!==2||rows.some(row=>row.paused);
+}
