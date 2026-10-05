@@ -7475,12 +7475,20 @@ describe('ticket 10 isolated posted route preparation',()=>{
       expect((await decide({receipt_established:true,reason:'Payer says they paid the driver'})).body.error?.code)
         .toBe('RECIPIENT_EVIDENCE_REQUIRED');
       const body={receipt_established:true,recipient_confirmed:true,reason:'Recipient confirmed funds arrived',evidence_refs:['support-case:recipient-confirmation']};
+      expect((await decide(body)).body.error?.code).toBe('RECIPIENT_CONFIRMATION_REQUIRED');
+      await clearSeatRecoveryOperator();
+      expect((await f.call(passenger.token,`${path}/allocations/${seat}/receipt`,{})).status).toBe(403);
+      const recipientKey=randomUUID();
+      const confirmed=await f.call(f.driver.token,`${path}/allocations/${seat}/receipt`,{},recipientKey);
+      expect(confirmed.status,JSON.stringify(confirmed.body)).toBe(200);
+      expect((await f.call(f.driver.token,`${path}/allocations/${seat}/receipt`,{},recipientKey)).body.operation_id).toBe(confirmed.body.operation_id);
+      await operator.resume();
       const key=randomUUID(),resolved=await decide(body,key);
       expect(resolved.status,JSON.stringify(resolved.body)).toBe(200);
       expect((await decide(body,key)).body.operation_id).toBe(resolved.body.operation_id);
       expect((await verificationPool.query('SELECT evidence_refs,resolution_operation_id FROM posted_route_settlement_reviews')).rows[0])
         .toEqual({evidence_refs:body.evidence_refs,resolution_operation_id:resolved.body.operation_id});
-      expect((await verificationPool.query('SELECT kind FROM posted_route_receipt_decisions')).rows).toEqual([{kind:'dispute'}]);
+      expect((await verificationPool.query('SELECT kind FROM posted_route_receipt_decisions ORDER BY kind')).rows).toEqual([{kind:'dispute'},{kind:'receipt'}]);
     }finally{await clearSeatRecoveryOperator();}
   });
   it('ticket 13 reconciles held and cancelled routes without rewriting pending request history',async()=>{
@@ -7627,6 +7635,28 @@ describe('ticket 10 isolated posted route preparation',()=>{
       expect((await verificationPool.query('SELECT status FROM posted_route_seat_allocations WHERE id=$1',[seat])).rows[0].status).toBe('held');
     }finally{await clearSeatRecoveryOperator();}
   });
+  it('ticket 13 preserves acknowledged hold release history after driver revocation',async()=>{
+    const f=await bookingFixture(1,true),passenger=await participant(),id=await f.ask(passenger);
+    expect((await f.call(f.driver.token,`${path}/requests/${id}/accept`,{})).status).toBe(200);
+    const operator=await seatRecoveryOperator();
+    const admin=(url:string)=>request(f.app).post(url).set('Cookie',operator.cookie)
+      .set('Origin','http://localhost:3000').set('X-CSRF-Token',operator.csrf)
+      .set('Idempotency-Key',randomUUID()).send({reason:'Reviewed current eligibility and safety'});
+    try{
+      expect((await admin(`${path}/${f.offer}/hold`)).status).toBe(200);
+      expect((await admin(`${path}/${f.offer}/release-hold`)).status).toBe(200);
+      await clearSeatRecoveryOperator();
+      expect((await f.call(f.driver.token,'/v1/driver-vehicle-declarations/driver/revoke',{})).status).toBe(200);
+      await operator.resume();
+      const retry=await admin(`${path}/${f.offer}/release-hold`);
+      expect(retry.status,JSON.stringify(retry.body)).toBe(403);
+      expect((await verificationPool.query('SELECT mode FROM pilot_recovery_state WHERE singleton=true')).rows[0].mode).toBe('open');
+      const recovery=await request(f.app).post('/v1/operator/reconcile').set('Cookie',operator.cookie)
+        .set('Origin','http://localhost:3000').set('X-CSRF-Token',operator.csrf).send({});
+      expect(recovery.status,JSON.stringify(recovery.body)).toBe(200);
+      expect((await verificationPool.query('SELECT status FROM posted_route_offers WHERE id=$1',[f.offer])).rows[0].status).toBe('held');
+    }finally{await clearSeatRecoveryOperator();}
+  });
   it('ticket 13 holds existing routes after a material vehicle declaration change',async()=>{
     const f=await bookingFixture(2,true),passenger=await participant(),id=await f.ask(passenger);
     const accepted=await f.call(f.driver.token,`${path}/requests/${id}/accept`,{});
@@ -7719,7 +7749,7 @@ describe('ticket 10 isolated posted route preparation',()=>{
       SELECT status,receipt_established FROM posted_route_settlement_reviews r
       JOIN posted_route_obligations o ON o.id=r.obligation_id WHERE o.allocation_id=$1`,[seat]);
     expect(review.rows[0]).toMatchObject({status:'open',receipt_established:null});
-    expect((await f.call(f.driver.token,`${path}/allocations/${seat}/receipt`,{})).body.error.code)
+    expect((await f.call(f.driver.token,`${path}/allocations/${seat}/dispute`,{})).body.error.code)
       .toBe('RECEIPT_EXISTS');
     const operator=await seatRecoveryOperator();
     try{

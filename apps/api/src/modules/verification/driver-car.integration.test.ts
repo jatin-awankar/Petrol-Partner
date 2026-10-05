@@ -38,7 +38,10 @@ beforeAll(async () => {
     "SELECT to_regclass('public.pilot_cancellation_operations') IS NOT NULL AS present")).rows[0].present;
   const routeExpiryPresent=(await db.query<{present:boolean}>(
     "SELECT EXISTS(SELECT 1 FROM pg_constraint WHERE conname='posted_route_seat_requests_status_check' AND pg_get_constraintdef(oid) LIKE '%expired%') AS present")).rows[0].present;
+  const outcomeEvidencePresent=(await db.query<{present:boolean}>(
+    "SELECT to_regclass('public.posted_route_outcome_notices') IS NOT NULL AS present")).rows[0].present;
   for (const migration of migrations) {
+    if (outcomeEvidencePresent && migration === "0042_posted_route_incidents.sql") continue;
     // Reapplying 0023 would narrow the status check after 0024 stored cancellations.
     if (cancellationsPresent && migration === "0023_pilot_seat_acceptance.sql") continue;
     if (routeExpiryPresent && migration === "0038_posted_route_seats.sql") continue;

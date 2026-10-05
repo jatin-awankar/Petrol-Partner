@@ -66,3 +66,10 @@ export async function recordOutcomeNotice(db:PoolClient,item:DueOutcome){
   }
   return true;
 }
+
+export async function lockOutcomeProduction(db:PoolClient){
+  const state=(await db.query<{mode:string}>(
+    'SELECT mode FROM pilot_recovery_state WHERE singleton=true FOR UPDATE')).rows[0];
+  return state?.mode==='open'&&!(await db.query(`SELECT 1 FROM posted_route_outcome_operations
+    WHERE state='committed' LIMIT 1`)).rowCount;
+}

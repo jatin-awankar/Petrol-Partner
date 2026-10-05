@@ -15,3 +15,8 @@ CREATE TABLE IF NOT EXISTS posted_route_outcome_notices (
   recorded_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY(entity_id,kind)
 );
+
+-- A later recipient receipt supplements a dispute; it never overwrites that history.
+ALTER TABLE posted_route_receipt_decisions DROP CONSTRAINT IF EXISTS posted_route_receipt_decisions_claim_id_key;
+CREATE UNIQUE INDEX IF NOT EXISTS posted_route_receipt_decisions_claim_kind_key
+  ON posted_route_receipt_decisions(claim_id,kind);

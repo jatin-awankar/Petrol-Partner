@@ -114,7 +114,7 @@ export async function insertPaymentClaim(db:PoolClient,obligation:string,operati
   'INSERT INTO posted_route_payment_claims(obligation_id,operation_id,method) VALUES($1,$2,$3)',
   [obligation,operation,method]);}
 export async function receipt(db:Db,claim:string){return (await db.query<{id:string;kind:string}>(
-  'SELECT * FROM posted_route_receipt_decisions WHERE claim_id=$1',[claim])).rows[0]??null;}
+  "SELECT * FROM posted_route_receipt_decisions WHERE claim_id=$1 ORDER BY (kind='receipt') DESC",[claim])).rows[0]??null;}
 export async function insertReceipt(db:PoolClient,claim:string,operation:string,kind:string){await db.query(
   'INSERT INTO posted_route_receipt_decisions(claim_id,operation_id,kind) VALUES($1,$2,$3)',
   [claim,operation,kind]);}
@@ -154,7 +154,7 @@ export const resolvedIncidentForOperation=async(db:Db,id:string,operation:string
   AND status='resolved'`,[id,operation])).rowCount);
 export const latestRouteAction=async(db:Db,id:string)=>(await db.query<{action:string}>(`
   SELECT action FROM posted_route_outcome_operations WHERE offer_id=$1
-  AND action IN ('hold','release_hold','driver_cancel','depart')
+  AND (action IN ('hold','release_hold','driver_cancel','depart') OR (action='eligibility_hold' AND allocation_id IS NULL))
   ORDER BY created_at DESC,id DESC LIMIT 1`,[id])).rows[0]?.action??null;
 export const claimsForOperation=async(db:Db,id:string)=>(await db.query<{
   role:string;travelled:boolean;completed:boolean}>(
@@ -219,4 +219,13 @@ export async function suppressRestoredEmail(db:PoolClient,operation:string){
 export async function bookingPaused(db:PoolClient){
   const row=(await db.query<{paused:boolean}>("SELECT paused FROM pilot_pause_state WHERE capability='booking' FOR SHARE")).rows[0];
   return !row||row.paused;
+}
+
+export async function recipientConfirmation(db:Db,allocation:string,driver:string){
+  return (await db.query<{operation_id:string}>(`SELECT d.operation_id FROM posted_route_receipt_decisions d
+    JOIN posted_route_payment_claims c ON c.id=d.claim_id
+    JOIN posted_route_obligations b ON b.id=c.obligation_id
+    JOIN posted_route_outcome_operations p ON p.id=d.operation_id
+    WHERE b.allocation_id=$1 AND d.kind='receipt' AND p.action='receipt' AND p.actor_id=$2
+      AND p.state IN ('acknowledged','recovered')`,[allocation,driver])).rows[0]??null;
 }

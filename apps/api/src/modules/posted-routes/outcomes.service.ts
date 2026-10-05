@@ -75,7 +75,7 @@ export class PostedRouteOutcomesService{
       const affected=seats.filter(s=>['confirmed','held'].includes(s.status)&&(whole||s.passenger_id===user));
       const action=offer.status==='departed'?'eligibility_incident':'eligibility_hold';
       const allocation=whole?null:affected[0]?.id??null;
-      const payload={source_operation_id:source,subject_id:user,reason:'Eligibility withdrawn or restricted'};
+      const payload={source_operation_id:source,subject_id:user,reason:'Eligibility changed; existing commitment requires review'};
       const recipients=[offer.driver_id,...affected.map(s=>s.passenger_id),...await repo.operatorRecipients(client)];
       const row=await repo.write(client,{actor,key:`eligibility:${source}:${offer.id}`,
         digest:digest(action,allocation??offer.id,payload),offer:offer.id,allocation,action,payload,
@@ -414,7 +414,8 @@ export class PostedRouteOutcomesService{
         }else{
           if(offer.driver_id!==actor)throw new AppError(403,'Driver only','FORBIDDEN');
           if(!claim)throw new AppError(409,'Payment claim required','CLAIM_REQUIRED');
-          if(await repo.receipt(client,claim.id))throw new AppError(409,'Receipt decision exists','RECEIPT_EXISTS');
+          const prior=await repo.receipt(client,claim.id);
+          if(prior&&!(prior.kind==='dispute'&&action==='receipt'))throw new AppError(409,'Receipt decision exists','RECEIPT_EXISTS');
           result.claim_id=claim.id;
         }
       }else if(action==='operator_journey'||action==='operator_settlement'){
@@ -427,6 +428,11 @@ export class PostedRouteOutcomesService{
         if(action==='operator_settlement'&&payload.receipt_established&&
           (payload.recipient_confirmed!==true||!payload.evidence_refs?.length))
           throw new AppError(400,'Recipient confirmation evidence is required','RECIPIENT_EVIDENCE_REQUIRED');
+        if(action==='operator_settlement'&&payload.receipt_established){
+          const confirmation=await repo.recipientConfirmation(client,seat!.id,offer.driver_id);
+          if(!confirmation)throw new AppError(409,'Authenticated recipient confirmation required','RECIPIENT_CONFIRMATION_REQUIRED');
+          result.recipient_confirmation_operation_id=confirmation.operation_id;
+        }
       }else if(action==='operator_incident'){
         await assertCurrentOperator(client,actor);requireReason(payload.reason);
         if(incident?.status!=='open')throw new AppError(409,'Incident is not open','INCIDENT_INVALID');
