@@ -1,3 +1,5 @@
+import {postedRouteOutcomesService} from '../posted-routes/outcomes.service';
+import {acquireMutationGuard,releaseMutationGuard} from '../posted-routes/outcomes.repo';
 import {createHash} from 'node:crypto';
 import type {PoolClient} from 'pg';
 import {pool} from '../../db/pool';
@@ -71,6 +73,10 @@ async function verifyEvidence(retry?:{userId:string;key:string}){
   }catch(error){await restrictProtectedWrites(pool,'adult_declaration_evidence_unavailable');throw error;}
 }
 export async function mutate(userId:string,key:string,action:'declare'|'withdraw',version:string){
+  const guard=await acquireMutationGuard(pool);
+  try{return await mutateLocked(userId,key,action,version);}finally{await releaseMutationGuard(guard);}
+}
+async function mutateLocked(userId:string,key:string,action:'declare'|'withdraw',version:string){
   if(version!==POLICY_VERSION) throw new AppError(409,'Current declaration policy is required','POLICY_VERSION_STALE');
   await verifyEvidence({userId,key});
   const payloadDigest=digest(action,version);
@@ -94,6 +100,7 @@ export async function mutate(userId:string,key:string,action:'declare'|'withdraw
       action==='declare'?now:null,expiry,action==='withdraw'?now:null);
     if(!await repo.apply(client,created)) throw new AppError(409,
       'Prior declaration is missing','DECLARATION_MISSING');
+    if(action==='withdraw')await postedRouteOutcomesService.recordEligibilityEffects(client,userId,created.id,userId);
     await repo.audit(client,created);
     await recordDurableNotification(client,{eventId:created.id,originType:'adult_declaration',
       operationId:created.id,recipientId:userId,eventType:`adult_declaration_${action}`,
@@ -102,6 +109,7 @@ export async function mutate(userId:string,key:string,action:'declare'|'withdraw
         'Your adult self-declaration was withdrawn.'});
     return created;
   });
+  await postedRouteOutcomesService.acknowledgeEligibilityEffects(row.id);
   if(row.state==='committed'){
     try{await store().append(receipt(row));}
     catch(error){await restrictProtectedWrites(pool,'adult_declaration_evidence_pending');

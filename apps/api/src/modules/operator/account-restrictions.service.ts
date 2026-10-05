@@ -1,3 +1,5 @@
+import {PostedRouteOutcomesService} from '../posted-routes/outcomes.service';
+import {acquireMutationGuard,releaseMutationGuard} from '../posted-routes/outcomes.repo';
 import {createHash} from "node:crypto";
 import type {Pool,PoolClient} from "pg";
 import {pool} from "../../db/pool";
@@ -113,6 +115,10 @@ export class AccountRestrictionsService {
       reason,reviewedEvidence,reversesId:id});
   }
   private async mutate(operatorId:string,key:string,c:repo.Command){
+    const guard=await acquireMutationGuard(this.db);
+    try{return await this.mutateLocked(operatorId,key,c);}finally{await releaseMutationGuard(guard);}
+  }
+  private async mutateLocked(operatorId:string,key:string,c:repo.Command){
     await inProtectedTransaction(this.db,client=>assertCurrentOperator(client,operatorId));
     const payloadDigest=digest(c);
     const prior=await repo.byKey(this.db,operatorId,key);
@@ -153,10 +159,13 @@ export class AccountRestrictionsService {
       const row=await repo.insert(client,operatorId,key,payloadDigest,c);
       if(c.action==="restrict") row.effect_snapshot=await repo.saveEffects(client,row.id,
         await effects.apply(client,"restriction",c.targetUserId,row.id,c.reason,c.scope));
+      if(c.action==='restrict')await new PostedRouteOutcomesService(this.db).recordEligibilityEffects(
+        client,operatorId,row.id,c.targetUserId,c.scope);
       await repo.audit(client,row);
       await notifications(client,row);
       return row;
     });
+    await new PostedRouteOutcomesService(this.db).acknowledgeEligibilityEffects(operation.id);
     if(operation.state!=="committed") return result(operation);
     try {
       const saved=await inProtectedTransaction(this.db,async client=>{

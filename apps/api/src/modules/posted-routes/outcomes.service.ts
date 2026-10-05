@@ -14,12 +14,20 @@ import {inProtectedTransaction} from '../protected-mutation/protocol';
 import {pilotReceiptStore,restrictProtectedWrites} from '../protected-mutation/receipt-evidence';
 import {lockCommitmentActors} from '../rides/commitment.repo';
 import {ROUTE_OPERATING_POLICY_VERSION} from './policy';
+import {published} from './posted-routes.repo';
+import {verifiedPublication} from './passenger-routes';
 import * as repo from './outcomes.repo';
+import * as recoveryRepo from './outcome-recovery.repo';
 
 export type OutcomePayload={allocation_id?:string;reason?:string;boarded_ids?:string[];
   travelled?:boolean;completed?:boolean;method?:'cash'|'upi';
-  outcome?:'travelled'|'not_travelled'|'interrupted';receipt_established?:boolean;
-  evidence_refs?:string[];kind?:'absence'|'interruption'|'safety'|'disagreement'};
+  outcome?:'travelled'|'not_travelled'|'interrupted';receipt_established?:boolean;recipient_confirmed?:boolean;
+  evidence_refs?:string[];source_operation_id?:string;subject_id?:string;kind?:'absence'|'interruption'|'safety'|'disagreement'};
+let clock=()=>Date.now();
+export function setOutcomeClockForTests(value:(()=>number)|null){
+  if(process.env.NODE_ENV!=='test')throw new Error('Test clock unavailable');
+  clock=value??(()=>Date.now());
+}
 type Receipt={operationId:string;actorId:string;key:string;digest:string;offerId:string;
   allocationId:string|null;action:repo.Action;payload:Record<string,unknown>;
   result:Record<string,unknown>;createdAt:string};
@@ -30,7 +38,8 @@ const digest=(action:repo.Action,id:string,payload:OutcomePayload)=>createHash('
 const receipt=(row:repo.Operation):Receipt=>({operationId:row.id,actorId:row.actor_id,key:row.idempotency_key,
   digest:row.payload_digest,offerId:row.offer_id,allocationId:row.allocation_id,
   action:row.action,payload:row.payload,result:row.result,createdAt:row.created_at.toISOString()});
-const visible=(row:repo.Operation)=>({operation_id:row.id,state:row.state,action:row.action,...row.result});
+const visible=(row:repo.Operation)=>{const {recovery_snapshot:_,...result}=row.result;
+  return {operation_id:row.id,state:row.state,action:row.action,...result};};
 function boundary(){if(process.env.NODE_ENV!=='test')
   throw new AppError(503,'Route booking outcomes are unavailable','ROUTE_BOOKINGS_DISABLED');}
 function requireReason(value:string|undefined){if(!value||value.trim().length<8)
@@ -42,49 +51,116 @@ function operatingCoverage(offer:repo.Offer){
   if(process.env.ROUTE_SUPPORT_WINDOW_APPROVED!=='true'||!start||!end||
     !Number.isFinite(Date.parse(start))||!Number.isFinite(Date.parse(end)))
     throw new AppError(503,'Support coverage unavailable','SUPPORT_WINDOW_UNAVAILABLE');
-  const now=Date.now();
+  const now=clock();
   if(now<Date.parse(start)||now>=Date.parse(end)||offer.departure_at.getTime()<Date.parse(start)||
     offer.commitment_until.getTime()>=Date.parse(end))
     throw new AppError(409,'Support coverage closed','SUPPORT_WINDOW_CLOSED');
 }
 async function notify(db:PoolClient,row:repo.Operation,recipients:string[]){
   for(const recipientId of new Set(recipients))await recordDurableNotification(db,{
+    eventId:createHash('md5').update(`${row.id}:${recipientId}:${row.action}`).digest('hex'),
     originType:'posted_route_outcome',operationId:row.id,recipientId,
     eventType:row.action,relatedEntityType:'posted_route_offer',relatedEntityId:row.offer_id,
     title:'Route booking update',body:`A ${row.action.replace(/_/g,' ')} outcome was recorded. Review your booking.`});
 }
 export class PostedRouteOutcomesService{
   constructor(private readonly db:Pool=pool){}
+  // Called inside the declaration/restriction transaction, under recovery's shared
+  // serialization lock. The source cannot acknowledge before these receipts exist.
+  async recordEligibilityEffects(client:PoolClient,actor:string,source:string,user:string,
+    scope:'all'|'driver'|'passenger'='all',vehicle?:string){
+    for(const offer of await repo.affectedEligibility(client,user,scope,vehicle)){
+      const seats=await repo.seats(client,offer.id,true);
+      const whole=offer.driver_id===user&&scope!=='passenger';
+      const affected=seats.filter(s=>['confirmed','held'].includes(s.status)&&(whole||s.passenger_id===user));
+      const action=offer.status==='departed'?'eligibility_incident':'eligibility_hold';
+      const allocation=whole?null:affected[0]?.id??null;
+      const payload={source_operation_id:source,subject_id:user,reason:'Eligibility withdrawn or restricted'};
+      const recipients=[offer.driver_id,...affected.map(s=>s.passenger_id),...await repo.operatorRecipients(client)];
+      const row=await repo.write(client,{actor,key:`eligibility:${source}:${offer.id}`,
+        digest:digest(action,allocation??offer.id,payload),offer:offer.id,allocation,action,payload,
+        result:{offer_id:offer.id,allocation_id:allocation,notification_recipients:[...new Set(recipients)].sort()}});
+      if(action==='eligibility_hold'){
+        if(whole)await repo.setOfferStatus(client,offer.id,'held');
+        for(const seat of affected)await repo.setSeatStatus(client,seat.id,'held');
+      }else{
+        const incident=await repo.insertIncident(client,{offer:offer.id,allocation,actor,operation:row.id,
+          kind:'safety',reason:payload.reason,priority:'high'});
+        row.result.incident_id=incident.id;
+      }
+      row.result.recovery_snapshot=await recoveryRepo.snapshot(client,offer.id);
+      await repo.updateOperationResult(client,row.id,row.result);
+      await repo.audit(client,row);await notify(client,row,recipients);
+    }
+  }
+  async acknowledgeEligibilityEffects(source:string){
+    for(const row of await repo.sourceEffects(this.db,source))if(row.state==='committed'){
+      try{await store().append(receipt(row));
+        await inProtectedTransaction(this.db,client=>repo.acknowledge(client,row.id));
+      }catch{await restrictProtectedWrites(this.db,'route_eligibility_evidence_pending');
+        throw new AppError(503,'Eligibility effects await recovery evidence','OPERATION_PENDING',{operationId:source});}
+    }
+  }
   async receipts(){return store().list();}
+  async evidencedRecord(table:string,current:Record<string,unknown>){
+    for(const item of await store().list()){
+      const snap=item.result.recovery_snapshot as recoveryRepo.Snapshot|undefined;
+      if(snap?.[table]?.some(row=>recoveryRepo.sameRecord(row,current)))return true;
+    }
+    return false;
+  }
   async incidents(operatorId:string){boundary();
     await inProtectedTransaction(this.db,client=>assertCurrentOperator(client,operatorId));
     return repo.openIncidents(this.db);}
   async pending(){return (await repo.all(this.db)).filter(row=>row.state==='committed');}
   async reconcileReceipts(operatorId:string){
     await inProtectedTransaction(this.db,client=>assertCurrentOperator(client,operatorId));
+    const guard=await repo.acquireMutationGuard(this.db);
+    try{
     const rows=await repo.all(this.db),evidence=new Map((await store().list()).map(item=>[item.operationId,item]));
     for(const row of rows){
-      if(row.payload_digest!==digest(row.action==='incident_report'&&
-        row.result.requested_action==='passenger_cancel'?'passenger_cancel':row.action,
-        row.action==='operator_incident'?row.result.incident_id as string:row.allocation_id??row.offer_id,
-        row.payload as OutcomePayload))
-        throw new AppError(409,'Outcome payload conflicts','RECOVERY_CONFLICT');
       const item=evidence.get(row.id);
       if(item&&JSON.stringify(item)!==JSON.stringify(receipt(row)))
         throw new AppError(409,'Outcome receipt conflicts','RECOVERY_CONFLICT');
-      if(!item&&row.state!=='committed')
-        throw new AppError(409,'Acknowledged outcome evidence missing','RECOVERY_CONFLICT');
-      if(!(await this.stateMatches(row,row.state==='committed')))
-        throw new AppError(409,'Outcome state needs manual recovery','RECOVERY_CONFLICT');
-      if(!item){await store().append(receipt(row));evidence.set(row.id,receipt(row));}
-      await inProtectedTransaction(this.db,async client=>{
-        await assertCurrentOperator(client,operatorId);
-        await repo.acknowledge(client,row.id);
-      });
+      if(!item){
+        if(row.state!=='committed'||!await this.stateMatches(row,true))
+          throw new AppError(409,'Outcome recovery evidence missing','RECOVERY_CONFLICT');
+        await store().append(receipt(row));evidence.set(row.id,receipt(row));
+      }
     }
-    return rows.length;
+    const items=[...evidence.values()].sort((a,b)=>a.createdAt.localeCompare(b.createdAt)||a.operationId.localeCompare(b.operationId));
+    await inProtectedTransaction(this.db,async client=>{
+      await assertCurrentOperator(client,operatorId);
+      await operatorQuery(client,'recoveryModeForUpdate');
+      const history:recoveryRepo.Snapshot[]=[];
+      for(const item of items){
+        const row:repo.Operation={id:item.operationId,actor_id:item.actorId,idempotency_key:item.key,
+          payload_digest:item.digest,offer_id:item.offerId,allocation_id:item.allocationId,
+          action:item.action,payload:item.payload,result:item.result,state:'recovered',created_at:new Date(item.createdAt)};
+        if(row.payload_digest!==digest(row.action==='incident_report'&&row.result.requested_action
+          ?row.result.requested_action as repo.Action:row.action,row.action==='operator_incident'?row.result.incident_id as string:
+          row.allocation_id??row.offer_id,row.payload as OutcomePayload))
+          throw new AppError(409,'Outcome payload conflicts','RECOVERY_CONFLICT');
+        const existing=await repo.byId(client,row.id);
+        if(!existing){
+          if(!row.result.recovery_snapshot)throw new AppError(409,'Historical outcome needs manual recovery','RECOVERY_INCOMPLETE');
+          await recoveryRepo.restoreOperation(client,row);
+        }
+        if(row.result.recovery_snapshot)history.push(row.result.recovery_snapshot as recoveryRepo.Snapshot);
+        if(!await repo.hasAudit(client,row.id))await repo.audit(client,row);
+        await notify(client,row,row.result.notification_recipients as string[]);
+        await repo.acknowledge(client,row.id);
+        await repo.suppressRestoredEmail(client,row.id);
+      }
+      await recoveryRepo.restoreSnapshots(client,history);
+    });
+    for(const row of await repo.all(this.db))if(!await this.stateMatches(row))
+      throw new AppError(409,'Outcome state needs manual recovery','RECOVERY_CONFLICT');
+    return items.length;
+    }finally{await repo.releaseMutationGuard(guard);}
   }
   private async stateMatches(row:repo.Operation,pending=false){
+    if(row.result.recovery_snapshot&&!await recoveryRepo.factsMatch(this.db,row.result.recovery_snapshot as recoveryRepo.Snapshot))return false;
     const audited=await repo.hasAudit(this.db,row.id);
     const notified=await repo.notifiedRecipients(this.db,row,pending);
     const expected=(row.result.notification_recipients as string[]|undefined)?.sort();
@@ -103,6 +179,7 @@ export class PostedRouteOutcomesService{
       if(requests.some(item=>withdrawn.includes(item.id)&&item.status!=='withdrawn'))return false;
     }
     if(row.action==='passenger_cancel'&&seat?.status!=='cancelled')return false;
+    if(row.action==='eligibility_incident'&&!await repo.incidentForOperation(this.db,row.id,'safety'))return false;
     if(row.action==='incident_report'){
       if(!await repo.incidentForOperation(this.db,row.id,row.result.incident_type as string))return false;
     }
@@ -167,6 +244,9 @@ export class PostedRouteOutcomesService{
           !await this.stateMatches(row))
           throw new Error('Outcome evidence missing');
       }
+      const history=(await repo.all(this.db)).map(row=>row.result.recovery_snapshot as recoveryRepo.Snapshot|undefined)
+        .filter((snap):snap is recoveryRepo.Snapshot=>Boolean(snap));
+      if(!await recoveryRepo.latestCommitmentsMatch(this.db,history))throw new Error('Outcome commitment state missing');
       for(const item of evidence.values()){
         const row=await repo.byId(this.db,item.operationId);
         if(!row||JSON.stringify(receipt(row))!==JSON.stringify(item))throw new Error('Outcome evidence conflicts');
@@ -177,7 +257,8 @@ export class PostedRouteOutcomesService{
   async mutate(actor:string,key:string,action:repo.Action,id:string,payload:OutcomePayload={}){
     boundary();
     // Incident reconciliation must remain available while unsupported departures are paused.
-    if(!['driver_cancel','passenger_cancel','incident_report','operator_incident'].includes(action))
+    const prior=await repo.byKey(this.db,actor,key);
+    if(!prior&&['depart','release_hold'].includes(action))
       await pauseService.assertAvailable('booking');
     const guard=await repo.acquireMutationGuard(this.db);
     try{return await this.mutateLocked(actor,key,action,id,payload);}
@@ -188,7 +269,13 @@ export class PostedRouteOutcomesService{
     if(prior&&prior.payload_digest!==hash)
       throw new AppError(409,'Idempotency payload mismatch','IDEMPOTENCY_PAYLOAD_MISMATCH');
     await this.verifyEvidenceUnlocked({actor,key});
-    if(prior)return this.operation(actor,prior.id);
+    if(prior){
+      if(prior.state==='committed'){
+        if(!await this.stateMatches(prior,true))throw new AppError(409,'Pending outcome state conflicts','RECOVERY_CONFLICT');
+        await this.acknowledgeOutcome(prior);
+      }
+      return this.operation(actor,prior.id);
+    }
     const operation=await inProtectedTransaction(this.db,async client=>{
       const recovery=await operatorQuery<{mode:string}>(client,'recoveryModeForUpdate');
       await operatorQuery(client,'lockIdempotencyKey',[`posted-route-outcome:${actor}:${key}`]);
@@ -196,6 +283,8 @@ export class PostedRouteOutcomesService{
       if(existing){if(existing.payload_digest!==hash)
         throw new AppError(409,'Idempotency payload mismatch','IDEMPOTENCY_PAYLOAD_MISMATCH');return existing;}
       if(recovery.rows[0]?.mode!=='open')throw new AppError(503,'Protected writes restricted','RECOVERY_RESTRICTED');
+      if(['depart','release_hold'].includes(action)&&await repo.bookingPaused(client))
+        throw new AppError(503,'Booking activity paused','PILOT_PAUSED');
       store();
       const seatAction=!['driver_cancel','hold','release_hold','depart','operator_incident'].includes(action);
       const incident=action==='operator_incident'?await repo.incident(client,id):null;
@@ -241,8 +330,11 @@ export class PostedRouteOutcomesService{
         result.incident_type=payload.kind;
       }else if(action==='driver_cancel'){
         if(offer.driver_id!==actor)throw new AppError(403,'Driver only','FORBIDDEN');
-        if(!['prepared','held'].includes(offer.status))throw new AppError(409,'Ride cannot be cancelled','RIDE_INVALID');
         requireReason(payload.reason);
+        if(offer.status==='departed'){
+          result.incident_type='attempted_cancellation';result.requested_action='driver_cancel';
+        }else{
+        if(!['prepared','held'].includes(offer.status))throw new AppError(409,'Ride cannot be cancelled','RIDE_INVALID');
         await repo.setOfferStatus(client,offerId,'cancelled');
         result.cancelled_allocation_ids=seats.filter(item=>['confirmed','held'].includes(item.status))
           .map(item=>item.id).sort();
@@ -251,6 +343,7 @@ export class PostedRouteOutcomesService{
         const withdrawn=await repo.cancelRequests(client,offerId);
         recipients.push(...withdrawn.map(item=>item.passenger_id));
         result.withdrawn_request_ids=withdrawn.map(item=>item.id);
+        }
       }else if(action==='hold'||action==='release_hold'){
         await assertCurrentOperator(client,actor);requireReason(payload.reason);
         if(action==='hold'){
@@ -274,6 +367,11 @@ export class PostedRouteOutcomesService{
         if(offer.status!=='prepared'||seats.some(item=>item.status==='held'))
           throw new AppError(409,'Ride is unavailable for departure','DEPARTURE_INVALID');
         operatingCoverage(offer);
+        if(offer.routing_source==='valhalla'){
+          const [publication]=await published(client,offerId);
+          if(!publication)throw new AppError(409,'Published route evidence missing','ROUTE_NOT_FOUND');
+          await verifiedPublication(publication);
+        }
         await assertCurrentDriverVehicle(client,actor,offer.vehicle_declaration_id,offer.capacity);
         await assertNoAccountRestriction(client,actor,'driver');
         for(const item of seats.filter(s=>s.status==='confirmed')){
@@ -282,7 +380,7 @@ export class PostedRouteOutcomesService{
         }
         if(await repo.departureConflicts(client,offer))
           throw new AppError(409,'Departure commitments conflict','COMMITMENT_CONFLICT');
-        const delta=Date.now()-offer.departure_at.getTime();
+        const delta=clock()-offer.departure_at.getTime();
         if(delta< -15*60_000||delta>30*60_000)
           throw new AppError(409,'Departure window closed','DEPARTURE_WINDOW_CLOSED');
         const confirmed=seats.filter(item=>item.status==='confirmed').map(item=>item.id).sort();
@@ -326,17 +424,21 @@ export class PostedRouteOutcomesService{
             throw new AppError(400,'Journey outcome required','JOURNEY_INVALID');
         }else if(typeof payload.receipt_established!=='boolean')
           throw new AppError(400,'Receipt decision required','RECEIPT_INVALID');
+        if(action==='operator_settlement'&&payload.receipt_established&&
+          (payload.recipient_confirmed!==true||!payload.evidence_refs?.length))
+          throw new AppError(400,'Recipient confirmation evidence is required','RECIPIENT_EVIDENCE_REQUIRED');
       }else if(action==='operator_incident'){
         await assertCurrentOperator(client,actor);requireReason(payload.reason);
         if(incident?.status!=='open')throw new AppError(409,'Incident is not open','INCIDENT_INVALID');
         result.incident_id=incident.id;
       }
-      const recordedAction=action==='passenger_cancel'&&offer.status==='departed'?'incident_report':action;
+      const recordedAction=['passenger_cancel','driver_cancel'].includes(action)&&offer.status==='departed'?'incident_report':action;
+      if(recordedAction==='incident_report')recipients.push(...await repo.operatorRecipients(client));
       const row=await repo.write(client,{actor,key,digest:hash,offer:offerId,allocation:seat?.id??null,
         action:recordedAction,payload:payload as Record<string,unknown>,result:{...result,
           notification_recipients:[...new Set(recipients)].sort()}});
       if(recordedAction==='incident_report'){
-        const incident=await repo.insertIncident(client,{offer:offerId,allocation:seat!.id,actor,
+        const incident=await repo.insertIncident(client,{offer:offerId,allocation:seat?.id??null,actor,
           operation:row.id,kind:result.incident_type as string,
           reason:payload.reason?.trim()||'Attempted post-departure cancellation',priority:'high'});
         row.result.incident_id=incident.id;
@@ -351,7 +453,7 @@ export class PostedRouteOutcomesService{
         if(claims.length===2){
           if(await repo.hasIncidentForAllocation(client,seat!.id))
             await repo.reviewJourney(client,seat!.id,'active_trip_incident');
-          else if(claims.every(item=>item.travelled&&item.completed))await repo.insertObligation(client,seat!);
+          else if(!await repo.hasJourneyReview(client,seat!.id)&&claims.every(item=>item.travelled&&item.completed))await repo.insertObligation(client,seat!);
           else await repo.reviewJourney(client,seat!.id,'conflicting_or_incomplete_journey');
         }
       }else if(action==='payment_claim')await repo.insertPaymentClaim(client,result.obligation_id as string,row.id,payload.method!);
@@ -359,21 +461,27 @@ export class PostedRouteOutcomesService{
         await repo.insertReceipt(client,result.claim_id as string,row.id,action);
         if(action==='dispute')await repo.reviewSettlement(client,result.obligation_id as string,'recipient_dispute');
       }else if(action==='operator_journey'){
-        if(!await repo.resolveJourney(client,seat!.id,actor,payload.outcome!,payload.reason!))
+        if(!await repo.resolveJourney(client,seat!.id,actor,payload.outcome!,payload.reason!,row.id,payload.evidence_refs??[]))
           throw new AppError(409,'Open journey review required','REVIEW_REQUIRED');
         if(payload.outcome==='travelled'&&!await repo.obligation(client,seat!.id))
           await repo.insertObligation(client,seat!);
       }else if(action==='operator_settlement'){
         const obligation=await repo.obligation(client,seat!.id);
         if(!obligation||!await repo.resolveSettlement(client,obligation.id,actor,
-          payload.receipt_established!,payload.reason!))
+          payload.receipt_established!,payload.reason!,row.id,payload.evidence_refs??[]))
           throw new AppError(409,'Open settlement review required','REVIEW_REQUIRED');
       }
+      row.result.recovery_snapshot=await recoveryRepo.snapshot(client,offerId);
+      await repo.updateOperationResult(client,row.id,row.result);
       await repo.audit(client,row);
       await notify(client,row,recipients);
       return (await repo.byId(client,row.id))!;
     });
     if(operation.state!=='committed')return this.operation(actor,operation.id);
+    await this.acknowledgeOutcome(operation);
+    return {...visible(operation),state:'acknowledged'};
+  }
+  private async acknowledgeOutcome(operation:repo.Operation){
     try{await store().append(receipt(operation));
       await inProtectedTransaction(this.db,async client=>{
         const backup=await backupStatus(client);
@@ -383,7 +491,7 @@ export class PostedRouteOutcomesService{
     }catch{await restrictProtectedWrites(this.db,'posted_route_outcome_evidence_pending');
       throw new AppError(503,'Outcome committed; acknowledgement pending','OPERATION_PENDING',
         {operationId:operation.id});}
-    return {...visible(operation),state:'acknowledged'};
   }
+
 }
 export const postedRouteOutcomesService=new PostedRouteOutcomesService();

@@ -1,3 +1,5 @@
+import {sameFrozenRecord} from './outcome-recovery.repo';
+import {postedRouteOutcomesService} from './outcomes.service';
 import {createHash} from 'node:crypto';
 import type {Pool,PoolClient} from 'pg';
 import {pool} from '../../db/pool';
@@ -50,9 +52,10 @@ async function matchesAllocation(db:Pool|PoolClient,current:repo.Allocation,expe
     strip(expected as unknown as Record<string,unknown>)))return false;
   const changed=current.status!==expected.status||(current as repo.Allocation&{boarded?:boolean|null}).boarded!=null;
   if(!changed)return true;
+  if(await postedRouteOutcomesService.evidencedRecord('posted_route_seat_allocations',current as unknown as Record<string,unknown>))return true;
   return Boolean((await db.query(`SELECT 1 FROM posted_route_outcome_operations
     WHERE offer_id=$1 AND state IN ('acknowledged','recovered') AND
-      (allocation_id=$2 OR action IN ('driver_cancel','hold','release_hold','depart')) LIMIT 1`,
+      (allocation_id=$2 OR action IN ('driver_cancel','hold','release_hold','depart','eligibility_hold')) LIMIT 1`,
     [current.offer_id,current.id])).rowCount);
 }
 function sameRequestState(current:repo.SeatRequest,expected:repo.SeatRequest){
@@ -63,7 +66,9 @@ function sameRequestState(current:repo.SeatRequest,expected:repo.SeatRequest){
     expected as unknown as Record<string,unknown>);
 }
 async function matchesRecoveredRequest(db:Pool,current:repo.SeatRequest,expected:repo.SeatRequest){
-  if(!sameRequestState(current,expected))return false;
+  if(!sameRequestState(current,expected))return sameFrozenRecord('posted_route_seat_requests',
+    current as unknown as Record<string,unknown>,expected as unknown as Record<string,unknown>)&&
+    await postedRouteOutcomesService.evidencedRecord('posted_route_seat_requests',current as unknown as Record<string,unknown>);
   if(expected.status==='pending'&&current.status==='expired')return repo.expiryEvidence(db,current.id);
   return true;
 }

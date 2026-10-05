@@ -1,3 +1,4 @@
+import {produceRouteOutcomeNotices} from './jobs/posted-route-outcomes';
 import { logger } from "./config/logger";
 import { pool } from "./db/pool";
 import { processDueEmail } from "./jobs/durable-email.job";
@@ -23,6 +24,7 @@ async function sweepEmail() {
       ["driver/car expiry notice", () => recordDueDriverCarExpiryNotice()],
       ["journey silence", async () => (await reviewSilentJourneys(pool)).processed > 0],
       ["seat expiry", async () => (await expirePilotSeatRequests(pool)).expired > 0],
+      ["route outcome notices", async () => (await produceRouteOutcomeNotices(pool)) > 0],
       ["delayed ride notice", async () => (await notifyDelayedPilotRides(pool)).delayed > 0],
     ];
     for (const [name, sweep] of sweeps) {

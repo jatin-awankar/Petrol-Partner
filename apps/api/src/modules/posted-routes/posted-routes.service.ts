@@ -1,3 +1,4 @@
+import {sameFrozenRecord} from './outcome-recovery.repo';
 import type {PoolClient} from 'pg';
 import {assertPassengerPreviewEnabled,previewStoppingPlaces,confirmedPublication,verifiedPublication,passengerView,passengerQuote,type PassengerPublication} from './passenger-routes';
 import {assertCurrentAdultDeclaration} from '../adult-declaration/adult-declaration.service';
@@ -234,6 +235,7 @@ function routeNotice(result:Record<string,unknown>){
 
 export const postedRouteRecovery={verifyEvidence,receipts:()=>store().list(),pending:()=>repo.pending(pool),
   async reconcileReceipts(operatorId:string){
+    const {postedRouteOutcomesService}=await import('./outcomes.service');
     const items=(await store().list()).sort((a,b)=>a.createdAt.localeCompare(b.createdAt));
     for(const item of items)await inProtectedTransaction(pool,async client=>{
       await assertCurrentOperator(client,operatorId);
@@ -241,8 +243,14 @@ export const postedRouteRecovery={verifyEvidence,receipts:()=>store().list(),pen
       if(previous&&JSON.stringify(receipt(previous))!==JSON.stringify(item))
         throw new AppError(409,'Route receipt conflicts with database','RECOVERY_CONFLICT');
       const live=await repo.owned(client,item.actorId,item.offerId);
-      if(live&&JSON.stringify(await repo.snapshot(client,item.offerId))!==JSON.stringify(item.snapshot))
-        throw new AppError(409,'Route snapshot conflicts with receipt','RECOVERY_CONFLICT');
+      if(live){
+        const current=await repo.snapshot(client,item.offerId);
+        if(JSON.stringify(current)!==JSON.stringify(item.snapshot)&&
+          (!sameFrozenRecord('posted_route_offers',current,item.snapshot)||
+            !await postedRouteOutcomesService.evidencedRecord('posted_route_offers',
+              {...current,route_verification:current.route_verification??null})))
+          throw new AppError(409,'Route snapshot conflicts with receipt','RECOVERY_CONFLICT');
+      }
       await repo.restore(client,item);
       const row=await repo.byId(client,item.operationId);
       if(!row||JSON.stringify(receipt(row))!==JSON.stringify(item))
