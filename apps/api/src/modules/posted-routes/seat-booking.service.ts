@@ -15,7 +15,9 @@ import {inProtectedTransaction} from '../protected-mutation/protocol';
 import {lockCommitmentActors,lockVehicleRegistration} from '../rides/commitment.repo';
 import {quoteSegment} from './segment-quote';
 import {ROUTE_POLICY_VERSION,ROUTE_OPERATING_POLICY_VERSION} from './policy';
-import {registration} from './posted-routes.repo';
+import {registration,published} from './posted-routes.repo';
+import {passengerQuote,verifiedPublication} from './passenger-routes';
+import {verifyEvidence as verifyRouteEvidence} from './posted-routes.service';
 import * as repo from './seat-booking.repo';
 
 type Action='requested'|'accepted'|'rejected';
@@ -82,10 +84,20 @@ function coverage(row:repo.Offer){
     row.commitment_until.getTime()>=Date.parse(end))
     throw new AppError(409,'Support coverage closed','SUPPORT_WINDOW_CLOSED');
 }
-function routeTerms(row:repo.Offer,selection:repo.Selection){
+async function routeTerms(client:PoolClient,row:repo.Offer,selection:repo.Selection){
   if(row.status!=='prepared')throw new AppError(409,'Route unavailable','ROUTE_UNAVAILABLE');
   if(row.route_version!==selection.route_version)throw new AppError(409,'Route version changed','ROUTE_VERSION_STALE');
   if(row.policy_version!==ROUTE_POLICY_VERSION)throw new AppError(409,'Route policy changed','ROUTE_POLICY_STALE');
+  if(row.routing_source==='valhalla'){
+    const [publication]=await published(client,row.id);
+    if(!publication)throw new AppError(404,'Posted route not found','ROUTE_NOT_FOUND');
+    const quote=await passengerQuote(publication,selection.route_version,selection.pickup,selection.dropoff);
+    // Provider verification can await I/O; approval must still be current when we commit.
+    await verifiedPublication(publication);
+    const {preview_only:_,expires_at:__,expires_on_route_change:___,real_bookings_enabled:____,...terms}=quote;
+    return {...terms,area_evidence:publication.route_verification.boundary};
+  }
+  // Retain the isolated pre-provider test harness; it is never reachable outside tests.
   if(row.routing_source!=='synthetic-test')throw new AppError(503,'Route cannot be verified','SEGMENT_UNVERIFIABLE');
   return quoteSegment({source:row.routing_source,mode:row.routing_mode,geometry:row.geometry,
     cumulativeMeters:row.cumulative_meters,distanceMeters:row.distance_meters,
@@ -98,7 +110,8 @@ async function assertPause(client:PoolClient,action:Action){
     throw new AppError(503,'Booking activity paused','PILOT_PAUSED');
 }
 async function assertCurrentRouteDriver(client:PoolClient,offer:repo.Offer){
-  await assertCurrentDriverVehicle(client,offer.driver_id,offer.vehicle_declaration_id,offer.capacity);
+  const vehicle=await assertCurrentDriverVehicle(client,offer.driver_id,offer.vehicle_declaration_id,offer.capacity);
+  if(vehicle.category!==offer.routing_mode)throw new AppError(409,'Vehicle category changed','ROUTE_MODE_INVALID');
   const vehicleRegistration=await registration(client,offer.vehicle_declaration_id);
   if(!vehicleRegistration)throw new AppError(404,'Vehicle not found','VEHICLE_NOT_FOUND');
   await lockVehicleRegistration(client,vehicleRegistration);
@@ -175,7 +188,10 @@ export class PostedRouteSeatService{
     if(existing?.payload_digest!==undefined&&existing.payload_digest!==hash)
       throw new AppError(409,'Idempotency payload mismatch','IDEMPOTENCY_PAYLOAD_MISMATCH');
     await this.verifyEvidence({actorId:actor,key});
-    if(!existing)await pauseService.assertAvailable(action==='requested'?'requests':'acceptance');
+    if(!existing){
+      await verifyRouteEvidence();
+      await pauseService.assertAvailable(action==='requested'?'requests':'acceptance');
+    }
     const operation=await inProtectedTransaction(this.db,async client=>{
       const recovery=await operatorQuery<{mode:string}>(client,'recoveryModeForUpdate');
       await operatorQuery(client,'lockIdempotencyKey',[`posted-route-seat:${actor}:${key}`]);
@@ -207,7 +223,11 @@ export class PostedRouteSeatService{
         await assertCurrentAdultDeclaration(client,actor);
         await assertNoAccountRestriction(client,actor,'passenger');
         await assertCurrentRouteDriver(client,offer);
-        const terms=await routeTerms(offer,selection);
+        const terms=await routeTerms(client,offer,selection);
+        coverage(offer);
+        if(offer.request_cutoff_at<=new Date())throw new AppError(409,'Request deadline passed','REQUEST_WINDOW_CLOSED');
+        await assertCurrentAdultDeclaration(client,actor);
+        await assertCurrentRouteDriver(client,offer);
         if(await repo.overlapping(client,offer,actor))throw new AppError(409,'Overlapping commitment','COMMITMENT_CONFLICT');
         try{request=await repo.insertRequest(client,offer,actor,selection,
           {route_id:offer.id,route_version:offer.route_version,...terms});}
@@ -222,7 +242,12 @@ export class PostedRouteSeatService{
         if(action==='accepted'){
           await assertCurrentAdultDeclaration(client,request.passenger_id);
           await assertNoAccountRestriction(client,request.passenger_id,'passenger');
-          const segment=await routeTerms(offer,request.selection);
+          const segment=await routeTerms(client,offer,request.selection);
+          coverage(offer);
+          if(request.decision_deadline_at<=new Date()||offer.acceptance_cutoff_at<=new Date())
+            throw new AppError(409,'Request deadline passed','REQUEST_NOT_PENDING');
+          await assertCurrentAdultDeclaration(client,request.passenger_id);
+          await assertCurrentRouteDriver(client,offer);
           const terms={route_id:offer.id,route_version:offer.route_version,
             pickup:request.selection.pickup,dropoff:request.selection.dropoff,
             distance_source:'saved_posted_route',policy_version:offer.policy_version,...segment};
