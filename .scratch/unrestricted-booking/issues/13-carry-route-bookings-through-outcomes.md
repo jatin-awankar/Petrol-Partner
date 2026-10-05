@@ -24,3 +24,11 @@ Ticket 09 now verifies notice delivery for existing outcome producers. Its compl
 ## Amravati core scope amendment — 2026-10-04
 
 For an Amravati core scope withdrawal or material area update, use existing audited holds and cancellation/replacement for affected future commitments. Preserve original area/version and accepted terms in journey/settlement records; do not silently reclassify them under a new polygon. Active trips retain visibility and incident support rather than automatic cancellation or location-based enforcement. Recheck applicable holds/approval at departure without rewriting the route. Test revocation/departure races and receipt restoration in this ticket; no live tracking or scope-activation authority is added. Status remains unchanged.
+
+## Ticket 12 dependency clarification — 2026-10-05
+
+Ticket 12's historical requirement to wait for all ticket 13 transitions would be circular because this ticket depends on 12. Ticket 12 verifies acceptance's integration with existing holds and cancellation: held capacity remains reserved, release rechecks eligibility, recorded cancellation releases once, competing acceptance stays valid and accepted terms remain frozen. This does not resolve any checkbox here or transfer its criteria.
+
+This ticket still owns complete material replacement, departure/boarding and area checks, automatic declaration withdrawal/revocation/restriction effects on existing commitments (future holds and active-trip incidents), the full revocation/departure race matrix, journey/settlement/timer producers and recovery of acknowledged downstream outcomes. Current declaration services block new protected actions; that alone does not demonstrate automatic hold/incident generation for existing route allocations. Do not cite ticket 12's seat-receipt restore as downstream outcome-loss recovery.
+
+Ticket 04 policy selection, ticket 09 support completion and tickets 10/11 local route/publication work are now resolved; their older open-blocker language is historical. Provider deployment, representative upgrade, configured staging/recovery and real-booking authorization remain distinct launch gates. Status stays claimed.
