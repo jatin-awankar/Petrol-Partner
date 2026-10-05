@@ -1,3 +1,5 @@
+import {postedRouteOutcomesService} from '../posted-routes/outcomes.service';
+import {acquireMutationGuard,releaseMutationGuard} from '../posted-routes/outcomes.repo';
 import {createHash,randomUUID} from 'node:crypto';
 import type {PoolClient} from 'pg';
 import {pool} from '../../db/pool';
@@ -80,6 +82,10 @@ async function notification(client:PoolClient,row:repo.Operation){await recordDu
   eventType:row.action,relatedEntityType:'self_declaration',relatedEntityId:row.subject_id,
   title:'Self-declaration',body:'Your declaration was recorded. Petrol Partner has not inspected or approved it.'});}
 export async function mutate(userId:string,key:string,action:repo.Action,subjectId:string,input:DriverInput|VehicleInput|Record<string,never>){
+  const guard=await acquireMutationGuard(pool);
+  try{return await mutateLocked(userId,key,action,subjectId,input);}finally{await releaseMutationGuard(guard);}
+}
+async function mutateLocked(userId:string,key:string,action:repo.Action,subjectId:string,input:DriverInput|VehicleInput|Record<string,never>){
   const version='policy_version' in input?input.policy_version:POLICY_VERSION;
   await verifyEvidence({userId,key});
   const payloadDigest=digest(action,subjectId,input);
@@ -105,11 +111,13 @@ export async function mutate(userId:string,key:string,action:repo.Action,subject
     await assertCurrentAdultDeclaration(client,userId);
     const now=new Date();
     let snapshot:Record<string,unknown>;
+    let materialChange=false;
     if(action==='driver_declare'){
       const d=input as DriverInput;
       const previous=await repo.driver(client,userId);
       if(previous?.revoked_at||previous?.false_declaration_at)
         throw new AppError(403,'Declaration requires operator review','DECLARATION_REVIEW_REQUIRED');
+      materialChange=Boolean(previous&&JSON.stringify([...previous.licence_categories].sort())!==JSON.stringify([...d.licence_categories].sort()));
       snapshot={...d,declared_at:now.toISOString(),renew_after:renewalAfter(now)};
     }else if(action==='vehicle_declare'){
       const v=input as VehicleInput;
@@ -121,6 +129,7 @@ export async function mutate(userId:string,key:string,action:repo.Action,subject
         current.registration_identifier!==v.registration_identifier))throw new AppError(403,'Vehicle ownership or identity differs','VEHICLE_NOT_OWNED');
       if(current?.revoked_at||current?.false_declaration_at)
         throw new AppError(403,'Declaration requires operator review','DECLARATION_REVIEW_REQUIRED');
+      materialChange=Boolean(current&&(current.passenger_capacity!==v.passenger_capacity||current.belted_passenger_seats!==v.belted_passenger_seats));
       snapshot={...v,declared_at:now.toISOString(),renew_after:renewalAfter(now)};
     }else if(action==='vehicle_revoke'){
       const current=await repo.lockVehicle(client,subjectId);
@@ -134,9 +143,14 @@ export async function mutate(userId:string,key:string,action:repo.Action,subject
     }
     const created=await repo.insert(client,{id:randomUUID(),actor_user_id:userId,idempotency_key:key,
       payload_digest:payloadDigest,action,subject_id:subjectId,snapshot});
-    await repo.apply(client,created);await repo.audit(client,created);await notification(client,created);
+    await repo.apply(client,created);
+    if(action==='driver_revoke'||action==='vehicle_revoke'||materialChange)
+      await postedRouteOutcomesService.recordEligibilityEffects(client,userId,created.id,userId,'driver',
+        action==='vehicle_revoke'||action==='vehicle_declare'?subjectId:undefined);
+    await repo.audit(client,created);await notification(client,created);
     return created;
   });
+  await postedRouteOutcomesService.acknowledgeEligibilityEffects(row.id);
   if(row.state==='committed'){
     try{await store().append(receipt(row));}catch{await restrictProtectedWrites(pool,'driver_vehicle_evidence_pending');
       throw new AppError(503,'Declaration pending recovery evidence','OPERATION_PENDING',{operationId:row.id});}

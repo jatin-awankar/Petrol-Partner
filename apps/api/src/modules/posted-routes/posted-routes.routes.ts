@@ -23,8 +23,9 @@ const reason=z.strictObject({reason:z.string().trim().min(8).max(1000)});
 const boarding=z.strictObject({boarded_ids:z.array(z.uuid()).max(8)});
 const journey=z.strictObject({travelled:z.boolean(),completed:z.boolean()});
 const method=z.strictObject({method:z.enum(['cash','upi'])});
-const journeyDecision=reason.extend({outcome:z.enum(['travelled','not_travelled','interrupted'])});
-const settlementDecision=reason.extend({receipt_established:z.boolean()});
+const evidence=z.array(z.string().trim().min(1).max(200)).max(20).optional();
+const journeyDecision=reason.extend({evidence_refs:evidence,outcome:z.enum(['travelled','not_travelled','interrupted'])});
+const settlementDecision=reason.extend({receipt_established:z.boolean(),recipient_confirmed:z.boolean().optional(),evidence_refs:evidence});
 function outcome(action:Parameters<typeof postedRouteOutcomesService.mutate>[2],schema:z.ZodType<OutcomePayload>){
   return asyncHandler(async(req,res)=>res.json(await postedRouteOutcomesService.mutate(
     req.user!.userId,key(req.get('Idempotency-Key')),action,z.uuid().parse(req.params.id),

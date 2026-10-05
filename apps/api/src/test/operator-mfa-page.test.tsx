@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import OperatorMfaPage from "../../../../app/operator/mfa/page";
 
@@ -52,7 +52,7 @@ it("lets an operator begin TOTP setup and reach a labeled keyboard entry field",
   expect(await screen.findByRole("img", { name: "Authenticator setup QR code" })).not.toBeNull();
   expect(screen.getByText("SYNTHETICSECRET")).not.toBeNull();
   const code = screen.getByRole("textbox", { name: "Six-digit authenticator code" });
-  expect(document.activeElement).toBe(code);
+  await waitFor(() => expect(document.activeElement).toBe(code));
   expect(code.getAttribute("autocomplete")).toBe("one-time-code");
   expect(screen.getByRole("button", { name: "Verify and continue" })).not.toBeNull();
   expect(state.calls).toEqual(["/v1/auth/mfa/factors", "/v1/auth/mfa/enroll"]);

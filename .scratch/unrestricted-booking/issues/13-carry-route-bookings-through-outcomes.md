@@ -4,11 +4,11 @@
 
 **Blocked by:** 04 (Approve operating and support policy); 12 (Request and accept one priced seat).
 
-**Status:** claimed
+**Status:** resolved
 
-- [ ] Material route or point changes cancel affected commitments and use an auditable replacement flow; holds, cancellations, departure, and boarding preserve whole-ride seat and overlap rules.
-- [ ] Reuse journey confirmation, obligation, cash/UPI claim, receipt, dispute, and operator resolution records; silence creates neither travel nor payment, and platform collection stays disabled.
-- [ ] PostgreSQL HTTP tests cover transition authorization, retries, cancellation/revocation/departure races, audit and notification rollback, delivery failure, and recovery of acknowledged outcomes.
+- [x] Material route or point changes cancel affected commitments and use an auditable replacement flow; holds, cancellations, departure, and boarding preserve whole-ride seat and overlap rules.
+- [x] Reuse journey confirmation, obligation, cash/UPI claim, receipt, dispute, and operator resolution records; silence creates neither travel nor payment, and platform collection stays disabled.
+- [x] PostgreSQL HTTP tests cover transition authorization, retries, cancellation/revocation/departure races, audit and notification rollback, delivery failure, and recovery of acknowledged outcomes.
 
 ## Comments
 
@@ -32,3 +32,16 @@ Ticket 12's historical requirement to wait for all ticket 13 transitions would b
 This ticket still owns complete material replacement, departure/boarding and area checks, automatic declaration withdrawal/revocation/restriction effects on existing commitments (future holds and active-trip incidents), the full revocation/departure race matrix, journey/settlement/timer producers and recovery of acknowledged downstream outcomes. Current declaration services block new protected actions; that alone does not demonstrate automatic hold/incident generation for existing route allocations. Do not cite ticket 12's seat-receipt restore as downstream outcome-loss recovery.
 
 Ticket 04 policy selection, ticket 09 support completion and tickets 10/11 local route/publication work are now resolved; their older open-blocker language is historical. Provider deployment, representative upgrade, configured staging/recovery and real-booking authorization remain distinct launch gates. Status stays claimed.
+
+
+## Answer
+
+Completed on 2026-10-05 from updated main `14c4527` on `codex/13-route-booking-outcomes`, reusing the existing route, quote, acceptance and outcome interfaces. Tickets 04 and 12 are resolved and their required changes are merged into that baseline (PRs 81 and 86). Earlier comments naming policy selection, production-adapter implementation or local support completion as open implementation blockers are historical; they are superseded by the current dependency evidence.
+
+Cancellation, holds, departure/boarding, material replacement, eligibility withdrawal/revocation/restriction effects, incidents, journey and direct settlement now preserve frozen accepted terms and auditable state. Departure rechecks saved area evidence and overlaps. The actual delayed-departure, silent-journey, overdue-payment and receipt-silence producers create durable recipient-specific work without inferring travel, debt or receipt. Affirmative operator settlement requires an acknowledged authenticated recipient receipt; a later receipt supplements rather than overwrites an original dispute.
+
+Independent signed outcome receipts restore acknowledged downstream record loss through the authenticated operator reconciliation endpoint without duplicate obligations, receipts or logical notices. Unknown conflicts remain restricted. Email retains documented bounded at-least-once semantics; restored uncertain delivery requires operator review/retry. Separate-connection races, MFA/authorization, retries, invalid transitions, atomic audit/work rollback, delivery failure and receipt-backed recovery are evidenced in the [completion report](../../../docs/operations/evidence/ticket13-route-booking-outcomes-2026-10-05.md).
+
+Final full suite passed: 38 script checks, 514 API tests and 19 worker tests. Eight separate disposable migration checks also passed. Typecheck, builds and whitespace checks passed; lint passed with nine pre-existing warnings. Independent Standards and Spec reviews have zero remaining findings after fixes. The evidence report records prior failed runs, their corrections, seven skipped opt-in API checks and the exact local-test limitations.
+
+Ticket resolution is local implementation acceptance, not launch authorization. External review, representative deployed-copy migration, configured provider/staging/support/recovery, privacy-retention execution and ticket 18's explicit readiness decision remain release gates. Historical records are preserved; platform collection, payouts and real bookings remain disabled. No deployment or live-data modification occurred.

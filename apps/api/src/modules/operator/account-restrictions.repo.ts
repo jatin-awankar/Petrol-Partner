@@ -38,6 +38,16 @@ export async function operatorRecipients(db:PoolClient){
     WHERE active=true ORDER BY user_id`)).rows.map(row=>row.user_id);
 }
 export async function sourceParticipants(db:PoolClient,type:Command["sourceType"],id:string){
+  const route=type==='incident'?(await db.query<{driver_id:string;passenger_ids:string[]}>(`
+    SELECT o.driver_id,ARRAY(SELECT a.passenger_id FROM posted_route_seat_allocations a
+      WHERE a.offer_id=o.id) AS passenger_ids FROM posted_route_incidents i
+    JOIN posted_route_offers o ON o.id=i.offer_id WHERE i.id=$1 FOR SHARE OF i,o`,[id])).rows[0]:
+    (await db.query<{driver_id:string;passenger_ids:string[]}>(`SELECT a.driver_id,ARRAY[a.passenger_id] AS passenger_ids
+      FROM posted_route_settlement_reviews r JOIN posted_route_obligations b ON b.id=r.obligation_id
+      JOIN posted_route_seat_allocations a ON a.id=b.allocation_id
+      WHERE r.obligation_id=$1 AND r.status='resolved' FOR SHARE OF r,b,a`,[id])).rows[0];
+  if(route)return route;
+
   if(type==="incident") return (await db.query<{driver_id:string;passenger_ids:string[]}>(
     `SELECT o.driver_id,ARRAY(SELECT a.passenger_id FROM pilot_seat_allocations a
       WHERE a.offer_id=o.id AND a.status IN ('confirmed','held','cancelled','completed')) ||
