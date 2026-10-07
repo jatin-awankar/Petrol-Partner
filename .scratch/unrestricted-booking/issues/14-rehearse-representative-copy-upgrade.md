@@ -35,3 +35,17 @@ local cluster. This does not replace representative-copy evidence. Keep all
 acceptance checkboxes open and status claimed pending the approved source,
 restricted-role application compatibility and protected Auth/acknowledgement
 recovery rehearsal. Production and real bookings remain unchanged and disabled.
+
+## Proposed source/extraction plan — 2026-10-07
+
+The [approval plan](../../../docs/operations/ticket14-copy-extraction-plan.md)
+identifies proposed project `qqmofdocznefwpbqweud` from matching local app and
+ticket 05 pooler configuration, without contacting the source. It specifies
+consistent read-only inventory/export, schema/ledger provenance, sanitization,
+protected local artifacts, separate-role restore and remaining Auth/independent
+receipt evidence. Current Render identity still needs confirmation after source
+approval. No source approval has been inferred; ticket remains claimed.
+
+The prior test failures were reproduced as sandbox loopback/Docker socket denial.
+Both test files passed unchanged with authorized local access (5/5); this focused
+diagnosis is not a full-suite or representative-copy acceptance result.
