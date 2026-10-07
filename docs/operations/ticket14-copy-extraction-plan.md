@@ -57,6 +57,15 @@ permission failure also stops; do not search other database credentials/targets.
   suppression. It does not prove complete backup restoration on a representative
   copy or independent provider recovery. Reuse the HTTP scenarios on the copy.
 
+Local archive check on 2026-10-07: `ticket08-source-final.dump`,
+`ticket08-restore-before.dump` and `ticket08-active-mapping.dump` all exist in
+`.scratch/backups/` and their SHA-256 values exactly match the ticket 08 evidence
+linked above. Only file metadata and byte hashes were inspected, not row contents.
+The directory is mode 0755 and files are 0644, so these existing files do not meet
+this plan's proposed 0700/0600 protection. They remain untouched; any reuse must
+first use a protected location and reviewed custody. Hash agreement establishes
+artifact continuity, not permission to restore them or relevance to today's source.
+
 ## Read-only inventory and export
 
 Use an existing authorized reader with schema/SELECT access to approved public
@@ -310,6 +319,10 @@ permitted local environment with explicit disposable PostgreSQL settings and no
 source credentials. The full suite is not claimed passed by this focused diagnosis.
 
 ## Approval requested
+
+Independent Standards and Spec reviews of this approval-stage plan found no
+actionable findings. This reviews the proposed procedure, not completed extraction
+or ticket acceptance evidence.
 
 Approve project `qqmofdocznefwpbqweud` as the proposed source and the bounded read-only
 inventory, expected-empty export and protected local-copy process above. Approval
