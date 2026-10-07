@@ -1,8 +1,10 @@
 # Ticket 14 representative-copy extraction plan
 
 Date: 2026-10-07. **Source/process and seven-day local artifact retention approved
-by the maintainer in this task. Execution is paused before row export because the
-fresh Auth population differs from the approved empty-source baseline.**
+by the maintainer in this task. The maintainer subsequently approved aggregate-only
+Auth evidence and the empty application-data public copy with pricing/ledger rows.
+That copy's local results and remaining recovery gate are recorded in
+[the execution report](ticket14-source-copy-results.md).**
 Ticket 14 remains claimed. No live database, Auth provider or receipt store was
 contacted while preparing this plan. Approval of this plan authorizes only the
 read-only source work described here and local disposable-copy work, not source

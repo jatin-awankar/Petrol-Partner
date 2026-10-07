@@ -6,9 +6,9 @@
 
 **Status:** claimed
 
-- [ ] Run the forward-only upgrade against a representative copy containing historical identities, offers, bookings, contributions, settlements, and platform-payment orders.
+- [x] Run the forward-only upgrade against a representative copy containing historical identities, offers, bookings, contributions, settlements, and platform-payment orders.
 - [ ] Assert ownership, historical policy identity, accepted terms, and amounts remain unchanged, and old/new reads, audit, operations, and recovery distinguish the policy versions.
-- [ ] Record migration results, exceptions, recovery procedure, and any required explicit data decision before cutover.
+- [x] Record migration results, exceptions, recovery procedure, and any required explicit data decision before cutover.
 
 ## Rehearsal progress (2026-09-29)
 
@@ -65,3 +65,24 @@ row values were fetched. No source mutation or copy restore occurred. The
 [preflight record](../../../docs/operations/ticket14-copy-extraction-plan.md#approved-execution-preflight--2026-10-07)
 records the exact Auth-scope decision needed without credentials. Status remains
 claimed; all acceptance criteria remain open.
+
+## Source-derived copy execution — 2026-10-08 IST
+
+The maintainer approved aggregate-only source Auth and the empty public application
+copy, with pricing seeds/verified ledger and separately labelled synthetic history.
+The source-derived catalog/archive was verified, encrypted locally, restored and
+upgraded through 0044 without changing the source. Historical identity/ownership/
+financial preservation and rollback/restore checks passed. All 190 selected HTTP
+cases passed under a restricted runtime distinct from fixture/migration identities;
+the SELECT-only legacy HTTP check and explicit permission-denial checks passed.
+Synthetic `.2` and Amravati `.1` storage/signed-envelope preservation passed across
+0044 and restore. See the [execution report](../../../docs/operations/ticket14-source-copy-results.md).
+
+Criterion 1 is supported by the approved real empty-application baseline plus
+labelled supplemental historical records, not a claim of nonzero deployed history.
+Criterion 3's results/exceptions and minimum remaining protected recovery plan are
+recorded. Criterion 2 remains open because the adopted ticket 05 copy gate requires
+protected provider Auth export/recovery and independently protected later-operation
+evidence. Actual source-account continuity is unproven; no Auth rows were exported.
+Ticket 17's later outage gate does not silently replace this requirement. Keep
+status claimed and real bookings disabled; no production migration or deployment.
