@@ -99,6 +99,21 @@ historical comparisons, rollback injection and restore. This is refreshed synthe
 evidence only. The 2026-09-29 results below remain historical rather than being
 rewritten as a representative run.
 
+`npm run typecheck`, `npx eslint scripts/ticket14-rehearsal.mjs scripts/ticket14-rehearsal.test.mjs`
+and `git diff --check` passed. The full `npm test` attempt did not pass: 34 root
+checks passed, 10 opt-in checks skipped, and two failed. The landing eligibility
+child stalled and was terminated after approximately 135 seconds; the existing
+Docker runtime probe returned an empty version instead of `24.19.0`. Workspace
+suites did not start. No full-suite pass is claimed. Logs are under the private
+temporary cluster directory; the cluster was stopped after validation. No dumps,
+credentials, personal records or raw source inventories were committed.
+
+Independent code-review against `7273b3c` reported **Standards: 0 findings** and
+**Spec: 3 declared acceptance gaps** (representative upgrade, restricted-role
+compatibility/protected recovery, and Amravati before/after coverage). The reviewers
+found no misleading completion claim or scope creep. These gaps remain blocking;
+review of this scoped partial change is not approval to resolve the ticket.
+
 Date: 2026-09-29. **Partial evidence; ticket remains claimed.** No remote connection, deployment, or live data write was made.
 
 ## Provenance and isolation
