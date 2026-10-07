@@ -1,5 +1,104 @@
 # Ticket 14: disposable synthetic upgrade rehearsal
 
+## Current audit — 2026-10-07
+
+**Still partial; ticket 14 remains claimed.** Fetched `origin` and fast-forwarded
+`codex/14-representative-upgrade-rehearsal` to merged main `7273b3c` (PR #87).
+The branch had no unique commits; the existing untracked `.worktrees/` was preserved.
+All required dependency tickets are resolved, and `git merge-base --is-ancestor`
+confirmed their completion commits on this baseline: 05 `0f7c443`, 07 `0ce85e4`,
+08 `542b96d`, 10 `eedef3b`, 11 `677193a`, 12 `f12154b`, 13 `918df00`.
+Historical pending comments in those tickets do not override their current Answers.
+
+### Source gate and exact missing inputs
+
+The migration plan and prior rehearsal identify no approved representative copy.
+The referenced `.scratch/unrestricted-booking/evidence/deployed-inventory-2026-09-29.json`
+is unavailable in this checkout. The older `.scratch/pilot-readiness/deployed-inventory.json`
+belongs to the historical project and is not a substitute. A ticket 05 connection
+configuration file exists, but its existence is not snapshot provenance or copy
+approval; it was not opened or used. No remote database was accessed in this pass.
+
+Before the representative run can proceed, the maintainer must supply:
+
+- An approved sanitized snapshot or an explicitly identified isolated safe-copy
+  target, its snapshot time and checksum, and an accountable approval linking it
+  to the freshly verified current Render database. Include the fresh aggregate
+  inventory, exact migration name/checksum ledger and schema shape. Do not send
+  credentials or personal records through the issue or chat.
+- Sanitization/provenance evidence preserving stable ID/FK relationships and a
+  coverage manifest distinguishing source rows, absent tables/categories and
+  supplemental synthetic rows. If the source is still empty, approve that actual
+  empty snapshot as the representative baseline; nonzero synthetic history remains
+  supplemental evidence, never deployed history.
+- The approved backup/restore artifact and protected provider-Auth export/recovery
+  access, plus independently protected acknowledgement evidence and verifier
+  configuration for later operations. Record access restrictions, retention and
+  how sanitized provider subjects map consistently to stable application users.
+- The old application revision and deployment-sequence decision, along with
+  restricted runtime/read roles and a separate migration role for the disposable
+  target. Source selection must not silently include either unrelated project.
+
+These are missing evidence/access and source decisions, not permission to migrate
+production. The user was asked for the approved artifact location and approval
+record. No representative-copy claim can be made until these inputs are available.
+
+### Acceptance review
+
+1. **Forward-only representative upgrade: incomplete.** The reusable synthetic
+   harness now runs all 44 current migrations, including 0043 verification evidence
+   and 0044 outcome evidence. It still constructs its own 0001–0003 baseline and
+   0034 historical fixture; it does not import or establish source provenance.
+   The approved source inventory, ledger and coverage must be established before
+   any representative migration.
+2. **History, policy, compatibility and recovery: incomplete.** The six existing
+   PostgreSQL checks pass for synthetic identities, ownership, statuses, frozen
+   terms, currency/paise, payment records, FK integrity, transaction rollback and
+   older-backup restoration with one local receipt. They run as the disposable
+   cluster owner. They do not prove restricted-role old/new application reads or
+   writes, provider Auth restoration, or independently protected later-operation
+   reconciliation on the representative copy. The source coverage must include
+   corridor history and, where present, prior unrestricted `.2` records; labeled
+   supplemental Amravati `amravati-core-v1`/`.1` records must exercise geometry,
+   policy/area identifiers, frozen terms and signed receipt compatibility before
+   and after upgrade and restore. No historical area backfill is authorized.
+   Route revision, invalid/reversed segments, last-seat concurrency, retries,
+   notification failure, audit and operator visibility must run on that upgraded
+   copy, not merely be inferred from dependency suites.
+3. **Results, exceptions and cutover decisions: partial.** This audit records the
+   missing inputs and current local results. Representative exceptions and the
+   restore/reconciliation outcome cannot yet be recorded. Historical registration
+   suffix ambiguity remains conservative rejection; any identity mapping or
+   relaxation needs an explicit inventory-backed decision. No reopening or cutover
+   decision has been made.
+
+Keep writes restricted during restore and reconcile stable identities, all later
+acknowledged operation IDs, allocations, journey/settlement state, notifications,
+deletions and payment history before an explicit reopening decision. An uncommitted
+migration failure rolls back; a committed expansion needs a forward corrective
+migration. Application rollback is conditional on proven old-reader compatibility
+and absence of new-format accepted actions. Restore to another isolated target,
+never over newer acknowledged state. The existing migration plan remains the
+deployment/recovery sequence; this audit authorizes no production operation.
+
+### Current local validation
+
+Created a fresh PostgreSQL cluster under `/private/tmp/pp14-20261007.E8y1vj/pg`,
+bound to `127.0.0.1:55487` with its socket in the same private temporary directory.
+The existing tests create random `pp14_*_test` databases, require the disposable
+flag, reject a migration URL override, and remove their databases afterward.
+No existing database was reset. Temporary dumps contain only invented fixtures
+and remain outside Git.
+
+The unchanged focused prefix test first failed with `Migration ledger divergence`:
+the harness applied current migrations but still required 42 ledger entries.
+Updated the explicit expected count in the harness and its existing test to 44.
+Then `TICKET14_TEST_DATABASE_URL=postgresql://127.0.0.1:55487/pp14_test node --test scripts/ticket14-rehearsal.test.mjs`
+passed **6/6**, with no skips. Every test independently performs the upgrade,
+historical comparisons, rollback injection and restore. This is refreshed synthetic
+evidence only. The 2026-09-29 results below remain historical rather than being
+rewritten as a representative run.
+
 Date: 2026-09-29. **Partial evidence; ticket remains claimed.** No remote connection, deployment, or live data write was made.
 
 ## Provenance and isolation

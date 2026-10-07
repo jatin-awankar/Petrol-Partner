@@ -181,7 +181,7 @@ try {
     throw new Error('Historical aggregate or ownership comparison failed');
   if (Object.values(beforeFks).some(Boolean) || Object.values(afterFks).some(Boolean))
     throw new Error('Foreign key orphan detected');
-  if (afterLedger.length !== 42 || JSON.stringify(afterLedger.slice(0, 34)) !== JSON.stringify(beforeLedger))
+  if (afterLedger.length !== 44 || JSON.stringify(afterLedger.slice(0, 34)) !== JSON.stringify(beforeLedger))
     throw new Error('Migration ledger divergence');
   report.before = Object.fromEntries(Object.entries(before).filter(([, value]) => value.count).map(([k,v]) => [k,v.count]));
   report.after = Object.fromEntries(Object.entries(after).filter(([, value]) => value.count).map(([k,v]) => [k,v.count]));

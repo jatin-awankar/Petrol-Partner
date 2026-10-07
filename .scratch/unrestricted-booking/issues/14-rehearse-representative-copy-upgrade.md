@@ -17,3 +17,21 @@ See `docs/operations/ticket14-representative-upgrade-rehearsal.md`. A wholly syn
 ## Amravati core scope amendment — 2026-10-04
 
 Include historical corridor records, prior unrestricted `.2` route evidence and new `amravati-core-v1`/`.1` successor records in the existing authorized-copy rehearsal. Compare frozen terms, geometry, area/policy identifiers and signed receipt formats before/after migration and restore. Do not backfill old records with the new area or treat old state checks as local-area approvals. Scope approval supplies no data-reset or deployed migration authorization; status and existing copy-evidence requirements remain unchanged.
+
+## Current audit — 2026-10-07
+
+All dependencies 05, 07, 08, 10, 11, 12 and 13 are resolved and their completion
+commits are ancestors of fetched main `7273b3c`. The requested branch was
+fast-forwarded to that baseline, preserving existing work. See the
+[current evidence audit](../../../docs/operations/ticket14-representative-upgrade-rehearsal.md#current-audit--2026-10-07)
+for commit IDs, every acceptance gap and exact missing source/access decisions.
+
+No approved sanitized snapshot or source approval is identified in the available
+evidence; the ticket 05 referenced current-project raw inventory is absent from
+this checkout. No remote database was accessed. The existing synthetic harness
+was reused and its stale 42-migration assertion updated to the current 44;
+all six PostgreSQL upgrade/rollback/restore checks passed on a fresh isolated
+local cluster. This does not replace representative-copy evidence. Keep all
+acceptance checkboxes open and status claimed pending the approved source,
+restricted-role application compatibility and protected Auth/acknowledgement
+recovery rehearsal. Production and real bookings remain unchanged and disabled.

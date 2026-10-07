@@ -84,7 +84,7 @@ test('upgrade starts from the verified deployed 0001–0003 checksum prefix', { 
   assert.deepEqual(runRehearsal().migrationSequence, {
     deployedPrefix: 3,
     historicalPrefix: 34,
-    expandedPrefix: 42,
+    expandedPrefix: 44,
   });
 });
 
