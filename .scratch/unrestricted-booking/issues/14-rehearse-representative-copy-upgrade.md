@@ -49,3 +49,19 @@ approval. No source approval has been inferred; ticket remains claimed.
 The prior test failures were reproduced as sandbox loopback/Docker socket denial.
 Both test files passed unchanged with authorized local access (5/5); this focused
 diagnosis is not a full-suite or representative-copy acceptance result.
+
+## Approved extraction preflight — 2026-10-07
+
+The maintainer approved the documented source/process and seven-day local artifact
+retention. Render's current `Petrol-Partner` service was checked and its database
+project reference matches `qqmofdocznefwpbqweud`; live revision is `7273b3c`.
+The saved ticket 05 connection uses privileged `postgres`; the maintainer explicitly
+approved its use with bounded read-only guards. The subsequent repeatable-read
+inventory confirmed 30 public tables, exact 0001–0003 ledger checksums and only
+three pricing seed rows, but found a newly populated Auth state (one user/identity,
+with session/token/MFA records). Per the user's instruction, work stopped before
+row export. Only aggregate counts and catalog/ledger metadata were read; no Auth
+row values were fetched. No source mutation or copy restore occurred. The
+[preflight record](../../../docs/operations/ticket14-copy-extraction-plan.md#approved-execution-preflight--2026-10-07)
+records the exact Auth-scope decision needed without credentials. Status remains
+claimed; all acceptance criteria remain open.

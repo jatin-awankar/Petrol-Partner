@@ -1,10 +1,84 @@
 # Ticket 14 representative-copy extraction plan
 
-Date: 2026-10-07. **Proposed; awaiting maintainer source/process approval.**
+Date: 2026-10-07. **Source/process and seven-day local artifact retention approved
+by the maintainer in this task. Execution is paused before row export because the
+fresh Auth population differs from the approved empty-source baseline.**
 Ticket 14 remains claimed. No live database, Auth provider or receipt store was
 contacted while preparing this plan. Approval of this plan authorizes only the
 read-only source work described here and local disposable-copy work, not source
 migration, role creation, configuration changes, data reset, deployment or bookings.
+
+## Approved execution preflight — 2026-10-07
+
+The maintainer approved the documented process and proposed project, required a
+fresh Render target check first, and retained the stop-before-export rule for
+schema or sensitive-population differences. Approval does not resolve ticket 14.
+
+The authenticated Render dashboard for service `Petrol-Partner`
+(`srv-d6qlc37afjfc73eqamd0`, My Workspace) currently identifies the live deployment
+as `7273b3ca2bc0c2425d1345d38c4acda2157ee719`, deployment
+`dep-db1u5dnf3r2c73ev86c0`. Its DATABASE_URL project reference was checked in memory
+and **matches `qqmofdocznefwpbqweud`**. Only the project reference was emitted; the
+setting was re-masked afterward. No Render setting was edited and no deployment
+was triggered. The distinct PR78 synthetic service was not treated as this source.
+
+Local connection preflight found that the existing ticket 05 Session pooler
+configuration uses the privileged `postgres` role. No dedicated reader is
+identified in the ticket's available configuration. Execution initially paused
+for the plan's specific access decision. The maintainer then explicitly approved
+using that existing connection with read-only guards. No credential or personal
+data was requested in chat.
+
+### Fresh inventory and stop condition
+
+At 2026-10-07 18:25:25 UTC, a bounded connection to the approved Session pooler
+used startup `default_transaction_read_only=on`, a 30-second statement timeout,
+three-second lock timeout, and `BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY`.
+The transaction verified `read_only=on` and `repeatable read`, collected catalog
+metadata, SELECT permissions, counts and ledger checksums, and ended with ROLLBACK.
+No business mutation, DDL, source migration or backup-attempt write occurred.
+
+The initial TLS attempt and a system-CA retry failed certificate-chain validation
+before queries. The authenticated approved-project dashboard supplied the CA link
+`https://supabase-downloads.s3-ap-southeast-1.amazonaws.com/prod/ssl/prod-ca-2021.crt`.
+Using it as an additional trust root succeeded with certificate and hostname
+verification still enabled. Its SHA-256 certificate fingerprint is
+`807025ad50d4ed219d2c9c7d299c004f824eb00cf7f65afef607d07b72e6cafa`.
+
+Observed PostgreSQL version: 17.6. Public table count: 30. Ledger: three entries,
+an exact filename/SHA-256 prefix of the current 44 repository migrations. Only
+`pricing_rate_cards` and `schema_migrations` are populated, each with three rows;
+all other public application tables have zero rows. This verifies the prefix and
+population counts, not the full schema/FK/trigger equivalence required before export.
+
+**The approved empty Auth baseline no longer holds:** `auth.users` has 1 row,
+`auth.identities` 1, `auth.sessions` 1, `auth.refresh_tokens` 10, `auth.mfa_factors` 1
+and `auth.mfa_challenges` 3. Queries selected counts only; no subjects, contacts,
+credentials, tokens, factors or challenge values were fetched. The public schema
+is still at 0003 and has no `auth_identities` table. Do not infer a stable application
+mapping or label the provider account synthetic from these counts.
+
+Per the maintainer's explicit stop condition, **row export is paused**. The remaining
+schema comparison, sanitization, copy restore, protected provider-loss recovery and
+independent acknowledgement rehearsal have not run. No row snapshot exists.
+The aggregate-only inventory is in ignored
+`.scratch/unrestricted-booking/representative-copy/20261007T1824Z/inventory.json`
+(directory 0700, file 0600). It contains no credentials or personal row values and
+is not committed. Apply the approved seven-day local retention to this artifact;
+if work remains paused, remove it by 2026-10-14 and refresh rather than retaining
+stale evidence indefinitely. No automatic deletion job has been created.
+
+Before resuming, the maintainer must decide how this newly populated provider state
+is included in the approved process. The proposed revision is to retain live Auth
+as **aggregate-only evidence**, export no live session/token/password/MFA content,
+and keep the empty public baseline as the representative application copy. A
+nonzero provider-loss exercise then needs an explicitly identified disposable Auth
+target, a protected recoverable provider artifact/configuration and a synthetic
+identity whose subject-to-application mapping is tested there. That supplemental
+exercise cannot be called restoration of the populated source account. If ticket
+14 requires continuity of that account, approve a separate restricted provider
+backup/recovery process and mapping decision before any account-level extraction.
+Do not silently substitute synthetic identities for required source-account proof.
 
 ## Intended source and decision boundary
 
