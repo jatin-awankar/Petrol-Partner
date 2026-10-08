@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
 
 const base = process.env.TICKET14_TEST_DATABASE_URL;
@@ -17,22 +20,49 @@ function command(file, args, env = process.env) {
   return result.stdout;
 }
 
-function runRehearsal() {
+function runRehearsal(restoredBaseline = false) {
   const url = new URL(base);
   const database = `pp14_${randomUUID().replaceAll('-', '').slice(0, 12)}_test`;
   const restore = `${database}_restore_test`;
   url.pathname = `/${database}`;
   command('createdb', ['-h', url.hostname, '-p', url.port, database]);
+  const temporary = mkdtempSync(join(tmpdir(), 'pp14-manifest-test-'));
   try {
+    let manifestPath = '';
+    if (restoredBaseline) {
+      const env = { ...process.env, DATABASE_URL: url.href, TEST_DATABASE_DISPOSABLE: 'true', MIGRATION_DATABASE_URL: '' };
+      command('node', ['scripts/db-migrate.mjs', '--to', '0003_chat.sql'], env);
+      const inventory = JSON.parse(command('node', ['scripts/db-inventory.mjs'], env));
+      manifestPath = join(temporary, 'manifest.json');
+      writeFileSync(manifestPath, JSON.stringify({
+        project: 'qqmofdocznefwpbqweud', scope: 'public only; no Auth rows',
+        expiresBy: new Date(Date.now() + 60_000).toISOString(),
+        sourceCounts: inventory.rowCounts,
+        ledger: inventory.migrationHistory.entries.map(({ name, checksum }) => ({ name, checksum })),
+      }), { mode: 0o600 });
+    }
     const output = command('node', ['scripts/ticket14-rehearsal.mjs'], {
       ...process.env, DATABASE_URL: url.href, TEST_DATABASE_DISPOSABLE: 'true', MIGRATION_DATABASE_URL: '',
+      TICKET14_SOURCE_MANIFEST: manifestPath,
     });
     return JSON.parse(output);
   } finally {
+    rmSync(temporary, { recursive: true, force: true });
     command('dropdb', ['-h', url.hostname, '-p', url.port, '--if-exists', restore]);
     command('dropdb', ['-h', url.hostname, '-p', url.port, '--if-exists', database]);
   }
 }
+
+test('an inventoried empty baseline can be expanded with separately labelled historical fixtures', { skip: !base }, () => {
+  // This regression constructs a synthetic baseline; only the separately approved
+  // extraction/restore process establishes actual deployed-source provenance.
+  const report = runRehearsal(true);
+  assert.deepEqual(report.sourceBaseline, {
+    publicTables: 30, ledgerEntries: 3, applicationRows: 0, pricingSeeds: 3, authRowsImported: false,
+  });
+  assert.match(report.provenance, /supplemental synthetic/);
+  assert.equal(report.ledger.after, 44);
+});
 
 test('fixture load keeps foreign keys enforced and restores restricted pilot state', { skip: !base }, () => {
   assert.deepEqual(runRehearsal().fixtureIntegrity, {
@@ -84,7 +114,7 @@ test('upgrade starts from the verified deployed 0001–0003 checksum prefix', { 
   assert.deepEqual(runRehearsal().migrationSequence, {
     deployedPrefix: 3,
     historicalPrefix: 34,
-    expandedPrefix: 42,
+    expandedPrefix: 44,
   });
 });
 

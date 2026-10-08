@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { readFile, mkdtemp, open, mkdir, readdir, symlink, writeFile, rm } from 'node:fs/promises';
+import { readFile, mkdtemp, open, mkdir, readdir, symlink, writeFile, rm, chmod } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import pg from 'pg';
@@ -12,7 +12,11 @@ if (process.env.TEST_DATABASE_DISPOSABLE !== 'true' ||
   throw new Error('Ticket 14 requires a localhost _test database, TEST_DATABASE_DISPOSABLE=true, and no migration override');
 }
 const pool = new pg.Pool({ connectionString: url.href, max: 3 });
-const report = { provenance: 'Entirely synthetic fixtures; deployed inventory on 2026-09-29 had zero application rows',
+let sourcePricingSnapshot;
+const sourceManifestPath = process.env.TICKET14_SOURCE_MANIFEST;
+const report = { provenance: sourceManifestPath
+  ? 'Approved source-derived empty public baseline; all nonzero historical application fixtures are supplemental synthetic records; no Auth rows imported'
+  : 'Entirely synthetic fixtures; deployed inventory on 2026-09-29 had zero application rows',
   database: url.pathname.slice(1), exceptions: [] };
 function command(file, args) {
   const result = spawnSync(file, args, { encoding: 'utf8', env: process.env });
@@ -105,7 +109,23 @@ async function aggregateComparison() {
 }
 try {
   const existing = await rows("SELECT count(*)::int AS n FROM pg_tables WHERE schemaname='public'");
-  if (existing[0].n !== 0) throw new Error('Disposable target must start empty');
+  if (sourceManifestPath) {
+    const manifest = JSON.parse(await readFile(sourceManifestPath, 'utf8'));
+    if (manifest.project !== 'qqmofdocznefwpbqweud' || manifest.scope !== 'public only; no Auth rows' ||
+        Date.parse(manifest.expiresBy) <= Date.now() || !Number.isFinite(Date.parse(manifest.expiresBy)))
+      throw new Error('Source manifest is invalid or expired');
+    const baseline = await snapshot();
+    sourcePricingSnapshot = baseline.pricing_rate_cards;
+    const expected = Object.fromEntries(Object.entries(manifest.sourceCounts)
+      .filter(([table]) => table !== 'schema_migrations').sort(([a], [b]) => a.localeCompare(b)));
+    const actual = Object.fromEntries(Object.entries(baseline).map(([table, value]) => [table, value.count]));
+    const ledger = await rows('SELECT name,checksum FROM schema_migrations ORDER BY name');
+    if (JSON.stringify(actual) !== JSON.stringify(expected) || JSON.stringify(ledger) !== JSON.stringify(manifest.ledger) ||
+        Object.entries(actual).some(([table, count]) => count !== (table === 'pricing_rate_cards' ? 3 : 0)))
+      throw new Error('Restored source baseline differs from its approved inventory');
+    report.sourceBaseline = { publicTables: existing[0].n, ledgerEntries: ledger.length,
+      applicationRows: 0, pricingSeeds: 3, authRowsImported: false };
+  } else if (existing[0].n !== 0) throw new Error('Disposable target must start empty');
   command('node', ['scripts/db-migrate.mjs', '--to', '0003_chat.sql']);
   command('node', ['scripts/db-migrate.mjs', '--to', '0003_chat.sql', '--check']);
   const deployedPrefix = (await rows('SELECT count(*)::int AS n FROM schema_migrations'))[0].n;
@@ -142,6 +162,7 @@ try {
   const backupDir = await mkdtemp(join(tmpdir(), 'pp14-backup-'));
   const backup = join(backupDir, 'baseline.dump');
   command('pg_dump', ['-Fc', '-f', backup, url.href]);
+  await chmod(backup, 0o600);
   report.backup = backup;
 
   // Give the real runner an exact 0001–0034 prefix followed by one disposable failing file.
@@ -172,6 +193,8 @@ try {
   command('node', ['scripts/db-migrate.mjs']);
   command('node', ['scripts/db-migrate.mjs', '--check']);
   const after = await snapshot();
+  if (sourcePricingSnapshot && JSON.stringify(after.pricing_rate_cards) !== JSON.stringify(sourcePricingSnapshot))
+    throw new Error('Source pricing seeds changed during expansion');
   const afterComparison = await aggregateComparison();
   const afterFks = await orphanCounts();
   const afterLedger = await rows('SELECT name,checksum FROM schema_migrations ORDER BY name');
@@ -181,7 +204,7 @@ try {
     throw new Error('Historical aggregate or ownership comparison failed');
   if (Object.values(beforeFks).some(Boolean) || Object.values(afterFks).some(Boolean))
     throw new Error('Foreign key orphan detected');
-  if (afterLedger.length !== 42 || JSON.stringify(afterLedger.slice(0, 34)) !== JSON.stringify(beforeLedger))
+  if (afterLedger.length !== 44 || JSON.stringify(afterLedger.slice(0, 34)) !== JSON.stringify(beforeLedger))
     throw new Error('Migration ledger divergence');
   report.before = Object.fromEntries(Object.entries(before).filter(([, value]) => value.count).map(([k,v]) => [k,v.count]));
   report.after = Object.fromEntries(Object.entries(after).filter(([, value]) => value.count).map(([k,v]) => [k,v.count]));
