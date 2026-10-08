@@ -86,3 +86,15 @@ protected provider Auth export/recovery and independently protected later-operat
 evidence. Actual source-account continuity is unproven; no Auth rows were exported.
 Ticket 17's later outage gate does not silently replace this requirement. Keep
 status claimed and real bookings disabled; no production migration or deployment.
+
+## Protected drill preparation — 2026-10-08
+
+The [named-target recovery plan](../../../docs/operations/ticket14-protected-recovery-plan.md)
+records fresh staging/B2 metadata inspection, exact Auth-loss and receipt recovery
+steps, seven-day local retention and zero-cost gates. Saved staging is paused;
+the former Auth restore URL now names the protected deployed source and is rejected.
+Two disposable local actual Supabase Auth instances are proposed. Existing B2 keys
+are bucket-wide (writer includes governance bypass), so new prefix-scoped keys and
+prefix lifecycle authorization are needed. No source Auth rows or B2 object bodies
+were read, and no provider/bucket configuration was changed. Criterion 2 remains
+open in ticket 14; actual source-account continuity remains unproven.
