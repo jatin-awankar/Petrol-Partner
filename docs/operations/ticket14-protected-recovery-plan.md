@@ -224,3 +224,29 @@ are ceilings, not consumption targets. Instrument calls/bytes and stop at the
 smaller of these limits or verified free headroom; retain allowance for cleanup.
 One-day object locks and prefix-only two-day hide/one-day noncurrent deletion
 remain approved. No paid allowance or rounded-to-zero charge is acceptable.
+
+### Signed-in account check and scoped-key handoff
+
+The authenticated Caps & Alerts page now establishes zero-dollar caps: storage
+691 KB of 10 GB, daily downloads 0 bytes of 1 GB, Class B 1 of 2,500 and Class C
+6 of 2,500. Keep those caps unchanged. Reduce the request budget above to at most
+2,000 Class B and 2,000 Class C requests (including retries/cleanup), no Class D;
+refresh counters before transfers. The 20 MiB stored/100 MiB downloaded ceilings
+fit the observed free allowance. No billing setting was changed.
+
+The dashboard key dialog has only Read/Write, Read Only and Write Only presets.
+It cannot express the approved custom writer capabilities. The maintainer agreed
+to provide an existing key-management credential through a protected local prompt;
+do not rotate the master key. The ephemeral `setup-scoped-keys.sh` helper in the
+ignored run directory uses hidden terminal input and the documented native
+`b2_create_key` API, verifies the account, requests seven-day bucket/prefix-scoped
+keys and saves only the resulting drill keys in mode-0600 files. It never persists
+the management credential or prints provider response bodies. Shell and Node
+syntax checks passed; credential-bearing execution is left to the maintainer.
+
+Both local Auth services reached HTTP 200 health with GoTrue v2.196.0, image digest
+`sha256:c0c25187a6b835e65a6f6e6c6b39d090e832d40e6de5186f2c038e0411944232`.
+OrbStack did not publish ports on internal-only networks; separate loopback gateway
+networks fixed reachability while databases stayed on internal networks. No SMTP
+or source credentials are configured. This is startup evidence only: no synthetic
+identity, provider-loss restore or receipt drill is yet claimed as passed.
