@@ -7001,17 +7001,47 @@ describe('ticket 10 isolated posted route preparation',()=>{
       SET accepted_terms=jsonb_set(accepted_terms,'{total_paise}','1'::jsonb)
       WHERE id=$1`,[accepted.body.booking.id])).rejects.toMatchObject({code:'23514'});
   });
+  async function raceProtectedHttp<T>(first:()=>PromiseLike<T>,second:()=>PromiseLike<T>){
+    const blocker=await verificationPool.connect();
+    let operations:Promise<T>[]=[];
+    try{
+      await blocker.query('BEGIN');
+      await blocker.query('SELECT mode FROM pilot_recovery_state WHERE singleton=true FOR UPDATE');
+      operations=[Promise.resolve(first()),Promise.resolve(second())];
+      // Observe the actual HTTP mutation transactions waiting at their shared
+      // serialization boundary, not unrelated idle connections from the pool.
+      let pids:number[]=[];
+      for(let attempt=0;attempt<100&&pids.length<2;attempt++){
+        pids=(await verificationPool.query<{pid:number}>(`SELECT pid FROM pg_stat_activity
+          WHERE datname=current_database() AND wait_event_type='Lock'
+            AND (query LIKE 'SELECT mode FROM pilot_recovery_state%FOR UPDATE'
+              OR query LIKE 'SELECT pg_advisory_lock(93113, 13)%')`)).rows.map(row=>row.pid);
+        if(pids.length<2)await new Promise(resolve=>setTimeout(resolve,10));
+      }
+      expect(new Set(pids).size).toBe(2);
+      await blocker.query('COMMIT');
+      return await Promise.all(operations);
+    }finally{
+      await blocker.query('ROLLBACK');blocker.release();
+      await Promise.allSettled(operations);
+    }
+  }
+  async function waitForBlockedHttp(blockerPid:number){
+    let pids:number[]=[];
+    for(let attempt=0;attempt<100&&pids.length===0;attempt++){
+      pids=(await verificationPool.query<{pid:number}>(`SELECT pid FROM pg_stat_activity
+        WHERE datname=current_database() AND wait_event_type='Lock'
+          AND $1=ANY(pg_blocking_pids(pid))`,[blockerPid])).rows.map(row=>row.pid);
+      if(pids.length===0)await new Promise(resolve=>setTimeout(resolve,10));
+    }
+    expect(pids).toHaveLength(1);expect(pids[0]).not.toBe(blockerPid);
+  }
   it.each([false,true])('serializes two acceptance HTTP calls for the final seat using separate PostgreSQL connections (published=%s)',async(published)=>{
     const f=await bookingFixture(1,published),a=await participant(),b=await participant();
-    const [connectionA,connectionB]=await Promise.all([pool.connect(),pool.connect()]);
-    try{const [pidA,pidB]=await Promise.all([connectionA.query('SELECT pg_backend_pid() AS pid'),
-      connectionB.query('SELECT pg_backend_pid() AS pid')]);
-      expect(pidA.rows[0].pid).not.toBe(pidB.rows[0].pid);
-    }finally{connectionA.release();connectionB.release();}
     const [aId,bId]=[await f.ask(a),await f.ask(b)];
-    const [one,two]=await Promise.all([
-      f.call(f.driver.token,`${path}/requests/${aId}/accept`,{}),
-      f.call(f.driver.token,`${path}/requests/${bId}/accept`,{})]);
+    const [one,two]=await raceProtectedHttp(
+      ()=>f.call(f.driver.token,`${path}/requests/${aId}/accept`,{}),
+      ()=>f.call(f.driver.token,`${path}/requests/${bId}/accept`,{}));
     expect([one.status,two.status].sort()).toEqual([200,409]);
     expect((await verificationPool.query('SELECT count(*)::int AS n FROM posted_route_seat_allocations WHERE offer_id=$1',[f.offer])).rows[0].n).toBe(1);
   });
@@ -7019,9 +7049,9 @@ describe('ticket 10 isolated posted route preparation',()=>{
     const first=await bookingFixture(2,published),second=await bookingFixture(1,published);
     const shared=await participant(),other=await participant();
     const firstId=await first.ask(shared),secondId=await second.ask(shared),otherId=await first.ask(other);
-    const [a,b]=await Promise.all([
-      first.call(first.driver.token,`${path}/requests/${firstId}/accept`,{}),
-      second.call(second.driver.token,`${path}/requests/${secondId}/accept`,{})]);
+    const [a,b]=await raceProtectedHttp(
+      ()=>first.call(first.driver.token,`${path}/requests/${firstId}/accept`,{}),
+      ()=>second.call(second.driver.token,`${path}/requests/${secondId}/accept`,{}));
     expect([a.status,b.status].sort()).toEqual([200,409]);
     const losingId=a.status===200?secondId:firstId;
     expect((await verificationPool.query('SELECT status FROM posted_route_seat_requests WHERE id=$1',[losingId])).rows[0].status).toBe('withdrawn');
@@ -7037,9 +7067,9 @@ describe('ticket 10 isolated posted route preparation',()=>{
       WHERE id=$2`,[first.driver.vehicle,second.driver.vehicle]);
     const a=await participant(),b=await participant();
     const aId=await first.ask(a),bId=await second.ask(b);
-    const [one,two]=await Promise.all([
-      first.call(first.driver.token,`${path}/requests/${aId}/accept`,{}),
-      second.call(second.driver.token,`${path}/requests/${bId}/accept`,{})]);
+    const [one,two]=await raceProtectedHttp(
+      ()=>first.call(first.driver.token,`${path}/requests/${aId}/accept`,{}),
+      ()=>second.call(second.driver.token,`${path}/requests/${bId}/accept`,{}));
     expect([one.status,two.status].sort()).toEqual([200,409]);
     expect((await verificationPool.query('SELECT count(*)::int AS n FROM posted_route_seat_allocations')).rows[0].n).toBe(1);
   });
@@ -7072,6 +7102,7 @@ describe('ticket 10 isolated posted route preparation',()=>{
       await revoker.query('BEGIN');
       await revoker.query('SELECT id FROM unrestricted_vehicle_declarations WHERE id=$1 FOR UPDATE',[f.driver.vehicle]);
       const accepting=Promise.resolve(f.call(f.driver.token,`${path}/requests/${id}/accept`,{}));
+      await waitForBlockedHttp((await revoker.query('SELECT pg_backend_pid() AS pid')).rows[0].pid);
       await revoker.query('UPDATE unrestricted_vehicle_declarations SET revoked_at=now() WHERE id=$1',[f.driver.vehicle]);
       await revoker.query('COMMIT');
       expect((await accepting).body.error.code).toBe('VEHICLE_DECLARATION_REQUIRED');
@@ -7082,6 +7113,7 @@ describe('ticket 10 isolated posted route preparation',()=>{
       await pauser.query('BEGIN');
       await pauser.query("SELECT capability FROM pilot_pause_state WHERE capability='acceptance' FOR UPDATE");
       const accepting=Promise.resolve(f.call(f.driver.token,`${path}/requests/${id}/accept`,{}));
+      await waitForBlockedHttp((await pauser.query('SELECT pg_backend_pid() AS pid')).rows[0].pid);
       await pauser.query("UPDATE pilot_pause_state SET paused=true WHERE capability='acceptance'");
       await pauser.query('COMMIT');
       expect((await accepting).body.error.code).toBe('PILOT_PAUSED');
@@ -7789,13 +7821,9 @@ describe('ticket 10 isolated posted route preparation',()=>{
   });
   it.each([false,true])('serializes driver cancellation against seat acceptance using separate PostgreSQL connections (published=%s)',async(published)=>{
     const f=await bookingFixture(1,published),passenger=await participant(),id=await f.ask(passenger);
-    const [a,b]=await Promise.all([pool.connect(),pool.connect()]);
-    try{expect((await a.query('SELECT pg_backend_pid() AS pid')).rows[0].pid).not.toBe(
-      (await b.query('SELECT pg_backend_pid() AS pid')).rows[0].pid);}
-    finally{a.release();b.release();}
-    const [cancel,accept]=await Promise.all([
-      f.call(f.driver.token,`${path}/${f.offer}/cancel`,{reason:'Driver cannot travel'}),
-      f.call(f.driver.token,`${path}/requests/${id}/accept`,{})]);
+    const [cancel,accept]=await raceProtectedHttp(
+      ()=>f.call(f.driver.token,`${path}/${f.offer}/cancel`,{reason:'Driver cannot travel'}),
+      ()=>f.call(f.driver.token,`${path}/requests/${id}/accept`,{}));
     expect(cancel.status,JSON.stringify(cancel.body)).toBe(200);
     expect([200,409,503]).toContain(accept.status);
     if(accept.status===503){

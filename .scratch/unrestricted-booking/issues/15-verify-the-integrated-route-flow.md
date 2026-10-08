@@ -4,11 +4,11 @@
 
 **Blocked by:** 06 (Close legacy booking and payment entry points); 09 (Provide monitored support and notices); 12 (Request and accept one priced seat); 13 (Carry route bookings through cancellation and outcomes); 14 (Rehearse the representative-copy upgrade).
 
-**Status:** claimed
+**Status:** resolved
 
-- [ ] Exercise authenticated HTTP flows against PostgreSQL from account creation and declarations through route posting, segment pricing, request, acceptance, cancellation, journey, settlement, support, and operator review.
-- [ ] Use separate connections for seat, overlap, cancellation, revocation, pause, and departure races; verify retries, changed payloads, rollback, notification failure, and acknowledged-action recovery.
-- [ ] Verify generic booking, collection, payout, matching, chat, live tracking, and push boundaries remain disabled; no real bookings are enabled.
+- [x] Exercise authenticated HTTP flows against PostgreSQL from account creation and declarations through route posting, segment pricing, request, acceptance, cancellation, journey, settlement, support, and operator review.
+- [x] Use separate connections for seat, overlap, cancellation, revocation, pause, and departure races; verify retries, changed payloads, rollback, notification failure, and acknowledged-action recovery.
+- [x] Verify generic booking, collection, payout, matching, chat, live tracking, and push boundaries remain disabled; no real bookings are enabled.
 
 ## Progress (2026-09-29)
 
@@ -35,3 +35,47 @@ Ticket 09 is resolved at its support/notice implementation boundary. Reuse its s
 ## Amravati core scope amendment — 2026-10-04
 
 Add the approved local scope to the integrated journey: an interior route and ordered passenger points proceed only in the synthetic harness; outside selection, cross-edge snap, route exit/re-entry, stale area hash, revoked approval and unavailable artifact fail before new commitments. Verify old/new policy coexistence, audit/recovery evidence and honest local-area UI language. Keep runtime booking gates closed and retain all existing races/provider/copy requirements. This does not stand in for ticket 10's own artifact acceptance; status is unchanged.
+
+
+## Answer — 2026-10-08
+
+Resolved for the local authenticated HTTP/PostgreSQL integration scope from updated
+main `ebd89d4` on `codex/15-integrated-route-flow`. Dependencies 06, 09, 12, 13 and
+14 are resolved and their completion merges are ancestors of that baseline.
+Earlier support, producer and representative-copy blocker notes above are
+historical and superseded by their current Answers.
+
+The reused account-to-settlement journey now publishes through the real Valhalla
+adapter with controlled external HTTP responses and the packaged Amravati policy,
+then discovers, reads and quotes the route as the passenger. It preserves actual
+policy checks, declared eligibility, confirmed stops, ordered saved-segment pricing
+and frozen terms. Existing request/rejection, acceptance, cancellation/replacement,
+boarding, journey/incident review, cash/UPI receipt/dispute, operator support and
+worker-notice scenarios now exercise published routes. Historical offer, booking,
+settlement and platform-payment rows remain unchanged.
+
+Separate-connection race checks now observe actual competing HTTP backend sessions
+and blocking, including final-seat, overlap, cancellation, revocation, pause and
+departure cases. Existing authorization, retry/payload-conflict, invalid-transition,
+audit/work rollback, delivery-failure and acknowledgement-recovery scenarios pass.
+New unavailable-artifact and revoked/stale-area checks fail closed before new
+commitments. Participant navigation reaches the actual support page and published
+contacts; this is rendered local evidence, not provider receipt or deployed browser
+evidence.
+
+The [completion evidence](../../../docs/operations/evidence/ticket15-integrated-route-flow-2026-10-08.md)
+records the dependency commits, acceptance map, controlled adapters, red/green
+coverage correction, review fix, exact checks and interrupted/retried runs.
+Final unchanged full suite: **38 root checks, 520 API tests, 19 worker tests passed**;
+11 opt-in root and seven actual-provider API checks skipped explicitly. Typecheck,
+repository lint (nine existing warnings), scoped lint and whitespace checks passed.
+Standards and Spec reviews each have zero remaining findings.
+
+Ticket 16 still owns actual configured staging/provider/support/licence/retention
+and notice-receipt evidence; ticket 17 owns deployed outage recovery; external
+review and ticket 18's explicit activation decision remain release gates.
+**Ticket 14's actual source-account continuity remains unproven, and retained-artifact
+cleanup/scoped-key removal must be verified separately.** This completion neither
+reruns nor expands its approved synthetic Auth scope. Real bookings and all excluded
+capabilities remain disabled. No deployment, live-data modification, external
+contact or provider spending occurred.

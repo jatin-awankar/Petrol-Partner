@@ -45,9 +45,9 @@ All named HTTP cases below are in the existing integration file; related rendere
 ### Policy, authorization and failure checks
 
 - Existing Amravati cases cover interior routes, all three vehicle categories, outward-rounded boundary precision, outside selection, cross-edge snapping and whole-route exit/re-entry. Ticket 11 tests ordered, off-route, unconfirmed, ambiguous and unsafe stops; saved-segment pricing, 500/700-paise rates, rounding and provider failure. Ticket 12 revalidates price, support, declarations, route evidence and area approval at acceptance.
-- New ticket 15 negative cases reject quotes, requests and acceptance when approval is revoked, its geometry hash is stale or the actual artifact reader fails. Pending request rows remain byte-for-byte equivalent as decoded PostgreSQL values, with zero allocations.
+- New ticket 15 negative cases reject quotes, requests and acceptance when approval is revoked, its geometry hash is stale or the actual artifact reader fails. All fields of pending request rows remain unchanged, with zero allocations.
 - Existing declaration/route/outcome tests cover wrong owners, absent/stale/false declarations, restrictions, holds, MFA and invalid transitions; exact retries return one logical action and changed payloads fail.
-- Existing published-route variants cover final-seat and overlapping passenger/vehicle commitments, revocation and pause using separate database connections. Cancellation/acceptance and departure/cancellation now run for both historical synthetic fixtures and published Valhalla-backed fixtures. Departure/cancellation observes two active backend PIDs; ticket 13 separately covers passenger/driver/vehicle revocation versus departure.
+- Existing published-route variants cover final-seat and overlapping passenger/vehicle commitments, revocation and pause using separate database connections. Cancellation/acceptance and departure/cancellation now run for both historical synthetic fixtures and published Valhalla-backed fixtures. Final-seat, passenger/vehicle overlap and cancellation/acceptance hold a database barrier and observe two distinct blocked backend sessions for the actual HTTP operations before releasing it. Revocation/pause observe the backend blocked by the transaction holding the relevant row. Departure/cancellation observes two active backend PIDs; ticket 13 separately covers passenger/driver/vehicle revocation versus departure.
 - Existing request/publication/outcome tests inject audit, notification-event and email-job insertion failures and assert atomic rollback. Ticket 09's published-route worker failures preserve accepted/cancelled state, exhaust bounded retries, redact private failure details, enforce participant-only reads and permit audited operator retry without duplicate logical notices.
 - Existing publication, seat and ticket 13 downstream recovery tests cover uncertain acknowledgement, same-key continuation, missing/conflicting evidence, restricted writes, older-state restoration and reconciliation of frozen terms, journey, obligation, receipt, audit and suppressed notices. Ticket 14's protected-provider drill remains separate inherited evidence, not a drill repeated here.
 
@@ -57,11 +57,49 @@ Ticket 15's authenticated boundary test rejects generic bookings, platform colle
 
 ## Verification and review
 
-Verification is in progress; final results and independent Standards/Spec review will be recorded before resolution.
+Only fresh disposable PostgreSQL 17 databases on `127.0.0.1:55485` were used for successful database checks: `pp15_test` for focused tests, `pp15_full_test` for the pre-review full suite and `pp15_final_test` for the first reviewed full suite and `pp15_verified_test` for its unchanged retry. The new cluster and supplementary logs are in `/private/tmp/pp15-local.L5IbAs`. No remote connection configuration was used.
 
-The first regression moved the old integrated quote to the passenger and failed with `ROUTE_NOT_FOUND` (404). Replacing the stale private-route harness with actual publication/discovery made it pass without changing application policy. The filesystem-failure test initially failed to intercept a native named import; synchronizing Node's builtin exports corrected the injection, after which all three negative variants passed. These were harness/coverage gaps, not evidence that production policy needed weakening.
+Completed focused checks: 14 integrated journey/notice/race cases; three unavailable-area variants; seven rendered support/navigation tests; and ten strengthened race variants. The broader route group recorded 181 passes, one socket interruption and 118 filtered/opt-in skips; both variants of that unchanged cancellation case passed on focused retry. The initial full suite passed 38 root checks, 520 API tests and 19 worker tests. The first reviewed full run recorded 519 API passes and one socket interruption in the unchanged published request audit/work rollback test; both rollback variants passed unchanged on focused retry. **Final unchanged full suite passed: 38 root checks, 520 API tests and 19 worker tests.** The final process exited zero; its log is `full-verified.log` in the local log directory above. All three ticket acceptance criteria are evidenced at the local implementation boundary.
+
+Typecheck passed repeatedly, including after the review fix. Repository lint passed with nine pre-existing warnings and no errors; scoped lint after review passed. Whitespace checks passed. No runtime or schema change required a build or migration rehearsal beyond the existing suites.
+
+Reproducible commands (set `DATABASE_URL` explicitly to the appropriate disposable database above; never use a deployed target):
+
+```sh
+npm --workspace @petrol-partner/api run test:integration -- -t 'ticket 15 creates'
+npm --workspace @petrol-partner/api run test:integration -- -t 'ticket 15|ticket 09|serializes driver cancellation|serializes departure and passenger'
+npm --workspace @petrol-partner/api run test:integration -- -t 'ticket 15 blocks'
+npm --workspace @petrol-partner/api run test:integration -- -t 'ticket 10 isolated'
+npm --workspace @petrol-partner/api run test:integration -- -t 'cancels a frozen route seat'
+npm --workspace @petrol-partner/api run test:integration -- -t 'rolls back request state if audit'
+npm --workspace @petrol-partner/api run test:integration -- -t 'serializes two acceptance|allows two whole-ride|same registration as one|serializes declaration revocation and pause|serializes driver cancellation'
+npm exec --workspace @petrol-partner/api -- vitest run --pool threads --maxWorkers 1 src/test/participant-shell.test.tsx src/test/support-page.test.tsx
+caffeinate -i npm test
+npm run typecheck
+npm run lint
+npx eslint apps/api/src/test/http-postgres.integration.test.ts apps/api/src/test/participant-shell.test.tsx
+git diff --check
+```
+
+The full suite has 11 opt-in root skips (separate-role migration, representative upgrade/inventory/restore and ticket 14 drills) and seven API skips (six actual-Valhalla rehearsals and one live B2 check). They were not rerun and are not claimed as fresh evidence. Ticket 14's source/protected-provider results remain inherited, separately bounded evidence. No external-provider live test is silently counted as passing.
+
+The first regression moved the old integrated quote to the passenger and failed with `ROUTE_NOT_FOUND` (404). Replacing the stale private-route harness with actual publication/discovery made it pass without changing application policy. The filesystem-failure test initially failed to intercept a native named import; synchronizing Node's builtin exports corrected the injection, after which all three negative variants passed. These were harness/coverage gaps, not evidence that production policy needed weakening. The two later `socket hang up` interruptions had no failed domain assertion; their underlying cause is unproven. No timeout, assertion or product policy was relaxed for a retry.
 
 A sandboxed test could not connect to loopback (`EPERM`); the authorized local rerun reached the intended regression. One attempted focused UI command used the workspace's additive `src` script and unintentionally selected the API suite with its default localhost test URL; database/socket checks failed under the sandbox. That run is not counted as acceptance evidence; the corrected direct Vitest command selects the two UI files explicitly.
+
+## Code review
+
+The implement skill's two-axis review used independent Standards and Spec agents against baseline `ebd89d4`, first reviewing `6aaf79f` and then the scoped race-evidence working diff. Reviewers did not run concurrent database tests.
+
+### Standards
+
+Initial P2: comparing idle pool PIDs did not establish that the actual cancellation/acceptance mutations overlapped on separate connections. Replaced this with observed blocking of real HTTP mutation sessions. The shared helper also strengthens final-seat and overlap tests; pause/revocation now observe their blocked mutation session. Re-review: no remaining actionable standards findings or additional smell findings.
+
+### Spec
+
+Initial P2: final-seat, overlap and cancellation race evidence could pass with serial HTTP operations. The same barrier/observed-backend correction resolves that acceptance gap. Re-review confirms the complete local scope and finds no remaining missing requirement or scope expansion. Controlled-provider, ticket 14 and deployed release limitations remain unchanged.
+
+Standards: 0 remaining findings. Spec: 0 remaining findings. The initial race-helper probe looked only for recovery-row waits and missed the outcome guard on cancellation; it was corrected to observe both real serialization boundaries, and all ten focused variants passed.
 
 ## Remaining release gates
 
