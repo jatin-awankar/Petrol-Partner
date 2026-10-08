@@ -2,6 +2,7 @@
 import {cleanup,fireEvent,render,screen,within} from '@testing-library/react';
 import {afterEach,expect,it,vi} from 'vitest';
 import {usePathname} from 'next/navigation';
+import SupportPage from '../../../../app/support/page';
 import ParticipantShell from '../../../../components/ParticipantShell';
 vi.mock('next/navigation',()=>({usePathname:vi.fn(()=>'/dashboard'),useRouter:()=>({push:vi.fn(),refresh:vi.fn()})}));
 vi.mock('@/hooks/auth/useCurrentUser',()=>({useCurrentUser:()=>({user:{id:'person'},loading:false,logout:vi.fn()})}));
@@ -51,4 +52,17 @@ it('closes the account menu when the current page changes',()=>{
   vi.mocked(usePathname).mockReturnValue('/notifications');
   view.rerender(<ParticipantShell/>);
   expect(screen.queryByRole('navigation',{name:'Participant menu'})).toBeNull();
+});
+
+it('lets a trip participant reach the published support contacts and coverage',()=>{
+  vi.mocked(usePathname).mockReturnValue('/trips');
+  const view=render(<ParticipantShell/>);
+  fireEvent.click(screen.getByRole('button',{name:'Open menu'}));
+  expect(screen.getByRole('link',{name:'Help and support'}).getAttribute('href')).toBe('/support');
+  vi.mocked(usePathname).mockReturnValue('/support');
+  view.rerender(<><ParticipantShell/><SupportPage/></>);
+  for(const email of ['jatinawankar23@gmail.com','supportpp@gmail.com'])
+    expect(screen.getByRole('link',{name:email}).getAttribute('href')).toBe(`mailto:${email}`);
+  expect(screen.getByText(/Monday–Friday, 09:00–18:00 IST/)).not.toBeNull();
+  expect(screen.getByText(/real bookings remain disabled/)).not.toBeNull();
 });
