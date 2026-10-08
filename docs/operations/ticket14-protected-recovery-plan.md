@@ -1,6 +1,7 @@
 # Ticket 14 protected synthetic recovery drills
 
-Prepared 2026-10-08. Execution is pending the access decision below. Ticket 14 stays
+Prepared 2026-10-08. Targets and controls approved; execution is pending the
+account-access/free-allowance check recorded below. Ticket 14 stays
 claimed; criterion 2 is not waived or transferred to ticket 17. This plan contains
 no source Auth values. It does not authorize production deployment or bookings.
 
@@ -200,3 +201,26 @@ The previous bucket-wide writer will not be used as the application writer.
 No additional source approval, source credentials or actual-account export is
 requested. Both drill results remain ticket 14 requirements, and criterion 2
 stays open until the real execution evidence passes review.
+
+## Approval and execution preflight
+
+The maintainer approved both isolated local Auth instances, the exact B2 prefix,
+scoped key creation and the documented prefix retention/lifecycle. No repeat
+target approval is required. Approval remains conditional on establishing zero
+cost before uploads; existing broad keys cannot run the drills.
+
+The B2 console currently redirects to sign-in. The saved bucket-scoped keys do
+not establish account-wide usage, remaining free egress or billing caps. Therefore
+zero-cost execution is not yet established. No upload, key creation, lifecycle
+change, source connection or drill operation was performed in this preflight.
+An authenticated B2 session is the exact missing access, requested without asking
+for credentials in chat. Do not enable billing while signing in.
+
+The execution budget is at most 20 MiB total new stored data across all versions,
+100 versions, 100 MiB downloaded, and 5,000 API requests including retries and
+cleanup; use no Class D operations. Inspect the account's applicable pricing and
+remaining storage/egress/request allowances before admitting this budget. These
+are ceilings, not consumption targets. Instrument calls/bytes and stop at the
+smaller of these limits or verified free headroom; retain allowance for cleanup.
+One-day object locks and prefix-only two-day hide/one-day noncurrent deletion
+remain approved. No paid allowance or rounded-to-zero charge is acceptable.
