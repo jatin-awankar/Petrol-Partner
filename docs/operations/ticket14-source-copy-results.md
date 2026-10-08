@@ -197,3 +197,13 @@ Standards review found one reporting-unit error (paise versus rupees), corrected
 above; no other actionable standards findings. Spec review found no mismatch and
 confirmed criteria 1 and 3 may be checked under the amended approval while
 criterion 2 and ticket completion remain open.
+
+
+## Protected recovery completion — 2026-10-08
+
+The previously open criterion 2 is now supported by the
+[protected recovery results](ticket14-protected-recovery-results.md), including
+actual isolated provider loss, independent B2 recovery and snapshot overlap.
+Ticket 14 is resolved under the explicit synthetic Auth approval. Actual source
+account continuity remains unproven; source Auth remains excluded. Retention-dependent
+remote cleanup is separately pending with an active follow-up.

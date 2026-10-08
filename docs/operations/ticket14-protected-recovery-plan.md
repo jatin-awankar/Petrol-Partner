@@ -1,8 +1,9 @@
 # Ticket 14 protected synthetic recovery drills
 
-Prepared 2026-10-08. Targets and controls approved; execution is pending the
-account-access/free-allowance check recorded below. Ticket 14 stays
-claimed; criterion 2 is not waived or transferred to ticket 17. This plan contains
+Prepared 2026-10-08. Execution and the required snapshot-overlap follow-up are
+complete; see [measured results](ticket14-protected-recovery-results.md). Historical
+preflight notes below preserve the approval sequence. Criterion 2 was completed
+in ticket 14, not waived or transferred to ticket 17. This plan contains
 no source Auth values. It does not authorize production deployment or bookings.
 
 ## Inspected resources and reusable evidence

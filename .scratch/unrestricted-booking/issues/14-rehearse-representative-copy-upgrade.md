@@ -4,10 +4,10 @@
 
 **Blocked by:** 05 (Inventory deployed data and plan the migration); 07 (Record an adult declaration without college affiliation); 08 (Register individual driver–vehicle declarations); 10 (Publish a server-verified route for a declared driver); 11 (Quote an ordered posted-route segment); 12 (Request and accept one priced seat); 13 (Carry route bookings through cancellation and outcomes).
 
-**Status:** claimed
+**Status:** resolved
 
 - [x] Run the forward-only upgrade against a representative copy containing historical identities, offers, bookings, contributions, settlements, and platform-payment orders.
-- [ ] Assert ownership, historical policy identity, accepted terms, and amounts remain unchanged, and old/new reads, audit, operations, and recovery distinguish the policy versions.
+- [x] Assert ownership, historical policy identity, accepted terms, and amounts remain unchanged, and old/new reads, audit, operations, and recovery distinguish the policy versions.
 - [x] Record migration results, exceptions, recovery procedure, and any required explicit data decision before cutover.
 
 ## Rehearsal progress (2026-09-29)
@@ -98,3 +98,32 @@ are bucket-wide (writer includes governance bypass), so new prefix-scoped keys a
 prefix lifecycle authorization are needed. No source Auth rows or B2 object bodies
 were read, and no provider/bucket configuration was changed. Criterion 2 remains
 open in ticket 14; actual source-account continuity remains unproven.
+
+
+## Answer — 2026-10-08
+
+All three acceptance criteria pass under the maintainer's approved empty deployed
+application-copy and separately labelled synthetic history/Auth scope. The
+[source-copy report](../../../docs/operations/ticket14-source-copy-results.md)
+records provenance, forward migrations, historical preservation and old/new
+restricted-role behavior. The
+[protected recovery results](../../../docs/operations/ticket14-protected-recovery-results.md)
+complete criterion 2: actual isolated Supabase provider loss, stable application-ID
+mapping, conflict rejection/session invalidation, and independent B2 receipts
+reconciled through the actual MFA-protected operator route after an older restore.
+An additional real backup with an acknowledged overlapping operation plus a later
+absent action passed two reconciliations, exact projection checks, audit uniqueness,
+retry/conflict checks, notification suppression and restricted writes.
+
+All 44 ledger checksums passed. Final checks: 49 root, 514 API and 19 worker tests;
+7 opt-in API skips; typecheck and scoped lint passed. Standards/spec review have no
+remaining findings after the overlap correction. The disposable Auth resources
+and six named application/test databases were removed. No dump, credential or
+personal data was committed; unrelated work was preserved.
+
+Actual source-account continuity remains unproven; actual source Auth was excluded
+throughout. This is not a production cutover, deployment or booking activation.
+Remote artifact deletion and scoped-key cleanup remain explicitly pending until
+one-day locks expire (latest 2026-10-09 06:26:38.169 UTC), tracked by the active
+`Ticket 14 protected artifact cleanup` follow-up. Original seven-day limits remain
+in force; lifecycle is a fallback, not proof of deletion.
