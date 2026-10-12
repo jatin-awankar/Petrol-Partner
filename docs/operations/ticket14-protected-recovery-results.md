@@ -177,6 +177,16 @@ within their seven-day limit. The original source-copy deadline remains 2026-10-
 UTC. No dump, credential, account value, session, MFA secret or receipt body is
 included in this report or Git.
 
+Cleanup checkpoint, 2026-10-12 04:25 UTC: the exact original source-copy
+artifact directory `20261007T1824Z` (seven expected files, including the
+encrypted public snapshot) was removed locally and verified absent before its
+deadline. The exact disposable source-copy cluster/log directory
+`/private/tmp/pp14-copy.XWYMxm/` was also removed after its local PostgreSQL
+socket returned no response; both paths were verified absent. The separate
+synthetic recovery bundle and custody directory remain
+protected for pending remote receipt cleanup. Remote deletion and scoped-key
+revocation are not yet verified.
+
 ## Exceptions and final checks
 
 Recorded failed setup attempts: native B2 v3 authorization rejected newly created
