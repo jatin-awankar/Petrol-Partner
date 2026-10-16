@@ -187,6 +187,18 @@ synthetic recovery bundle and custody directory remain
 protected for pending remote receipt cleanup. Remote deletion and scoped-key
 revocation are not yet verified.
 
+Cleanup exception, 2026-10-16: the B2 console remained signed out through the
+2026-10-14 18:25:25 UTC shared local deadline. Current account caps/usage could
+not be reconfirmed, so no remote deletion or key-management action was attempted.
+The exact `ticket14-20261008` ignored local bundle (41 files, no nested paths)
+was removed after that deadline and verified absent; the named custody directory
+was already empty and was removed and verified absent. This was a local-retention
+miss, not an extension of approval. The scoped key material and recovery bundle
+are no longer locally available. The bucket prefix's current object inventory,
+empty-prefix state and the two scoped keys' revocation remain unverified. The
+separately held administrative cleanup access was not used for drill operations
+and remains available only for exact-prefix cleanup after a fresh zero-cost check.
+
 ## Exceptions and final checks
 
 Recorded failed setup attempts: native B2 v3 authorization rejected newly created
