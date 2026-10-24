@@ -4,6 +4,8 @@ Status: approved direction; staged design and implementation plan
 
 Updated: 2026-09-30
 
+Recruiter demo follow-up (2026-10-24): the current landing is the final visual reference. See [the source-verified baseline and demo screen map](recruiter-demo-baseline.md) for the isolated portfolio experience. That baseline also records passenger API seams added since this document; their existence does not open production bookings.
+
 ## Product contract for new UI work
 
 The approved direction is open, driver-posted route sharing rather than the former PRMITR fixed corridor. A person can create an account with verified email ownership or Google sign-in. A participant declares that they are at least 18. A driver declares a category-appropriate licence, current registration and insurance, and permission to use a bike, scooter, or car. These are **self-declarations**, not independently verified documents or endorsements. Existing corridor approvals do not automatically grant eligibility under the new policy.
