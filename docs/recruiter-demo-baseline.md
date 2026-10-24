@@ -2,6 +2,8 @@
 
 Ticket 01 · 2026-10-24 · reviewed source baseline `f96d04c` (`origin/main`).
 
+Ticket 02 implementation: see [the demo foundation and verification record](reviews/recruiter-02/README.md) for the now-implemented entry, session and clock. The route map below remains the full delivery target.
+
 ## Delivery contract
 
 The first portfolio release is an explicitly labelled, browser-local simulation of a complete passenger/driver journey. It is usable without an account, a routing provider, a live API or database. It is not evidence of production booking readiness or server concurrency correctness. Keep the modular Next.js, Express and PostgreSQL application and every real-service gate intact.
