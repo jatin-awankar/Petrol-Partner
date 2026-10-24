@@ -10,9 +10,9 @@ The server was started with `API_PROXY_TARGET=http://127.0.0.1:9` and `NEXT_PUBL
 
 ## Captures
 
-- [Desktop](landing-desktop.png): 1440 × 900 viewport; measured document width 1440; one H1.
-- [Tablet](landing-tablet.png): 768 × 1024 viewport; measured document width 768; one H1.
-- [Phone](landing-phone.png): 375 × 812 viewport; measured document width 375; one H1.
+- [Desktop](landing-desktop.jpg): 1440 × 900 viewport; measured document width 1440; one H1.
+- [Tablet](landing-tablet.jpg): 768 × 1024 viewport; measured document width 768; one H1.
+- [Phone](landing-phone.jpg): 375 × 812 viewport; measured document width 375; one H1.
 
 These are original viewport screenshots, not edited composites. Full-page capture initially produced duplicated/stitching artifacts and was replaced; those artifacts are not application findings. The Next.js development indicator may appear in captures and is not part of the approved design. Viewport overrides were reset after capture.
 
