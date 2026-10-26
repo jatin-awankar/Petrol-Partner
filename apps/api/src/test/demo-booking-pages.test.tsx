@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { DemoProvider } from "../../../../components/demo/DemoProvider";
+import { DemoJourney } from "../../../../components/demo/DemoJourney";
 import { DemoBooking } from "../../../../components/demo/DemoBooking";
 import { createDemoSession } from "../../../../lib/demo/session";
 vi.mock("@/app/demo/demo.module.css", () => ({ default: {} }));
@@ -25,9 +26,9 @@ it("walks selection, pending, acceptance and refreshed trip without live calls",
   fireEvent.click(screen.getByRole("button", { name: "Continue as driver" }));
   fireEvent.click(screen.getByRole("button", { name: "Accept sample request" }));
   expect(screen.getByRole("heading", { name: "A seat is yours." })).not.toBeNull();
-  view.unmount(); render(<DemoProvider><DemoBooking screen="trip" /></DemoProvider>);
+  view.unmount(); render(<DemoProvider><DemoJourney /></DemoProvider>);
   expect(await screen.findByRole("heading", { name: "Your sample commitment." })).not.toBeNull();
-  expect(screen.getByRole("heading", { name: "₹12.15" })).not.toBeNull();
+  expect(screen.getByText("₹12.15 · 1215 paise INR")).not.toBeNull();
   expect(fetch).not.toHaveBeenCalled();
 });
 it("explains full capacity and permits a decline", async () => {

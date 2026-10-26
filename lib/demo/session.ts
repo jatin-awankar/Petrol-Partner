@@ -1,8 +1,9 @@
 import { z } from "zod";
+import { advanceJourney, emptyJourney, journeyActions, journeySchema, transitionJourney, validJourney } from "./journey";
 
 export const DEMO_STORAGE_KEY = "petrol-partner.demo.session";
 export const INITIAL_MINUTE = 15 * 60;
-export const LAST_MINUTE = INITIAL_MINUTE + 48 * 60;
+export const LAST_MINUTE = INITIAL_MINUTE + 72 * 60;
 
 export const demoFixture = {
   passenger: { name: "Mira", initials: "MI", description: "A passenger heading across town." },
@@ -39,7 +40,8 @@ export function quoteDemoSegment(pickup: number, dropoff: number) {
 export function demoAmount(paise: number) { return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(paise / 100); }
 
 const stateSchema = z.strictObject({
-  version: z.literal(2),
+  version: z.literal(3),
+  journey: journeySchema,
   occupiedSeats: z.union([z.literal(2), z.literal(3)]),
   request: requestSchema.nullable(),
   allocation: allocationSchema.nullable(),
@@ -50,11 +52,13 @@ const stateSchema = z.strictObject({
   const r = state.request, a = state.allocation;
   if (r && (r.createdMinute > state.minute || (r.status === "pending" && state.minute >= DECISION_DEADLINE) || (r.status === "expired" && state.minute < DECISION_DEADLINE))) return false;
   if ((r?.status === "accepted") !== Boolean(a)) return false;
+  if (!validJourney(state.journey, a ? { minute: state.minute, acceptedMinute: a.acceptedMinute, paise: a.terms.paise } : null, state.minute)) return false;
   return !a || (state.occupiedSeats < demoFixture.route.capacity && a.acceptedMinute <= state.minute && a.acceptedMinute >= r!.createdMinute && JSON.stringify(a.terms) === JSON.stringify(r!.terms));
 });
 const actionSchema = z.discriminatedUnion("type", [
+  ...journeyActions,
   z.strictObject({ type: z.literal("choose-role"), role: roleSchema }),
-  z.strictObject({ type: z.literal("advance-clock"), minutes: z.union([z.literal(15), z.literal(60)]) }),
+  z.strictObject({ type: z.literal("advance-clock"), minutes: z.union([z.literal(15), z.literal(60), z.literal(1440)]) }),
   z.strictObject({ type: z.literal("reset") }),
   z.strictObject({ type: z.literal("set-scenario"), full: z.boolean() }),
   z.strictObject({ type: z.literal("request-seat"), pickup: stopSchema, dropoff: stopSchema }),
@@ -69,12 +73,14 @@ export type DemoSnapshot = Readonly<{
   recovered: boolean;
 }>;
 function freezeState(state: DemoState): DemoState {
+  for (const value of Object.values(state.journey)) if (value) Object.freeze(value);
+  Object.freeze(state.journey);
   if (state.request) { Object.freeze(state.request.terms); Object.freeze(state.request); }
   if (state.allocation) { Object.freeze(state.allocation.terms); Object.freeze(state.allocation); }
   return Object.freeze(state);
 }
 type StorageAdapter = Pick<Storage, "getItem" | "setItem">;
-const initialState = (): DemoState => Object.freeze({ version: 2, role: null, minute: INITIAL_MINUTE, occupiedSeats: 2, request: null, allocation: null });
+const initialState = (): DemoState => Object.freeze({ version: 3, journey: emptyJourney(), role: null, minute: INITIAL_MINUTE, occupiedSeats: 2, request: null, allocation: null });
 
 export function formatDemoTime(minute: number) {
   const day = Math.floor(minute / 1440) + 1;
@@ -153,9 +159,16 @@ export function createDemoSession(getStorage: () => StorageAdapter) {
         }));
         return true;
       }
+      if (action.type !== "advance-clock") {
+        if (!current.allocation) return false;
+        const journey = transitionJourney(current.journey, action, { minute: current.minute, role: current.role, acceptedMinute: current.allocation.acceptedMinute, paise: current.allocation.terms.paise });
+        if (!journey) return false;
+        if (journey !== current.journey) save(freezeState({ ...current, journey }));
+        return true;
+      }
       if (current.minute + action.minutes > LAST_MINUTE) return false;
       const minute = current.minute + action.minutes;
-      save(freezeState({ ...current, minute, request: current.request?.status === "pending" && minute >= DECISION_DEADLINE ? { ...current.request, status: "expired" } : current.request }));
+      save(freezeState({ ...current, minute, journey: advanceJourney(current.journey, minute), request: current.request?.status === "pending" && minute >= DECISION_DEADLINE ? { ...current.request, status: "expired" } : current.request }));
       return true;
     },
   };

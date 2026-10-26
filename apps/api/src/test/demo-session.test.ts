@@ -14,7 +14,7 @@ describe("isolated demo session", () => {
     session.dispatch({ type: "choose-role", role: "passenger" });
     session.dispatch({ type: "advance-clock", minutes: 60 });
     session.dispatch({ type: "choose-role", role: "driver" });
-    expect(createDemoSession(() => store).getSnapshot().state).toMatchObject({ version: 2, role: "driver", minute: INITIAL_MINUTE + 60 });
+    expect(createDemoSession(() => store).getSnapshot().state).toMatchObject({ version: 3, role: "driver", minute: INITIAL_MINUTE + 60 });
   });
 
   it("reset changes only the demo key and returns to the fixture clock and no role", () => {
@@ -25,7 +25,7 @@ describe("isolated demo session", () => {
     session.dispatch({ type: "advance-clock", minutes: 15 });
     session.dispatch({ type: "reset" });
     expect(store.getItem("real-account-preferences")).toBe("keep");
-    expect(createDemoSession(() => store).getSnapshot().state).toMatchObject({ version: 2, role: null, minute: INITIAL_MINUTE });
+    expect(createDemoSession(() => store).getSnapshot().state).toMatchObject({ version: 3, role: null, minute: INITIAL_MINUTE });
   });
 
   it.each([
@@ -57,7 +57,7 @@ describe("isolated demo session", () => {
     const store = storage();
     const session = createDemoSession(() => store);
     session.dispatch({ type: "choose-role", role: "driver" });
-    for (let i = 0; i < 48; i++) session.dispatch({ type: "advance-clock", minutes: 60 });
+    for (let i = 0; i < (LAST_MINUTE - INITIAL_MINUTE) / 60; i++) session.dispatch({ type: "advance-clock", minutes: 60 });
     expect(session.getSnapshot().state.minute).toBe(LAST_MINUTE);
     const previous = session.getSnapshot();
     const persisted = store.getItem(DEMO_STORAGE_KEY);
@@ -73,6 +73,6 @@ describe("isolated demo session", () => {
     const second = createDemoSession(storage);
     first.dispatch({ type: "choose-role", role: "driver" });
     first.dispatch({ type: "advance-clock", minutes: 15 });
-    expect(second.getSnapshot().state).toMatchObject({ version: 2, role: null, minute: INITIAL_MINUTE });
+    expect(second.getSnapshot().state).toMatchObject({ version: 3, role: null, minute: INITIAL_MINUTE });
   });
 });

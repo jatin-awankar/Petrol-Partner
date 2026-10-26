@@ -113,3 +113,7 @@ Ticket 02 can implement the isolated demo shell, versioned state and role/reset 
 ## Ticket 03 implementation
 
 The connected preset request/acceptance slice is now implemented under `/demo`. See [Ticket 03 evidence and simulator boundaries](reviews/recruiter-03/README.md). Pending, accepted, declined and expired requests are distinct from the accepted allocation. Journey and contribution records remain the next ticket; the broader screen map above still includes later polishing targets.
+
+## Ticket 04 implementation
+
+The same sample now continues through explicit departure/boarding, both journey statements, a contribution, a simulated cash/UPI claim and separate driver receipt. Cancellation, absence, interruption, disagreement and missed-response reviews remain distinguishable. See [Ticket 04 walkthrough and evidence](reviews/recruiter-04/README.md). No real operator or payment power was added; unresolved review outcomes are explained rather than fabricated.
