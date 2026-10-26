@@ -1,3 +1,3 @@
-import { DemoBooking } from "@/components/demo/DemoBooking";
+import { DemoJourney } from "@/components/demo/DemoJourney";
 
-export default function Page() { return <DemoBooking screen="trip" />; }
+export default function Page() { return <DemoJourney screen="trip" />; }

@@ -95,3 +95,9 @@
 .quote p { font-size: 14px; line-height: 1.6; }
 .scenario { display: flex; align-items: center; min-height: 44px; gap: 12px; font-size: 14px; }
 .scenario input { width: 20px; height: 20px; accent-color: var(--green); }
+
+.timeline { list-style: none; padding: 0; margin: 0; }
+.timeline li { border-top: 1px solid #b9c2b4; padding: 16px 0; font-size: 14px; line-height: 1.6; }
+.timeline li span { display: block; font: 11px ui-monospace, monospace; margin-top: 6px; }
+.routeTicket .timelineTitle { font-size: 30px; }
+.clock > p + p { margin-top: 14px; }

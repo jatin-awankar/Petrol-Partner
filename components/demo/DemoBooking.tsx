@@ -7,7 +7,7 @@ import { useDemo } from "./DemoProvider";
 import { demoFixture, quoteDemoSegment, demoAmount, formatDemoTime, REQUEST_DEADLINE, DECISION_DEADLINE } from "@/lib/demo/session";
 import styles from "@/app/demo/demo.module.css";
 
-type Screen = "find" | "route" | "offer" | "request" | "trip";
+type Screen = "find" | "route" | "offer" | "request";
 const requestPath = "/demo/requests/sample-request-01";
 const tripPath = "/demo/trips/sample-trip-01";
 
@@ -20,11 +20,11 @@ export function DemoBooking({ screen }: { screen: Screen }) {
   const route = demoFixture.route;
   const request = state.request;
   const quote = quoteDemoSegment(pickup, dropoff);
-  const remaining = route.capacity - state.occupiedSeats - (state.allocation ? 1 : 0);
+  const remaining = route.capacity - state.occupiedSeats - (state.allocation && !state.journey.cancellation ? 1 : 0);
   const switchRole = () => { dispatch({ type: "choose-role", role: state.role === "driver" ? "passenger" : "driver" }); setError(""); };
   if (!state.role) return <section className={styles.scope}><h1>Choose your perspective.</h1><p>Start a sample session before exploring this route.</p><Link className={styles.primary} href="/demo">Choose a role</Link></section>;
-  const titles: Record<Screen, string> = { find: "A seat along your way.", route: "Choose your stretch.", offer: "Your route. Your decision.", request: request ? { pending: "Requested. Not confirmed.", accepted: "A seat is yours.", rejected: "This request was declined.", expired: "The decision window closed." }[request.status] : "No request yet.", trip: state.allocation ? "Your sample commitment." : "No confirmed seat yet." };
-  const terms = screen === "trip" ? state.allocation?.terms : request?.terms;
+  const titles: Record<Screen, string> = { find: "A seat along your way.", route: "Choose your stretch.", offer: "Your route. Your decision.", request: state.journey.cancellation ? "Cancelled before departure." : request ? { pending: "Requested. Not confirmed.", accepted: "A seat is yours.", rejected: "This request was declined.", expired: "The decision window closed." }[request.status] : "No request yet." };
+  const terms = request?.terms;
   return <>
     <div className={styles.intro}><div><p className={styles.eyebrow}>SAMPLE JOURNEY / {state.role.toUpperCase()}</p><h1>{titles[screen]}</h1></div><div><p>You’re {demoFixture[state.role].name}. Both perspectives share this tab’s fictional journey.</p><button className={styles.secondary} onClick={switchRole}>Switch to {state.role === "driver" ? "passenger" : "driver"}</button></div></div>
     <div className={styles.homeGrid}>
@@ -46,11 +46,11 @@ export function DemoBooking({ screen }: { screen: Screen }) {
           </>}
         </div>}
         {screen === "offer" && <div className={styles.clock}><p className={styles.eyebrow}>INCOMING / MIRA</p><h2>{request ? "One request to inspect." : "No requests yet."}</h2><p>{request ? `Mira’s request is ${request.status}. Pending requests use no capacity.` : "Switch to passenger and select this route to create a request."}</p><Link className={styles.primary} href={request ? requestPath : "/demo/find"}>{request ? "Review sample request" : "Explore the sample route"}</Link></div>}
-        {(screen === "request" || screen === "trip") && <div className={styles.clock}>
-          <p className={styles.eyebrow}>{screen === "trip" && state.allocation ? "ACCEPTED TERMS / FROZEN" : "ONE PASSENGER / ONE SEAT"}</p>
+        {screen === "request" && <div className={styles.clock}>
+          <p className={styles.eyebrow}>ONE PASSENGER / ONE SEAT</p>
           {terms ? <><h2>{demoAmount(terms.paise)}</h2><p>{route.stops[terms.pickup]} → {route.stops[terms.dropoff]}</p><p>{terms.metres / 1000} km · {terms.paise} paise INR · ₹7/km · no added fees.</p><p className={styles.caption}>Route version {terms.routeVersion} · policy {terms.policy}. {state.allocation ? "These accepted terms stay fixed when the clock or perspective changes." : request?.status === "pending" ? "These requested terms will be frozen on acceptance." : "Original requested terms, kept for this sample record."}</p></> : <p>Create a request, then have Arjun accept it to see a commitment.</p>}
           {request?.status === "pending" && <><p>Pending is not confirmed. Arjun acts next, before {formatDemoTime(DECISION_DEADLINE)}.</p>{state.role === "driver" ? <><div className={styles.actions}><button className={styles.primary} disabled={remaining === 0} onClick={() => { if (!dispatch({ type: "decide-request", decision: "accepted" })) setError("Acceptance unavailable. Check capacity and the decision deadline."); }}>Accept sample request</button><button className={styles.secondary} onClick={() => { if (!dispatch({ type: "decide-request", decision: "rejected" })) setError("This request can no longer be decided."); }}>Decline sample request</button></div>{remaining === 0 && <p role="status">This sample car is full. Acceptance cannot allocate another seat; you can decline.</p>}</> : <button className={styles.primary} onClick={switchRole}>Continue as driver</button>}</>}
-          {request?.status === "accepted" && <><p>Accepted: one whole-ride seat reserved for Mira. No travel or payment has been recorded.</p>{screen !== "trip" && <Link className={styles.primary} href={tripPath}>View sample trip</Link>}{screen === "trip" && <p>Journey confirmation and contributions are the next stage of this demo. Acceptance alone creates no debt.</p>}</>}
+          {request?.status === "accepted" && <><p>{state.journey.cancellation ? "The accepted seat was cancelled and released. Original terms remain in the history." : "Arjun accepted this request. Open the trip for current journey and contribution records."}</p><Link className={styles.primary} href={tripPath}>View sample trip</Link></>}
           {(request?.status === "rejected" || request?.status === "expired") && <p>No seat was allocated and no money is owed. Reset this demo to try a new scenario.</p>}
           {!request && <Link className={styles.primary} href="/demo/find">Find the sample route</Link>}
         </div>}
