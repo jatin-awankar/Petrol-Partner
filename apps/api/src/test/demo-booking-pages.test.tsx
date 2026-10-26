@@ -1,0 +1,41 @@
+// @vitest-environment jsdom
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { DemoProvider } from "../../../../components/demo/DemoProvider";
+import { DemoBooking } from "../../../../components/demo/DemoBooking";
+import { createDemoSession } from "../../../../lib/demo/session";
+vi.mock("@/app/demo/demo.module.css", () => ({ default: {} }));
+const push = vi.fn();
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
+beforeEach(() => { sessionStorage.clear(); push.mockClear(); vi.stubGlobal("fetch", vi.fn(() => { throw new Error("No live calls allowed"); })); });
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+it("walks selection, pending, acceptance and refreshed trip without live calls", async () => {
+  createDemoSession(() => sessionStorage).dispatch({ type: "choose-role", role: "passenger" });
+  const view = render(<DemoProvider><DemoBooking screen="route" /></DemoProvider>);
+  fireEvent.change(await screen.findByLabelText("Pickup"), { target: { value: "2" } });
+  expect(screen.getByRole("alert").textContent).toContain("after your pickup");
+  expect((screen.getByRole("button", { name: "Request one sample seat" }) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.change(screen.getByLabelText("Pickup"), { target: { value: "0" } });
+  fireEvent.change(screen.getByLabelText("Drop-off"), { target: { value: "1" } });
+  fireEvent.click(screen.getByRole("button", { name: "Request one sample seat" }));
+  expect(push).toHaveBeenCalledWith("/demo/requests/sample-request-01");
+  view.rerender(<DemoProvider><DemoBooking screen="request" /></DemoProvider>);
+  expect(screen.getByRole("heading", { name: "Requested. Not confirmed." })).not.toBeNull();
+  expect(screen.queryByRole("button", { name: "Accept sample request" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Continue as driver" }));
+  fireEvent.click(screen.getByRole("button", { name: "Accept sample request" }));
+  expect(screen.getByRole("heading", { name: "A seat is yours." })).not.toBeNull();
+  view.unmount(); render(<DemoProvider><DemoBooking screen="trip" /></DemoProvider>);
+  expect(await screen.findByRole("heading", { name: "Your sample commitment." })).not.toBeNull();
+  expect(screen.getByRole("heading", { name: "₹12.15" })).not.toBeNull();
+  expect(fetch).not.toHaveBeenCalled();
+});
+it("explains full capacity and permits a decline", async () => {
+  const s = createDemoSession(() => sessionStorage);
+  s.dispatch({ type: "choose-role", role: "passenger" }); s.dispatch({ type: "set-scenario", full: true });
+  s.dispatch({ type: "request-seat", pickup: 0, dropoff: 2 }); s.dispatch({ type: "choose-role", role: "driver" });
+  render(<DemoProvider><DemoBooking screen="request" /></DemoProvider>);
+  expect((await screen.findByRole("button", { name: "Accept sample request" }) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(screen.getByRole("button", { name: "Decline sample request" }));
+  expect(screen.getByRole("heading", { name: "This request was declined." })).not.toBeNull();
+});

@@ -33,7 +33,7 @@ export default function DemoShell({ children }: { children: ReactNode }) {
         <DialogTrigger asChild><button className={styles.textButton}><RotateCcw size={14} aria-hidden="true" />Reset demo</button></DialogTrigger>
         <DialogContent className={styles.resetDialog} showCloseButton={false}>
           <DialogTitle>Start this demo again?</DialogTitle>
-          <DialogDescription className={styles.dialogDescription}>This resets your role and sample clock in this tab. Real accounts and other browser data stay untouched.</DialogDescription>
+          <DialogDescription className={styles.dialogDescription}>This resets your role, sample clock, requests and accepted seat in this tab. Real accounts and other browser data stay untouched.</DialogDescription>
           <div className={styles.actions}>
             <DialogClose asChild><button className={styles.secondary} autoFocus>Keep exploring</button></DialogClose>
             <button className={styles.primary} onClick={reset}>Reset this demo</button>

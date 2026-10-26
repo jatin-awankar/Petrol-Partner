@@ -24,7 +24,7 @@ it("chooses a role without authentication or a network call", async () => {
 });
 
 it("shares the clock between roles and resumes after remount", async () => {
-  sessionStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify({ version: 1, role: "passenger", minute: 900 }));
+  sessionStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify({ version: 2, occupiedSeats: 2, request: null, allocation: null, role: "passenger", minute: 900 }));
   const view = render(home());
   fireEvent.click(await screen.findByRole("button", { name: "Advance 15 minutes" }));
   fireEvent.click(screen.getByRole("button", { name: "Switch to driver" }));
@@ -38,7 +38,7 @@ it("shares the clock between roles and resumes after remount", async () => {
 
 it("requires explicit reset, preserves unrelated data, and handles a deep link after reset", async () => {
   sessionStorage.setItem("account-preference", "unchanged");
-  sessionStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify({ version: 1, role: "driver", minute: 960 }));
+  sessionStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify({ version: 2, occupiedSeats: 2, request: null, allocation: null, role: "driver", minute: 960 }));
   render(home());
   fireEvent.click(await screen.findByRole("button", { name: "Reset demo" }));
   expect(screen.getByRole("dialog")).not.toBeNull();
