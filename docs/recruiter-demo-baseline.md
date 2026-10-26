@@ -109,3 +109,7 @@ Relevant checks already exist: `scripts/landing-eligibility.test.mjs`; rendered 
 ## Ticket handoff
 
 Ticket 02 can implement the isolated demo shell, versioned state and role/reset controls using this baseline. It must not enable real route actions. Tickets 03–04 connect the full scenario; Ticket 05 polishes task screens; Ticket 06 verifies live environment/account boundaries; Ticket 07 performs evidenced cleanup; Ticket 08 prepares authorized free hosting; Ticket 09 adds recruiter presentation. A database-backed sandbox remains optional Ticket 10.
+
+## Ticket 03 implementation
+
+The connected preset request/acceptance slice is now implemented under `/demo`. See [Ticket 03 evidence and simulator boundaries](reviews/recruiter-03/README.md). Pending, accepted, declined and expired requests are distinct from the accepted allocation. Journey and contribution records remain the next ticket; the broader screen map above still includes later polishing targets.

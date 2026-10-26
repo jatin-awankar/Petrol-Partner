@@ -18,15 +18,47 @@ export const demoFixture = {
 } as const;
 
 const roleSchema = z.enum(["passenger", "driver"]);
+export const REQUEST_DEADLINE = demoFixture.route.departureMinute - 60;
+export const DECISION_DEADLINE = demoFixture.route.departureMinute - 30;
+const stopSchema = z.number().int().min(0).max(2);
+const termsSchema = z.strictObject({
+  pickup: stopSchema, dropoff: stopSchema,
+  metres: z.number().int().positive(), paise: z.number().int().positive(),
+  currency: z.literal("INR"), policy: z.literal("sample-car-v1"), routeVersion: z.literal(1),
+}).refine(t => { const q = quoteDemoSegment(t.pickup, t.dropoff); return q !== null && q.metres === t.metres && q.paise === t.paise; });
+const requestSchema = z.strictObject({ id: z.literal("sample-request-01"), terms: termsSchema, status: z.enum(["pending", "accepted", "rejected", "expired"]), createdMinute: z.number().int().min(INITIAL_MINUTE).max(REQUEST_DEADLINE - 1) });
+const allocationSchema = z.strictObject({ id: z.literal("sample-trip-01"), requestId: z.literal("sample-request-01"), terms: termsSchema, acceptedMinute: z.number().int().min(INITIAL_MINUTE).max(DECISION_DEADLINE - 1) });
+
+/** Preset distances, never a routing-provider quote. Round once to integer paise. */
+export function quoteDemoSegment(pickup: number, dropoff: number) {
+  const positions = [0, 1735, 4000];
+  if (!Number.isInteger(pickup) || !Number.isInteger(dropoff) || pickup < 0 || dropoff > 2 || pickup >= dropoff) return null;
+  const metres = positions[dropoff] - positions[pickup];
+  return { pickup, dropoff, metres, paise: Math.round(metres * 700 / 1000), currency: "INR" as const, policy: "sample-car-v1" as const, routeVersion: 1 as const };
+}
+export function demoAmount(paise: number) { return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(paise / 100); }
+
 const stateSchema = z.strictObject({
-  version: z.literal(1),
+  version: z.literal(2),
+  occupiedSeats: z.union([z.literal(2), z.literal(3)]),
+  request: requestSchema.nullable(),
+  allocation: allocationSchema.nullable(),
   role: roleSchema.nullable(),
   minute: z.number().int().min(INITIAL_MINUTE).max(LAST_MINUTE),
-}).refine(state => state.role !== null || state.minute === INITIAL_MINUTE);
+}).refine(state => {
+  if (state.role === null && (state.minute !== INITIAL_MINUTE || state.request || state.allocation || state.occupiedSeats !== 2)) return false;
+  const r = state.request, a = state.allocation;
+  if (r && (r.createdMinute > state.minute || (r.status === "pending" && state.minute >= DECISION_DEADLINE) || (r.status === "expired" && state.minute < DECISION_DEADLINE))) return false;
+  if ((r?.status === "accepted") !== Boolean(a)) return false;
+  return !a || (state.occupiedSeats < demoFixture.route.capacity && a.acceptedMinute <= state.minute && a.acceptedMinute >= r!.createdMinute && JSON.stringify(a.terms) === JSON.stringify(r!.terms));
+});
 const actionSchema = z.discriminatedUnion("type", [
   z.strictObject({ type: z.literal("choose-role"), role: roleSchema }),
   z.strictObject({ type: z.literal("advance-clock"), minutes: z.union([z.literal(15), z.literal(60)]) }),
   z.strictObject({ type: z.literal("reset") }),
+  z.strictObject({ type: z.literal("set-scenario"), full: z.boolean() }),
+  z.strictObject({ type: z.literal("request-seat"), pickup: stopSchema, dropoff: stopSchema }),
+  z.strictObject({ type: z.literal("decide-request"), decision: z.enum(["accepted", "rejected"]) }),
 ]);
 export type DemoRole = z.infer<typeof roleSchema>;
 export type DemoState = Readonly<z.infer<typeof stateSchema>>;
@@ -36,8 +68,13 @@ export type DemoSnapshot = Readonly<{
   persistence: "tab" | "memory";
   recovered: boolean;
 }>;
+function freezeState(state: DemoState): DemoState {
+  if (state.request) { Object.freeze(state.request.terms); Object.freeze(state.request); }
+  if (state.allocation) { Object.freeze(state.allocation.terms); Object.freeze(state.allocation); }
+  return Object.freeze(state);
+}
 type StorageAdapter = Pick<Storage, "getItem" | "setItem">;
-const initialState = (): DemoState => Object.freeze({ version: 1, role: null, minute: INITIAL_MINUTE });
+const initialState = (): DemoState => Object.freeze({ version: 2, role: null, minute: INITIAL_MINUTE, occupiedSeats: 2, request: null, allocation: null });
 
 export function formatDemoTime(minute: number) {
   const day = Math.floor(minute / 1440) + 1;
@@ -54,9 +91,9 @@ export function createDemoSession(getStorage: () => StorageAdapter) {
     storage = getStorage();
     const raw = storage.getItem(DEMO_STORAGE_KEY);
     if (raw !== null) {
-      // Bound input before parsing; this key stores three small scalar fields only.
-      const parsed = raw.length <= 512 ? stateSchema.safeParse(JSON.parse(raw)) : null;
-      if (parsed?.success) state = Object.freeze(parsed.data);
+      // Bound this disposable simulator snapshot before parsing. Old versions recover visibly.
+      const parsed = raw.length <= 4096 ? stateSchema.safeParse(JSON.parse(raw)) : null;
+      if (parsed?.success) state = freezeState(parsed.data);
       else recovered = true;
     }
   } catch (error) {
@@ -66,6 +103,7 @@ export function createDemoSession(getStorage: () => StorageAdapter) {
   let snapshot: DemoSnapshot = Object.freeze({ state, persistence: storage ? "tab" : "memory", recovered });
   const listeners = new Set<() => void>();
   function save(next: DemoState, wasRecovered = false) {
+    freezeState(next);
     try { storage?.setItem(DEMO_STORAGE_KEY, JSON.stringify(next)); }
     catch { storage = null; }
     snapshot = Object.freeze({ state: next, persistence: storage ? "tab" : "memory", recovered: wasRecovered });
@@ -86,11 +124,38 @@ export function createDemoSession(getStorage: () => StorageAdapter) {
       const current = snapshot.state;
       if (action.type === "reset") { save(initialState()); return true; }
       if (action.type === "choose-role") {
-        save(Object.freeze({ ...current, role: action.role }));
+        save(freezeState({ ...current, role: action.role }));
         return true;
       }
-      if (!current.role || current.minute + action.minutes > LAST_MINUTE) return false;
-      save(Object.freeze({ ...current, minute: current.minute + action.minutes }));
+      if (!current.role) return false;
+      if (action.type === "set-scenario") {
+        if (current.request) return false;
+        save(freezeState({ ...current, occupiedSeats: action.full ? 3 : 2 }));
+        return true;
+      }
+      if (action.type === "request-seat") {
+        if (current.role !== "passenger") return false;
+        // One fixed request identity per scenario. Exact retries preserve the original result.
+        if (current.request) return current.request.terms.pickup === action.pickup && current.request.terms.dropoff === action.dropoff;
+        const terms = quoteDemoSegment(action.pickup, action.dropoff);
+        if (!terms || current.minute >= REQUEST_DEADLINE) return false;
+        save(freezeState({ ...current, request: { id: "sample-request-01", terms: Object.freeze(terms), status: "pending", createdMinute: current.minute } }));
+        return true;
+      }
+      if (action.type === "decide-request") {
+        if (current.role !== "driver" || !current.request) return false;
+        if (current.request.status === action.decision) return true;
+        if (current.request.status !== "pending" || current.minute >= DECISION_DEADLINE) return false;
+        if (action.decision === "accepted" && current.occupiedSeats >= demoFixture.route.capacity) return false;
+        save(freezeState({ ...current,
+          request: { ...current.request, status: action.decision },
+          allocation: action.decision === "accepted" ? { id: "sample-trip-01", requestId: current.request.id, terms: current.request.terms, acceptedMinute: current.minute } : null,
+        }));
+        return true;
+      }
+      if (current.minute + action.minutes > LAST_MINUTE) return false;
+      const minute = current.minute + action.minutes;
+      save(freezeState({ ...current, minute, request: current.request?.status === "pending" && minute >= DECISION_DEADLINE ? { ...current.request, status: "expired" } : current.request }));
       return true;
     },
   };

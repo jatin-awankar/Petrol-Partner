@@ -28,6 +28,6 @@ export default function DemoEntry() {
         <button className={styles.primary} onClick={() => start(role)}>Explore as {role} <ArrowRight size={18} aria-hidden="true" /></button>
       </section>)}
     </div>
-    <section className={styles.scope}><span className={styles.eyebrow}>WHAT YOU CAN TRY TODAY</span><h2>A place to start.</h2><p>Explore the sample route, switch between people, move the sample clock, and reset. Connected seat requests and journey outcomes are the next part of this demo; they aren’t available here yet.</p></section>
+    <section className={styles.scope}><span className={styles.eyebrow}>WHAT YOU CAN TRY TODAY</span><h2>A place to start.</h2><p>Explore the sample route, switch between people, move the sample clock, and reset. Choose ordered stops, preview a sample contribution, request a seat, then accept or decline as the driver. Journey outcomes come next.</p></section>
   </>;
 }

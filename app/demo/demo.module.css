@@ -84,3 +84,14 @@
 @media (max-width: 900px) { .intro { grid-template-columns: 1fr; gap: 24px; }.intro p:not(.eyebrow) { max-width: 620px; }.homeGrid { gap: 28px; }.facts { grid-template-columns: 1fr; }.cardTop { flex-wrap: wrap; } }
 @media (max-width: 650px) { .header { min-height: 78px; gap: 12px; }.brand b { font-size: 15px; }.brand > span { width: 35px; height: 35px; }.nav { gap: 0; flex-direction: column; align-items: end; }.nav a { font-size: 12px; }.sessionBar { align-items: start; flex-direction: column; padding-top: 16px; padding-bottom: 8px; }.content { padding-top: 32px; padding-bottom: 44px; }.intro { margin-bottom: 28px; }.roles, .homeGrid { grid-template-columns: 1fr; }.roleCard + .roleCard { border-left: 0; border-top: 1.5px solid var(--ink); }.roleCard .primary { width: 100%; }.resume { flex-direction: column; align-items: start; }.facts { grid-template-columns: 1fr 1fr; }.homeGrid { gap: 38px; }.footer { flex-direction: column; align-items: start; gap: 14px; }.actions { gap: 10px; }.actions .secondary { flex: 1; }.resetDialog .actions { flex-direction: column; }.resetDialog .primary { justify-content: center; } }
 @media (prefers-reduced-motion: reduce) { .primary, .resetDialog { transition: none; animation: none; }.primary:hover { transform: none; } }
+
+.fields { display: grid; gap: 18px; margin: 24px 0; }
+.fields label { display: grid; gap: 8px; font-size: 14px; font-weight: 700; }
+.fields select { width: 100%; min-height: 48px; padding: 10px; border: 1.5px solid var(--ink); background: #fffdf5; color: var(--ink); font: inherit; }
+.demo :is(select, input):focus-visible { outline: 3px solid var(--green); outline-offset: 4px; }
+.quote { padding: 24px; background: var(--lime); border: 1.5px solid var(--ink); }
+.quote > span { display: block; font: 11px ui-monospace, monospace; letter-spacing: .08em; }
+.quote > strong { display: block; margin: 12px 0; font: 42px Georgia, serif; }
+.quote p { font-size: 14px; line-height: 1.6; }
+.scenario { display: flex; align-items: center; min-height: 44px; gap: 12px; font-size: 14px; }
+.scenario input { width: 20px; height: 20px; accent-color: var(--green); }
